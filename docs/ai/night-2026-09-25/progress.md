@@ -744,3 +744,47 @@ in a real browser.
   properties stay checked; `spiral` uses its own duration constant. Re-run:
   `npm test` 212; `test:e2e` 28; the two hardened tests ×4 → 8/8; lint, tsc,
   Prettier green.
+
+## T10 — Xenocat Analytics branding (`night-2026-09-25-t10-branding`)
+
+- Start: 2026-09-25 18:48, budget 14,446,837 tokens.
+- Base SHA: `29c4f12` (T9 merged).
+- T9 outcome: committed `29c4f12`, fast-forwarded, both branches pushed; CI
+  poll started (pending).
+
+### What the code does
+
+- `app/ui/acme-logo.tsx`: now the Xenocat Analytics logo — `XenocatMark`, an
+  SVG alien-cat head with an antenna in `currentColor` (eyes and nose cut out in
+  dark blue), and the default-exported `XenocatLogo`: the mark plus "Xenocat"
+  in the site's Lusitana serif over a small tracked "ANALYTICS". The file keeps
+  its path (Q8).
+- `app/layout.tsx`: title "Xenocat Analytics" (template "%s | Xenocat
+  Analytics") and a new description.
+- `app/ui/dashboard/sidenav.tsx`, `app/login/page.tsx`: use `XenocatLogo`.
+- `app/page.tsx`: the welcome text is Xenocat Analytics' own; a "Meet the cats"
+  link next to "Log in"; the course's black triangle removed; the course
+  screenshots (which show the Acme dashboard) replaced by `HomeHero`.
+- `app/ui/home-hero.tsx` (new): a drawn, labelled preview of the dashboard —
+  sidebar with the logo, three summary cards, a revenue chart — with a Nebula
+  Ragdoll asleep on its edge and a Pulsar Siamese watching from below.
+- `app/icon.svg` (new): the Xenocat mark on the site's blue as the favicon.
+- `tests/e2e/branding.spec.ts` (new): `/`, `/login` and `/cats` have the new
+  titles and no "Acme" anywhere in their text; the logo shows on home and login;
+  "Meet the cats" leads to /cats; the SVG icon is served.
+
+### Why it was added
+
+Plan task 10; the goal names the product "Xenocat Analytics" and wants "a
+professional … dashboard" in which the cats are the playful part.
+
+### Verification
+
+- `npm run test:e2e` → **34 passed** (6 new; the original smoke tests pass
+  unchanged). Negative control: the old "Acme Dashboard" title restored → the
+  `/` and `/login` branding tests failed; restored.
+- `npm test` 212; lint 0; typegen + tsc 0; Prettier clean.
+- Looked at: `screenshots/t10-home-desktop.png`, `t10-home-mobile.png`,
+  `t10-login-desktop.png` — logo legible on the blue panels, preview and cats
+  sit cleanly at both widths. Not looked at: the dashboard sidenav (needs a
+  login and the database).

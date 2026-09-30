@@ -69,3 +69,20 @@ read the Next.js course.
 - **Recommended:** change that user's password in the database (a write the run
   may not make), then delete the file and its `tsconfig.json` entry (a deletion
   the plan did not permit).
+
+## Q8 — Leftovers from the course branding
+
+T10 replaced every visible Acme name and logo, but left three files in place
+because deleting or renaming a file the run did not create is reserved for a
+human (§3):
+
+- `app/ui/acme-logo.tsx` now holds the Xenocat logo (`XenocatLogo`). Suggest
+  `git mv app/ui/acme-logo.tsx app/ui/xenocat-logo.tsx` and updating its four
+  imports.
+- `public/hero-desktop.png` and `public/hero-mobile.png` show the Acme dashboard
+  and are no longer used (the home page draws its own preview). Suggest deleting.
+- `app/ui/home.module.css` (the course's black triangle) is no longer used.
+  Suggest deleting.
+- `public/opengraph-image.png` and `metadataBase` in `app/layout.tsx` still come
+  from the course (`next-learn-dashboard.vercel.sh`); a real domain and share
+  image are a product decision.

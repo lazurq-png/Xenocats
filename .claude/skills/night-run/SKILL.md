@@ -60,6 +60,8 @@ for b in $(git branch --list 'night-*' --format='%(refname:short)' \
 done
 ```
 
+- **This session is already running the run** (a `/loop` heartbeat, §9.5): do
+  not run this preflight at all. Go to §9.5.
 - **The loop prints a run branch** → you are **resuming** it: go to §9.2. Do
   not run §1.0, §1.2 or §1.4. Recreating the branch or state files is how a run
   loses its history.
@@ -726,7 +728,8 @@ compaction, trust `progress.md` over memory.
 ## 9. Running across sessions
 
 The run branch and `docs/ai/night-<YYYY-MM-DD>/` *are* the run. A session only
-holds them for a while, and nothing of its conversation survives it.
+holds them for a while, and nothing of its conversation survives it. A `/loop`
+heartbeat is not a new session (§9.5).
 
 ### 9.1 What a session owes the next
 
@@ -778,3 +781,30 @@ that only makes sense if another session comes.
 These carry across sessions and never reset: the plan's goal, the three-cycle
 limit, the dated deadline, and parked questions (a later session inherits the
 decision and the `PROVISIONAL:` branch). Only the budget is per session.
+
+### 9.5 Under `/loop`: the heartbeat
+
+A long run may be started as `/loop /night-run`, so that a turn which ends with
+nothing running in the background does not leave the run stalled until the
+deadline. Each wakeup re-enters this skill in the **same** session.
+
+- **Tell a heartbeat from a new session** by your own context: if this
+  conversation already holds this run's preflight or task work, it is a
+  heartbeat. After a compaction, `progress.md` on the run branch, with this
+  session's heading and no handoff after it, says the same.
+- **On a heartbeat**, run no preflight, no baseline and no §9.2 resume. Read
+  the clock and budget, `git status --short`, `git branch --show-current` and
+  the last entry of `progress.md`, then carry on exactly where it says:
+  - a background job (build, `reviewer`, CI poll) still running → nothing to
+    do; schedule the next wakeup;
+  - a task in flight → continue it from its current step;
+  - between tasks → §2 step 0 for the next one.
+- **Pacing:** the wakeup is a fallback, not the work signal — background jobs
+  re-invoke you when they finish. Schedule it long: 1200–1800 s.
+- **Ending:** once the morning report (§7) is pushed, or any §6 stop condition
+  has ended the run, stop the loop (`ScheduleWakeup` with `stop: true`). A
+  heartbeat that finds `## Morning report` already on the run branch stops the
+  loop and does nothing else.
+- **Past the ceiling:** a wakeup after `D` + 30 min, for example after the
+  account's usage limit reset, writes the report if none exists (§8.5) and
+  stops the loop. It starts no task.
