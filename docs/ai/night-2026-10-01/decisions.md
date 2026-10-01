@@ -254,3 +254,11 @@ visitor.
   found; nothing deleted. One flake seen once in ~60 runs of `fight.spec.ts`:
   "Taming: a pointer moving at the cat makes it dodge" (not reproduced in 8
   further runs); left as is and noted.
+- **CI failed on `c4df896`** (both browser-test jobs; checks job passed). Not
+  reproduced locally: `CI=1 --workers=1` on the dev server and against
+  `next start` both passed 54/54. CI logs need auth, so the cause is inferred:
+  the only browser tests new in this checkpoint are the pause test and the
+  pointer-lock test, and the likeliest difference is headless Chromium on
+  Linux refusing pointer lock. Fix attempt 1: the lock test skips itself, with
+  the reason, when the browser refuses the lock (the fallback path has its own
+  tests). If CI still fails, the cause is elsewhere.
