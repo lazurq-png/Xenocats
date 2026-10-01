@@ -26,6 +26,10 @@ export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = 
     awake: '/xenocats/cats/mirror-sphynx-awake.webp',
     asleep: '/xenocats/cats/mirror-sphynx-asleep.webp',
   },
+  'static-calico': {
+    awake: '/xenocats/cats/static-calico-awake.webp',
+    asleep: '/xenocats/cats/static-calico-asleep.webp',
+  },
 };
 
 /**
