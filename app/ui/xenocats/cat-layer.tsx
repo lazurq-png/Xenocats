@@ -152,7 +152,7 @@ export function XenocatCatsProvider({
       const changed = engine.tick(
         cursor.now(),
         pointer,
-        (cat, type, centre) => {
+        (cat, type, centre, combo) => {
           // No cursor at all (a touch screen, or the pointer not seen yet): the cat
           // pounces at nothing and leaves, rather than waiting on screen for ever.
           if (cursor.position() === null) return true;
@@ -161,13 +161,20 @@ export function XenocatCatsProvider({
           if (!cursor.isPresent()) return false;
           // The page is drawing its own pointer (a locked Fight game): wait until it is done.
           if (cursor.isHidden()) return false;
-          // A cat clicked awake attacks angrily: harder and for longer.
-          const effect = cat.angry
-            ? strengthen(type.effect, engine.config.angryFactor)
-            : type.effect;
+          // A combo attacks with both cats' fused effect; a cat clicked awake (either
+          // of the pair) attacks angrily: harder and for longer.
+          const partner = combo ? engine.cats().find((c) => c.id === cat.comboWith) : undefined;
+          const partnerType = partner
+            ? typesRef.current.find((t) => t.id === partner.typeId)
+            : undefined;
+          const base = combo ? combo.effect : type.effect;
+          const effect =
+            cat.angry || partner?.angry ? strengthen(base, engine.config.angryFactor) : base;
           if (!cursor.attack(effect, centre)) return false;
-          player.play(soundsFor(type).attack);
-          recordStat(type.id, 'survived');
+          for (const attacker of partnerType ? [type, partnerType] : [type]) {
+            player.play(soundsFor(attacker).attack);
+            recordStat(attacker.id, 'survived');
+          }
           return true;
         },
         purr
@@ -297,6 +304,7 @@ function CatView({
       data-cat-type={type.id}
       data-phase={cat.phase}
       data-angry={cat.angry || undefined}
+      data-combo={cat.combo ?? undefined}
       data-petted={cat.petted || undefined}
       className={`absolute ${outer?.className ?? ''} ${cat.angry ? 'xenocat-angry' : ''}`}
       style={style}

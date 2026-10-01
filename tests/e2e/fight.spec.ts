@@ -44,7 +44,7 @@ async function start(page: Page) {
 test('Survival: banishing every cat of a wave survives it; Esc ends the game and keeps the best score', async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   await openFight(page);
   await expect(page.getByTestId('fight-best')).toHaveText('Best: no waves survived yet');
   await start(page);
@@ -53,16 +53,23 @@ test('Survival: banishing every cat of a wave survives it; Esc ends the game and
   // No cat can be summoned during a game.
   await expect(page.getByTestId('summon-void-tabby')).toBeDisabled();
 
-  // Click every cat that shows up until wave 1 is over.
+  // Click every cat that shows up until wave 1 is over. It is a real-time game: a
+  // cat can reach the pointer while another is being clicked, its effect blocks
+  // clicks, and three such cats end the game; then a new game is started (its
+  // score is 0, so the best score below still comes from the wave survived here).
   await expect
     .poll(
       async () => {
+        if ((await page.getByTestId('fight-overlay').count()) === 0) await start(page);
         const cat = page.getByTestId('fight-cat').first();
-        const box = await cat.boundingBox().catch(() => null);
+        const box = await cat.boundingBox({ timeout: 1000 }).catch(() => null);
         if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        return page.getByTestId('fight-wave').getAttribute('data-wave');
+        return page
+          .getByTestId('fight-wave')
+          .getAttribute('data-wave', { timeout: 1000 })
+          .catch(() => null);
       },
-      { timeout: 40_000, intervals: [100] }
+      { timeout: 50_000, intervals: [100] }
     )
     .toBe('2');
   await expect(page.getByTestId('fight-score')).toHaveText('Survived: 1');

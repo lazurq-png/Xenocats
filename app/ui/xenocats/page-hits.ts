@@ -28,7 +28,7 @@ export type HitStyle = {
   color?: string;
 };
 
-/** Each attack's effect on the page, keyed by effect id. */
+/** Each attack's (and combo's) effect on the page, keyed by effect id. */
 export const PAGE_HITS: Readonly<Record<string, HitStyle>> = {
   vanish: { kind: 'blur', amount: 6 },
   heavy: { kind: 'push', amount: 18, direction: 'down' },
@@ -50,6 +50,13 @@ export const PAGE_HITS: Readonly<Record<string, HitStyle>> = {
   spiral: { kind: 'tilt', amount: 25 },
   bounce: { kind: 'push', amount: 20, direction: 'up' },
   'axis-lock': { kind: 'push', amount: 30, direction: 'sideways' },
+  // The combos (combos.ts), each from its two attacks.
+  'ice-puck': { kind: 'glow', color: '#7dd3fc' },
+  slingshot: { kind: 'push', amount: 50, direction: 'away' },
+  hangover: { kind: 'wobble', amount: 10 },
+  'ghost-jump': { kind: 'swap' },
+  pulsar: { kind: 'shake', amount: 8 },
+  'static-fog': { kind: 'blur', amount: 5 },
 };
 
 /** What a page element can be hit as: the ones that look like controls, text or cards. */

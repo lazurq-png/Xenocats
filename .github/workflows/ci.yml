@@ -47,7 +47,7 @@ jobs:
         run: >-
           npx vitest run tests/unit/xenocats/survival tests/unit/xenocats/locked-pointer
           tests/unit/xenocats/taming tests/unit/xenocats/page-hits tests/unit/xenocats/sounds
-          tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat
+          tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat tests/unit/xenocats/combos
       # A test file in no group would never run: each unit test must be named in a
       # group above, each browser test in a group of both browser jobs below.
       - name: Every test file is in a group

@@ -10,8 +10,13 @@
 // A sleeping cat with the pointer resting on it for `petMs` is petted: it purrs and
 // sleeps on for at least `petSleepMs`. A sleeping cat clicked (`poke`) wakes at once,
 // angry: its attack is `angryFactor` times stronger (effects.ts `strengthen`).
+//
+// Two cats that start waking within `comboWindowMs` and `comboDistance` of each
+// other, whose attacks have a combo (combos.ts), are paired: they attack once,
+// together, with the combined effect. Only one combo at a time.
 
 import type { CatType } from './cat-types';
+import { type Combo, findCombo } from './combos';
 import { CAT_CONFIG, type CatConfig, type Range } from './config';
 import type { Size, Vec } from './effects';
 import type { Random } from './random';
@@ -36,10 +41,19 @@ export type Cat = {
   petted: boolean;
   /** Since when the pointer has rested on it while it sleeps, or null. */
   petSince: number | null;
+  /** When it began to wake, or null if it has not (or was summoned awake). */
+  wokeAt: number | null;
+  /** The cat it attacks together with, in a combo, or null. */
+  comboWith: number | null;
+  /** The combo's effect id, while paired. */
+  combo: string | null;
 };
 
-/** Called when a cat is ready to pounce; false while another effect still runs. */
-export type TryAttack = (cat: Cat, type: CatType, centre: Vec) => boolean;
+/**
+ * Called when a cat is ready to pounce; false while another effect still runs. For
+ * a combo, `centre` is between the two cats and `combo` is set; `cat` is either one.
+ */
+export type TryAttack = (cat: Cat, type: CatType, centre: Vec, combo?: Combo) => boolean;
 
 export type CatEngine = ReturnType<typeof createCatEngine>;
 
@@ -72,6 +86,35 @@ export function createCatEngine(options: {
     point.x <= cat.x + config.catSize &&
     point.y >= cat.y &&
     point.y <= cat.y + config.catSize;
+
+  const distanceBetween = (a: Cat, b: Cat) => {
+    const ca = centreOf(a);
+    const cb = centreOf(b);
+    return Math.hypot(ca.x - cb.x, ca.y - cb.y);
+  };
+
+  /** The cat starts to wake at `at`, and pairs up for a combo if it can. */
+  function startWaking(cat: Cat, at: number) {
+    setPhase(cat, 'waking', at, config.wakeMs);
+    cat.wokeAt = at;
+    // One combo at a time: none while another pair is still to attack or attacking.
+    if (cats.some((c) => c.comboWith !== null)) return;
+    const effect = typeOf(cat).effect.id;
+    const partner = cats.find(
+      (other) =>
+        other !== cat &&
+        (other.phase === 'waking' || other.phase === 'ready') &&
+        other.wokeAt !== null &&
+        Math.abs(at - other.wokeAt) <= config.comboWindowMs &&
+        distanceBetween(cat, other) <= config.comboDistance &&
+        findCombo(effect, typeOf(other).effect.id) !== undefined
+    );
+    if (!partner) return;
+    const combo = findCombo(effect, typeOf(partner).effect.id)!;
+    cat.comboWith = partner.id;
+    partner.comboWith = cat.id;
+    cat.combo = partner.combo = combo.effect.id;
+  }
 
   function setPhase(cat: Cat, phase: CatPhase, at: number, lasts: number) {
     cat.phase = phase;
@@ -116,6 +159,9 @@ export function createCatEngine(options: {
       angry: false,
       petted: false,
       petSince: null,
+      wokeAt: null,
+      comboWith: null,
+      combo: null,
     };
     cats.push(cat);
     return cat;
@@ -159,7 +205,7 @@ export function createCatEngine(options: {
       if (!cat) return null;
       cat.angry = true;
       cat.petSince = null;
-      setPhase(cat, 'waking', now, config.wakeMs);
+      startWaking(cat, now);
       return cat;
     },
 
@@ -203,7 +249,20 @@ export function createCatEngine(options: {
         // Catch up through every phase that has already ended.
         for (;;) {
           if (cat.phase === 'ready') {
-            if (!tryAttack(cat, type, centreOf(cat))) break;
+            const partner =
+              cat.comboWith === null ? undefined : cats.find((c) => c.id === cat.comboWith);
+            if (partner) {
+              // A combo waits until both are ready, then both pounce as one.
+              if (partner.phase !== 'ready') break;
+              const a = centreOf(cat);
+              const b = centreOf(partner);
+              const combo = findCombo(type.effect.id, typeOf(partner).effect.id)!;
+              const between = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+              if (!tryAttack(cat, type, between, combo)) break;
+              setPhase(partner, 'attacking', now, config.attackMs);
+            } else if (!tryAttack(cat, type, centreOf(cat))) {
+              break;
+            }
             setPhase(cat, 'attacking', now, config.attackMs);
             changed = true;
             continue;
@@ -215,7 +274,7 @@ export function createCatEngine(options: {
             if (cat.eager) setPhase(cat, 'ready', at, Infinity);
             else setPhase(cat, 'sleeping', at, between(config.sleepMs));
           } else if (cat.phase === 'sleeping') {
-            setPhase(cat, 'waking', at, config.wakeMs);
+            startWaking(cat, at);
           } else if (cat.phase === 'waking') {
             setPhase(cat, 'ready', at, Infinity);
           } else if (cat.phase === 'attacking') {
@@ -230,6 +289,15 @@ export function createCatEngine(options: {
 
       const before = cats.length;
       cats = cats.filter((cat) => cat.phaseEndsAt !== -Infinity);
+      // A pair whose attack is over (or whose partner has gone) is a pair no more.
+      for (const cat of cats) {
+        if (cat.comboWith === null) continue;
+        const partner = cats.find((c) => c.id === cat.comboWith);
+        if (!partner || cat.phase === 'leaving') {
+          cat.comboWith = null;
+          cat.combo = null;
+        }
+      }
       return changed || cats.length !== before;
     },
   };

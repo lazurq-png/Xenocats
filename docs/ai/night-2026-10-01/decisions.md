@@ -322,3 +322,36 @@ attack stronger by an amount set in the config.
   while an effect blocks clicks.
 - After re-review (Low): a tap or pen pokes where it touched, a mouse click
   where the visible cursor is (a touchscreen laptop has both).
+
+## D14 — T7: cat combos
+
+Plan task 7: two cats waking close together, in place and time (both set in
+the config), fuse their attacks into one combined effect; at most one combo at
+a time, counting as the one active effect; at least 5 combos, each
+unit-tested.
+
+- "Waking close together": two cats that *start* waking (on their own, or
+  poked awake) within `comboWindowMs` (1500 ms) and `comboDistance` (220 px,
+  centre to centre) of each other, whose attacks have a combo, are paired in
+  the engine. The first to be ready waits for the other (at most the 900 ms
+  wake), then both pounce at once from between them with the combo's effect —
+  one `cursor.attack`, so it is the one active effect. No new pair forms while
+  a pair is waiting or attacking.
+- Six combos (`combos.ts`), built from the two attacks with three pure
+  combinators — `layer` (one effect applied to where the other puts the
+  cursor, while both last), `chain` (one, then the other), `restyle`:
+  Freeze + Bounce = Ice puck (frosted, ricocheting), Knockback + Magnet =
+  Slingshot (flung, then reeled in), Reverse + Drunk = Hangover, Vanish +
+  Teleport = Ghost jump (faint jumping cursor), Tiny + Giant = Pulsar (scale
+  swinging between ¼ and 4×), Jitter + Blur = Static fog. Each has a unit test
+  of its behaviour.
+- Either cat angry → the combo is strengthened; both cats' attack sounds play
+  and both count as survived in the field guide. Combos happen only among the
+  page's cats (dashboard, gallery); Fight cats never sleep.
+- After review: (Medium) combos had no page effect, so task 3's "every attack
+  hits the page" broke for them → each combo has its own `PAGE_HITS` entry,
+  tested. (Low) an angry combo now throws the cursor further where its parts
+  do (`restyle` keeps its effect's `amplify`; Static fog is marked offset).
+  (Low) pairing through natural waking is now tested as well as through pokes;
+  the layer's combo wiring (sounds, field guide for both cats) is covered by
+  reading only.

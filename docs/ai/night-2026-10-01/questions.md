@@ -36,3 +36,9 @@ skip it there.
 already fails in this one group; its own CI result is recorded as
 "CI failed: inherited fight-group failure (Q1)" when only that group fails,
 and as a real failure if anything else does.
+- **Update (T7):** T7's local gate failed "Survival: banishing every cat of a
+  wave survives it" once: it never reached wave 2 in 40 s because cats landed
+  while it clicked others, their effects blocked clicks, and the game ended —
+  after which the wave can never reach 2. That is a likely cause of the CI
+  failure too (a slower runner, more landings). T7 makes the test start a new
+  game when one ends; if T7's CI passes the fight group, Q1 is answered.

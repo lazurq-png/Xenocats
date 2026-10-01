@@ -52,7 +52,9 @@ const tones = (page: Page) => page.evaluate(() => (window as unknown as { tones:
 /** Summons Void Tabby asleep and puts the pointer on it. Returns the cat. */
 async function sleepingCatUnderPointer(page: Page) {
   await page.getByTestId('summon-asleep-void-tabby').click();
-  const cat = page.locator('[data-testid="xenocat"][data-cat-type="void-tabby"]');
+  // The first one: a click on it can pass through to a Summon button beneath and
+  // bring a second cat (the cats never take clicks).
+  const cat = page.locator('[data-testid="xenocat"][data-cat-type="void-tabby"]').first();
   await expect(cat).toHaveAttribute('data-phase', 'sleeping');
   const box = (await cat.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 3 });

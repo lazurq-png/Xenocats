@@ -31,6 +31,10 @@ export type CatConfig = {
   petSleepMs: number;
   /** A cat clicked awake is angry: its attack is this many times stronger. */
   angryFactor: number;
+  /** Two cats starting to wake at most this far apart (centre to centre, px)… */
+  comboDistance: number;
+  /** …and at most this long apart (ms) fuse their attacks into a combo. */
+  comboWindowMs: number;
 };
 
 export const CAT_CONFIG: CatConfig = {
@@ -48,4 +52,6 @@ export const CAT_CONFIG: CatConfig = {
   petMs: 1000,
   petSleepMs: 4000,
   angryFactor: 1.5,
+  comboDistance: 220,
+  comboWindowMs: 1500,
 };

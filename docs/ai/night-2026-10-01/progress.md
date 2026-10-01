@@ -462,3 +462,55 @@ clicks poked at the real pointer, not the visible cursor → fixed. Re-review:
 **Approve**, two Lows applied (tap coordinates; D13 wording).
 
 **CI**: will inherit the fight-group failure (Q1).
+
+## T7 — Cat combos (completed)
+
+- Branch `night-2026-10-01-t7-combos`, base `5778966`. Started 2026-10-01
+  20:33 (budget 14.35M); completed 2026-10-01 20:48 (budget 14.30M).
+- **T6 CI: failed, fight group only** (inherited, Q1); every other group,
+  including the new petting tests, passed. Runs 36907665487 / 36907658666.
+
+**What the code does**
+
+- `app/ui/xenocats/combos.ts` (new): three pure combinators (`layer`,
+  `chain`, `restyle`) and six combos: Ice puck (freeze + bounce), Slingshot
+  (knockback + magnet), Hangover (reverse + drunk), Ghost jump (vanish +
+  teleport), Pulsar (tiny + giant), Static fog (jitter + blur); `findCombo`.
+- `app/ui/xenocats/cat-engine.ts`: a cat starting to wake (naturally or
+  poked) pairs with another that started within 1.5 s and 220 px
+  (`comboWindowMs`, `comboDistance`) when their attacks combine, and only if
+  no pair is pending or attacking; a paired cat waits for its partner, then
+  both attack once, from between them, with the combo; pairs dissolve as they
+  leave.
+- `app/ui/xenocats/cat-layer.tsx`: a combo attack uses the combo's effect
+  (strengthened if either cat is angry), plays both attack sounds and counts
+  as survived for both types; paired cats carry `data-combo`.
+- `app/ui/xenocats/page-hits.ts`: a page effect for each combo.
+- `config.ts`: the two combo settings. `ci.yml`: the new unit test file in
+  its group.
+- Tests: `tests/unit/xenocats/combos.test.ts` (new, 16): five or more combos
+  from real attacks; found in either order; each hits the page; amplify only
+  where the parts do; one behaviour test per combo; pairing by pokes and by
+  natural waking; not when too late, too far or without a combo; one combo at
+  a time. Two e2e fixes: `pet-cat.spec.ts` takes the first Void Tabby (the
+  click can summon a second through the button under the cat);
+  `fight.spec.ts` "banishing every cat of a wave" starts a new game when one
+  ends before wave 2 (see Q1).
+
+**Why**: plan task 7. Design: D14.
+
+**Acceptance criteria evidence**: proximity in place and time from config,
+fusion into one effect, one combo at a time counting as the one effect, six
+combos each unit-tested — all by unit tests. No browser test (two cats' wake
+times cannot be steered from a browser); nobody has seen a combo.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 24 files / 351 tests; `npm run build` exit 0;
+`npm run test:e2e` 55 passed, 1 failed (the wave test above), then after its
+fix `fight.spec.ts` 42/42 (`--repeat-each 3`, twice) and `pet-cat.spec.ts`
+6/6; actionlint clean; prettier clean (D1).
+
+**Review**: `reviewer` — Request Changes: (Medium) combos had no page effect
+→ added, tested; (Low) angry combos lost the offset amplification → carried;
+(Low) natural-waking pairing untested → tested; the layer's combo wiring is
+covered by reading only. The pairing state machine itself was found correct.
