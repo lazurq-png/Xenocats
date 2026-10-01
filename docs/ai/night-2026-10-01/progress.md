@@ -656,3 +656,34 @@ redirect placement and accessibility were checked and found correct.
 
 **UI**: tested in a browser, not seen. A human should look at the customers
 page and forms at phone and desktop width, and the delete message's placement.
+
+## Checkpoint 2 (after T10; range `6a30700..be47583`, tasks 6–10) (completed)
+
+- Branch `night-2026-10-01-c2-checkpoint`, base `be47583`. Started
+  2026-10-01 21:29 (budget 14.18M); completed 2026-10-01 21:39 (budget 14.15M).
+- **T10 CI: failed, fight group only** (inherited, Q1); the new customer tests
+  passed in CI against both servers. Runs 36914655151 / 36914651125.
+
+**1. Tests.** Gaps found and filled: the customer Server Actions had no unit
+tests (refusal without a session, before validation; malformed ids never
+reaching SQL; trimmed inserts; revalidated views; the foreign-key and
+self-guard messages; generic errors that leak nothing); the combo wiring in
+the page layer had none (two cats waking together attack once, with the
+combo's effect). No test removed or found irrelevant.
+
+**2. Quality and security.** `reviewer` on the range with the security,
+backend and database rules: authentication, validation, SQL, error leakage,
+caching, the migration and the plan-wide cat rules all sound. Two findings,
+both fixed:
+- (Medium, cross-task T6 + T10) poking a sleeping cat also clicked what lay
+  beneath — on the customers page, possibly an instant Delete → a press that
+  pokes a cat is swallowed through its click (keyboard clicks never), D18;
+  unit test, and the pet-cat browser test checks nothing beneath was clicked.
+- (Low) the customer delete relied only on the foreign key, which the
+  `xenocats` schema lacks until a human migrates (Q3) → the delete refuses a
+  customer with invoices itself.
+
+**3. Verification**: `npm run lint` exit 0, 0 warnings; `next typegen &&
+tsc` exit 0; `npm test` exit 0, 25 files / 375 tests; `npm run build` exit
+0; `npm run test:e2e` exit 0, 61 passed; `E2E_SERVER=start npm run test:e2e`
+exit 0, 61 passed; prettier clean (D1).

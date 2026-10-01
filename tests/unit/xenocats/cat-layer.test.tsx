@@ -200,3 +200,77 @@ describe('XenocatCatsProvider', () => {
     }
   });
 });
+
+describe('a combo on the page', () => {
+  it('two cats waking together attack the cursor once, with the combo effect', async () => {
+    render(
+      <XenocatCursorProvider now={() => clock} seed={7}>
+        {/* Wide enough to pair wherever they land; a short nap so they wake together. */}
+        <XenocatCatsProvider
+          autoSpawn={false}
+          config={{ comboDistance: 5000, sleepMs: [100, 101] }}
+        >
+          <Capture />
+        </XenocatCatsProvider>
+      </XenocatCursorProvider>
+    );
+    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
+    act(() => {
+      // Freeze + Bounce: an ice puck.
+      expect(cats.summon('cryo-persian', { asleep: true })).toBe(true);
+      expect(cats.summon('pinball-devon', { asleep: true })).toBe(true);
+    });
+    clock = 1200; // both arrived (1000 and 1100 ms entrances): asleep
+    await frames();
+    clock = 1300; // both woke within 100 ms of each other: paired
+    await frames();
+    const cards = screen.getAllByTestId('xenocat');
+    expect(cards.map((c) => c.dataset.combo)).toEqual(['ice-puck', 'ice-puck']);
+    clock = 2300; // both awake: one attack, together
+    await frames();
+    expect(screen.getByTestId('fake-cursor').dataset.effect).toBe('ice-puck');
+    expect(phases()).toEqual(['attacking', 'attacking']);
+  });
+});
+
+describe('poking a sleeping cat', () => {
+  it('wakes it, and the rest of that press never reaches what lies beneath', async () => {
+    const onClick = vi.fn();
+    render(
+      <XenocatCursorProvider now={() => clock} seed={7}>
+        <XenocatCatsProvider autoSpawn={false}>
+          <Capture />
+          <button onClick={onClick}>Delete</button>
+        </XenocatCatsProvider>
+      </XenocatCursorProvider>
+    );
+    fireEvent.pointerMove(window, { clientX: 1, clientY: 1 });
+    act(() => {
+      cats.summon('void-tabby', { asleep: true });
+    });
+    clock = 1100; // arrived: asleep
+    await frames();
+    const cat = screen.getByTestId('xenocat');
+    expect(cat.dataset.phase).toBe('sleeping');
+    const at = {
+      clientX: parseFloat(cat.style.left) + 10,
+      clientY: parseFloat(cat.style.top) + 10,
+    };
+    fireEvent.pointerMove(window, at);
+    await frames();
+
+    const button = screen.getByText('Delete');
+    fireEvent.pointerDown(button, { ...at, pointerType: 'mouse' });
+    fireEvent.mouseDown(button, { ...at, detail: 1 });
+    fireEvent.click(button, { ...at, detail: 1 });
+    expect(onClick).not.toHaveBeenCalled();
+    await frames();
+    expect(cat.dataset.angry).toBe('true');
+
+    // The next press, not on a sleeping cat, goes through; so does the keyboard.
+    fireEvent.pointerDown(button, { clientX: 1, clientY: 1, pointerType: 'mouse' });
+    fireEvent.click(button, { clientX: 1, clientY: 1, detail: 1 });
+    fireEvent.click(button, { detail: 0 });
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+});

@@ -217,14 +217,22 @@ export async function deleteCustomer(id: string, prevState: CustomerState): Prom
     return { message: 'That customer does not exist.' };
   }
 
+  const stillInvoiced = {
+    message: 'This customer still has invoices. Delete or reassign them first.',
+  };
   try {
-    await sql`DELETE FROM customers WHERE id = ${id}`;
-  } catch (error) {
-    if (hasInvoices(error)) {
-      return {
-        message: 'This customer still has invoices. Delete or reassign them first.',
-      };
+    // Refuses a customer with invoices itself, so it holds even on a database the
+    // foreign key (migration 0002) has not reached yet; the key covers the race.
+    const deleted = await sql`
+      DELETE FROM customers
+      WHERE id = ${id} AND NOT EXISTS (SELECT 1 FROM invoices WHERE customer_id = ${id})
+    `;
+    if (deleted.count === 0) {
+      const [exists] = await sql`SELECT 1 FROM customers WHERE id = ${id}`;
+      return exists ? stillInvoiced : { message: 'That customer does not exist.' };
     }
+  } catch (error) {
+    if (hasInvoices(error)) return stillInvoiced;
     console.error('Database Error:', error);
     return { message: 'Database Error: Failed to delete the customer.' };
   }

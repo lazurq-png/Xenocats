@@ -52,9 +52,7 @@ const tones = (page: Page) => page.evaluate(() => (window as unknown as { tones:
 /** Summons Void Tabby asleep and puts the pointer on it. Returns the cat. */
 async function sleepingCatUnderPointer(page: Page) {
   await page.getByTestId('summon-asleep-void-tabby').click();
-  // The first one: a click on it can pass through to a Summon button beneath and
-  // bring a second cat (the cats never take clicks).
-  const cat = page.locator('[data-testid="xenocat"][data-cat-type="void-tabby"]').first();
+  const cat = page.locator('[data-testid="xenocat"][data-cat-type="void-tabby"]');
   await expect(cat).toHaveAttribute('data-phase', 'sleeping');
   const box = (await cat.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 3 });
@@ -82,15 +80,17 @@ test('clicking a sleeping cat wakes it at once, angry, and its attack lasts long
   await page.mouse.click(centre.x, centre.y);
   await expect(cat).toHaveAttribute('data-angry', 'true');
   await expect(cat).not.toHaveAttribute('data-phase', 'sleeping');
+  // The click was the cat's: nothing beneath it (a Summon button, say) got it.
+  await page.waitForTimeout(300);
+  await expect(page.getByTestId('xenocat')).toHaveCount(1);
   // Void Tabby's vanish lasts 3 s; angry, 1.5 times that.
   const fake = page.getByTestId('fake-cursor');
   await expect(fake).toHaveAttribute('data-effect', 'vanish', { timeout: 5000 });
   // At least 3.4 s after it began (it began before it was seen), it is still on.
   await page.waitForTimeout(vanish.durationMs + 400);
   await expect(fake).toHaveAttribute('data-effect', 'vanish');
-  // …and ends within 4.5 s. (The click also reached whatever was under the cat,
-  // which may have summoned another cat whose attack follows.)
-  await expect(fake).not.toHaveAttribute('data-effect', 'vanish', {
+  // …and ends within 4.5 s.
+  await expect(fake).toHaveAttribute('data-effect', '', {
     timeout: vanish.durationMs * CAT_CONFIG.angryFactor,
   });
 });

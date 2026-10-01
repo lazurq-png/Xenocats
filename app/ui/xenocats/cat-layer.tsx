@@ -112,15 +112,36 @@ export function XenocatCatsProvider({
     // whatever is under the cat, as always (the cats never take clicks).
     // A mouse click lands where the visible cursor is; a tap or a pen, where it
     // touched. Not while an effect blocks clicks.
+    // A press that pokes a cat is the cat's: the rest of it (up to and including
+    // its click) never reaches what lies beneath — a hidden Delete button, say.
+    // Keyboard-made clicks (detail 0) never come through here.
+    let swallowPress = false;
     const onPoke = (event: PointerEvent) => {
+      swallowPress = false;
       if (cursor.isBusy()) return;
       const touched = { x: event.clientX, y: event.clientY };
       const at = event.pointerType === 'mouse' ? (cursor.position() ?? touched) : touched;
       if (engine.poke(at, cursor.now())) {
         setCats(snapshot(engine));
+        swallowPress = true;
+        event.preventDefault();
+        event.stopPropagation();
       }
     };
+    const onPressRest = (event: Event) => {
+      if (!swallowPress) return;
+      if (event.type === 'click' && (event as MouseEvent).detail === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === 'click' || event.type === 'contextmenu') swallowPress = false;
+    };
+    const endPress = () => {
+      swallowPress = false;
+    };
+    const pressRest = ['pointerup', 'mousedown', 'mouseup', 'click', 'contextmenu'] as const;
     window.addEventListener('pointerdown', onPoke, { capture: true });
+    for (const type of pressRest) window.addEventListener(type, onPressRest, { capture: true });
+    window.addEventListener('pointercancel', endPress, { capture: true });
 
     // A cat's sounds follow its phases: arriving, then waking up.
     const phases = new Map<number, CatPhase>();
@@ -191,6 +212,9 @@ export function XenocatCatsProvider({
       window.removeEventListener('resize', onResize);
       for (const type of gestures) window.removeEventListener(type, unlock, { capture: true });
       window.removeEventListener('pointerdown', onPoke, { capture: true });
+      for (const type of pressRest)
+        window.removeEventListener(type, onPressRest, { capture: true });
+      window.removeEventListener('pointercancel', endPress, { capture: true });
     };
   }, [engine, cursor, player]);
 

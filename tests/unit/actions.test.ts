@@ -15,7 +15,14 @@ vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
 vi.mock('next/cache', () => ({ revalidatePath }));
 vi.mock('next/navigation', () => ({ redirect }));
 
-const { createInvoice, updateInvoice, deleteInvoice } = await import('@/app/lib/actions');
+const {
+  createInvoice,
+  updateInvoice,
+  deleteInvoice,
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+} = await import('@/app/lib/actions');
 
 function invoiceForm(fields: Record<string, string> = {}) {
   const form = new FormData();
@@ -104,5 +111,114 @@ describe('with a session', () => {
     await expect(failure).rejects.not.toThrow(/db\.internal/);
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+});
+
+describe('customer actions', () => {
+  const id = '3958dc9e-712f-4377-85e9-fec4b6a6442a';
+  const customerForm = (fields: Record<string, string> = {}) => {
+    const form = new FormData();
+    const values = { name: ' Orbital Snacks ', email: ' orbit@example.com ', ...fields };
+    for (const [key, value] of Object.entries(values)) form.set(key, value);
+    return form;
+  };
+
+  describe('without a session', () => {
+    beforeEach(() => auth.mockResolvedValue(null));
+
+    it('all three refuse, write nothing, and reveal nothing about the input', async () => {
+      expect(await createCustomer({}, customerForm({ email: 'bad' }))).toEqual({
+        message: 'You must be logged in to create a customer.',
+      });
+      expect(await updateCustomer(id, {}, customerForm())).toEqual({
+        message: 'You must be logged in to update a customer.',
+      });
+      expect(await deleteCustomer('not-a-uuid', {})).toEqual({
+        message: 'You must be logged in to delete a customer.',
+      });
+      expect(sql).not.toHaveBeenCalled();
+      expect(redirect).not.toHaveBeenCalled();
+      expect(revalidatePath).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('with a session', () => {
+    beforeEach(() => auth.mockResolvedValue(signedIn));
+
+    it('createCustomer stores the trimmed values and refreshes everything that shows customers', async () => {
+      await createCustomer({}, customerForm());
+      expect(sql).toHaveBeenCalledTimes(1);
+      expect(sql.mock.calls[0].slice(1, 3)).toEqual(['Orbital Snacks', 'orbit@example.com']);
+      for (const path of [
+        '/dashboard/customers',
+        '/dashboard/invoices',
+        '/dashboard/invoices/create',
+      ]) {
+        expect(revalidatePath).toHaveBeenCalledWith(path);
+      }
+      expect(redirect).toHaveBeenCalledWith('/dashboard/customers');
+    });
+
+    it('createCustomer validates and writes nothing on bad input', async () => {
+      const result = await createCustomer({}, customerForm({ name: '  ', email: 'nope' }));
+      expect(result.errors).toEqual({
+        name: ['Please enter a name.'],
+        email: ['Please enter a valid email address.'],
+      });
+      expect(sql).not.toHaveBeenCalled();
+    });
+
+    it('a malformed id never reaches the database', async () => {
+      for (const bad of ['', '1', "' OR 1=1 --"]) {
+        expect(await updateCustomer(bad, {}, customerForm())).toEqual({
+          message: 'That customer does not exist.',
+        });
+        expect(await deleteCustomer(bad, {})).toEqual({ message: 'That customer does not exist.' });
+      }
+      expect(sql).not.toHaveBeenCalled();
+    });
+
+    it('updateCustomer says so when the customer is gone, without redirecting', async () => {
+      sql.mockResolvedValue(Object.assign([], { count: 0 }));
+      expect(await updateCustomer(id, {}, customerForm())).toEqual({
+        message: 'That customer does not exist.',
+      });
+      expect(redirect).not.toHaveBeenCalled();
+    });
+
+    it('deleteCustomer reports a customer who still has invoices', async () => {
+      sql.mockRejectedValue(Object.assign(new Error('fk'), { code: '23503' }));
+      expect(await deleteCustomer(id, {})).toEqual({
+        message: 'This customer still has invoices. Delete or reassign them first.',
+      });
+      expect(revalidatePath).not.toHaveBeenCalled();
+    });
+
+    it('any other database error is generic, and logged on the server only', async () => {
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      sql.mockRejectedValue(Object.assign(new Error('secret detail'), { code: '57P01' }));
+      const result = await deleteCustomer(id, {});
+      expect(result).toEqual({ message: 'Database Error: Failed to delete the customer.' });
+      expect(JSON.stringify(result)).not.toContain('secret');
+      expect(log).toHaveBeenCalled();
+      log.mockRestore();
+    });
+
+    it('deleteCustomer refuses a customer with invoices itself, before any key', async () => {
+      // The delete matches nothing because invoices exist; the customer does.
+      sql.mockResolvedValueOnce(Object.assign([], { count: 0 })).mockResolvedValueOnce([{}]);
+      expect(await deleteCustomer(id, {})).toEqual({
+        message: 'This customer still has invoices. Delete or reassign them first.',
+      });
+      // …and tells a customer that is gone apart.
+      sql.mockResolvedValueOnce(Object.assign([], { count: 0 })).mockResolvedValueOnce([]);
+      expect(await deleteCustomer(id, {})).toEqual({ message: 'That customer does not exist.' });
+      expect(revalidatePath).not.toHaveBeenCalled();
+    });
+
+    it('a successful delete refreshes the lists', async () => {
+      expect(await deleteCustomer(id, {})).toEqual({ message: null });
+      expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices/create');
+    });
   });
 });

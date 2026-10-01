@@ -438,3 +438,23 @@ the action reports it); e2e tests, each on its own customer.
   a fresh build. (Medium) a new invoice dated today pushed the seed row the
   dashboard test looks for towards page 2 → that test searches for it.
   (Low) the customers pages got the invoices' `error.tsx`.
+
+## D18 — Checkpoint 2 (T6–T10)
+
+- **A press that pokes a sleeping cat is the cat's** (reverses D13's "the
+  click passes through"). With T10's instant Delete buttons on every customer
+  row, poking a cat asleep over one deleted that customer unseen. The
+  `pointerdown` that pokes is swallowed, and so is the rest of that press up to
+  its click; keyboard-made clicks (`detail` 0) never are. Unit test with a
+  button under the cat; the pet-cat e2e test now checks nothing beneath got the
+  click.
+- **The customer delete guards itself**: `DELETE … WHERE id = $1 AND NOT
+  EXISTS (invoices of $1)`; nothing deleted → "still has invoices" if the
+  customer exists, "does not exist" otherwise. It no longer depends on
+  migration 0002 having reached the database (Q3); the key still covers the
+  race between the check and the delete.
+- Tests added: the customer actions' refusals without a session, malformed
+  ids never reaching SQL, trimmed inserts and revalidated views, the
+  foreign-key and self-guard messages, generic errors (unit, mocked database);
+  the combo wiring in the page layer (two cats waking together attack once with
+  the combo's effect). Nothing removed.
