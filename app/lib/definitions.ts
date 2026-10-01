@@ -26,9 +26,17 @@ export type Invoice = {
   status: 'pending' | 'paid';
 };
 
-export type Revenue = {
+/** A dashboard card's value and its change from the previous period (null: nothing to compare). */
+export type CardStat = {
+  value: number;
+  change: number | null;
+};
+
+/** Paid and pending invoice totals (cents) for one 'YYYY-MM' month. */
+export type MonthTotals = {
   month: string;
-  revenue: number;
+  paid: number;
+  pending: number;
 };
 
 export type LatestInvoice = {
@@ -37,6 +45,8 @@ export type LatestInvoice = {
   image_url: string;
   email: string;
   amount: string;
+  date: string;
+  status: 'pending' | 'paid';
 };
 
 // The database returns a number for amount, but we later format it to a string with the formatCurrency function

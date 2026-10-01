@@ -1,29 +1,19 @@
-import { CheckIcon, ClockIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 
+/** Paid: a lime outline pill. Pending: a filled violet pill. As in the mockup's invoice rows. */
 export default function InvoiceStatus({ status }: { status: string }) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded-full px-2 py-1 text-xs',
+        'inline-flex min-w-[52px] items-center justify-center rounded-full border px-3 py-1 text-[12.7px]',
         {
-          'bg-gray-100 text-gray-500': status === 'pending',
-          'bg-green-500 text-white': status === 'paid',
-        },
+          'border-aura/60 bg-aura/25 text-white': status === 'pending',
+          'border-plasma/70 text-plasma': status === 'paid',
+        }
       )}
     >
-      {status === 'pending' ? (
-        <>
-          Pending
-          <ClockIcon className="ml-1 w-4 text-gray-500" />
-        </>
-      ) : null}
-      {status === 'paid' ? (
-        <>
-          Paid
-          <CheckIcon className="ml-1 w-4 text-white" />
-        </>
-      ) : null}
+      {status === 'pending' ? 'Pending' : null}
+      {status === 'paid' ? 'Paid' : null}
     </span>
   );
 }

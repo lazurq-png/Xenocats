@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/app/ui/button';
 import { XenocatCatsProvider, useXenocats } from './cat-layer';
+import { catArt } from './cat-art';
 import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import { XenocatCursorProvider } from './fake-cursor';
@@ -37,7 +38,7 @@ function Roster() {
 
   return (
     <>
-      <p role="status" aria-live="polite" className="mb-4 min-h-5 text-sm text-gray-600">
+      <p role="status" aria-live="polite" className="mb-4 min-h-5 text-sm text-aura">
         {status}
       </p>
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -45,21 +46,27 @@ function Roster() {
           <li
             key={type.id}
             data-testid={`cat-card-${type.id}`}
-            className="flex flex-col rounded-xl bg-gray-50 p-4"
+            className="flex flex-col rounded-2xl border border-line bg-panel p-4 transition-colors hover:border-aura/60"
           >
             <div className="flex items-center gap-4">
-              <div className="flex h-20 w-20 flex-none items-center justify-center rounded-lg bg-white">
-                <CatSprite palette={type.palette} look={type.look} pose="awake" size={64} />
+              <div className="flex h-20 w-20 flex-none items-center justify-center rounded-xl bg-void/70">
+                <CatSprite
+                  palette={type.palette}
+                  look={type.look}
+                  pose="awake"
+                  size={64}
+                  art={catArt(type.id, 'awake')}
+                />
               </div>
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                <p className="text-xs font-medium uppercase tracking-wide text-aura">
                   No. {type.number}
                 </p>
-                <h2 className="text-lg font-semibold text-gray-900">{type.name}</h2>
-                <p className="text-sm font-medium text-blue-600">{type.effect.name}</p>
+                <h2 className="text-lg font-semibold text-white">{type.name}</h2>
+                <p className="text-sm font-medium text-plasma">{type.effect.name}</p>
               </div>
             </div>
-            <p className="mt-3 grow text-sm text-gray-600">{type.effect.description}</p>
+            <p className="mt-3 grow text-sm text-aura">{type.effect.description}</p>
             <Button
               className="mt-4 justify-center"
               data-testid={`summon-${type.id}`}

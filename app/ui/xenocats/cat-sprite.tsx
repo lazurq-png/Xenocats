@@ -17,12 +17,33 @@ export function CatSprite({
   look = DEFAULT_LOOK,
   pose,
   size = 72,
+  art,
 }: {
   palette: CatPalette;
   look?: CatLook;
   pose: 'awake' | 'asleep';
   size?: number;
+  /** Rendered artwork for this pose (cat-art.ts), drawn instead of the SVG. */
+  art?: string;
 }) {
+  if (art) {
+    // `.xenocat-body` keeps the breathing and staged-entrance hooks; awake, the
+    // cat's glow colour pulses around it in place of the SVG's glowing parts.
+    return (
+      <span className="xenocat-body block" style={{ width: size, height: size }}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- a sprite drawn at a fixed small size, not a content image */}
+        <img
+          src={art}
+          alt=""
+          width={size}
+          height={size}
+          draggable={false}
+          className={pose === 'awake' ? 'xenocat-art-glow' : undefined}
+          style={{ '--xenocat-glow': palette.glow } as React.CSSProperties}
+        />
+      </span>
+    );
+  }
   return (
     <svg width={size} height={size} viewBox="0 0 72 72" className="overflow-visible">
       {pose === 'asleep' ? (

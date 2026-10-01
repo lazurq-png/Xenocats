@@ -49,7 +49,7 @@ test('lists every cat type with its thumbnail, attack and Summon button', async 
     const card = page.getByTestId(`cat-card-${type.id}`);
     await expect(card.getByRole('heading', { name: type.name })).toBeVisible();
     await expect(card.getByText(type.effect.description)).toBeVisible();
-    await expect(card.locator('svg')).toBeVisible();
+    await expect(card.locator('svg, img').first()).toBeVisible();
     await expect(card.getByRole('button', { name: `Summon ${type.name}` })).toBeVisible();
   }
 });

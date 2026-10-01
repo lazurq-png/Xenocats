@@ -6,17 +6,18 @@ branch it describes, so the reasoning stays attached to the diff it explains.
 
 | File | Written by | Holds |
 | ---- | ---------- | ----- |
-| `plan.md` | **a human** | The goal and the tasks. An agent never creates, edits or ticks it off. |
-| `progress.md` | the agent | What happened, as it happens: per task, the base SHA, what the code does, why it was added, and the verification actually run. An unattended run's morning report goes at the top. |
+| `plan.md` | **a human** | The goal (when the run ends) and the tasks. An agent never creates, edits or ticks it off. |
+| `progress.md` | the agent | Append-only log: a run-start entry, then one entry appended each time a task ends, with its base SHA, what the code does, why it was added, and the verification actually run. An unattended run's morning report is appended last. |
 | `decisions.md` | the agent | Non-obvious choices, numbered `D1`, `D2`, …, each with its reason, including acceptance criteria derived for an underspecified task. |
 | `questions.md` | the agent | What needed a human: the question, the options and their consequences, the recommendation, and what was done meanwhile. |
 
 ## Unattended runs
 
 `.claude/skills/night-run/SKILL.md` reads `docs/ai/night-<YYYY-MM-DD>/plan.md`,
-where the date is the night the run starts. The run has no goal of its own: it
-works toward the plan's `## Goal` and nothing else, and it **stops without doing
-anything** if the plan, its goal or its tasks are missing.
+where the date is the night the run starts. The run does the plan's tasks and
+nothing else, until the time in the plan's `## Goal`. It **stops without doing
+anything** if the plan or its tasks are missing, or the goal is missing,
+unreadable or already past.
 
 Write the plan before starting the run:
 
@@ -25,13 +26,11 @@ Write the plan before starting the run:
 
 ## Goal
 
-<One short paragraph: the outcome you want by morning, in terms you could
-check. This is what the run judges every task, fork and its own success
-against.>
+<Weekday HH:MM, e.g. Thursday 08:00 — or YYYY-MM-DD HH:MM. Europe/Stockholm.>
 
 ## Limits
 
-Deadline: <YYYY-MM-DD HH:MM>   (optional; Europe/Stockholm; default is the first 08:00 after the start)
+<Optional. Anything the run should know and report, e.g. weekly usage at start.>
 
 ## Tasks
 
@@ -39,9 +38,13 @@ Deadline: <YYYY-MM-DD HH:MM>   (optional; Europe/Stockholm; default is the first
 2. <task>
 ```
 
-- **The goal is the objective; the tasks are your route to it.** Work the goal
-  needs but no task names is not built. It comes back as a proposed task in the
-  morning report.
+- **The goal is when the run ends, not what it achieves.** A weekday means the
+  first such moment after the run starts, so `Thursday 08:00` written on a
+  Wednesday evening means the next morning. At that time the run finishes the
+  task in flight, appends the morning report to `progress.md`, and stops. If
+  the tasks run out first, it stops then.
+- **The tasks are the whole of the work.** Work no task names is not built. It
+  comes back as a proposed task in the morning report.
 - **Lifting a rule** of the protocol for one task must be written explicitly,
   naming the rule and the task. No plan lifts the push rules or the database
   rule.

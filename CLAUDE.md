@@ -46,8 +46,9 @@ If the repository contains more specific instructions in nested directories, fol
 
 ### This repository
 
-The dashboard from the official Next.js App Router course (`README.md`): an
-invoices and customers dashboard behind a login.
+Xenocat Analytics (`README.md`): an invoices and customers dashboard behind a
+login, haunted by alien cats. It started as the Next.js App Router course's
+dashboard; the course's look and assets have since been replaced.
 
 | Concern | Where |
 | ------- | ----- |
@@ -502,15 +503,17 @@ Use `.claude/skills/code-review/` for an adversarial review pass over a diff —
 see §13 for when to run it.
 
 Use `.claude/skills/night-run/` when this session is running unattended (no
-human available to answer). **It has no goal of its own**: it executes the plan a
-human wrote in `docs/ai/night-<date>/plan.md` and works toward that plan's
-`## Goal`, judging tasks, forks and its own success against it. It stops if the
-plan, its tasks or its goal are missing, and when the tasks are done it reports
-any gap to the goal rather than inventing work to close it. It defines the
+human available to answer). It executes the tasks of the plan a human wrote in
+`docs/ai/night-<date>/plan.md` until that plan's `## Goal` — a day and time such
+as `Thursday 08:00` — then finishes the task in flight, appends the morning
+report to `progress.md` and stops. It stops if the plan, its tasks or a readable
+goal are missing, and when the tasks run out early it stops rather than
+inventing work. It keeps `progress.md` append-only, one entry per finished
+task. It defines the
 preflight, the branch-per-task and commit cadence, when a finished task's branch
 may be pushed and to where, the durable state files, the forbidden operations —
 including any write to the project's only database — the deadline (the
-plan's, or 08:00 Europe/Stockholm by default), the per-session budget reserve, and the stop
+plan's goal time), the per-session budget reserve, and the stop
 conditions. `docs/ai/README.md` has the plan template.
 
 A run may span several sessions; its §9 covers resuming one, and what a session

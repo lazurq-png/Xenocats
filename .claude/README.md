@@ -58,9 +58,11 @@ touched, which scopes guidance by location more precisely than a flat `rules/` f
 ### Unattended operation
 
 `.claude/skills/night-run/SKILL.md` is the protocol for running with no human
-available. It has no goal of its own: it executes the plan a human writes in
-`docs/ai/night-<date>/plan.md` (template in `docs/ai/README.md`) and works toward
-that plan's `## Goal`, stopping if the plan or goal is missing. It covers
+available. It executes the tasks of the plan a human writes in
+`docs/ai/night-<date>/plan.md` (template in `docs/ai/README.md`) until the day
+and time in that plan's `## Goal`, then finishes the task in flight, appends the
+morning report to `progress.md` and stops. It stops at once if the plan or goal
+is missing. It covers
 preflight, a branch per task merged onto a run branch and pushed as each one
 finishes, durable state under `docs/ai/<branch>/`, forbidden operations, and
 stop conditions. It is invoked
@@ -100,7 +102,7 @@ diff.
 6. Rewrite `.claude/skills/night-run/SKILL.md` for the new project: its
    preflight (§1), verification gate (§2 step 1) and forbidden operations (§3)
    name this repository's tools, base branch and database. The rest — the
-   plan-and-goal contract, branches, deadlines, budget, report — is portable.
+   plan-and-goal-time contract, branches, deadlines, budget, report — is portable.
 7. Commit all of it — `CLAUDE.md`/`AGENTS.md` are meant to be checked into the
    repo so every contributor's agent sees the same contract, the same way a
    project's `CLAUDE.md` already works in this machine's other repos.

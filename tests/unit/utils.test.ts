@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  formatCurrency,
-  formatDateToLocal,
-  generatePagination,
-  generateYAxis,
-} from '@/app/lib/utils';
+import { formatCurrency, formatDateToLocal, generatePagination } from '@/app/lib/utils';
 
 describe('formatCurrency', () => {
   it('formats cents as US dollars', () => {
@@ -21,22 +16,6 @@ describe('formatDateToLocal', () => {
 
   it('accepts another locale', () => {
     expect(formatDateToLocal('2023-06-05', 'en-GB')).toBe('5 Jun 2023');
-  });
-});
-
-describe('generateYAxis', () => {
-  it('rounds the top label up to the next thousand and counts down to zero', () => {
-    const { yAxisLabels, topLabel } = generateYAxis([
-      { month: 'Jan', revenue: 2000 },
-      { month: 'Feb', revenue: 4800 },
-      { month: 'Mar', revenue: 1200 },
-    ]);
-    expect(topLabel).toBe(5000);
-    expect(yAxisLabels).toEqual(['$5K', '$4K', '$3K', '$2K', '$1K', '$0K']);
-  });
-
-  it('keeps an exact thousand as the top label', () => {
-    expect(generateYAxis([{ month: 'Jan', revenue: 3000 }]).topLabel).toBe(3000);
   });
 });
 

@@ -1,31 +1,22 @@
 import postgres from 'postgres';
 import {
+  CardStat,
   CustomerField,
   CustomersTableType,
   InvoiceForm,
   InvoicesTable,
   LatestInvoiceRaw,
-  Revenue,
+  MonthTotals,
 } from './definitions';
 import { formatCurrency } from './utils';
+import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
-
-export async function fetchRevenue() {
-  try {
-    const data = await sql<Revenue[]>`SELECT * FROM revenue`;
-
-    return data;
-  } catch (error) {
-    console.error('Database Error:', error);
-    throw new Error('Failed to fetch revenue data.');
-  }
-}
 
 export async function fetchLatestInvoices() {
   try {
     const data = await sql<LatestInvoiceRaw[]>`
-      SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
+      SELECT invoices.amount, invoices.date, invoices.status, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       ORDER BY invoices.date DESC
@@ -43,38 +34,96 @@ export async function fetchLatestInvoices() {
   }
 }
 
-export async function fetchCardData() {
+/** Paid and pending totals, invoice count and invoiced customers for invoices dated in [from, to). */
+async function invoiceTotals(from: string | null, to: string | null) {
+  const [row] = await sql<{ paid: string; pending: string; invoices: number; customers: number }[]>`
+    SELECT
+      COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) AS paid,
+      COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS pending,
+      COUNT(*)::int AS invoices,
+      COUNT(DISTINCT customer_id)::int AS customers
+    FROM invoices
+    WHERE (${from}::date IS NULL OR date >= ${from}::date)
+      AND (${to}::date IS NULL OR date < ${to}::date)`;
+  return {
+    paid: Number(row.paid),
+    pending: Number(row.pending),
+    invoices: row.invoices,
+    customers: row.customers,
+  };
+}
+
+/**
+ * The four summary cards for a range. For the last 12 months each value comes
+ * with its change from the 12 months before; all time has nothing to compare with.
+ * Customers are those invoiced in the range, or every customer for all time.
+ */
+export async function fetchCardData(range: Range, now = new Date()) {
   try {
-    // You can probably combine these into a single SQL query
-    // However, we are intentionally splitting them to demonstrate
-    // how to initialize multiple queries in parallel with JS.
-    const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
-    const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
-    const invoiceStatusPromise = sql`SELECT
-         SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
-         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
-         FROM invoices`;
+    if (range === 'all') {
+      const [totals, [customers]] = await Promise.all([
+        invoiceTotals(null, null),
+        sql<{ count: string }[]>`SELECT COUNT(*) FROM customers`,
+      ]);
+      const stat = (value: number): CardStat => ({ value, change: null });
+      return {
+        collected: stat(totals.paid),
+        pending: stat(totals.pending),
+        invoices: stat(totals.invoices),
+        customers: stat(Number(customers.count)),
+      };
+    }
 
-    const data = await Promise.all([
-      invoiceCountPromise,
-      customerCountPromise,
-      invoiceStatusPromise,
+    const start = monthStart(now, 11);
+    const [current, previous] = await Promise.all([
+      invoiceTotals(start, null),
+      invoiceTotals(monthStart(now, 23), start),
     ]);
-
-    const numberOfInvoices = Number(data[0][0].count ?? '0');
-    const numberOfCustomers = Number(data[1][0].count ?? '0');
-    const totalPaidInvoices = formatCurrency(data[2][0].paid ?? '0');
-    const totalPendingInvoices = formatCurrency(data[2][0].pending ?? '0');
-
+    const stat = (key: keyof typeof current): CardStat => ({
+      value: current[key],
+      change: percentChange(current[key], previous[key]),
+    });
     return {
-      numberOfCustomers,
-      numberOfInvoices,
-      totalPaidInvoices,
-      totalPendingInvoices,
+      collected: stat('paid'),
+      pending: stat('pending'),
+      invoices: stat('invoices'),
+      customers: stat('customers'),
     };
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch card data.');
+  }
+}
+
+/**
+ * Paid and pending invoice totals per month: every one of the last 12 months
+ * (empty ones included), or every month that has invoices for all time.
+ */
+export async function fetchMonthlyTotals(range: Range, now = new Date()): Promise<MonthTotals[]> {
+  try {
+    const from = range === '12m' ? monthStart(now, 11) : null;
+    const rows = await sql<{ month: string; paid: string; pending: string }[]>`
+      SELECT
+        to_char(date, 'YYYY-MM') AS month,
+        SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS paid,
+        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS pending
+      FROM invoices
+      WHERE ${from}::date IS NULL OR date >= ${from}::date
+      GROUP BY 1
+      ORDER BY 1`;
+    const byMonth = new Map(
+      rows.map((r) => [
+        r.month,
+        { month: r.month, paid: Number(r.paid), pending: Number(r.pending) },
+      ])
+    );
+    if (range === 'all') return [...byMonth.values()];
+    return lastTwelveMonths(now).map(
+      (month) => byMonth.get(month) ?? { month, paid: 0, pending: 0 }
+    );
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch monthly totals.');
   }
 }
 

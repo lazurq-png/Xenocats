@@ -1,23 +1,15 @@
 'use client';
 
-import {
-  UserGroupIcon,
-  HomeIcon,
-  DocumentDuplicateIcon,
-} from '@heroicons/react/24/outline';
+import { DocumentTextIcon, HomeIcon } from '@heroicons/react/24/outline';
+import { UserGroupIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
+import { navLinkClass } from '@/app/ui/dashboard/nav-styles';
 
-// Map of links to display in the side navigation.
-// Depending on the size of the application, this would be stored in a database.
 const links = [
   { name: 'Home', href: '/dashboard', icon: HomeIcon },
-  {
-    name: 'Invoices',
-    href: '/dashboard/invoices',
-    icon: DocumentDuplicateIcon,
-  },
+  { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
 ];
 
@@ -27,18 +19,22 @@ export default function NavLinks() {
     <>
       {links.map((link) => {
         const LinkIcon = link.icon;
+        const active =
+          link.href === '/dashboard' ? pathname === link.href : pathname.startsWith(link.href);
         return (
           <Link
             key={link.name}
             href={link.href}
-            className={clsx(
-              'flex h-[48px] grow items-center justify-center gap-2 rounded-md bg-gray-50 p-3 text-sm font-medium hover:bg-sky-100 hover:text-blue-600 md:flex-none md:justify-start md:p-2 md:px-3',
-              {
-                'bg-sky-100 text-blue-600': pathname === link.href,
-              },
-            )}
+            aria-current={active ? 'page' : undefined}
+            className={clsx(navLinkClass, {
+              'bg-panel-raised text-plasma hover:text-plasma': active,
+            })}
           >
-            <LinkIcon className="w-6" />
+            {/* the lime bar on the rail's edge that marks the current page */}
+            {active && (
+              <span className="absolute -left-4 top-1/2 hidden h-12 w-1.5 -translate-y-1/2 rounded-r-full bg-plasma shadow-[0_0_14px_rgba(193,232,56,0.7)] md:block" />
+            )}
+            <LinkIcon className="w-7" />
             <p className="hidden md:block">{link.name}</p>
           </Link>
         );

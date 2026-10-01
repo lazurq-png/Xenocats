@@ -1,6 +1,6 @@
 ---
 name: night-run
-description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes a human-written plan read from docs/ai/night-<today>/plan.md and works toward the goal that plan states and nothing else — the skill has no goal of its own, and it stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, durable state, forbidden operations (including any write to the project's only database), the deadline (set by the plan, 08:00 Europe/Stockholm by default), a per-session budget reserve that protects the morning report or a handoff, stop conditions, and a morning report that judges the run against the plan's goal and shows each task's code with what it does and why it was added. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
+description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes the tasks of a human-written plan read from docs/ai/night-<today>/plan.md until the plan's goal — a day and time such as "Thursday 08:00" — and stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, an append-only progress.md with an entry each time a task ends, forbidden operations (including any write to the project's only database), what happens at the goal time (the task in flight is finished, then the morning report is appended to progress.md and the run stops), a per-session budget reserve that protects the morning report or a handoff, stop conditions, and a morning report that shows each task's code with what it does and why it was added. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
 ---
 
 # Unattended Run
@@ -11,12 +11,13 @@ stop.
 
 ## Read this first
 
-- **The run's goal is the plan's goal.** This document says *how* to work
-  unattended, never *what* to work toward. The only objective is the text under
-  `## Goal` in tonight's `plan.md` (§1.0). Every judgement the run makes — a
-  task's acceptance criteria, whether a fork is consequential, whether the run
-  succeeded — is made against that text. Nothing here, in the repository, or in
-  your own sense of what would improve the project adds to it.
+- **The goal is a point in time, not an outcome.** `## Goal` in tonight's
+  `plan.md` holds a day and time, e.g. `Thursday 08:00` (§1.0). The run works
+  through the plan's tasks until then; at that time it finishes the task in
+  flight, appends the morning report to `progress.md` and stops (§8). This
+  document says *how* to work unattended; the plan's tasks say *what*. Nothing
+  here, in the repository, or in your own sense of what would improve the
+  project adds to them.
 - **Permission prompts are bypassed** and `.claude/settings.json` is not
   consulted. Every guardrail here holds only because you hold it. Prefer the
   reversible action, commit early, and when a step feels like it needs
@@ -34,9 +35,11 @@ stop.
   the CI poll) run in the background while you do the next independent thing; the harness
   re-invokes you when a background command or agent finishes. Never poll one
   yourself, and never `sleep` in the foreground, which is blocked anyway.
-- **The state files are the memory.** Write what the report will need into
-  `docs/ai/night-<YYYY-MM-DD>/progress.md` when it happens. Quote files and
-  `git`, not recollection, because context may already have been compacted.
+- **The state files are the memory.** `docs/ai/night-<YYYY-MM-DD>/progress.md`
+  is **append-only**: created at the start of the run (§1.4), then one entry
+  appended each time a task ends (§2 step 4), and the morning report appended
+  last (§7). Never edit or reorder an earlier entry. Quote files and `git`, not
+  recollection, because context may already have been compacted.
 
 ---
 
@@ -79,39 +82,48 @@ into `progress.md`.
 
 **The run reads a plan; it does not write one.** A human writes
 `docs/ai/night-<YYYY-MM-DD>/plan.md` beforehand, where the date is today's
-`date +%F`. `docs/ai/README.md` shows the shape: a `## Goal` section, then the
-tasks.
+`date +%F`. `docs/ai/README.md` shows the shape: a `## Goal` section holding the
+time the run ends, then the tasks.
 
 | Result | Action |
 | ------ | ------ |
-| Exists, has a non-empty `## Goal`, and lists at least one task | Continue. The goal is the run's objective; the tasks are the human's route to it. |
+| Exists, has a readable `## Goal` time in the future, and lists at least one task | Continue. The goal is when the run ends; the tasks are the work. |
 | Missing, empty, or no task | **Stop.** Create no branch. Write an uncommitted `progress.md` in that directory saying no plan or no task was found at that path, and end. |
-| Tasks, but no `## Goal` or an empty one | **Stop** the same way, saying the goal was missing. Do not infer one from the tasks, the branch name or an earlier plan: a goal you wrote is your goal, not the human's. |
+| Tasks, but no `## Goal`, or one that is unreadable or already past | **Stop** the same way, quoting what `## Goal` said and why it could not be used. Do not guess a time from a typo, the branch name or an earlier plan: a deadline you chose is yours, not the human's. |
 
 Only today's directory counts. Never borrow another date's plan or its goal.
 
-**How the goal is used:**
+**Reading the goal.** `## Goal` is a day and a time, Europe/Stockholm (§8.1):
 
-- **Acceptance criteria** for each task are derived from the task *and* the
-  goal while exploring it, and recorded in `decisions.md`. Where a task is
-  underspecified, the goal is what settles it.
-- **Conflict.** A task that, as written, would work against the goal, or two
-  tasks that cannot both serve it, goes to §4.
-- **Scope.** Work the goal needs but no task names is not built. Record it in
-  `questions.md` as a proposed task for the next plan.
-- **Done.** After the last task, assess the goal — met, partly met or not met —
-  with the evidence for each part (§7). Then stop. The gap between the tasks
-  and the goal is reported, never closed with invented work (§6).
-- **Copy the goal verbatim** into `progress.md` (§1.4), so a compacted context
-  or a later session judges against the human's words, not a paraphrase.
+- **A weekday and time**, e.g. `Thursday 08:00`: the first such moment after
+  the run starts. `date -d 'thursday 08:00' '+%F %H:%M'` gives this week's,
+  today included; if that is not after the start reading, add 7 days. So a run
+  starting Wednesday 22:00 with `Thursday 08:00` ends the next morning, and one
+  starting Thursday 09:00 ends a week later.
+- **A date and time**, `YYYY-MM-DD HH:MM`, taken as written.
+- **Anything else** — a time with no day, a misspelt weekday (`date -d` exits
+  non-zero), prose — is unreadable: stop, as in the table.
 
-**Limits.** An optional `## Limits` section may set `Deadline: YYYY-MM-DD HH:MM`
-(Europe/Stockholm). It replaces the default deadline (§8.2) and may be any time
-after the run starts, including days later. A deadline that is unreadable or
-already past is a stop, as for a missing goal. Anything else under `## Limits`
-is recorded in `progress.md` and copied into the report; the run cannot measure
-account usage, so a weekly-usage figure there is information, not a stop
-condition.
+The result is the run's deadline `D` (§8.2), a full date and time. Record it
+beside the goal as written (§1.4). It belongs to the run and is never
+recomputed from `date` later.
+
+**How the tasks are used:**
+
+- **Acceptance criteria** for each task are derived from the task as written
+  while exploring it, and recorded in `decisions.md`. Where a task is
+  underspecified, take the smallest reading that satisfies its words (§4 if two
+  readings are defensible).
+- **Conflict.** Two tasks that cannot both be done as written go to §4.
+- **Scope.** Work no task names is not built. Record it in `questions.md` as a
+  proposed task for the next plan.
+- **Done.** When the last task ends before `D`, write the report and stop (§6).
+  Time left over is never filled with invented work.
+
+**Limits.** An optional `## Limits` section is recorded in `progress.md` and
+copied into the report. It is information, not a stop condition: the run cannot
+measure account usage. A `Deadline:` line there from an older plan is ignored in
+favour of `## Goal`; record that it was.
 
 The plan is **read-only** to the run:
 
@@ -192,11 +204,13 @@ Create, delete or fetch nothing else on the remote.
   (`docs/ai/README.md` says what each holds). There is one directory for the
   whole run, named after the run branch. Never create, overwrite or template
   `plan.md`.
-- Record in `progress.md`, before the first task: **the plan's goal, quoted
-  verbatim**, the wall clock, the session's budget figure (§8.6), and the
-  **deadline as a full date and time** (§8.2), e.g. `Deadline: 2026-09-18
-  08:00`. The budget thresholds are proportions of that starting figure, and
-  compaction will lose it if it is not written down.
+- Open `progress.md` with a `## Run start` entry, before the first task: **the
+  plan's goal, quoted verbatim**, the **deadline it resolves to as a full date
+  and time** (§1.0), e.g. `Goal: "Thursday 08:00" → Deadline: 2026-10-01
+  08:00`, the wall clock, the session's budget figure (§8.5), and anything under
+  `## Limits`. The budget thresholds are proportions of that starting figure,
+  and compaction will lose it if it is not written down. From here on
+  `progress.md` only grows at its end.
 
 ### 1.5 Baseline
 
@@ -244,9 +258,11 @@ these additions.
    git checkout -b night-<YYYY-MM-DD>-t<N>-<slug>
    ```
 
-   Past a cutoff for this kind of task (§8.2, §8.6), do not start it. Record
-   the clock, budget and **base SHA** with the task in `progress.md`. The base
-   SHA is what the morning report diffs the task's code against.
+   At or past `D`, or past the budget roundup (§8.2, §8.5), do not start it.
+   Note the clock, budget and **base SHA** in `current-task.txt` in your
+   scratchpad directory, which survives compaction; they go into the task's
+   `progress.md` entry when it ends (step 4). The base SHA is what the morning
+   report diffs the task's code against.
 
 1. **Verify before committing.** All of these must exit 0, run in parallel as
    in §1.5. **Never commit on a failing or unrun check.**
@@ -302,28 +318,35 @@ these additions.
 
 3. **Independent review.** For a non-trivial task, dispatch the `reviewer`
    subagent **in the background, at the same moment as step 1's final
-   checks**. Give it the task description **and the plan's goal**, not your
+   checks**. Give it the task description as the plan wrote it, not your
    reasoning, and let it find the diff itself. If the checks then force a
    non-trivial change, have it re-review. Act on every finding, or record in
    `decisions.md` why not. "The reviewer was wrong" is an acceptable entry;
    silence is not. Unattended, this is the only review the change gets.
 
-4. **Record, then commit.** Update the state files on the task branch before
-   staging, so the evidence travels with the diff. The `progress.md` entry
-   holds:
+4. **Record, then commit.** The task is complete: **append** its entry to the
+   end of `progress.md`, headed `## T<N> — <task> (completed)`, and update the
+   other state files on the task branch before staging, so the evidence travels
+   with the diff. The entry holds:
 
-   - branch and base SHA (step 0), clock and budget at start;
+   - branch and base SHA, clock and budget at start (step 0), and the clock at
+     completion;
    - **What the code does**: per file or group of files, the behaviour it adds
      or changes, in plain words;
-   - **Why it was added**: the plan task it answers, how it serves the goal, and
-     any non-obvious choice, with its `decisions.md` reference;
+   - **Why it was added**: the plan task it answers, and any non-obvious choice,
+     with its `decisions.md` reference;
    - the verification actually run, with real results (exit codes, lint warning
      count against the baseline), and the reviewer's verdict and what was done
-     about it.
+     about it;
+   - the CI outcome of the previous task (step 6), if it has resolved since.
 
    Write the what and the why now, while the context is fresh. The morning
    report copies them (§7). The entry cannot contain its own SHA, or whether the
    push or CI succeeded. Those go into the next task's entry and the report.
+
+   A task that ends any other way — provisional (§4) or abandoned (§3, §6) —
+   gets an appended entry too, headed `(provisional)` or `(abandoned)`, with its
+   branch and why. It is committed with the next task, or with the report.
 
    **Gate:** if the previous task's CI poll (step 6) has not resolved yet, wait
    for its notification before this commit. Do something else useful meanwhile,
@@ -377,8 +400,8 @@ these additions.
    It waits 5 minutes, then checks every 3, and exits once every named branch
    has a completed run, after 30 minutes, or after two API errors in a row. A
    `PROVISIONAL:` branch (§4) is pushed alone, so pass only its own name. When
-   the notification arrives, record the outcome in `progress.md` (it is
-   committed with the next task):
+   the notification arrives, note the outcome in `current-task.txt`; it goes
+   into the next task's `progress.md` entry (step 4), or the report:
 
    - **All `success`** → "CI passed", with the run URLs. This is the only
      outcome that may say so.
@@ -484,12 +507,12 @@ Do not implement up to the boundary. A half-applied change is worse than none.
 
 ## 4. Ambiguity: park and continue
 
-When a requirement has two defensible readings — judged against the plan's
-goal, not your preference — or a fork appears that `AGENTS.md` §18 would have
-you ask about:
+When a requirement has two defensible readings — judged against the task's own
+words and the rest of the plan, not your preference — or a fork appears that
+`AGENTS.md` §18 would have you ask about:
 
 1. In `questions.md`: the question, each option with its consequence for the
-   goal, your recommendation, and what you did meanwhile.
+   plan's tasks, your recommendation, and what you did meanwhile.
 2. Take the **smallest reversible** interpretation: cheapest to undo, not most
    likely right.
 3. Build it as a `PROVISIONAL:` commit on its own branch. Push it, do not merge
@@ -520,7 +543,8 @@ built, not seen, and never extend it beyond the task.
 
 End the run (merge, push and delete nothing further) when:
 
-- **The plan, its tasks or its goal are missing** (§1.0).
+- **The plan or its tasks are missing, or its goal is missing, unreadable or
+  already past** (§1.0).
 - **`node_modules` is missing** (§1.1).
 - **A second task hits three failed verify → repair cycles.** The first one
   just gets abandoned (§3), with all three hypotheses recorded
@@ -529,14 +553,15 @@ End the run (merge, push and delete nothing further) when:
 - **The remote already holds this run's namespace** at the start of a new run
   (§1.3).
 - **A `--ff-only` merge is refused** (§2 step 5).
-- **The clock reaches the deadline** (§8.2). §8.4 decides whether the task in
-  flight finishes; `D` + 30 minutes is the ceiling.
-- **The budget reaches roundup** (§8.6). That ends the *session*. It ends the
+- **The clock reaches the goal time `D`** (§8.2). No new task starts; the task
+  in flight is finished (§8.4), then the morning report is appended and the run
+  stops.
+- **The budget reaches roundup** (§8.5). That ends the *session*. It ends the
   *run* only if this session owes the report; otherwise hand off (§9.3).
-- **The plan's tasks are done.** Assess the goal (§1.0) and write the report.
-  Stopping early with a clean record is a success. **Do not invent work** — not
-  to fill the time, and not to close a gap between the tasks and the goal. That
-  gap goes in the report as proposed tasks.
+- **The plan's tasks are done** before `D`. Write the report and stop. Stopping
+  early with a clean record is a success. **Do not invent work** to fill the
+  time. Work you think the plan is missing goes in the report as proposed
+  tasks.
 
 A rejected push is **not** a stop. It ends pushing, not work.
 
@@ -549,10 +574,11 @@ last task that passed its checks.
 ## 7. Morning report
 
 The **run's** last act. It is a task like any other, on
-`night-<YYYY-MM-DD>-t<N>-report`, merged and pushed, and it goes at the top of
-`progress.md` under exactly `## Morning report`. §1 recognises a finished run by
-that heading. It is never cut short for the clock (§8.5). An earlier session
-writes §9.3's handoff instead, which carries the same content.
+`night-<YYYY-MM-DD>-t<N>-report`, merged and pushed, and it is **appended as the
+last part of `progress.md`**, under exactly `## Morning report`, after the final
+task's entry. Nothing is appended after it. §1 recognises a finished run by that
+heading. It is never cut short for the clock (§8.4). An earlier session appends
+§9.3's handoff instead, which carries the same content.
 
 **Before writing it, let every outstanding CI poll resolve** (or reach its own
 30-minute timeout). The report's own push is not waited on.
@@ -560,11 +586,13 @@ writes §9.3's handoff instead, which carries the same content.
 Build it from `plan.md`, `progress.md`, `questions.md` and `git`, not from
 memory. It contains:
 
-- **Goal**: the plan's `## Goal`, quoted verbatim, then **met**, **partly met**
-  or **not met**. For each part of the goal, the task(s) and evidence behind
-  that verdict, and whether the evidence was a command or only reading (§5).
-  If it is not fully met, what is missing and why: the plan's tasks did not
-  cover it, a task was abandoned or parked, or time or budget ran out.
+- **Goal**: the plan's `## Goal` quoted verbatim, the deadline it resolved to,
+  the clock when the report was started, and **what ended the run**: the goal
+  time, the task list running out, the budget, or a stop condition.
+- **Tasks**: every task in the plan with its outcome — completed, provisional,
+  abandoned, or not started (and why: the goal time came, or a dependency was
+  parked). For each completed task's acceptance criteria, whether the evidence
+  was a command or only reading (§5).
 - **Completed**: a table of task, branch, SHA, verification actually run, and
   CI outcome. Use "CI passed" only with a `success` in hand and the run URL,
   otherwise "CI failed, fixed in N cycles (job)", "abandoned after 3 CI cycles
@@ -574,10 +602,9 @@ memory. It contains:
 - **Provisional**: what was built, on which question, on which branch.
 - **Abandoned**: the task, why, what it needed, and its local branch.
 - **Questions**: the `questions.md` queue, most consequential first, including
-  any tasks the goal needs that the plan did not name.
-- **Clock and budget**: the starting figures (§1.4), the reading at each task
-  start, and **what ended the run**: clock, budget, the task list, or a stop
-  condition.
+  any proposed tasks for the next plan.
+- **Clock and budget**: the starting figures (§1.4), and the reading at each
+  task's start and completion; how far past `D` the last task ran, if it did.
 - **State**: the run branch and tip, which branches reached the remote,
   anything uncommitted, whether the build was in the gate, and the lint warning
   count against the baseline.
@@ -610,8 +637,7 @@ entry from §2 step 4:
 - **What it does**: per file or group of files, in behavioural terms, e.g.
   "`app/lib/actions.ts`: `deleteInvoice` now refuses an unknown id instead of
   reporting success".
-- **Why it was added**: the plan task, how it serves the goal, plus any
-  non-obvious choice (`D<n>`).
+- **Why it was added**: the plan task, plus any non-obvious choice (`D<n>`).
 
 Put the section inside the morning report, after the Completed table. The
 tilde fence survives backtick fences in diffed Markdown. The collapsed
@@ -626,12 +652,11 @@ budget, cut prose, never facts.
 
 ## 8. Deadlines: the clock and the budget
 
-The run ends at whichever comes first: the **deadline** (§8.1–§8.5) — the
-plan's, or 08:00 Europe/Stockholm by default — or the session **budget**
-(§8.6). If the account's usage limit runs out first, the session simply stops;
-§2's commit-and-push per task is what bounds that loss. Both resolve through §8.4's
-finish-or-abandon, and both reserve room for the report instead of leaving it
-the remainder.
+The run ends at whichever comes first: the **goal time** `D` (§8.1–§8.4), which
+the plan sets, or the session **budget** (§8.5). If the account's usage limit
+runs out first, the session simply stops; §2's commit-and-push per task is what
+bounds that loss. Both reserve room for the report instead of leaving it the
+remainder.
 
 ### 8.1 Reading the clock
 
@@ -648,23 +673,24 @@ read the time with:
 powershell -NoProfile -Command "[System.TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, [System.TimeZoneInfo]::FindSystemTimeZoneById('W. Europe Standard Time')).ToString('yyyy-MM-dd HH:mm')"
 ```
 
+In that case resolve the goal's weekday (§1.0) against that reading too, not
+against `date`.
+
 ### 8.2 The checkpoints
 
-**The deadline `D` is the plan's `Deadline:` (§1.0), or else the first 08:00
-after the run started, with its date**: a start at 22:00 on the 17th or at
-00:30 on the 18th both give `2026-09-18 08:00`. It belongs to the run. A resumed
-session copies it from `progress.md` and never recomputes it. Compare full dated
-readings, never times alone: 23:10 on the 17th is not "after 07:30" on the 18th.
+**The deadline `D` is the plan's `## Goal`, resolved to a full date and time
+when the run started** (§1.0): `Thursday 08:00` read on Wednesday 2026-09-30
+gives `2026-10-01 08:00`. It belongs to the run. A resumed session copies it
+from `progress.md` and never recomputes it. Compare full dated readings, never
+times alone: 23:10 on the 30th is not "after 07:30" on the 1st.
 
-Read clock and budget at every task start (§2 step 0). In the last hour before
-`D`, also read them at the pauses inside a task: after a verification, before a
-repair cycle, and before dispatching the `reviewer`.
+Read clock and budget at every task start (§2 step 0) and completion (§2
+step 4).
 
-| From     | Rule |
-| -------- | ---- |
-| `D` − 30 min | No new task. |
-| `D`      | **Deadline.** The task in flight finishes or is abandoned (§8.4). Then the report. |
-| `D` + 30 min | **Ceiling** (§8.5). Abandon whatever is in flight. Report now. |
+| From | Rule |
+| ---- | ---- |
+| before `D` | Tasks start as normal. |
+| `D`  | **Goal time.** No new task. The task in flight is finished (§8.4). Then the morning report is appended to `progress.md` (§7), and the run stops. |
 
 ### 8.3 Estimating
 
@@ -675,26 +701,22 @@ checks; time them and record it. CI overlaps the next task (§2 step 6), so it
 adds wall-clock time only when it fails, and at the very end, where the report
 waits on the last poll.
 Replace these figures with this repository's own once a run has produced them.
-Do not start a task you think is large in the last hour before `D`. §8.4's overrun rescues a
-nearly finished task. It does not make a late start survivable.
+A task started shortly before `D` runs past it by up to its own length; that is
+expected, and the report says by how much (§7).
 
-### 8.4 At the deadline: finish or abandon
+### 8.4 At the goal time: finish the task in flight
 
-At `D`, **run the task in flight to completion** only if all of these hold:
-the change is written, verification is green or running and expected to pass,
-the `reviewer` has run or there is room for it, and no failure is unresolved.
-Otherwise **abandon it** (§3). Finishing from an unknown state is starting new
-work against the clock.
+At `D`, **run the task in flight to completion** through the whole of §2:
+gate, reviewer, commit, merge, push, and its appended `progress.md` entry. The
+clock does not shorten any of it. **Never traded for time: the reviewer pass
+and a passing gate.**
 
-Never traded for time: **the reviewer pass** and **a passing gate**. If either
-cannot be honoured, abandon.
+The task still ends the ways any task can: abandoned after three failed
+verify → repair cycles (`.claude/rules/debugging.md` §8), or on a forbidden
+operation (§3), or at the budget ceiling (§8.5). When it has ended, write the
+report; start nothing else. The report itself is never cut for the clock.
 
-### 8.5 The ceiling
-
-**`D` + 30 minutes is absolute.** "Nearly done" twice is evidence the estimate was wrong.
-Abandon, write the report, stop. The report itself is never cut for the clock.
-
-### 8.6 The budget
+### 8.5 The budget
 
 **Read** the harness's `<total_tokens>N tokens left</total_tokens>` at the same
 checkpoints as the clock. Do not estimate it. Thresholds are proportions of the
@@ -703,12 +725,12 @@ applies:
 
 | Remaining | Rule |
 | --------- | ---- |
-| below the **reserve** (next table) | **Roundup.** Start nothing new, and apply §8.4 to the task in flight. Then close out: the report if this session owes it, otherwise the handoff (§9.3). |
+| below the **reserve** (next table) | **Roundup.** Start nothing new. Finish the task in flight only if its change is written, its verification is green or running and expected to pass, the `reviewer` has run or there is room for it, and no failure is unresolved; otherwise abandon it (§3). Then close out: the report if this session owes it, otherwise the handoff (§9.3). |
 | below 4%, or 40k | **Ceiling.** Abandon, and close out now. |
 
 | This session | Reserve | Closes with |
 | ------------ | ------- | ----------- |
-| is final: past `D` − 30 min, or less than one task's length before `D` | **30%**, or 150k | the morning report (§7) |
+| is final: at or past `D`, or less than one task's length before it | **30%**, or 150k | the morning report (§7) |
 | otherwise; another session can follow | **10%**, or 60k | the handoff (§9.3) |
 
 Misjudging which session is final is safe, because a handoff is written to
@@ -720,7 +742,7 @@ because the run that does end on budget needs its report most. The
 `reviewer`'s own usage is billed to the subagent, not to this figure.
 
 **No figure visible:** say so in the report, and round the session up after five
-completed tasks, handing off first if it is before `D` − 30 min. After a context
+completed tasks, handing off first if it is more than one task's length before `D`. After a context
 compaction, trust `progress.md` over memory.
 
 ---
@@ -734,9 +756,9 @@ heartbeat is not a new session (§9.5).
 ### 9.1 What a session owes the next
 
 The run branch with every completed task merged and pushed. State files current,
-with the goal quoted, real verification output, each task's base SHA and its
-what/why (§2 step 4), and every CI outcome observed. A handoff (§9.3) as the
-last entry.
+with the goal and its deadline quoted, an appended entry for every task that
+ended, holding real verification output, its base SHA and its what/why (§2 step
+4), and every CI outcome observed. A handoff (§9.3) as the last entry.
 
 ### 9.2 Resuming
 
@@ -750,15 +772,19 @@ git log --oneline main..HEAD
 
 1. Read the state files, starting with `progress.md`'s last entry: that is the
    handoff. Take the goal from `plan.md`, and check it matches the copy in
-   `progress.md`. If the human has changed it since, the plan wins: record the
-   change and judge the rest of the run against the new text.
+   `progress.md`. If the human has changed it since, the plan wins: resolve the
+   new text against the run's start reading in `progress.md` (§1.0), append the
+   change and the new deadline, and use that. If the new time is unreadable or
+   already past, write the report and stop.
 2. Re-run §1.1 and §1.5 (the baseline is a claim you inherit). Compare the lint
    output against the existing `lint-baseline.txt` and never overwrite it.
-3. Under a new session heading, record this session's starting clock and budget
-   (its own denominator) and copy the deadline as it stands.
+3. Append a new session heading to `progress.md` with this session's starting
+   clock and budget (its own denominator), and copy the deadline as it stands.
 4. Any CI recorded as `pending` belongs to a poll that died with the old
-   session. Run the poll again once on that SHA.
-5. Pick up an abandoned task only if it was abandoned for time or budget. The
+   session. Run the poll again once on that SHA. A task that was in flight
+   when the old session ended has no entry; if its branch has no commit, start
+   it again from §2 step 0.
+5. Pick up an abandoned task only if it was abandoned for budget. The
    three-cycle limit belongs to the run and does not reset.
 6. Continue at §2 step 0. The resume entry is committed with the next task.
 
@@ -772,14 +798,14 @@ the run as finished.
 It states why the session stopped, where the run is (its tip, which tasks are
 done and which remain), anything in flight and why it was left, the next
 session's first step in one sentence, and **everything §7 requires, including
-the goal assessment and Code by task**. If no session follows, this is the
+Code by task**. If no session follows, this is the
 morning report, so write it for the person at breakfast. Never write anything
 that only makes sense if another session comes.
 
 ### 9.4 The run is still one run
 
-These carry across sessions and never reset: the plan's goal, the three-cycle
-limit, the dated deadline, and parked questions (a later session inherits the
+These carry across sessions and never reset: the three-cycle limit, the dated
+deadline, the append-only `progress.md`, and parked questions (a later session inherits the
 decision and the `PROVISIONAL:` branch). Only the budget is per session.
 
 ### 9.5 Under `/loop`: the heartbeat
@@ -793,18 +819,20 @@ deadline. Each wakeup re-enters this skill in the **same** session.
   heartbeat. After a compaction, `progress.md` on the run branch, with this
   session's heading and no handoff after it, says the same.
 - **On a heartbeat**, run no preflight, no baseline and no §9.2 resume. Read
-  the clock and budget, `git status --short`, `git branch --show-current` and
-  the last entry of `progress.md`, then carry on exactly where it says:
+  the clock and budget, `git status --short`, `git branch --show-current`,
+  `current-task.txt` in the scratchpad and the last entry of `progress.md`, then
+  carry on where they say:
   - a background job (build, `reviewer`, CI poll) still running → nothing to
     do; schedule the next wakeup;
   - a task in flight → continue it from its current step;
-  - between tasks → §2 step 0 for the next one.
+  - between tasks → §2 step 0 for the next one, or, at or past `D`, the
+    morning report (§8.2).
 - **Pacing:** the wakeup is a fallback, not the work signal — background jobs
   re-invoke you when they finish. Schedule it long: 1200–1800 s.
 - **Ending:** once the morning report (§7) is pushed, or any §6 stop condition
   has ended the run, stop the loop (`ScheduleWakeup` with `stop: true`). A
   heartbeat that finds `## Morning report` already on the run branch stops the
   loop and does nothing else.
-- **Past the ceiling:** a wakeup after `D` + 30 min, for example after the
-  account's usage limit reset, writes the report if none exists (§8.5) and
-  stops the loop. It starts no task.
+- **Past the goal time:** a wakeup after `D`, for example after the account's
+  usage limit reset, finishes a task still in flight (§8.4), writes the report
+  if none exists and stops the loop. It starts no new task.

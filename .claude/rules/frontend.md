@@ -113,9 +113,14 @@ Do not assume desktop-only behavior unless the product explicitly is desktop-onl
   on the smallest component that needs it.
 - **Primitives that already exist:** `app/ui/button.tsx`, the invoice
   `buttons.tsx` and `status.tsx`, `pagination.tsx`, `breadcrumbs.tsx`, the
-  skeletons in `skeletons.tsx`, fonts in `fonts.tsx`, and `@heroicons/react`
+  skeletons in `skeletons.tsx`, fonts in `fonts.tsx` (Orbitron `font-display`, Montserrat `font-sans`,
+  Roboto `font-ui` for the dashboard), the logo in
+  `xenocat-logo.tsx`, `customer-avatar.tsx`, and `@heroicons/react` (solid sets)
   for icons. Styling is Tailwind 3 utility classes (with `@tailwindcss/forms`)
-  and `clsx` for conditional classes; `home.module.css` is the lone CSS module.
+  and `clsx` for conditional classes, using the colour tokens in
+  `tailwind.config.ts` (`void`, `panel`, `line`, `plasma`, `aura`, `cream`) rather
+  than raw Tailwind greys and blues. The site is dark-only and follows the Canva
+  mockup "Xenocat Analytics website mockup"; its artwork is in `public/xenocats/`.
 - **States use the App Router file conventions:** `loading.tsx` (with
   `<Suspense>` and a skeleton), `error.tsx`, and `not-found.tsx` with
   `notFound()`. Add a state the same way before inventing a component for it.

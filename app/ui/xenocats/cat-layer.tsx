@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 import { type Cat, type CatEngine, createCatEngine } from './cat-engine';
+import { catArt } from './cat-art';
 import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import type { CatConfig } from './config';
@@ -206,6 +207,7 @@ function CatView({
           look={type.look}
           pose={asleep ? 'asleep' : 'awake'}
           size={size}
+          art={catArt(type.id, asleep ? 'asleep' : 'awake', { wholeSet: true })}
         />
       </div>
       {asleep && (

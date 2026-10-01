@@ -25,7 +25,7 @@ test('the home and login pages show the Xenocat logo', async ({ page }) => {
 
 test('the home page links to the cats', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'Meet the cats' }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Meet the cats' }).click();
   await expect(page).toHaveURL(/\/cats$/);
   await expect(page.getByRole('heading', { name: 'The cats' })).toBeVisible();
 });

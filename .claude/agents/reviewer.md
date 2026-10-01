@@ -38,9 +38,8 @@ stash, checkout, or reset. Never start the app and submit a form, request
 data. If a fix is obvious, describe it — the implementer applies it. Your
 withheld Edit/Write tools are a guardrail; do not route around them.
 
-If you were given a goal alongside the task (an unattended run passes the
-plan's `## Goal`), judge the change against both: a change that does the task
-but works against the goal is a finding.
+If you were given a goal alongside the task, judge the change against both: a
+change that does the task but works against the goal is a finding.
 
 ## This repository specifically
 
