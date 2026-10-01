@@ -42,7 +42,7 @@ async function summon(page: Page, id: string) {
   return pointer;
 }
 
-test('lists every cat type with its thumbnail, attack and Summon button', async ({ page }) => {
+test('lists every cat type with its thumbnail, attack and Summon buttons', async ({ page }) => {
   await openCats(page);
   await expect(page.locator('[data-testid^="cat-card-"]')).toHaveCount(CAT_TYPES.length);
   for (const type of CAT_TYPES) {
@@ -50,8 +50,29 @@ test('lists every cat type with its thumbnail, attack and Summon button', async 
     await expect(card.getByRole('heading', { name: type.name })).toBeVisible();
     await expect(card.getByText(type.effect.description)).toBeVisible();
     await expect(card.locator('svg, img').first()).toBeVisible();
-    await expect(card.getByRole('button', { name: `Summon ${type.name}` })).toBeVisible();
+    for (const pose of ['awake', 'asleep']) {
+      await expect(
+        card.getByRole('button', { name: `Summon ${type.name} ${pose}`, exact: true })
+      ).toBeVisible();
+    }
   }
+});
+
+test('a cat summoned asleep naps in its asleep artwork, then wakes into its awake one', async ({
+  page,
+}) => {
+  test.setTimeout(60_000); // the nap alone can last 22 s
+  await openCats(page);
+  await page.getByTestId('summon-asleep-void-tabby').click();
+  await expect(page.getByRole('status')).toHaveText(
+    'Void Tabby is on its way, and will nap before it pounces.'
+  );
+  const cat = page.getByTestId('xenocat');
+  await expect(cat).toHaveAttribute('data-phase', 'sleeping');
+  await expect(cat.locator('img')).toHaveAttribute('src', '/xenocats/cats/void-tabby-asleep.webp');
+  // It sleeps for 8-22 s (config.ts), then wakes in its awake artwork.
+  await expect(cat).not.toHaveAttribute('data-phase', 'sleeping', { timeout: 25_000 });
+  await expect(cat.locator('img')).toHaveAttribute('src', '/xenocats/cats/void-tabby-awake.webp');
 });
 
 test('the page swaps the system cursor for the fake one, which follows the pointer', async ({

@@ -33,13 +33,15 @@ npx prettier --check <changed files>    # never `npm run format`, which rewrites
 ```
 
 `npm run dev` runs the app. It needs `.env` (`POSTGRES_URL`, `AUTH_SECRET`,
-`AUTH_URL`), and `POSTGRES_URL` is the project's only database — real data, no
-test copy.
+`AUTH_URL`). `POSTGRES_URL` is a development database on the local network
+(schema `xenocats`; the browser tests rebuild their own `xenocats_test`). The
+schema lives in `db/migrations/`; `npm run db:migrate`, `db:seed` and `db:reset`
+manage it.
 
 CI (`.github/workflows/ci.yml`) runs three jobs on every push and pull request:
-lint + type check + unit tests; the build (with the `POSTGRES_URL` repository
-secret on that step only) followed by the browser tests against `next start`;
-and the browser tests against `next dev`.
+lint + type check + unit tests; the build followed by the browser tests against
+`next start`; and the browser tests against `next dev`. The last two start the
+runner's own PostgreSQL, so CI uses no outside database and no secret.
 
 ### Why rules aren't auto-loaded
 

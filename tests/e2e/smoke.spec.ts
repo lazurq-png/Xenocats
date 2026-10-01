@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-// Pages that render without the database. Nothing here submits a form: every
-// Server Action runs against the project's only database.
+// Pages that render without the database; dashboard.spec.ts covers those that need it.
 
 test('home page renders and links to the login page', async ({ page }) => {
   await page.goto('/');

@@ -7,8 +7,15 @@ Node environment, `TZ=UTC`); browser tests use Playwright with Chromium
 (`npm run test:e2e`, `tests/e2e/`), which starts its own `next dev` on port
 `3100`, or `next start` over an existing build with `E2E_SERVER=start`. Test logic that does not need the database in `tests/unit/` by importing
 modules that do not open a connection (`app/lib/schemas.ts`, not
-`app/lib/actions.ts`). Browser tests cover pages that do not read the database
-and never submit a form that writes: the project has only its real database.
+`app/lib/actions.ts`). Browser tests run against the `xenocats_test` schema,
+rebuilt from the migrations and seed data before every run
+(`tests/e2e/global-setup.ts`), so they may log in (`user@nextmail.com` /
+`123456`) and submit forms that write. The tests run in parallel against that
+one schema: a test that writes creates its own rows and asserts only on them,
+never on counts or on seed rows another test may change. Tests that need the
+database skip when no `POSTGRES_URL` is configured, or with `E2E_NO_DATABASE=1`
+(the server is unreachable). The schema is shared: two machines running the
+suite at once drop it under each other.
 
 ---
 

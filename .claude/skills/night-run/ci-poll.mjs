@@ -12,7 +12,20 @@
 // No process.exit(): on Windows it can abort Node with a libuv assertion while
 // fetch still holds a keep-alive socket. Returning lets the process end by itself.
 
-const repo = process.env.CI_POLL_REPO ?? 'lazurq-png/next.js-dashboard';
+import { execFileSync } from 'node:child_process';
+
+// The repository is read from `origin`, never hard-coded: it was renamed once
+// (next.js-dashboard → Xenocats), and the old name is a different repository.
+function originRepo() {
+  try {
+    const url = execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
+    return url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const repo = process.env.CI_POLL_REPO ?? originRepo();
 const firstWait = Number(process.env.CI_POLL_FIRST_WAIT ?? 300);
 const interval = Number(process.env.CI_POLL_INTERVAL ?? 180);
 const timeout = Number(process.env.CI_POLL_TIMEOUT ?? 1800);
@@ -51,8 +64,9 @@ async function poll(sha, branches) {
 }
 
 const [sha, ...branches] = process.argv.slice(2);
-const lines =
-  sha && branches.length > 0
+const lines = !repo
+  ? ['UNOBSERVED origin is not a GitHub repository']
+  : sha && branches.length > 0
     ? await poll(sha, branches)
     : ['UNOBSERVED usage: ci-poll.mjs <sha> <branch> [<branch>...]'];
 console.log(lines.join('\n'));

@@ -47,6 +47,9 @@ jobs:
     timeout-minutes: 20
     env:
       AUTH_TRUST_HOST: 'true'
+      # The runner's own PostgreSQL (started below). The browser tests derive and
+      # rebuild their xenocats_test schema from it.
+      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=require&search_path=xenocats
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -60,12 +63,15 @@ jobs:
           echo "::add-mask::$secret"
           echo "AUTH_SECRET=$secret" >> "$GITHUB_ENV"
       - run: npm ci
+      - name: Start PostgreSQL
+        # Preinstalled on the runner and stopped; Ubuntu's cluster has TLS on, which
+        # the app requires. Throwaway, like the AUTH_SECRET: it lives as long as the job.
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
+          test "$(sudo -u postgres psql -Atc 'SHOW ssl')" = on
+      - run: npm run db:migrate && npm run db:seed
       - run: npm run build
-        env:
-          # Only this step: prerendering /dashboard reads the database (read-only,
-          # nothing here writes). Kept out of `npm ci`, whose install scripts
-          # have no business seeing it.
-          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
       - run: npx playwright install --with-deps chromium
       - name: Browser tests against next start
         run: npm run test:e2e
@@ -84,6 +90,7 @@ jobs:
     timeout-minutes: 20
     env:
       AUTH_TRUST_HOST: 'true'
+      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=require&search_path=xenocats
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -96,7 +103,15 @@ jobs:
           echo "::add-mask::$secret"
           echo "AUTH_SECRET=$secret" >> "$GITHUB_ENV"
       - run: npm ci
+      - name: Start PostgreSQL
+        # Preinstalled on the runner and stopped; Ubuntu's cluster has TLS on, which
+        # the app requires. Throwaway, like the AUTH_SECRET: it lives as long as the job.
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
+          test "$(sudo -u postgres psql -Atc 'SHOW ssl')" = on
       - run: npx playwright install --with-deps chromium
+      # Needs no db:migrate: the tests rebuild their own xenocats_test schema.
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

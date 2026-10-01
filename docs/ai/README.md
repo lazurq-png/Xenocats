@@ -50,3 +50,24 @@ Write the plan before starting the run:
   rule.
 - The plan can stay uncommitted. The run's first task commits it exactly as you
   left it.
+
+### Before you start it
+
+The run cannot fix any of these, and most of them end it silently:
+
+1. **Everything the run should build on is on `main`.** The run branch is cut
+   from `main`; work left on another branch is not there.
+2. `npm ci` and `npx playwright install chromium` have been run.
+3. `.env` holds `POSTGRES_URL` (the development database, with
+   `?search_path=xenocats`), `AUTH_SECRET` and `AUTH_URL`, and the machine is on
+   the network that reaches the database server. Off that network the run still
+   works, but skips the build and every test that needs the database.
+4. The plan is at `docs/ai/night-<today>/plan.md`, dated the day you start the
+   run: a run started after midnight looks for the new date.
+5. A `git push` works without a prompt (credentials cached). A credential
+   dialog at 03:00 waits for nobody.
+6. The session runs with permission prompts off (bypass or auto mode), the
+   machine will not sleep, and the editor or terminal stays open: closing it
+   ends the session.
+7. Start it with **`/loop /night-run`** (no interval). The loop re-arms itself
+   each turn and stops itself when the run ends.

@@ -10,10 +10,42 @@
 export type Pose = 'awake' | 'asleep';
 
 export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = {
-  'void-tabby': { awake: '/xenocats/cats/void-tabby-awake.webp' },
-  'gravi-coon': { awake: '/xenocats/cats/gravi-coon-awake.webp' },
-  'pulsar-siamese': { awake: '/xenocats/cats/pulsar-siamese-awake.webp' },
-  'mirror-sphynx': { awake: '/xenocats/cats/mirror-sphynx-awake.webp' },
+  'void-tabby': {
+    awake: '/xenocats/cats/void-tabby-awake.webp',
+    asleep: '/xenocats/cats/void-tabby-asleep.webp',
+  },
+  'gravi-coon': {
+    awake: '/xenocats/cats/gravi-coon-awake.webp',
+    asleep: '/xenocats/cats/gravi-coon-asleep.webp',
+  },
+  'pulsar-siamese': {
+    awake: '/xenocats/cats/pulsar-siamese-awake.webp',
+    asleep: '/xenocats/cats/pulsar-siamese-asleep.webp',
+  },
+  'mirror-sphynx': {
+    awake: '/xenocats/cats/mirror-sphynx-awake.webp',
+    asleep: '/xenocats/cats/mirror-sphynx-asleep.webp',
+  },
+  'static-calico': {
+    awake: '/xenocats/cats/static-calico-awake.webp',
+    asleep: '/xenocats/cats/static-calico-asleep.webp',
+  },
+  'cryo-persian': {
+    awake: '/xenocats/cats/cryo-persian-awake.webp',
+    asleep: '/xenocats/cats/cryo-persian-asleep.webp',
+  },
+  'nebula-ragdoll': {
+    awake: '/xenocats/cats/nebula-ragdoll-awake.webp',
+    asleep: '/xenocats/cats/nebula-ragdoll-asleep.webp',
+  },
+  'quantum-kitten': {
+    awake: '/xenocats/cats/quantum-kitten-awake.webp',
+    asleep: '/xenocats/cats/quantum-kitten-asleep.webp',
+  },
+  'magneto-bengal': {
+    awake: '/xenocats/cats/magneto-bengal-awake.webp',
+    asleep: '/xenocats/cats/magneto-bengal-asleep.webp',
+  },
 };
 
 /**

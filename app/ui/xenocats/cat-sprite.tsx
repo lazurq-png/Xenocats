@@ -170,6 +170,8 @@ function Ears({ palette: p, look, head }: Parts & { head: { cx: number; cy: numb
 
 function Antenna({ palette: p, look }: Parts) {
   switch (look.antenna) {
+    case 'none':
+      return null;
     case 'double':
       return (
         <g>
@@ -502,7 +504,7 @@ function Asleep({ palette: p, look }: Parts) {
       )}
       <ellipse cx="23" cy="51" rx="6" ry="4" fill={p.belly} />
       {/* drooping antenna(e), dimmed */}
-      {look.antenna === 'double' ? (
+      {look.antenna === 'none' ? null : look.antenna === 'double' ? (
         <g>
           <path d="M19 36 Q17 29 12 29" fill="none" stroke={p.accent} strokeWidth="1.4" />
           <path d="M27 36 Q30 29 35 30" fill="none" stroke={p.accent} strokeWidth="1.4" />
