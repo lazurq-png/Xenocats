@@ -132,6 +132,16 @@ test('Taming: a pointer moving at the cat makes it dodge', async ({ page }) => {
   await page.mouse.move(100, 100);
   const cat = page.getByTestId('fight-cat');
   await expect(cat).toBeVisible();
+  // A quick dodge (a teleport takes 60 ms) shows in data-doing for a frame or two,
+  // too briefly for polling: record every value the page ever sets instead.
+  await page.evaluate(() => {
+    const seen = new Set<string>();
+    (window as unknown as { doings: Set<string> }).doings = seen;
+    new MutationObserver(() => {
+      const doing = document.querySelector('[data-testid="fight-cat"]')?.getAttribute('data-doing');
+      if (doing) seen.add(doing);
+    }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-doing'] });
+  });
   const dodges = ['dash', 'blink', 'sidestep', 'hop', 'circle', 'mirror', 'drop', 'axis'];
   let step = 0;
   await expect
@@ -143,11 +153,14 @@ test('Taming: a pointer moving at the cat makes it dodge', async ({ page }) => {
           const x = box.x + box.width / 2 - 60 + (step++ % 2) * 20;
           await page.mouse.move(x, box.y + box.height / 2);
         }
-        return cat.getAttribute('data-doing');
+        const seen = await page.evaluate(() =>
+          Array.from((window as unknown as { doings: Set<string> }).doings)
+        );
+        return seen.some((doing) => dodges.includes(doing));
       },
       { timeout: 15_000, intervals: [50] }
     )
-    .toMatch(new RegExp(`^(${dodges.join('|')})$`));
+    .toBe(true);
 });
 
 test('Survival: a lower score leaves the best score alone; End game stops it too', async ({

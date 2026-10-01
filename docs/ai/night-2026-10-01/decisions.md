@@ -262,3 +262,22 @@ visitor.
   Linux refusing pointer lock. Fix attempt 1: the lock test skips itself, with
   the reason, when the browser refuses the lock (the fallback path has its own
   tests). If CI still fails, the cause is elsewhere.
+- **CI failed again on `53251eb`** (same two jobs): the lock-refusal skip did
+  not fix it, so that hypothesis is eliminated as the (sole) cause. Fix cycle 2
+  makes CI tell which test fails, as the workflow already intends for unit
+  tests ("identifiable from the job's step names alone"): both browser jobs now
+  run per-spec named groups, each even if an earlier one failed. It also found
+  that CI's explicit unit groups never ran any of tonight's unit tests, nor the
+  pre-existing `auth-config`, `dashboard`, `proxy-matcher`, `cat-art` and
+  `cat-sprite` tests: all are now in a group, and a guard step fails CI if a
+  test file is in no group. Locally the dodge test then flaked a second time;
+  its poll could miss a dodge shown for a frame or two (a teleport lasts
+  60 ms), so it now records every `data-doing` value with a MutationObserver.
+  It is the likeliest CI culprit; the named steps will confirm or refute it.
+  Reviewed (Request Changes → applied): each browser group keeps its own
+  HTML report and traces (`PLAYWRIGHT_HTML_OUTPUT_DIR`, `--output`), since a
+  Playwright run clears the previous run's; the guard matches whole names
+  (`cat` no longer passes because of `cat-art`) and needs each spec in both
+  browser jobs; it runs after the unit groups so it never skips lint or type
+  check; browser groups run only if the browser install (hence the build)
+  succeeded. actionlint clean.
