@@ -733,3 +733,58 @@ checked; (Low) page 2 might show page 1's rows → asserted different. Fixed.
 
 **UI**: tested in a browser, not seen. At phone width the search, the select
 and Create share one row; a human should look.
+
+## T12 — Invoice detail and delete confirmation (completed)
+
+- Branch `night-2026-10-01-t12-invoice-detail`, base `51a5f13`. Started
+  2026-10-01 21:50 (budget 14.12M); completed 2026-10-02 01:02 (budget 14.07M).
+- **Gap:** no activity between about 21:55 and 00:49 (session paused,
+  probably a usage limit); resumed on the timer's next firing.
+- **T11 CI: failed, fight group only** (inherited, Q1). Runs 36917216110 /
+  36917209430.
+
+**What the code does**
+
+- `app/dashboard/invoices/[id]/page.tsx` (new) and `not-found.tsx`: the
+  invoice with its customer (name, avatar, email), status, amount, date and
+  number, with Edit and Delete; unknown or malformed ids are not found.
+- `app/ui/invoices/delete-invoice.tsx` (new): the trash button opens a native
+  modal `<dialog>` ("Delete this invoice?"): page inert behind it, Cancel
+  focused first, Tab and Shift+Tab wrapped, Esc cancels, focus back on the
+  trash button; confirming deletes (and from the detail page goes to the
+  list; from the list, focus moves to the search box); while deleting, it
+  cannot be dismissed, so a failure is shown in it.
+- `app/ui/invoices/buttons.tsx`, `table.tsx`: a View link per row; Delete
+  named for its invoice ("Delete invoice for Amy Burns, $12,345.67").
+- `app/lib/actions.ts`: `deleteInvoice` validates the id as a UUID before any
+  SQL; `deleteInvoiceAndReturn`; **bug fix** — invoice amounts are stored as
+  `Math.round(amount * 100)` (`amount * 100` failed to insert for about 15 % of
+  amounts, and the form reset silently; found by the new browser tests).
+- `schemas.ts` (`InvoiceId`), `data.ts` (`fetchInvoiceDetail`),
+  `definitions.ts` (`InvoiceDetail`).
+- Tests: unit (`InvoiceId`; `deleteInvoice` refuses a malformed id; the
+  redirecting delete; whole-number cents, failing without the fix);
+  `tests/e2e/invoice-detail.spec.ts` (new, 4, each on its own invoice: detail
+  reached from the list; the dialog — focus first on Cancel, Tab wraps both
+  ways, Esc cancels and restores focus, Cancel likewise, confirm deletes and
+  focus lands on search; delete from the detail page returns to the list;
+  not-found). In CI's first browser group.
+
+**Why**: plan task 12. Design: D20.
+
+**Acceptance criteria evidence**: detail page, dialog, focus trapped and
+restored, Esc cancels — all by the browser test on both servers. The
+failure message in the dialog is untested (reading only).
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0; `npm run build` exit 0; `npm run test:e2e` 67
+passed and `E2E_SERVER=start` 67 passed; the new spec 20/20 over five
+repeats; after the review fixes the spec 12/12 (dev) and 8/8 (start, fresh
+build); actionlint clean; prettier clean (D1).
+
+**Review**: `reviewer` — Approve; three Lows (404 flash after deleting from
+the detail page; focus lost after a list delete; Esc during a delete could
+hide its failure), all fixed.
+
+**UI**: tested in a browser, not seen. A human should look at the dialog and
+the detail page at phone and desktop width.

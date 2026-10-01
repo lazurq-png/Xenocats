@@ -1,9 +1,13 @@
 import CustomerAvatar from '@/app/ui/customer-avatar';
-import { UpdateInvoice, DeleteInvoice } from '@/app/ui/invoices/buttons';
+import { DeleteInvoice, UpdateInvoice, ViewInvoice } from '@/app/ui/invoices/buttons';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
 import { fetchFilteredInvoices } from '@/app/lib/data';
 import type { InvoiceStatusFilter } from '@/app/lib/schemas';
+
+/** How an invoice is named to a screen reader: "invoice for Evil Rabbit, $666.00". */
+const label = (invoice: { name: string; amount: number }) =>
+  `invoice for ${invoice.name}, ${formatCurrency(invoice.amount)}`;
 
 export default async function InvoicesTable({
   query,
@@ -41,8 +45,9 @@ export default async function InvoicesTable({
                     <p>{formatDateToLocal(invoice.date)}</p>
                   </div>
                   <div className="flex justify-end gap-2">
+                    <ViewInvoice id={invoice.id} label={label(invoice)} />
                     <UpdateInvoice id={invoice.id} />
-                    <DeleteInvoice id={invoice.id} />
+                    <DeleteInvoice id={invoice.id} label={label(invoice)} />
                   </div>
                 </div>
               </div>
@@ -91,8 +96,9 @@ export default async function InvoicesTable({
                   </td>
                   <td className="whitespace-nowrap py-3 pl-6 pr-3">
                     <div className="flex justify-end gap-3">
+                      <ViewInvoice id={invoice.id} label={label(invoice)} />
                       <UpdateInvoice id={invoice.id} />
-                      <DeleteInvoice id={invoice.id} />
+                      <DeleteInvoice id={invoice.id} label={label(invoice)} />
                     </div>
                   </td>
                 </tr>

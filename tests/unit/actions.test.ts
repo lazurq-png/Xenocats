@@ -19,6 +19,7 @@ const {
   createInvoice,
   updateInvoice,
   deleteInvoice,
+  deleteInvoiceAndReturn,
   createCustomer,
   updateCustomer,
   deleteCustomer,
@@ -66,6 +67,11 @@ describe('without a session', () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
+  it('deleteInvoice refuses even before looking at the id', async () => {
+    await expect(deleteInvoice('not-a-uuid')).rejects.toThrow('Unauthorized');
+    expect(sql).not.toHaveBeenCalled();
+  });
+
   it('treats a session without a user as signed out', async () => {
     auth.mockResolvedValue({ expires: '2099-01-01' });
     await expect(deleteInvoice('i1')).rejects.toThrow('Unauthorized');
@@ -98,15 +104,15 @@ describe('with a session', () => {
   });
 
   it('deleteInvoice deletes and revalidates the list', async () => {
-    await deleteInvoice('i1');
-    expect(sql.mock.calls[0].slice(1)).toEqual(['i1']);
+    await deleteInvoice('cc27c14a-0acf-4f4a-a6c9-d45682c144b9');
+    expect(sql.mock.calls[0].slice(1)).toEqual(['cc27c14a-0acf-4f4a-a6c9-d45682c144b9']);
     expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices');
   });
 
   it('deleteInvoice hides the database error from the client', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     sql.mockRejectedValue(new Error('connection to db.internal:5432 refused'));
-    const failure = deleteInvoice('i1');
+    const failure = deleteInvoice('cc27c14a-0acf-4f4a-a6c9-d45682c144b9');
     await expect(failure).rejects.toThrow('Database Error: Failed to Delete Invoice.');
     await expect(failure).rejects.not.toThrow(/db\.internal/);
     expect(consoleError).toHaveBeenCalled();
@@ -220,5 +226,49 @@ describe('customer actions', () => {
       expect(await deleteCustomer(id, {})).toEqual({ message: null });
       expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices/create');
     });
+  });
+});
+
+describe('deleteInvoice with a session', () => {
+  beforeEach(() => auth.mockResolvedValue(signedIn));
+
+  it('a malformed id never reaches the database', async () => {
+    for (const bad of ['', 'i1', "' OR 1=1 --"]) {
+      await expect(deleteInvoice(bad)).rejects.toThrow('No such invoice.');
+    }
+    expect(sql).not.toHaveBeenCalled();
+  });
+
+  it('from the detail page, deletes and then goes to the list', async () => {
+    await deleteInvoiceAndReturn('3958dc9e-712f-4377-85e9-fec4b6a6442a');
+    expect(sql).toHaveBeenCalledTimes(1);
+    expect(redirect).toHaveBeenCalledWith('/dashboard/invoices');
+  });
+
+  it('from the detail page, goes nowhere when the delete is refused', async () => {
+    await expect(deleteInvoiceAndReturn('bad')).rejects.toThrow('No such invoice.');
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('deletes by id and refreshes the list', async () => {
+    await deleteInvoice('3958dc9e-712f-4377-85e9-fec4b6a6442a');
+    expect(sql).toHaveBeenCalledTimes(1);
+    expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices');
+  });
+});
+
+describe('amounts in cents', () => {
+  beforeEach(() => auth.mockResolvedValue(signedIn));
+
+  it('are whole numbers, even where floating point is not (10000.37 × 100)', async () => {
+    await createInvoice({}, invoiceForm({ amount: '10000.37' }));
+    expect(sql.mock.calls[0][2]).toBe(1000037);
+    sql.mockClear();
+    await updateInvoice(
+      'cc27c14a-0acf-4f4a-a6c9-d45682c144b9',
+      {},
+      invoiceForm({ amount: '0.29' })
+    );
+    expect(sql.mock.calls[0][2]).toBe(29);
   });
 });

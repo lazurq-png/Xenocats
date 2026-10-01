@@ -4,6 +4,7 @@ import {
   CustomerEdit,
   CustomerField,
   CustomersTableType,
+  InvoiceDetail,
   InvoiceForm,
   InvoicesTable,
   LatestInvoiceRaw,
@@ -216,6 +217,29 @@ export async function fetchInvoiceById(id: string) {
     console.log(invoice);
 
     return invoice[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch invoice.');
+  }
+}
+
+/** One invoice with its customer, for the detail page; undefined if there is none. */
+export async function fetchInvoiceDetail(id: string) {
+  try {
+    const data = await sql<InvoiceDetail[]>`
+      SELECT
+        invoices.id,
+        invoices.amount,
+        invoices.status,
+        invoices.date,
+        customers.id AS customer_id,
+        customers.name,
+        customers.email
+      FROM invoices
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE invoices.id = ${id}
+    `;
+    return data[0];
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch invoice.');

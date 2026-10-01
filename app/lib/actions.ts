@@ -5,7 +5,13 @@ import { redirect } from 'next/navigation';
 import postgres from 'postgres';
 import { auth, signIn } from '@/auth';
 import { AuthError } from 'next-auth';
-import { CreateInvoice, CustomerForm, CustomerId, UpdateInvoice } from '@/app/lib/schemas';
+import {
+  CreateInvoice,
+  CustomerForm,
+  CustomerId,
+  InvoiceId,
+  UpdateInvoice,
+} from '@/app/lib/schemas';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -47,7 +53,9 @@ export async function createInvoice(prevState: State, formData: FormData) {
 
   // Prepare data for insertion into the database
   const { customerId, amount, status } = validatedFields.data;
-  const amountInCents = amount * 100;
+  // Rounded: amount * 100 is not always a whole number in floating point (10000.37
+  // gives 1000037.0000000001), and the column is an integer.
+  const amountInCents = Math.round(amount * 100);
   const date = new Date().toISOString().split('T')[0];
 
   // Insert data into the database
@@ -88,7 +96,9 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
   }
 
   const { customerId, amount, status } = validatedFields.data;
-  const amountInCents = amount * 100;
+  // Rounded: amount * 100 is not always a whole number in floating point (10000.37
+  // gives 1000037.0000000001), and the column is an integer.
+  const amountInCents = Math.round(amount * 100);
 
   try {
     await sql`
@@ -109,6 +119,10 @@ export async function deleteInvoice(id: string) {
   if (!(await isSignedIn())) {
     throw new Error('Unauthorized');
   }
+  // The id is the caller's: anything but a UUID names no invoice.
+  if (!InvoiceId.safeParse(id).success) {
+    throw new Error('No such invoice.');
+  }
 
   try {
     await sql`DELETE FROM invoices WHERE id = ${id}`;
@@ -119,6 +133,12 @@ export async function deleteInvoice(id: string) {
   }
 
   revalidatePath('/dashboard/invoices');
+}
+
+/** Deletes from the invoice's own page, then goes to the list (the page is gone). */
+export async function deleteInvoiceAndReturn(id: string) {
+  await deleteInvoice(id);
+  redirect('/dashboard/invoices');
 }
 
 export type CustomerState = {

@@ -35,6 +35,9 @@ export const CustomerForm = z.object({
 /** A customer id from a URL or a form: anything but a UUID names no customer. */
 export const CustomerId = z.string().uuid();
 
+/** An invoice id from a URL or an action's argument, likewise. */
+export const InvoiceId = z.string().uuid();
+
 /** The invoice list's status filter, from the URL: anything unknown shows every status. */
 export const InvoiceStatusFilter = z.enum(['paid', 'pending']);
 export type InvoiceStatusFilter = z.infer<typeof InvoiceStatusFilter>;

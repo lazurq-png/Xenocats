@@ -1,6 +1,7 @@
-import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/20/solid';
+import { EyeIcon, PencilIcon, PlusIcon } from '@heroicons/react/20/solid';
 import Link from 'next/link';
-import { deleteInvoice } from '@/app/lib/actions';
+
+export { DeleteInvoice } from './delete-invoice';
 
 export function CreateInvoice() {
   return (
@@ -25,18 +26,14 @@ export function UpdateInvoice({ id }: { id: string }) {
   );
 }
 
-export function DeleteInvoice({ id }: { id: string }) {
-  const deleteInvoiceWithId = deleteInvoice.bind(null, id);
-
+export function ViewInvoice({ id, label }: { id: string; label: string }) {
   return (
-    <form action={deleteInvoiceWithId}>
-      <button
-        type="submit"
-        className="rounded-lg border border-line p-2 text-aura transition-colors hover:border-red-400 hover:text-red-400"
-      >
-        <span className="sr-only">Delete</span>
-        <TrashIcon className="w-5" />
-      </button>
-    </form>
+    <Link
+      href={`/dashboard/invoices/${id}`}
+      className="rounded-lg border border-line p-2 text-aura transition-colors hover:border-aura hover:text-white"
+    >
+      <span className="sr-only">View {label}</span>
+      <EyeIcon className="w-5" />
+    </Link>
   );
 }

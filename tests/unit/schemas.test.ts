@@ -3,6 +3,7 @@ import {
   CreateInvoice,
   CustomerForm,
   CustomerId,
+  InvoiceId,
   UpdateInvoice,
   parseStatusFilter,
 } from '@/app/lib/schemas';
@@ -92,6 +93,15 @@ describe('CustomerForm', () => {
   it('ignores anything else the client sends', () => {
     const result = CustomerForm.safeParse({ ...valid, id: 'x', image_url: 'evil' });
     expect(result.data).toEqual(valid);
+  });
+});
+
+describe('InvoiceId', () => {
+  it('is a UUID, or nothing', () => {
+    expect(InvoiceId.safeParse('cc27c14a-0acf-4f4a-a6c9-d45682c144b9').success).toBe(true);
+    for (const id of ['', 'i1', '../../etc', 'cc27c14a-0acf']) {
+      expect(InvoiceId.safeParse(id).success).toBe(false);
+    }
   });
 });
 

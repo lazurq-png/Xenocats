@@ -473,3 +473,32 @@ kept through pagination and combined with search.
   beside the search box, writing the URL the way `Search` does; changing it
   goes back to page 1. Pagination already carries every URL parameter, so the
   status survives it untouched. Task 14 adds Overdue.
+
+## D20 — T12: invoice detail page and delete confirmation
+
+Plan task 12: an invoice detail page, and a confirmation dialog before
+deleting (an accessible dialog: focus trapped and restored, Esc cancels).
+
+- `/dashboard/invoices/[id]`: the customer (avatar, name), status, amount,
+  date, the customer's email and the invoice number, with Edit and Delete;
+  not-found for an unknown or malformed id. Each list row gets a View link.
+- The confirmation is a native `<dialog>` opened with `showModal()`: the page
+  behind is inert, Esc fires `cancel` and closes it, and closing returns focus
+  to the trash button that opened it. Tab and Shift+Tab are also wrapped on its
+  two buttons explicitly; Cancel has the focus when it opens. Its accessible
+  name and description come from its heading and text ("Delete this invoice?",
+  "The invoice for … will be deleted"). Deleting from the detail page returns
+  to the list.
+- `deleteInvoice` now validates its id (a UUID) before any SQL, like the
+  customer actions.
+- **Bug found by the new browser tests, fixed here:** `createInvoice` and
+  `updateInvoice` stored `amount * 100`, which is not a whole number for about
+  15 % of amounts in floating point (10000.37 → 1000037.0000000001); the
+  INSERT into the integer column then failed, and the form silently reset
+  (the action's general message is not shown). Now `Math.round(amount * 100)`,
+  with a regression test that fails without it.
+- After review (Approve, three Lows, all applied): deleting from the detail
+  page uses `deleteInvoiceAndReturn`, which redirects to the list itself (no
+  404 flash of the deleted page); after a delete from the list, focus goes to
+  the search box; while a delete runs, Esc and Cancel do nothing, so a failure
+  is still shown.

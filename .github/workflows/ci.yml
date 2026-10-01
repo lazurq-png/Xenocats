@@ -108,7 +108,7 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard
-          tests/e2e/customers tests/e2e/invoices-filter
+          tests/e2e/customers tests/e2e/invoices-filter tests/e2e/invoice-detail
           --output test-results/smoke
         env:
           E2E_SERVER: start
@@ -176,7 +176,7 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard
-          tests/e2e/customers tests/e2e/invoices-filter
+          tests/e2e/customers tests/e2e/invoices-filter tests/e2e/invoice-detail
           --output test-results/smoke
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke

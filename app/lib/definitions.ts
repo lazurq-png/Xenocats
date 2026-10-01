@@ -103,3 +103,14 @@ export type InvoiceForm = {
   amount: number;
   status: 'pending' | 'paid';
 };
+
+/** An invoice and its customer, as the detail page shows them. */
+export type InvoiceDetail = {
+  id: string;
+  amount: number;
+  status: 'pending' | 'paid';
+  date: string;
+  customer_id: string;
+  name: string;
+  email: string;
+};
