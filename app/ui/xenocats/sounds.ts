@@ -191,6 +191,8 @@ export function createSoundPlayer(
     /** The visitor has interacted with the page: audio may start. */
     unlock() {
       unlocked = true;
+      // No context at all while sound is off; one is made when it is switched on.
+      if (!enabled()) return;
       const ctx = ensureContext();
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
     },
@@ -256,4 +258,15 @@ function whiteNoise(ctx: AudioContextLike): AudioBuffer {
   const data = buffer.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   return buffer;
+}
+
+let shared: SoundPlayer | null = null;
+
+/**
+ * The page's one player. Every cats provider uses it, so moving between pages
+ * never leaves an AudioContext behind (browsers cap how many may exist).
+ */
+export function sharedSoundPlayer(): SoundPlayer {
+  shared ??= createSoundPlayer();
+  return shared;
 }

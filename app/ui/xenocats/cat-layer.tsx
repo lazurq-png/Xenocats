@@ -21,7 +21,7 @@ import { useXenocatCursor } from './fake-cursor';
 import { recordStat } from './field-guide';
 import {
   type CatSounds,
-  createSoundPlayer,
+  sharedSoundPlayer,
   getSoundEnabled,
   setSoundEnabled,
   soundsFor,
@@ -77,7 +77,7 @@ export function XenocatCatsProvider({
     })
   );
   const [cats, setCats] = useState<Cat[]>([]);
-  const [player] = useState(() => createSoundPlayer());
+  const [player] = useState(() => sharedSoundPlayer());
   // Read by the loop and the API, which should not restart when a caller passes a
   // new (equal) list.
   const typesRef = useRef(types);

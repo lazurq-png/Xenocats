@@ -224,3 +224,33 @@ visitor.
   of the 20 cats" or, for a new visitor, an explanation of where cats come
   from), and on each card a Met / Attacks survived / Tamed list, or "Not met
   yet."
+
+## D12 — Checkpoint 1 (T1–T5)
+
+- **Locked mode now has browser tests.** Headless Chromium grants pointer lock
+  and reports `movementX/Y`, so `fight.spec.ts` plays Survival under the lock:
+  the game owns and draws the pointer, the fake cursor is hidden, a click
+  banishes the cat under the locked pointer, and losing the lock while focused
+  (what Esc does) ends the game. A tab/window switch (lock lost while not
+  focused) still cannot be produced headless; the pause path is tested through
+  `blur`.
+- That test is a real-time game: a cat can land before the click, so it keeps
+  playing (starting a new game if three landings ended one) until one click
+  banishes a cat without losing a life. Not a retry of the test: every
+  assertion still holds on the attempt that counts.
+- **One sound player per page** (`sharedSoundPlayer`), and no AudioContext at
+  all while sound is off: the cats provider mounts on `/dashboard` and on
+  `/cats`, and a context per mount was never closed (browsers cap them).
+- `fight.tsx`: the 100 ms "lock lost" timer is cleared on cleanup; a lock
+  request that resolves after the section unmounted releases the lock and
+  stops. The game dialog contains Tab / Shift+Tab (on its own buttons, or on
+  itself when it has none).
+- **Fight attacks under pointer lock do not hit page elements** (task 3's "every
+  attack"), recorded rather than changed: the page is behind the game's 85 %
+  opaque overlay and the effect runs on the game's own pointer, not the page's
+  cursor; in fallback mode they go through the page's cursor and hit the page
+  behind the overlay like any attack.
+- Tests reviewed for relevance: no test of removed behaviour, no duplicate
+  found; nothing deleted. One flake seen once in ~60 runs of `fight.spec.ts`:
+  "Taming: a pointer moving at the cat makes it dodge" (not reproduced in 8
+  further runs); left as is and noted.

@@ -350,3 +350,41 @@ reserved 3 lines, so the roster moves once when the first cat is met.
 
 **UI**: tested in a browser, not seen. A human should look at the cards' count
 boxes (11 px labels) and the summary at phone width.
+
+## Checkpoint 1 (after T5; range `06de26c..e8f8d23`) (completed)
+
+- Branch `night-2026-10-01-c1-checkpoint`, base `e8f8d23`. Started
+  2026-10-01 16:59 (budget 14.53M); completed 2026-10-01 17:15 (budget 14.49M).
+- **T5 CI: passed** — `night-2026-10-01-t5-field-guide`
+  https://github.com/lazurq-png/Xenocats/actions/runs/36880753894 and
+  `night-2026-10-01` https://github.com/lazurq-png/Xenocats/actions/runs/36880762566.
+
+**1. Tests.** Every behaviour of T1–T5 was checked for a test that would fail
+without it. Gaps found and filled:
+- The pointer-lock path (T1/T2), until now covered only by reading: headless
+  Chromium grants the lock, so `fight.spec.ts` now plays Survival under real
+  pointer lock — lock on `<body>`, fake cursor hidden, the game's pointer
+  moving by exactly the mouse movement, a click banishing the cat under the
+  locked pointer, and losing the lock while focused ending the game.
+- Pause and resume (T1 criterion 8): blur pauses, cats stay exactly put,
+  Resume carries on.
+- No test of removed behaviour, no duplicate, no test that cannot fail was
+  found; nothing deleted. One flake seen once: the Taming dodge test (D12).
+
+**2. Quality and security.** `reviewer` on the whole range with
+`.claude/rules/security-review.md`: **no security findings** (no server, SQL,
+auth or dependency change; every localStorage read validated; nothing reaches
+the DOM as HTML). Four findings, all handled:
+- (Medium) one AudioContext per provider mount, never closed → one shared
+  player per page, no context while sound is off; unit tests.
+- (Low) the lock-lost timer and pending lock requests could act after unmount
+  → timer cleared, `mountedRef` guard releases a late lock.
+- (Low) the game's `aria-modal` dialog did not contain Tab → Tab/Shift+Tab
+  wrap inside it; e2e.
+- (Low) Fight attacks under lock do not hit page elements → recorded (D12).
+Re-check of the fixes: **Approve**, no new findings.
+
+**3. Verification**: `npm run lint` exit 0, 0 warnings; `next typegen &&
+tsc` exit 0; `npm test` exit 0, 22 files / 317 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 54 passed (1.3 min); prettier clean (D1);
+`fight.spec.ts` 28/28 with `--repeat-each 4`.

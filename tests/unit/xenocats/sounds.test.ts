@@ -8,6 +8,7 @@ import {
   createSoundPlayer,
   getSoundEnabled,
   setSoundEnabled,
+  sharedSoundPlayer,
   soundsFor,
 } from '@/app/ui/xenocats/sounds';
 
@@ -117,6 +118,21 @@ describe('the player', () => {
     expect(player.play(beep)).toBe(false);
     expect(ctx.oscillators).toBe(0);
     expect(ctx.resume).toHaveBeenCalledTimes(2);
+  });
+
+  it('makes no audio context at all while sound is switched off', () => {
+    const make = vi.fn(fakeContext);
+    let on = false;
+    const player = createSoundPlayer(make as never, () => on);
+    player.unlock();
+    expect(make).not.toHaveBeenCalled();
+    on = true;
+    player.unlock();
+    expect(make).toHaveBeenCalledTimes(1);
+  });
+
+  it('is one player for the whole page, however many providers mount', () => {
+    expect(sharedSoundPlayer()).toBe(sharedSoundPlayer());
   });
 
   it('plays nothing while sound is switched off', () => {

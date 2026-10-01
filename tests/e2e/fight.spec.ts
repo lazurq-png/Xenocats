@@ -2,20 +2,23 @@ import { type Page, expect, test } from '@playwright/test';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/survival';
 import { TAMED_KEY } from '@/app/ui/xenocats/taming';
 
-// Fight a cat on /cats (no login, no database). These tests take the fallback path:
+// Fight a cat on /cats (no login, no database). Most tests take the fallback path:
 // pointer lock is removed before the page loads, so the game runs with the fake
-// cursor and Playwright's mouse can play it.
+// cursor. The "under pointer lock" tests keep it: headless Chromium grants the lock
+// and reports mouse movement, so the locked path can be played too.
 
-async function openFight(page: Page, best?: number) {
+async function openFight(page: Page, best?: number, { lock = false } = {}) {
   await page.addInitScript(
-    ({ key, best }) => {
-      Object.defineProperty(Element.prototype, 'requestPointerLock', {
-        value: undefined,
-        configurable: true,
-      });
+    ({ key, best, lock }) => {
+      if (!lock) {
+        Object.defineProperty(Element.prototype, 'requestPointerLock', {
+          value: undefined,
+          configurable: true,
+        });
+      }
       if (best !== undefined) window.localStorage.setItem(key, String(best));
     },
-    { key: SURVIVAL_BEST_KEY, best }
+    { key: SURVIVAL_BEST_KEY, best, lock }
   );
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/cats');
@@ -158,4 +161,121 @@ test('Survival: a lower score leaves the best score alone; End game stops it too
     'Game over. You survived 0 waves. Best: 7.'
   );
   expect(await page.evaluate((key) => localStorage.getItem(key), SURVIVAL_BEST_KEY)).toBe('7');
+});
+
+test('Survival: losing focus pauses the game, and the cats wait; Resume carries on', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await openFight(page);
+  const overlay = await start(page);
+  const cat = page.getByTestId('fight-cat').first();
+  await expect(cat).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(overlay).toHaveAttribute('data-phase', 'paused');
+  const at = await cat.boundingBox();
+  await page.waitForTimeout(600);
+  expect(await cat.boundingBox()).toEqual(at);
+  // The paused game is a modal dialog: Tab cycles through its own buttons only.
+  const resume = overlay.getByRole('button', { name: 'Resume' });
+  const end = overlay.getByRole('button', { name: 'End game' });
+  await resume.focus();
+  await page.keyboard.press('Tab');
+  await expect(end).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(resume).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(end).toBeFocused();
+  await overlay.getByRole('button', { name: 'Resume' }).click();
+  await expect(overlay).toHaveAttribute('data-phase', 'playing');
+  await expect.poll(() => cat.boundingBox()).not.toEqual(at);
+});
+
+/** Where the game draws its own pointer under pointer lock. */
+async function lockedPointer(page: Page) {
+  const transform = await page
+    .getByTestId('fight-pointer')
+    .evaluate((el) => (el as HTMLElement).style.transform);
+  const [, x, y] = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform)!;
+  return { x: Number(x), y: Number(y) };
+}
+
+test('Survival under pointer lock: the game owns the pointer, a click banishes the cat under it, and losing the lock ends it', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await openFight(page, undefined, { lock: true });
+  const startButton = page.getByTestId('fight-start');
+  const box = (await startButton.boundingBox())!;
+  let mouse = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(mouse.x, mouse.y);
+  await startButton.click();
+  const overlay = page.getByTestId('fight-overlay');
+  await expect(overlay).toHaveAttribute('data-mode', 'locked');
+  expect(await page.evaluate(() => document.pointerLockElement === document.body)).toBe(true);
+  // The page's fake cursor is hidden; the game draws the pointer it owns.
+  await expect(page.getByTestId('fake-cursor')).toHaveCSS('opacity', '0');
+  await expect(page.getByTestId('fight-pointer')).toBeVisible();
+
+  // The game's pointer moves by the mouse's movement.
+  const before = await lockedPointer(page);
+  mouse = { x: mouse.x + 60, y: mouse.y - 40 };
+  await page.mouse.move(mouse.x, mouse.y, { steps: 4 });
+  await expect.poll(() => lockedPointer(page)).toEqual({ x: before.x + 60, y: before.y - 40 });
+
+  // Steer the game's pointer next to a cat and click: that cat is banished.
+  // It is a real-time game: a cat can reach the pointer before the click lands (and
+  // three such cats end the game), so this keeps playing, in a new game if need be,
+  // until one click banishes a cat without losing a life.
+  let banished = false;
+  await expect
+    .poll(
+      async () => {
+        if ((await overlay.count()) === 0) {
+          const again = (await startButton.boundingBox())!;
+          mouse = { x: again.x + again.width / 2, y: again.y + again.height / 2 };
+          await startButton.click();
+          await expect(overlay).toHaveAttribute('data-mode', 'locked');
+        }
+        const cat = page.getByTestId('fight-cat').first();
+        const id = await cat.getAttribute('data-cat-id').catch(() => null);
+        const catBox = await cat.boundingBox().catch(() => null);
+        if (!id || !catBox) return false;
+        const livesNow = () =>
+          page
+            .getByTestId('fight-lives')
+            .getAttribute('data-lives', { timeout: 1000 })
+            .catch(() => null);
+        const lives = await livesNow();
+        const centre = { x: catBox.x + catBox.width / 2, y: catBox.y + catBox.height / 2 };
+        const pointer = await lockedPointer(page);
+        // 34 px from the cat's centre, on the pointer's side: within a click's reach
+        // (36 px), outside an attack's (24 px).
+        const dx = pointer.x - centre.x;
+        const dy = pointer.y - centre.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const target = { x: centre.x + (dx / length) * 34, y: centre.y + (dy / length) * 34 };
+        mouse = { x: mouse.x + target.x - pointer.x, y: mouse.y + target.y - pointer.y };
+        await page.mouse.move(mouse.x, mouse.y);
+        // Let the game draw the pointer there before clicking.
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+        await page.mouse.down();
+        await page.mouse.up();
+        banished =
+          (await page.locator(`[data-cat-id="${id}"]`).count()) === 0 &&
+          lives !== null &&
+          (await livesNow()) === lives;
+        return banished;
+      },
+      { timeout: 40_000, intervals: [100] }
+    )
+    .toBe(true);
+
+  // Esc releases the lock with the page still focused: that ends the game.
+  await page.evaluate(() => document.exitPointerLock());
+  await expect(page.getByTestId('fight-overlay')).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Game over' })).toContainText(
+    'Game over. You survived'
+  );
+  expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
 });

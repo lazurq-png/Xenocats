@@ -139,6 +139,8 @@ export default function Fight({
   const decoyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const startRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  // False once the section has gone: a lock request still pending then gives up.
+  const mountedRef = useRef(true);
   // Cats move every frame, so the loop moves their elements itself; React renders
   // only when what it shows changes (a cat comes or goes, a life, a wave, the hold).
   const shownRef = useRef('');
@@ -205,6 +207,10 @@ export default function Fight({
     startingRef.current = true;
     const locked = await requestLock();
     startingRef.current = false;
+    if (!mountedRef.current) {
+      if (locked) document.exitPointerLock();
+      return;
+    }
     const viewport = viewportSize();
     const at: Vec = cursor.position() ?? { x: viewport.width / 2, y: viewport.height / 2 };
     const common = {
@@ -223,11 +229,18 @@ export default function Fight({
   const resume = async () => {
     const game = gameRef.current;
     if (!game || phaseRef.current !== 'paused') return;
-    if (game.mode === 'locked' && !(await requestLock())) {
-      // Refused this time: carry on with the fake cursor.
-      game.mode = 'fallback';
-      game.pointer = null;
-      setMode('fallback');
+    if (game.mode === 'locked') {
+      const locked = await requestLock();
+      if (!mountedRef.current) {
+        if (locked) document.exitPointerLock();
+        return;
+      }
+      if (!locked) {
+        // Refused this time: carry on with the fake cursor.
+        game.mode = 'fallback';
+        game.pointer = null;
+        setMode('fallback');
+      }
     }
     game.clock.resume(performance.now());
     cursor.hide(game.mode === 'locked');
@@ -350,13 +363,14 @@ export default function Fight({
       if (game.pointer.activeEffectId(game.clock.now(performance.now())) !== null) return;
       if (game.survival.click(game.pointer.position())) setSnap(game.survival.snapshot());
     };
+    let lockLostTimer = 0;
     const onLockChange = () => {
       // The game releasing the lock itself (it is over) is not a loss.
       if (phaseRef.current !== 'playing' || game.mode !== 'locked') return;
       if (document.pointerLockElement === document.body) return;
       // Esc leaves the page focused and visible; a tab or window switch does not.
       // Their blur and visibility events can arrive just after the lock is lost.
-      window.setTimeout(() => {
+      lockLostTimer = window.setTimeout(() => {
         if (document.hasFocus() && document.visibilityState === 'visible') finish();
         else pause();
       }, 100);
@@ -382,6 +396,7 @@ export default function Fight({
     window.addEventListener('resize', onResize);
     return () => {
       cancelAnimationFrame(frameId);
+      window.clearTimeout(lockLostTimer);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('pointerlockchange', onLockChange);
@@ -393,13 +408,38 @@ export default function Fight({
   }, [running, cursor, cats, finish, pause]);
 
   // Leaving the page mid-game: give the pointer back.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       if (document.pointerLockElement) document.exitPointerLock();
       cursor.hide(false);
-    },
-    [cursor]
-  );
+    };
+  }, [cursor]);
+
+  // The game is a modal dialog: Tab and Shift+Tab stay inside it (on its buttons,
+  // or on the dialog itself when it has none, as under pointer lock).
+  const onDialogKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Tab') return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const buttons = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled])'));
+    if (buttons.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === dialog)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   // Without pointer lock, a click lands where the real pointer is; the fake cursor
   // provider has already swallowed it if an effect is running.
@@ -469,6 +509,7 @@ export default function Fight({
             data-kind={kind}
             data-phase={phase}
             onPointerDown={onOverlayPointerDown}
+            onKeyDown={onDialogKeyDown}
             className="fixed inset-0 z-[9998] select-none bg-void/85 outline-none"
           >
             <div className="flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
