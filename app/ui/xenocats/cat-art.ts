@@ -38,6 +38,10 @@ export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = 
     awake: '/xenocats/cats/nebula-ragdoll-awake.webp',
     asleep: '/xenocats/cats/nebula-ragdoll-asleep.webp',
   },
+  'quantum-kitten': {
+    awake: '/xenocats/cats/quantum-kitten-awake.webp',
+    asleep: '/xenocats/cats/quantum-kitten-asleep.webp',
+  },
 };
 
 /**
