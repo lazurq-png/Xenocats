@@ -23,6 +23,8 @@ export type Xenocats = {
    * and wake first. False if 5 are already there.
    */
   summon(typeId: string, options?: { asleep?: boolean }): boolean;
+  /** How many of these cats are on screen now. */
+  count(): number;
 };
 
 const CatsContext = createContext<Xenocats | null>(null);
@@ -80,6 +82,8 @@ export function XenocatCatsProvider({
         // The pointer is off the page: wait, rather than block clicks with an effect
         // nobody sees.
         if (!cursor.isPresent()) return false;
+        // The page is drawing its own pointer (a locked Fight game): wait until it is done.
+        if (cursor.isHidden()) return false;
         return cursor.attack(type.effect, centre);
       });
       if (changed) setCats(snapshot(engine));
@@ -100,6 +104,7 @@ export function XenocatCatsProvider({
         if (cat) setCats(snapshot(engine));
         return cat !== null;
       },
+      count: () => engine.cats().length,
     }),
     [engine, cursor]
   );

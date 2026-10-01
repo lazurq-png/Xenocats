@@ -64,7 +64,7 @@ test('a cat summoned asleep naps in its asleep artwork, then wakes into its awak
   test.setTimeout(60_000); // the nap alone can last 22 s
   await openCats(page);
   await page.getByTestId('summon-asleep-void-tabby').click();
-  await expect(page.getByRole('status')).toHaveText(
+  await expect(page.getByTestId('summon-status')).toHaveText(
     'Void Tabby is on its way, and will nap before it pounces.'
   );
   const cat = page.getByTestId('xenocat');
@@ -92,7 +92,7 @@ test('Void Tabby makes the cursor vanish, and clicks are blocked meanwhile', asy
   await expect(fakeCursor(page)).toHaveCSS('opacity', '0');
 
   // A click during the effect does nothing: the status line does not change.
-  const status = page.getByRole('status');
+  const status = page.getByTestId('summon-status');
   const before = await status.textContent();
   await page.getByTestId('summon-gravi-coon').click({ force: true });
   await expect(status).toHaveText(before ?? '');
@@ -459,7 +459,7 @@ test('all 20 cats are on /cats, and a sixth summon is refused while five are on 
   await expect(page.getByTestId('xenocat')).toHaveCount(5);
   await page.getByTestId('summon-hypno-rex').focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('status')).toHaveText(
+  await expect(page.getByTestId('summon-status')).toHaveText(
     'No room for another cat right now. Wait for one to leave.'
   );
   await expect(page.getByTestId('xenocat')).toHaveCount(5);

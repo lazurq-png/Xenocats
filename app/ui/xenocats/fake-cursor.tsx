@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type CursorController, createCursorController } from './cursor-controller';
 import { type CursorKind, cursorKindFor } from './cursor-kind';
-import { type Effect, MAX_DECOYS, type Vec } from './effects';
+import { type CursorLook, type Effect, MAX_DECOYS, type Vec } from './effects';
 import { type Random, createRandom, freshSeed } from './random';
 
 export type XenocatCursor = {
@@ -19,6 +19,10 @@ export type XenocatCursor = {
   now(): number;
   /** The page's one seeded random source, shared with the cats. */
   random: Random;
+  /** Hides the fake cursor while the page draws a pointer of its own (pointer lock). */
+  hide(hidden: boolean): void;
+  /** True while hidden: no cat may attack a cursor nobody can see. */
+  isHidden(): boolean;
 };
 
 const CursorContext = createContext<XenocatCursor | null>(null);
@@ -56,6 +60,19 @@ const PRESS_ENDS = new Set(['click', 'auxclick', 'contextmenu']);
 
 export const HIDE_CURSOR_CLASS = 'xenocat-cursor-hidden';
 
+/** Draws a cursor element (or one of its decoys) at `at`, looking as `look` says. */
+export function placeCursor(element: HTMLElement, at: Vec, look: CursorLook) {
+  const filter = [
+    look.blur > 0 ? `blur(${look.blur}px)` : '',
+    look.tint ? `drop-shadow(0 0 3px ${look.tint}) drop-shadow(0 0 6px ${look.tint})` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  element.style.transform = `translate3d(${at.x}px, ${at.y}px, 0) scale(${look.scale})`;
+  element.style.opacity = String(look.visible ? look.opacity : 0);
+  element.style.filter = filter;
+}
+
 /**
  * Hides the system cursor, draws a fake one that follows the pointer, and lets cats
  * attack it. Only on devices with a precise pointer: there is no cursor to fake on
@@ -81,6 +98,7 @@ export function XenocatCursorProvider({
   const cursorRef = useRef<HTMLDivElement>(null);
   const decoyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const nowRef = useRef(now);
+  const hiddenRef = useRef(false);
 
   useEffect(() => {
     nowRef.current = now;
@@ -144,19 +162,9 @@ export function XenocatCursorProvider({
     let frameId = 0;
     const draw = () => {
       const time = nowRef.current();
-      const look = controller.frame(time);
-      const opacity = String(look.visible ? look.opacity : 0);
-      const filter = [
-        look.blur > 0 ? `blur(${look.blur}px)` : '',
-        look.tint ? `drop-shadow(0 0 3px ${look.tint}) drop-shadow(0 0 6px ${look.tint})` : '',
-      ]
-        .filter(Boolean)
-        .join(' ');
-      const place = (element: HTMLElement, at: Vec) => {
-        element.style.transform = `translate3d(${at.x}px, ${at.y}px, 0) scale(${look.scale})`;
-        element.style.opacity = opacity;
-        element.style.filter = filter;
-      };
+      const drawn = controller.frame(time);
+      const look = hiddenRef.current ? { ...drawn, visible: false, decoys: undefined } : drawn;
+      const place = (element: HTMLElement, at: Vec) => placeCursor(element, at, look);
 
       const cursor = cursorRef.current;
       if (cursor) {
@@ -193,6 +201,10 @@ export function XenocatCursorProvider({
       isPresent: () => controller.isPresent(),
       now: () => nowRef.current(),
       random,
+      hide: (hidden) => {
+        hiddenRef.current = hidden;
+      },
+      isHidden: () => hiddenRef.current,
     }),
     [controller, random]
   );
@@ -233,7 +245,7 @@ export function XenocatCursorProvider({
 }
 
 // Each shape is drawn so that its hotspot sits at the element's origin.
-function CursorShape({ kind }: { kind: CursorKind }) {
+export function CursorShape({ kind }: { kind: CursorKind }) {
   const stroke = { stroke: '#ffffff', strokeWidth: 1.3, strokeLinejoin: 'round' as const };
   switch (kind) {
     case 'pointer':

@@ -7,24 +7,27 @@ import { catArt } from './cat-art';
 import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import { XenocatCursorProvider } from './fake-cursor';
+import Fight from './fight';
 
 /**
  * Every cat type with two Summon buttons: awake, to pounce as soon as it arrives,
  * or asleep, to nap and wake first as the dashboard's cats do (and show both poses'
  * artwork). Cats only come when summoned here, so the page is calm to browse and
- * predictable to test.
+ * predictable to test. Above them, Fight a cat; no cat can be summoned during a game.
  */
 export default function CatGallery() {
+  const [fighting, setFighting] = useState(false);
   return (
     <XenocatCursorProvider>
       <XenocatCatsProvider autoSpawn={false}>
-        <Roster />
+        <Fight onPlayingChange={setFighting} />
+        <Roster disabled={fighting} />
       </XenocatCatsProvider>
     </XenocatCursorProvider>
   );
 }
 
-function Roster() {
+function Roster({ disabled }: { disabled: boolean }) {
   const cats = useXenocats();
   const [status, setStatus] = useState('');
 
@@ -42,7 +45,12 @@ function Roster() {
 
   return (
     <>
-      <p role="status" aria-live="polite" className="mb-4 min-h-5 text-sm text-aura">
+      <p
+        role="status"
+        aria-live="polite"
+        data-testid="summon-status"
+        className="mb-4 min-h-5 text-sm text-aura"
+      >
         {status}
       </p>
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -76,6 +84,7 @@ function Roster() {
                 className="justify-center whitespace-nowrap px-1 text-[13px]"
                 data-testid={`summon-${type.id}`}
                 aria-label={`Summon ${type.name} awake`}
+                disabled={disabled}
                 onClick={() => summon(type, false)}
               >
                 Summon awake
@@ -84,6 +93,7 @@ function Roster() {
                 className="justify-center whitespace-nowrap px-1 text-[13px]"
                 data-testid={`summon-asleep-${type.id}`}
                 aria-label={`Summon ${type.name} asleep`}
+                disabled={disabled}
                 onClick={() => summon(type, true)}
               >
                 Summon asleep
