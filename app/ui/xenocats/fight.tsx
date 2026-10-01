@@ -19,14 +19,8 @@ import {
   createGameClock,
   createSurvival,
 } from './survival';
-import {
-  TAMED_KEY,
-  type Taming,
-  type TamingSnapshot,
-  addTamed,
-  createTaming,
-  parseCollection,
-} from './taming';
+import { type Taming, type TamingSnapshot, createTaming } from './taming';
+import { getGuide, getServerGuide, recordStat, recordTamed, subscribeGuide } from './field-guide';
 
 // Fight a cat, on the /cats page. Start asks for pointer lock: the browser hides the
 // system pointer and the game owns the pointer's position, so the cats attack that
@@ -49,30 +43,6 @@ type Game = {
 } & ({ kind: 'survival'; survival: Survival } | { kind: 'taming'; taming: Taming });
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-function readCollectionRaw(): string | null {
-  try {
-    return window.localStorage.getItem(TAMED_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/** How many cats have been tamed in all, from localStorage. */
-function readTamedTotal(): number {
-  const collection = parseCollection(readCollectionRaw(), CAT_TYPES);
-  return Object.values(collection).reduce((sum, count) => sum + count, 0);
-}
-
-/** Adds a tamed cat to the stored collection. */
-function storeTamed(typeId: string) {
-  try {
-    const collection = parseCollection(readCollectionRaw(), CAT_TYPES);
-    window.localStorage.setItem(TAMED_KEY, JSON.stringify(addTamed(collection, typeId)));
-  } catch {
-    // Storage blocked or full: the cat is tamed for this game only.
-  }
-}
 
 function readBest(): number | null {
   try {
@@ -160,7 +130,8 @@ export default function Fight({
   const [tameSnap, setTameSnap] = useState<TamingSnapshot | null>(null);
   // Read on every render, so what a game just wrote shows at once.
   const best = useSyncExternalStore(subscribeBest, readBest, () => null);
-  const tamedTotal = useSyncExternalStore(subscribeBest, readTamedTotal, () => 0);
+  const guide = useSyncExternalStore(subscribeGuide, getGuide, getServerGuide);
+  const tamedTotal = Object.values(guide.tamed).reduce((sum, count) => sum + count, 0);
   const [message, setMessage] = useState('');
   const gameRef = useRef<Game | null>(null);
   const phaseRef = useRef<Phase>('idle');
@@ -284,6 +255,7 @@ export default function Fight({
         if (heard.has(cat.id)) continue;
         heard.add(cat.id);
         cats.sound(cat.typeId, 'arrive');
+        recordStat(cat.typeId, 'met');
       }
     };
 
@@ -318,7 +290,7 @@ export default function Fight({
         if (game.kind === 'taming') {
           const tamed = game.taming.tick(now, at, CAT_CONFIG.maxCats - cats.count());
           if (tamed) {
-            storeTamed(tamed);
+            recordTamed(tamed);
             setMessage(`You tamed ${catTypeById(tamed)?.name ?? 'a cat'}!`);
           }
           const snapshot = game.taming.snapshot(now);
@@ -343,6 +315,10 @@ export default function Fight({
             if (hit) cats.sound(type.id, 'attack');
           }
           const snapshot = game.survival.snapshot();
+          // An attack that did not end the game was survived.
+          if (snapshot.status === 'playing') {
+            for (const cat of landed) recordStat(cat.typeId, 'survived');
+          }
           hearArrivals(snapshot.cats);
           moveCats(snapshot.cats);
           const { status, lives, wave, score } = snapshot;

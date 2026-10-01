@@ -202,3 +202,25 @@ every cat type has its sounds; an e2e test for the toggle.
 - Accepted (reviewer N1, Low): a context created on the very first gesture
   may still report `suspended` on the next frame, so that one first sound can be
   skipped; every later sound plays.
+
+## D11 — T5: the cat field guide
+
+Plan task 5: `/cats` shows, per cat type, stats kept in localStorage — times
+met, attacks survived, tamed (task 2) — with empty-state wording for a new
+visitor.
+
+- **Met** = a cat of that type appeared: a dashboard/gallery cat entering
+  `appearing`, or a Fight cat first showing up.
+- **Attacks survived** = its attack hit you and you lived: a cat-layer attack
+  the cursor accepted (they never end anything), or a Survival landing that did
+  not end the game.
+- **Tamed** = the Taming collection (`xenocats:tamed`, D6), now written through
+  the guide store so the cards update at once.
+- Stored as `xenocats:guide` = `{ typeId: { met, survived } }`; read through a
+  validating parser; a small store (`getGuide`/`subscribeGuide`) keeps one
+  object per stored state for `useSyncExternalStore` and notifies this tab on
+  each write (other tabs via `storage`). Server render shows the empty guide.
+- UI: a "Field guide" heading with a summary above the roster ("You have met N
+  of the 20 cats" or, for a new visitor, an explanation of where cats come
+  from), and on each card a Met / Attacks survived / Tamed list, or "Not met
+  yet."

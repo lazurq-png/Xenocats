@@ -489,10 +489,22 @@ test('an attack scrambles the text near the pointer for the eye only, then resto
 }) => {
   await openCats(page);
   const card = page.getByTestId('cat-card-decoy-burmese');
-  const texts = await card.evaluate((el) =>
-    Array.from(el.querySelectorAll('*'), (child) => child.textContent)
-  );
-  const before = await card.evaluate((el) => el.outerHTML);
+  // The card minus its field-guide counts, which rightly change as the cat is met
+  // and attacks (field-guide.spec.ts).
+  const textsOf = () =>
+    card.evaluate((el) => {
+      const copy = el.cloneNode(true) as Element;
+      copy.querySelector('[data-testid="guide-entry"]')?.remove();
+      return Array.from(copy.querySelectorAll('*'), (child) => child.textContent);
+    });
+  const htmlOf = () =>
+    card.evaluate((el) => {
+      const copy = el.cloneNode(true) as Element;
+      copy.querySelector('[data-testid="guide-entry"]')?.remove();
+      return copy.outerHTML;
+    });
+  const texts = await textsOf();
+  const before = await htmlOf();
   await summon(page, 'decoy-burmese');
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'decoys');
   const scrambled = card.locator('[data-xenocat-hit="text"]').first();
@@ -501,11 +513,15 @@ test('an attack scrambles the text near the pointer for the eye only, then resto
   expect(shown).not.toBe(await scrambled.textContent());
   // The real text, which assistive technology reads, never changes.
   await expect(card.getByRole('heading', { name: 'Decoy Burmese' })).toBeVisible();
-  expect(
-    await card.evaluate((el) => Array.from(el.querySelectorAll('*'), (child) => child.textContent))
-  ).toEqual(texts);
+  expect(await textsOf()).toEqual(texts);
   // After the effect (5 s) nothing is left of it.
   await expect(card.locator('[data-xenocat-hit]')).toHaveCount(0, { timeout: 8000 });
-  // The card is exactly as it was before the cat came.
-  expect(await card.evaluate((el) => el.outerHTML)).toBe(before);
+  // The card is exactly as it was before the cat came, and its guide entry carries
+  // nothing of the effect either.
+  expect(await htmlOf()).toBe(before);
+  await expect(
+    card
+      .getByTestId('guide-entry')
+      .locator('xpath=descendant-or-self::*[@style or @data-xenocat-hit-text]')
+  ).toHaveCount(0);
 });

@@ -18,6 +18,7 @@ import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import type { CatConfig } from './config';
 import { useXenocatCursor } from './fake-cursor';
+import { recordStat } from './field-guide';
 import {
   type CatSounds,
   createSoundPlayer,
@@ -116,7 +117,10 @@ export function XenocatCatsProvider({
         phases.set(cat.id, cat.phase);
         const type = typesRef.current.find((t) => t.id === cat.typeId);
         if (!type) continue;
-        if (cat.phase === 'appearing') player.play(soundsFor(type).arrive);
+        if (cat.phase === 'appearing') {
+          player.play(soundsFor(type).arrive);
+          recordStat(type.id, 'met');
+        }
         if (cat.phase === 'waking') player.play(soundsFor(type).wake);
       }
       for (const id of phases.keys()) if (!seen.has(id)) phases.delete(id);
@@ -135,6 +139,7 @@ export function XenocatCatsProvider({
         if (cursor.isHidden()) return false;
         if (!cursor.attack(type.effect, centre)) return false;
         player.play(soundsFor(type).attack);
+        recordStat(type.id, 'survived');
         return true;
       });
       if (changed) setCats(snapshot(engine));

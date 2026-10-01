@@ -293,3 +293,60 @@ accepted in D10) and N2 (D10 wording, fixed).
 **UI**: tested in a browser with a stubbed AudioContext, not heard or seen. A
 human should listen to the 20 attack sounds and look at the toggle's corner
 position on the dashboard at phone width.
+
+## T5 — Cat field guide (completed)
+
+- Branch `night-2026-10-01-t5-field-guide`, base `77a719b`. Started
+  2026-10-01 16:39 (budget 14.58M); completed 2026-10-01 16:59 (budget 14.53M).
+- **T4 CI: passed** — `night-2026-10-01-t4-sounds`
+  https://github.com/lazurq-png/Xenocats/actions/runs/36877975042 and
+  `night-2026-10-01` https://github.com/lazurq-png/Xenocats/actions/runs/36877985017.
+
+**What the code does**
+
+- `app/ui/xenocats/field-guide.ts` (new): per-type stats in localStorage
+  (`xenocats:guide`: times met, attacks survived) plus the tamed collection,
+  with a validating parser, pure counters, and a store for
+  `useSyncExternalStore` that notifies this tab on each write and other tabs
+  via `storage`. `recordStat` / `recordTamed` ignore unknown types and never
+  throw.
+- `app/ui/xenocats/cat-layer.tsx`: a cat appearing counts as met; an accepted
+  attack counts as survived.
+- `app/ui/xenocats/fight.tsx`: Fight cats count as met when they first
+  appear; a Survival landing that does not end the game counts as survived;
+  tamed cats go through `recordTamed`, so the totals update at once.
+- `app/ui/xenocats/cat-gallery.tsx`: a "Field guide" heading and summary
+  above the roster ("You have met N of the 20 cats", or the empty-state
+  explanation for a new visitor); each card shows Met / Attacks survived /
+  Tamed or "Not met yet." in a fixed-height box. Cards are a memoised
+  `CatCard`, so a count change re-renders one card.
+- Tests: `tests/unit/xenocats/field-guide.test.ts` (new, 7),
+  `tests/e2e/field-guide.spec.ts` (new, 3: empty guide for a new visitor;
+  meeting a cat and surviving its attack is counted and kept after reload;
+  stored counts incl. tamed are shown); `tests/e2e/cats.spec.ts` scramble test
+  compares the card without its (rightly changing) guide entry and checks the
+  entry carries no leftover effect attributes.
+
+**Why**: plan task 5. Definitions: D11.
+
+**Acceptance criteria evidence**: stats per type (met, survived, tamed) and
+the empty state — unit and browser tests. Narrow-window layout — not checked.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 22 files / 315 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 52 passed (1.3 min); after the final one-line test
+addition `cats.spec.ts` 28 passed, lint and tsc clean; prettier clean (D1).
+The first full run failed 3 existing `/cats` tests: meeting a cat changed the
+card's height (and the summary's), moving buttons under a still pointer, and
+the scramble test compared the card's text including its new counts. Fixed by
+fixed-height entries, a reserved summary height, memoised cards, and comparing
+the card without its guide entry.
+
+**Review**: `reviewer` — Approve (Low: summary said "met 0" to a visitor who
+had only tamed cats → met now includes tamed). Re-review after the layout and
+test changes: Approve, with an optional extra assertion (added). Note from the
+reviewer: in a narrow window the empty-state summary wraps to more than the
+reserved 3 lines, so the roster moves once when the first cat is met.
+
+**UI**: tested in a browser, not seen. A human should look at the cards' count
+boxes (11 px labels) and the summary at phone width.
