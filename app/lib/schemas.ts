@@ -17,3 +17,20 @@ export const FormSchema = z.object({
 export const CreateInvoice = FormSchema.omit({ id: true, date: true });
 
 export const UpdateInvoice = FormSchema.omit({ id: true, date: true });
+
+/** A customer as the create and edit forms send it. */
+export const CustomerForm = z.object({
+  name: z
+    .string({ invalid_type_error: 'Please enter a name.' })
+    .trim()
+    .min(1, { message: 'Please enter a name.' })
+    .max(255, { message: 'A name can be at most 255 characters.' }),
+  email: z
+    .string({ invalid_type_error: 'Please enter an email address.' })
+    .trim()
+    .max(255, { message: 'An email address can be at most 255 characters.' })
+    .email({ message: 'Please enter a valid email address.' }),
+});
+
+/** A customer id from a URL or a form: anything but a UUID names no customer. */
+export const CustomerId = z.string().uuid();

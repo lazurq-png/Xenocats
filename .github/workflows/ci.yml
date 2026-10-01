@@ -104,10 +104,11 @@ jobs:
       # so a failure is identifiable from the job's step names alone (but not when
       # the build or the browser install failed). Each keeps its own report and
       # traces: a Playwright run clears the previous run's.
-      - name: Browser tests against next start (smoke, branding, dashboard)
+      - name: Browser tests against next start (smoke, branding, dashboard, customers)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard
+          tests/e2e/customers
           --output test-results/smoke
         env:
           E2E_SERVER: start
@@ -171,10 +172,11 @@ jobs:
         run: npx playwright install --with-deps chromium
       # Needs no db:migrate: the tests rebuild their own xenocats_test schema. Named
       # groups, each with its own report and traces, as in the build job.
-      - name: Browser tests (smoke, branding, dashboard)
+      - name: Browser tests (smoke, branding, dashboard, customers)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard
+          tests/e2e/customers
           --output test-results/smoke
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke

@@ -85,6 +85,13 @@ export type FormattedCustomersTable = {
   total_paid: string;
 };
 
+/** A customer as the edit form shows it. */
+export type CustomerEdit = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export type CustomerField = {
   id: string;
   name: string;

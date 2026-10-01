@@ -1,6 +1,7 @@
 import postgres from 'postgres';
 import {
   CardStat,
+  CustomerEdit,
   CustomerField,
   CustomersTableType,
   InvoiceForm,
@@ -222,6 +223,19 @@ export async function fetchCustomers() {
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch all customers.');
+  }
+}
+
+/** A customer for the edit form, or undefined if there is none with that id. */
+export async function fetchCustomerById(id: string) {
+  try {
+    const data = await sql<CustomerEdit[]>`
+      SELECT id, name, email FROM customers WHERE id = ${id}
+    `;
+    return data[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch customer.');
   }
 }
 

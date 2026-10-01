@@ -13,7 +13,8 @@ test('the demo user logs in and the dashboard shows the seeded data', async ({ p
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
 
-  await page.goto('/dashboard/invoices');
+  // Searched, so invoices other tests add (they sort first, by date) cannot push it off page 1.
+  await page.goto('/dashboard/invoices?query=Evil%20Rabbit');
   await expect(page.getByRole('heading', { name: 'Invoices' })).toBeVisible();
   // The desktop table; the same rows also render in a list that is hidden at this width.
   await expect(page.getByRole('cell', { name: 'Evil Rabbit' }).first()).toBeVisible();

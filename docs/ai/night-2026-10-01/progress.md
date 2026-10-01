@@ -599,3 +599,60 @@ rewritten test 6/6 and `cats.spec.ts` 28/28; actionlint clean.
 **Review**: `reviewer` — Approve; two Low wording corrections applied (Q2's
 trigram advice would only help the customers search; the migration's write
 locks are now stated).
+
+## T10 — Customer CRUD (completed)
+
+- Branch `night-2026-10-01-t10-customer-crud`, base `e61493b`. Started
+  2026-10-01 21:10 (budget 14.24M); completed 2026-10-01 21:29 (budget 14.18M).
+- **T9 CI: failed, fight group only** (inherited, Q1); its `db:migrate &&
+  db:seed` step passed on CI's fresh PostgreSQL. Runs 36912348456 /
+  36912343934.
+
+**What the code does**
+
+- `app/lib/actions.ts`: `createCustomer`, `updateCustomer`, `deleteCustomer`
+  — each checks the session, validates name/email (`CustomerForm`) and the
+  id (`CustomerId`, a UUID), writes with parameterised SQL, returns only
+  generic database errors; a delete refused by the invoices' foreign key
+  (`23503`) returns "This customer still has invoices. Delete or reassign
+  them first."; every write revalidates the customer list, the invoice list
+  and the invoice form.
+- `app/lib/schemas.ts`, `data.ts`, `definitions.ts`: the two schemas,
+  `fetchCustomerById`, `CustomerEdit`.
+- `app/dashboard/customers/page.tsx`: the real customers page (was a
+  placeholder): heading, search, Create Customer, the table. `create/page.tsx`,
+  `[id]/edit/page.tsx` (not-found for unknown or malformed ids),
+  `[id]/edit/not-found.tsx`, `error.tsx`.
+- `app/ui/customers/customer-form.tsx` (one form for create and edit, errors
+  per field with `aria-describedby`), `buttons.tsx` (create/edit links; a
+  delete form whose refusal message is shown and tied to the button),
+  `table.tsx` (edit and delete per row, phone and desktop; empty state).
+- `app/dashboard/invoices/create/page.tsx`: rendered per request, so its
+  customer list is never the build-time one.
+- Tests: `tests/unit/schemas.test.ts` (+6), `tests/e2e/customers.spec.ts` (new,
+  4, each on its own customer: create/edit/delete; per-field errors with
+  `aria-describedby`; delete refused while invoiced, message tied to the
+  button, customer kept; not-found); `dashboard.spec.ts` searches for its seed
+  row. In CI's first browser group.
+
+**Why**: plan task 10. Design: D17.
+
+**Acceptance criteria evidence**: all by browser tests against both
+`next dev` and `next start`, plus schema unit tests; the auth check in each
+action by reading (no test calls the actions unauthenticated).
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 25 files / 364 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 61 passed; `E2E_SERVER=start npm run test:e2e` over
+a fresh build exit 0, 61 passed; actionlint clean; prettier clean (D1).
+
+**Review**: `reviewer` (security, backend and frontend rules in scope) —
+Request Changes: (High) the invoice form was prerendered at build time, so new
+customers could not be invoiced under `next start` → dynamic page,
+revalidation, verified on `next start`; (Medium) a new invoice could push the
+dashboard test's seed row to page 2 → the test searches; (Low) no error page
+→ added. Authentication, validation, SQL, error leakage, the 23503 mapping,
+redirect placement and accessibility were checked and found correct.
+
+**UI**: tested in a browser, not seen. A human should look at the customers
+page and forms at phone and desktop width, and the delete message's placement.

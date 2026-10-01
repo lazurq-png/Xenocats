@@ -404,3 +404,37 @@ check that the seed data satisfies the key.
   `xenocats_test` from the migrations and seeds it (customers are inserted
   before invoices). CI's build job does the same on its own server. The run
   never applies it to `xenocats` (Q3).
+
+## D17 — T10: customer create, edit and delete
+
+Plan task 10: create, edit and delete customers following the invoice pattern
+(Server Actions validated with zod, `auth()` checked in each action,
+`useActionState` errors with `aria-describedby`); deleting a customer who still
+has invoices is refused with a clear message (the key from task 9 enforces it,
+the action reports it); e2e tests, each on its own customer.
+
+- The customers page was still the course's placeholder ("Customers Page"),
+  with an unused table component. Editing and deleting need a list, so the page
+  now shows the table with the existing search and a Create Customer button,
+  and each row has Edit and Delete (as the invoice list does).
+- `createCustomer`, `updateCustomer`, `deleteCustomer` in `actions.ts`: each
+  checks the session first, validates with `CustomerForm` (trimmed name and
+  email, ≤ 255 like the columns) and the id with `CustomerId` (a UUID — the id
+  is a client-supplied argument to a public endpoint), and returns only generic
+  database errors. A delete the key refuses (PostgreSQL `23503`) returns "This
+  customer still has invoices. Delete or reassign them first.", shown next to
+  the button and tied to it with `aria-describedby`. An edit of a customer that
+  no longer exists says so instead of redirecting as if it had worked.
+- One form component serves create and edit (the invoice pattern has two near
+  copies). `image_url` is not editable: avatars are drawn from the name, and
+  new customers get an existing avatar file to satisfy the NOT NULL column.
+- The edit page shows not-found for an unknown or malformed id.
+- After review: (High) `/dashboard/invoices/create` was prerendered at build
+  time with the seed customers, so under `next start` a new customer could
+  never be invoiced (and the e2e test would fail in CI's build job; it passed
+  locally only against `next dev`) → the page renders per request
+  (`connection()`), and every customer write revalidates the customer list,
+  the invoice list and the invoice form; verified with `E2E_SERVER=start` over
+  a fresh build. (Medium) a new invoice dated today pushed the seed row the
+  dashboard test looks for towards page 2 → that test searches for it.
+  (Low) the customers pages got the invoices' `error.tsx`.
