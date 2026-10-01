@@ -290,11 +290,19 @@ test('Survival under pointer lock: the game owns the pointer, a click banishes t
     )
     .toBe(true);
 
-  // Esc releases the lock with the page still focused: that ends the game.
+  // Losing the lock ends the game if the page still has focus (that is Esc) and
+  // pauses it if not (another window took it). Some headless browsers never give a
+  // page focus, so the test checks whichever this browser reports.
+  const focused = await page.evaluate(() => document.hasFocus());
   await page.evaluate(() => document.exitPointerLock());
-  await expect(page.getByTestId('fight-overlay')).toHaveCount(0);
-  await expect(page.getByRole('status').filter({ hasText: 'Game over' })).toContainText(
-    'Game over. You survived'
-  );
   expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+  if (focused) {
+    await expect(page.getByTestId('fight-overlay')).toHaveCount(0);
+    await expect(page.getByRole('status').filter({ hasText: 'Game over' })).toContainText(
+      'Game over. You survived'
+    );
+  } else {
+    await expect(overlay).toHaveAttribute('data-phase', 'paused');
+    await expect(overlay.getByRole('button', { name: 'Resume' })).toBeVisible();
+  }
 });

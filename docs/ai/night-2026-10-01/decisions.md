@@ -281,3 +281,11 @@ visitor.
   browser jobs; it runs after the unit groups so it never skips lint or type
   check; browser groups run only if the browser install (hence the build)
   succeeded. actionlint clean.
+- **CI cycle 2 (`fdbc6cd`) named the culprit**: only the "fight" browser group
+  fails, in both jobs; every other group and all unit groups pass. Cycle 3
+  hypothesis: in CI's headless Chromium `document.hasFocus()` is false, so
+  losing the pointer lock correctly *pauses* the game (D3: a lost lock without
+  focus is a window switch), while the lock test expected "game over". The
+  test now checks the documented behaviour for whichever focus the browser
+  reports; both branches were run locally (the unfocused one by faking
+  `hasFocus`).
