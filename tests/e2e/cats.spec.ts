@@ -33,7 +33,9 @@ async function summon(page: Page, id: string) {
   const button = page.getByTestId(`summon-${id}`);
   // Scroll first: measuring a button below the fold and then clicking it (which
   // scrolls) would record a pointer position the page has since moved away from.
-  await button.scrollIntoViewIfNeeded();
+  // Centred, so a test can move the pointer some way in any direction and stay on
+  // the page.
+  await button.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const box = (await button.boundingBox())!;
   const pointer = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.mouse.move(pointer.x, pointer.y);

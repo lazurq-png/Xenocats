@@ -104,3 +104,68 @@ local; no second review pass.
 **UI**: tested in a browser (fallback path), not seen. A human should look at
 the Fight overlay in both modes, especially under real pointer lock (Esc ends,
 alt-tab pauses, the drawn pointer and its effects).
+
+## T2 — Fight a cat: Taming (completed)
+
+- Branch `night-2026-10-01-t2-taming`, base `481610b`. Started 2026-10-01
+  15:07 (budget 14.79M); completed 16:06 (budget 14.71M).
+- **Correction to T1's entry:** T1 completed at 15:05, not 15:31 as written
+  there (misread clock).
+- **T1 CI: passed** — `night-2026-10-01-t1-survival`
+  https://github.com/lazurq-png/Xenocats/actions/runs/36866336836 and
+  `night-2026-10-01` https://github.com/lazurq-png/Xenocats/actions/runs/36866340434.
+
+**What the code does**
+
+- `app/ui/xenocats/taming.ts` (new): the pure Taming game. One cat at a time
+  wanders the screen; a pointer moving within 140 px makes it dodge in its
+  type's way (`DODGES`, one entry per attack: blink, dash, sidestep, hop,
+  circle, mirror, drop, axis, with distance, duration and reaction time); a
+  pointer still for 1 s makes it walk over; holding still on it (within 36 px,
+  moving < 6 px) for 2 s tames it, and the next cat comes after 1.2 s. No cat
+  appears while other cats fill the 5-cat limit. Also the tamed collection
+  (`{ typeId: count }` under `xenocats:tamed`) with a validating reader.
+- `app/ui/xenocats/fight.tsx`: a "Start Taming" button beside "Start
+  Survival", sharing pointer lock, fallback, pause and Esc. The overlay shows
+  the tamed-this-game count and a hold progress bar; the cat glows as the hold
+  fills and fades during a blink. Each tame is stored at once; the section
+  shows the total tamed. The loop now moves cats directly and re-renders only
+  on visible changes (D8).
+- `tests/unit/xenocats/taming.test.ts` (new, 14 tests): all 20 types dodge
+  differently; every dodge moves the cat on screen; kinds behave as named;
+  moving near makes it dodge away; the lagging cat reacts late; 2-second rule
+  (tamed at 2000–2050 ms after the hold starts, reset by a 10 px twitch, not
+  tamed beside the cat); the next cat comes; room 0 → no cat; collection
+  counting and validation.
+- `tests/e2e/fight.spec.ts`: two Taming tests (fallback path): a still pointer
+  draws the cat over and tames it into localStorage; a moving pointer makes it
+  dodge.
+- `tests/e2e/cats.spec.ts`: the `summon()` helper centres the button before
+  measuring, so pointer moves stay on the page now the Fight section is taller
+  (Mirror Sphynx test failed 5/5 without it — reviewer).
+
+**Why**: plan task 2. Rules and acceptance criteria: D6.
+
+**Acceptance criteria evidence**: (2) dodging, (3) 2-second rule, (5) own
+dodges, (6) by unit tests; (1) Taming beside Survival with fallback, (3), (4)
+localStorage collection by browser tests. Locked-mode Taming is covered by
+reading only. "Each type dodges in its own way" is met by distinct parameters
+over 8 kinds — several types share a kind (reviewer, Low; a judgement call for
+the human, D6).
+
+**Verification** (final code): `npm run lint` exit 0, 0 warnings (baseline
+0); `next typegen && tsc --noEmit` exit 0; `npm test` exit 0, 19 files / 264
+tests; `npm run build` exit 0; e2e `npx playwright test --workers=1` exit 0,
+**44 passed** (5.1 min). The plain `npm run test:e2e` (4 workers) failed 3
+timing-sensitive tests under machine load, as did a control run on the T1 tip
+— D7. Prettier clean on all changed files (D1). `next-env.d.ts` restored after
+the checks.
+
+**Review**: `reviewer` — first pass Request Changes: (High) Mirror Sphynx e2e
+failing → `summon()` centring; (Medium) Taming ignored gallery cats for the
+5-cat limit → `room`; (Low) dodges differ by numbers within kinds → recorded.
+Second pass after the fixes and D8: **Approve**.
+
+**UI**: tested in a browser (fallback), not seen. A human should look at the
+Taming overlay: the blink (drawn as a fast slide at 15% opacity, not a true
+vanish), the hold glow and progress bar, and Taming under real pointer lock.
