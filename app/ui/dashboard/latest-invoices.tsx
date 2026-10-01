@@ -30,7 +30,7 @@ export default async function LatestInvoices() {
             <span className="hidden whitespace-nowrap sm:block">
               {formatDateToLocal(invoice.date)}
             </span>
-            <InvoiceStatus status={invoice.status} />
+            <InvoiceStatus status={invoice.status} overdue={invoice.overdue} />
             <span className="text-right">{invoice.amount}</span>
           </li>
         ))}

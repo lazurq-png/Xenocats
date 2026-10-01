@@ -16,10 +16,24 @@ import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard'
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
+/** Unpaid and past its due date: worked out when read, never stored. */
+const isOverdue = () => sql`(invoices.status = 'pending' AND invoices.due_date < CURRENT_DATE)`;
+
+/**
+ * The invoice list's status filter. Each invoice is in exactly one of paid,
+ * pending (unpaid, not yet due) and overdue; null matches every invoice.
+ */
+const matchesStatus = (status: InvoiceStatusFilter | null) => {
+  if (status === 'overdue') return isOverdue();
+  if (status === 'pending') return sql`(invoices.status = 'pending' AND NOT ${isOverdue()})`;
+  if (status === 'paid') return sql`invoices.status = 'paid'`;
+  return sql`TRUE`;
+};
+
 export async function fetchLatestInvoices() {
   try {
     const data = await sql<LatestInvoiceRaw[]>`
-      SELECT invoices.amount, invoices.date, invoices.status, customers.name, customers.image_url, customers.email, invoices.id
+      SELECT invoices.amount, invoices.date, invoices.status, ${isOverdue()} AS overdue, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       ORDER BY invoices.date DESC
@@ -149,6 +163,7 @@ export async function fetchFilteredInvoices(
         invoices.amount,
         invoices.date,
         invoices.status,
+        ${isOverdue()} AS overdue,
         customers.name,
         customers.email,
         customers.image_url
@@ -161,7 +176,7 @@ export async function fetchFilteredInvoices(
         invoices.date::text ILIKE ${`%${query}%`} OR
         invoices.status ILIKE ${`%${query}%`}
       )
-      AND (${status}::text IS NULL OR invoices.status = ${status})
+      AND ${matchesStatus(status)}
       ORDER BY invoices.date DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
@@ -186,14 +201,24 @@ export async function fetchInvoicesForExport(
 ) {
   try {
     return await sql<
-      { date: string; name: string; email: string; amount: number; status: string }[]
+      {
+        date: string;
+        due_date: string;
+        name: string;
+        email: string;
+        amount: number;
+        status: string;
+        overdue: boolean;
+      }[]
     >`
       SELECT
         to_char(invoices.date, 'YYYY-MM-DD') AS date,
+        to_char(invoices.due_date, 'YYYY-MM-DD') AS due_date,
         customers.name,
         customers.email,
         invoices.amount,
-        invoices.status
+        invoices.status,
+        ${isOverdue()} AS overdue
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE (
@@ -203,7 +228,7 @@ export async function fetchInvoicesForExport(
         invoices.date::text ILIKE ${`%${query}%`} OR
         invoices.status ILIKE ${`%${query}%`}
       )
-      AND (${status}::text IS NULL OR invoices.status = ${status})
+      AND ${matchesStatus(status)}
       ORDER BY invoices.date DESC
       LIMIT ${EXPORT_LIMIT + 1}
     `;
@@ -225,7 +250,7 @@ export async function fetchInvoicesPages(query: string, status: InvoiceStatusFil
       invoices.date::text ILIKE ${`%${query}%`} OR
       invoices.status ILIKE ${`%${query}%`}
     )
-    AND (${status}::text IS NULL OR invoices.status = ${status})
+    AND ${matchesStatus(status)}
   `;
 
     const totalPages = Math.ceil(Number(data[0].count) / ITEMS_PER_PAGE);
@@ -272,6 +297,8 @@ export async function fetchInvoiceDetail(id: string) {
         invoices.amount,
         invoices.status,
         invoices.date,
+        invoices.due_date,
+        ${isOverdue()} AS overdue,
         customers.id AS customer_id,
         customers.name,
         customers.email

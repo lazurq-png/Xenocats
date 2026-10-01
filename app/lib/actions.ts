@@ -57,12 +57,13 @@ export async function createInvoice(prevState: State, formData: FormData) {
   // gives 1000037.0000000001), and the column is an integer.
   const amountInCents = Math.round(amount * 100);
   const date = new Date().toISOString().split('T')[0];
+  // Due 30 days after its date: the payment term (db/migrations/0003).
 
   // Insert data into the database
   try {
     await sql`
-      INSERT INTO invoices (customer_id, amount, status, date)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
+      INSERT INTO invoices (customer_id, amount, status, date, due_date)
+      VALUES (${customerId}, ${amountInCents}, ${status}, ${date}, ${date}::date + 30)
     `;
   } catch (error) {
     // Log the database error on the server; return only a generic message.

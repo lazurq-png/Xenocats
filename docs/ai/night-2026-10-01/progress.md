@@ -840,3 +840,59 @@ expired) plus a note on an export-only 200-character query cap. All fixed
 **UI**: tested in a browser, not seen. A human should look at the Export CSV
 button beside the filter at phone and desktop width, and open the file in a
 spreadsheet.
+
+## T14 — Invoice due dates and overdue (completed)
+
+- Branch `night-2026-10-01-t14-due-dates`, base `ff07941`. Started
+  2026-10-02 01:17 (budget 13.93M); completed 2026-10-02 01:50 (budget 13.87M).
+- **T13**: committed `ff07941`, merged and pushed. CI: **pushed; CI not observed** — the poll found no workflow run for `ff07941` on either branch within its 30 minutes (both branches confirmed at `ff07941` on the remote).
+
+**What the code does**
+
+- `db/migrations/0003_invoice_due_dates.sql` (new): adds `invoices.due_date`,
+  fills existing rows with their date + 30 days, then makes it required
+  (default today + 30, check `due_date >= date`). Not applied to `xenocats`
+  (Q3).
+- `app/lib/data.ts`: overdue is worked out when read (pending and past its
+  due date), never stored; one status filter (`matchesStatus`) for the list,
+  its page count and the export, where paid, pending (not yet due) and
+  overdue are disjoint. The list, latest invoices, detail and export queries
+  return `overdue`; detail and export also the due date.
+- `app/lib/actions.ts`: a new invoice is due 30 days after its date.
+- `app/ui/invoices/status.tsx`: an unpaid invoice past its due date shows
+  "Overdue" (filled lime pill) instead of "Pending"; used by the invoice
+  table, the dashboard's latest invoices and the detail page, which also
+  shows the due date.
+- `app/ui/invoices/status-filter.tsx`, `app/lib/schemas.ts`: an Overdue
+  filter option (`?status=overdue`).
+- Export route: a Due column; Status says `overdue` as the list does.
+- Seed (`placeholder-data.ts`, `scripts/db.mjs`): every invoice has a due
+  date, its date + 30.
+- Tests: unit (the filter accepts `overdue`; `createInvoice` inserts the due
+  date as date + 30; export rows for pending, overdue and paid); browser
+  (`invoices-filter.spec.ts`: Overdue filter on seeded rows; a new invoice of
+  its own is Pending, under the pending filter and not under overdue, and
+  its detail page shows the due date 30 days ahead; export spec's Due
+  column).
+
+**Why**: plan task 14. Design: D22; editable terms proposed as Q4.
+
+**Acceptance criteria evidence**: migration applied from scratch by the e2e
+setup on every run (both servers), CI will apply it too; derived due dates for
+existing rows — by reading (the seed inserts its own due dates, so no test
+runs the `UPDATE` on existing rows); overdue shown and filterable — browser
+test on seeded rows; pending vs. overdue for a new invoice — browser test.
+
+**Verification**: `npm run lint` exit 0, 0 warnings (baseline 0);
+`next typegen && tsc` exit 0; `npm test` 27 files / 394 tests, exit 0;
+`npm run build` exit 0; `npm run test:e2e` 70 passed and
+`E2E_SERVER=start` 70 passed; prettier clean on the changed files (D1).
+
+**Review**: `reviewer` — Approve; two optional Lows, not taken, reasons in
+D22: every seeded unpaid invoice is overdue (a made-up future due date would
+be fake demo data); the text search matches the stored status, not the word
+"overdue" (the filter does).
+
+**UI**: tested in a browser, not seen. A human should look at the Overdue
+pill in the invoice table, the dashboard's latest invoices and the detail
+page (with its Due line), at phone and desktop width.

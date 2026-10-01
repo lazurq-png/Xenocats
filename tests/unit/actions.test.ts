@@ -85,7 +85,10 @@ describe('with a session', () => {
   it('createInvoice stores the amount in cents and redirects to the list', async () => {
     await createInvoice({}, invoiceForm());
     expect(sql).toHaveBeenCalledTimes(1);
-    expect(sql.mock.calls[0].slice(1)).toEqual(['c0ffee', 1250, 'paid', expect.any(String)]);
+    // Dated today, and due 30 days after that date (computed by the database).
+    const today = new Date().toISOString().slice(0, 10);
+    expect(sql.mock.calls[0].slice(1)).toEqual(['c0ffee', 1250, 'paid', today, today]);
+    expect(sql.mock.calls[0][0].join('?')).toContain('?, ?::date + 30)');
     expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices');
     expect(redirect).toHaveBeenCalledWith('/dashboard/invoices');
   });

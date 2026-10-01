@@ -118,7 +118,8 @@ describe('parseStatusFilter', () => {
   it('keeps a known status and drops anything else', () => {
     expect(parseStatusFilter('paid')).toBe('paid');
     expect(parseStatusFilter('pending')).toBe('pending');
-    for (const value of [undefined, '', 'PAID', 'overdue', "paid' OR 1=1"]) {
+    expect(parseStatusFilter('overdue')).toBe('overdue');
+    for (const value of [undefined, '', 'PAID', 'Overdue', "paid' OR 1=1"]) {
       expect(parseStatusFilter(value)).toBeNull();
     }
   });

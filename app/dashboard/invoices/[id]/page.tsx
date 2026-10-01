@@ -22,6 +22,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const details = [
     ['Amount', amount],
     ['Date', formatDateToLocal(invoice.date)],
+    ['Due', formatDateToLocal(invoice.due_date)],
     ['Customer email', invoice.email],
     ['Invoice number', invoice.id],
   ] as const;
@@ -49,7 +50,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <InvoiceStatus status={invoice.status} />
+            <InvoiceStatus status={invoice.status} overdue={invoice.overdue} />
             <UpdateInvoice id={invoice.id} />
             <DeleteInvoice
               id={invoice.id}

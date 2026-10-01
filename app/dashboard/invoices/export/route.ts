@@ -28,14 +28,16 @@ export async function GET(request: Request) {
   }
 
   const csv = toCsv([
-    ['Date', 'Customer', 'Email', 'Amount', 'Status'],
+    ['Date', 'Due', 'Customer', 'Email', 'Amount', 'Status'],
     ...invoices.map((invoice) => [
       invoice.date,
+      invoice.due_date,
       invoice.name,
       invoice.email,
       // Dollars with cents, as text: a spreadsheet reads it as a number.
       (invoice.amount / 100).toFixed(2),
-      invoice.status,
+      // As the list shows it: pending past its due date is overdue.
+      invoice.status === 'pending' && invoice.overdue ? 'overdue' : invoice.status,
     ]),
   ]);
 

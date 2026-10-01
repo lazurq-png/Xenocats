@@ -69,3 +69,15 @@ fails without changing anything if an invoice there names a missing customer.
 It takes write-blocking locks on `invoices` and `customers` while it checks the
 rows and builds the indexes (one transaction, so no `CONCURRENTLY`): on a large
 live table, apply it when traffic is low.
+
+Also `0003_invoice_due_dates.sql` (T14): adds `invoices.due_date`, fills it with
+each invoice's date + 30 days, and makes it required. Until it is applied, the
+app after T14 fails on every invoice read and insert against `xenocats`
+(the column does not exist), so apply it before running that app.
+
+## Q4 — Payment terms other than 30 days? (proposed task, not built)
+
+T14 gives every invoice the due date "invoice date + 30 days" (D22); the forms
+neither show nor change it. If invoices need other terms, a next plan could add
+a due-date field to the create and edit forms (validated not before the
+invoice date, as the database's check already requires).

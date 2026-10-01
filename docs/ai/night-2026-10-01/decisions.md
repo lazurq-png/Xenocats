@@ -538,3 +538,36 @@ route that checks `auth()` itself, with values escaped for spreadsheets
     makes a download.
   - The export-only 200-character query cap is gone: the export takes the
     same query the list does.
+
+## D22 — T14: invoice due dates and overdue
+
+Plan task 14: a due date (existing rows derived from their date), "Overdue"
+shown for unpaid invoices past it and filterable, seed data updated.
+
+- **Due date = invoice date + 30 days.** Smallest reading: the task names no
+  terms and no form field. `0003_invoice_due_dates.sql` adds the column,
+  fills existing rows with `date + 30`, then makes it `NOT NULL` with a check
+  `due_date >= date`. Its default, `CURRENT_DATE + 30`, keeps an insert from
+  the app before the migration valid and correct (that app dates invoices
+  today). `createInvoice` sets it explicitly (`date + 30`, in SQL); editing an
+  invoice changes neither date. Editable terms: Q4.
+- **Overdue is derived, never stored**: `status = 'pending' AND due_date <
+  CURRENT_DATE`, one SQL fragment in `data.ts`, so it cannot go stale and
+  needs no job to update it. `CURRENT_DATE` is the database's day; invoices
+  are dated with the UTC day (unchanged), so around midnight the two can
+  differ by a day — accepted.
+- **Three disjoint states.** A row's pill says exactly one of Paid, Pending
+  (unpaid, not yet due) or Overdue (a filled lime pill, in place of Pending).
+  The filter has the same three options; `pending` no longer includes overdue
+  invoices, so each option shows what its rows say. One fragment
+  (`matchesStatus`) serves the list, its page count and the CSV export. The
+  dashboard's totals still count overdue invoices as pending (they are
+  unpaid); the text search does not match the word "overdue" (the filter
+  does).
+- **CSV export** gains a Due column after Date; its Status column says
+  `overdue` as the list does.
+- **Seed**: every seeded invoice has `due_date` = its date + 30. All seeded
+  invoices date from 2022–2023, so every seeded unpaid invoice now shows as
+  Overdue. The status-filter browser test now checks Overdue on the seed rows
+  and Pending on an invoice of its own (new today, due in 30 days).
+- Not applied to `xenocats` (plan rule): Q3.

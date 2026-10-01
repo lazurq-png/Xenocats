@@ -47,10 +47,13 @@ test('the export is the filtered list as CSV, with formulas made harmless', asyn
   expect(download.suggestedFilename()).toBe('invoices.csv');
   const csv = readFileSync((await download.path())!, 'utf8').replace(/^\uFEFF/, '');
   const lines = csv.split('\r\n').filter(Boolean);
-  expect(lines[0]).toBe('Date,Customer,Email,Amount,Status');
-  // Only this customer's invoice, and the name can no longer run as a formula.
+  expect(lines[0]).toBe('Date,Due,Customer,Email,Amount,Status');
+  // Only this customer's invoice, due 30 days after today, and the name can no
+  // longer run as a formula.
+  const day = (offset: number) =>
+    new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
   expect(lines.slice(1)).toEqual([
-    `${new Date().toISOString().slice(0, 10)},'${name},${tag}@example.com,12.34,pending`,
+    `${day(0)},${day(30)},'${name},${tag}@example.com,12.34,pending`,
   ]);
 });
 

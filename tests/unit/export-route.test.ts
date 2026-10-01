@@ -6,8 +6,8 @@ const { auth, fetchInvoicesForExport } = vi.hoisted(() => ({
   fetchInvoicesForExport: vi.fn(),
 }));
 vi.mock('@/auth', () => ({ auth }));
-// A cap of 2 rows, so the over-the-cap case needs only three.
-vi.mock('@/app/lib/data', () => ({ EXPORT_LIMIT: 2, fetchInvoicesForExport }));
+// A cap of 3 rows, so the over-the-cap case needs only four.
+vi.mock('@/app/lib/data', () => ({ EXPORT_LIMIT: 3, fetchInvoicesForExport }));
 
 const { GET } = await import('@/app/dashboard/invoices/export/route');
 
@@ -17,13 +17,32 @@ beforeEach(() => {
   vi.clearAllMocks();
   fetchInvoicesForExport.mockResolvedValue([
     {
+      date: '2023-07-01',
+      due_date: '2023-07-31',
+      name: 'Delba de Oliveira',
+      email: 'delba@oliveira.com',
+      amount: 120,
+      status: 'pending',
+      overdue: false,
+    },
+    {
       date: '2023-06-27',
+      due_date: '2023-07-27',
       name: 'Evil Rabbit',
       email: 'evil@rabbit.com',
       amount: 66600,
       status: 'pending',
+      overdue: true,
     },
-    { date: '2023-06-09', name: '=HYPERLINK("x")', email: 'a@b.c', amount: 5, status: 'paid' },
+    {
+      date: '2023-06-09',
+      due_date: '2023-07-09',
+      name: '=HYPERLINK("x")',
+      email: 'a@b.c',
+      amount: 5,
+      status: 'paid',
+      overdue: false,
+    },
   ]);
 });
 
@@ -59,16 +78,18 @@ describe('with a session', () => {
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const body = await response.text();
     expect(body.split('\r\n')).toEqual([
-      'Date,Customer,Email,Amount,Status',
-      '2023-06-27,Evil Rabbit,evil@rabbit.com,666.00,pending',
-      `2023-06-09,"'=HYPERLINK(""x"")",a@b.c,0.05,paid`,
+      'Date,Due,Customer,Email,Amount,Status',
+      '2023-07-01,2023-07-31,Delba de Oliveira,delba@oliveira.com,1.20,pending',
+      // Pending past its due date: overdue, as the list shows it.
+      '2023-06-27,2023-07-27,Evil Rabbit,evil@rabbit.com,666.00,overdue',
+      `2023-06-09,2023-07-09,"'=HYPERLINK(""x"")",a@b.c,0.05,paid`,
       '',
     ]);
   });
 
   it('refuses rather than send a file that is cut short', async () => {
     fetchInvoicesForExport.mockResolvedValue(
-      [1, 2, 3].map((n) => ({
+      [1, 2, 3, 4].map((n) => ({
         date: '2023-01-0' + n,
         name: 'n',
         email: 'e',

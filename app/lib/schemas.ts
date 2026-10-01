@@ -38,8 +38,11 @@ export const CustomerId = z.string().uuid();
 /** An invoice id from a URL or an action's argument, likewise. */
 export const InvoiceId = z.string().uuid();
 
-/** The invoice list's status filter, from the URL: anything unknown shows every status. */
-export const InvoiceStatusFilter = z.enum(['paid', 'pending']);
+/**
+ * The invoice list's status filter, from the URL: anything unknown shows every
+ * status. Pending means unpaid and not yet due; overdue, unpaid and past due.
+ */
+export const InvoiceStatusFilter = z.enum(['paid', 'pending', 'overdue']);
 export type InvoiceStatusFilter = z.infer<typeof InvoiceStatusFilter>;
 
 export const parseStatusFilter = (value: string | undefined): InvoiceStatusFilter | null =>

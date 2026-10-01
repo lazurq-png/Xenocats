@@ -28,13 +28,14 @@ export default function StatusFilter() {
       </label>
       <select
         id="status-filter"
-        value={['paid', 'pending'].includes(current) ? current : ''}
+        value={['paid', 'pending', 'overdue'].includes(current) ? current : ''}
         onChange={(event) => choose(event.target.value)}
         className="block h-10 rounded-xl border border-line bg-panel py-2 pl-9 pr-8 text-sm text-white focus:border-aura focus:ring-aura"
       >
         <option value="">All statuses</option>
         <option value="paid">Paid</option>
         <option value="pending">Pending</option>
+        <option value="overdue">Overdue</option>
       </select>
       <FunnelIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-aura" />
     </div>

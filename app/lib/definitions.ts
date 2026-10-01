@@ -47,6 +47,8 @@ export type LatestInvoice = {
   amount: string;
   date: string;
   status: 'pending' | 'paid';
+  /** Pending and past its due date. */
+  overdue: boolean;
 };
 
 // The database returns a number for amount, but we later format it to a string with the formatCurrency function
@@ -63,6 +65,8 @@ export type InvoicesTable = {
   date: string;
   amount: number;
   status: 'pending' | 'paid';
+  /** Pending and past its due date. */
+  overdue: boolean;
 };
 
 export type CustomersTableType = {
@@ -110,6 +114,9 @@ export type InvoiceDetail = {
   amount: number;
   status: 'pending' | 'paid';
   date: string;
+  due_date: string;
+  /** Pending and past its due date. */
+  overdue: boolean;
   customer_id: string;
   name: string;
   email: string;
