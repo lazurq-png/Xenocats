@@ -502,3 +502,39 @@ deleting (an accessible dialog: focus trapped and restored, Esc cancels).
   404 flash of the deleted page); after a delete from the list, focus goes to
   the search box; while a delete runs, Esc and Cancel do nothing, so a failure
   is still shown.
+
+## D21 — T13: CSV export
+
+Plan task 13: export the currently filtered invoice list as CSV through a
+route that checks `auth()` itself, with values escaped for spreadsheets
+(formula injection).
+
+- `GET /dashboard/invoices/export?query=&status=` (a route handler): returns
+  401 without a session before reading anything — the proxy already sends a
+  signed-out visitor to the login page for `/dashboard/**`, but the route does
+  not rely on it. Same filters as the list (`parseStatusFilter`, the same
+  query), no pagination, newest first; more than 10 000 matching rows is
+  refused with 422 rather than cut short.
+  Columns: Date (YYYY-MM-DD), Customer, Email, Amount (dollars, 2 decimals),
+  Status. `Content-Disposition: attachment`, `Cache-Control: no-store`, a UTF-8
+  byte-order mark so Excel reads it as UTF-8.
+- `app/lib/csv.ts`: a text cell that starts with `=`, `+`, `-`, `@` or their
+  full-width forms, possibly after spaces or control characters, or that starts
+  with a tab, carriage return or line feed, gets a leading apostrophe (OWASP's
+  CSV-injection advice);
+  then RFC 4180 quoting for quotes, commas, line breaks and edge spaces.
+  Numbers are written as they are; amounts are formatted text starting with a
+  digit, so never prefixed.
+- An "Export CSV" link beside the filter carries the current search and status.
+- After review (all three findings taken; the reviewer's notes are in the T13
+  progress entry):
+  - Formula detection also looks past leading spaces and control characters,
+    takes a leading line feed, and covers the full-width `＝ ＋ － ＠`.
+  - No silent truncation: the query fetches 10 001 rows; if there are more
+    than 10 000, the route answers 422 with "narrow the search or the status
+    filter" instead of a file that looks complete.
+  - The link has no `download` attribute, so an expired session shows the
+    login page instead of saving it as a file; `Content-Disposition` still
+    makes a download.
+  - The export-only 200-character query cap is gone: the export takes the
+    same query the list does.

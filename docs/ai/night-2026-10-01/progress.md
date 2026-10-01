@@ -788,3 +788,55 @@ hide its failure), all fixed.
 
 **UI**: tested in a browser, not seen. A human should look at the dialog and
 the detail page at phone and desktop width.
+
+## T13 — CSV export of the invoice list (completed)
+
+- Branch `night-2026-10-01-t13-csv-export`, base `4b4f512`. Started
+  2026-10-02 01:02 (budget 14.07M); completed 2026-10-02 01:17 (budget 13.93M).
+- **T12 CI: failed, fight group only** (inherited, Q1); the invoice-detail
+  browser group passed. Runs 36938570356 / 36938567786.
+
+**What the code does**
+
+- `app/dashboard/invoices/export/route.ts` (new): `GET` answers 401 without a
+  session before reading anything; otherwise the invoices matching the list's
+  search and status filter, newest first, as a CSV attachment
+  (`invoices.csv`, `text/csv; charset=utf-8`, `no-store`, UTF-8 byte-order
+  mark). Columns Date, Customer, Email, Amount (dollars), Status. More than
+  10 000 matching invoices is refused with 422 and "narrow the search or the
+  status filter", never a file cut short.
+- `app/lib/csv.ts` (new): cells safe for spreadsheets — text a spreadsheet
+  could run as a formula (`= + - @`, full-width forms, after leading spaces or
+  control characters, or a leading tab/CR/LF) gets an apostrophe; RFC 4180
+  quoting.
+- `app/lib/data.ts`: `fetchInvoicesForExport` (the list's WHERE, no
+  pagination, `EXPORT_LIMIT + 1` rows).
+- `app/ui/invoices/export-invoices.tsx` (new) and the invoices page: an
+  "Export CSV" link beside the status filter carrying the current search and
+  status.
+- Tests: `tests/unit/csv.test.ts`, `tests/unit/export-route.test.ts` (401,
+  headers, BOM bytes, rows, formula defused, 422 over the cap, unknown
+  status ignored); `tests/e2e/invoice-export.spec.ts` (makes a customer named
+  like a formula and an invoice, downloads the filtered export and checks its
+  one row; a signed-out request gets no CSV). CI groups updated.
+
+**Why**: plan task 13. Design: D21.
+
+**Acceptance criteria evidence**: button downloads the filtered list, behind
+the login, formulas defused — browser test on both servers plus unit tests.
+The 422 path is unit-tested only (10 001 rows were not created in a browser).
+
+**Verification**: `npm run lint` exit 0, 0 warnings (baseline 0);
+`next typegen && tsc` exit 0; `npm test` 27 files / 394 tests, exit 0;
+`npm run build` exit 0; `npm run test:e2e` 69 passed and
+`E2E_SERVER=start` 69 passed; actionlint clean; prettier clean (D1).
+
+**Review**: `reviewer` — first pass: three Lows (formula detection missed
+leading whitespace/LF/full-width; silent truncation at the cap; the
+`download` attribute would save a login page as a file after the session
+expired) plus a note on an export-only 200-character query cap. All fixed
+(D21). Re-review: Approve; one Low (D21 out of date), fixed.
+
+**UI**: tested in a browser, not seen. A human should look at the Export CSV
+button beside the filter at phone and desktop width, and open the file in a
+spreadsheet.

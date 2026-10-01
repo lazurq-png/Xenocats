@@ -173,6 +173,46 @@ export async function fetchFilteredInvoices(
   }
 }
 
+/** The most rows one CSV export holds. */
+export const EXPORT_LIMIT = 10_000;
+
+/**
+ * Every invoice matching the list's search and status, newest first: at most
+ * EXPORT_LIMIT + 1 rows, so a caller can tell there were more than it may export.
+ */
+export async function fetchInvoicesForExport(
+  query: string,
+  status: InvoiceStatusFilter | null = null
+) {
+  try {
+    return await sql<
+      { date: string; name: string; email: string; amount: number; status: string }[]
+    >`
+      SELECT
+        to_char(invoices.date, 'YYYY-MM-DD') AS date,
+        customers.name,
+        customers.email,
+        invoices.amount,
+        invoices.status
+      FROM invoices
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE (
+        customers.name ILIKE ${`%${query}%`} OR
+        customers.email ILIKE ${`%${query}%`} OR
+        invoices.amount::text ILIKE ${`%${query}%`} OR
+        invoices.date::text ILIKE ${`%${query}%`} OR
+        invoices.status ILIKE ${`%${query}%`}
+      )
+      AND (${status}::text IS NULL OR invoices.status = ${status})
+      ORDER BY invoices.date DESC
+      LIMIT ${EXPORT_LIMIT + 1}
+    `;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to export invoices.');
+  }
+}
+
 export async function fetchInvoicesPages(query: string, status: InvoiceStatusFilter | null = null) {
   try {
     const data = await sql`SELECT COUNT(*)
