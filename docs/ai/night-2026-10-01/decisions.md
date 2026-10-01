@@ -458,3 +458,18 @@ the action reports it); e2e tests, each on its own customer.
   foreign-key and self-guard messages, generic errors (unit, mocked database);
   the combo wiring in the page layer (two cats waking together attack once with
   the combo's effect). Nothing removed.
+
+## D19 — T11: invoice status filter
+
+Plan task 11: filter the invoice list by status in the URL, next to search,
+kept through pagination and combined with search.
+
+- `?status=paid|pending` beside `?query=`; anything else (or nothing) shows
+  every status (`parseStatusFilter`, a zod enum). Both queries add
+  `AND (status IS NULL OR invoices.status = status)` after the search's `OR`s,
+  parenthesised, so search and status combine; it is a parameter, never SQL
+  text. The `(status, date DESC)` index from task 9 serves it.
+- A labelled `<select>` (`StatusFilter`, "All statuses / Paid / Pending")
+  beside the search box, writing the URL the way `Search` does; changing it
+  goes back to page 1. Pagination already carries every URL parameter, so the
+  status survives it untouched. Task 14 adds Overdue.

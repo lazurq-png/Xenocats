@@ -9,6 +9,7 @@ import {
   LatestInvoiceRaw,
   MonthTotals,
 } from './definitions';
+import type { InvoiceStatusFilter } from './schemas';
 import { formatCurrency } from './utils';
 import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard';
 
@@ -129,7 +130,15 @@ export async function fetchMonthlyTotals(range: Range, now = new Date()): Promis
 }
 
 const ITEMS_PER_PAGE = 6;
-export async function fetchFilteredInvoices(query: string, currentPage: number) {
+/**
+ * A page of invoices matching the search `query` and, if given, the `status`.
+ * The search and the status combine (both must match).
+ */
+export async function fetchFilteredInvoices(
+  query: string,
+  currentPage: number,
+  status: InvoiceStatusFilter | null = null
+) {
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
@@ -144,12 +153,14 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
         customers.image_url
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE
+      WHERE (
         customers.name ILIKE ${`%${query}%`} OR
         customers.email ILIKE ${`%${query}%`} OR
         invoices.amount::text ILIKE ${`%${query}%`} OR
         invoices.date::text ILIKE ${`%${query}%`} OR
         invoices.status ILIKE ${`%${query}%`}
+      )
+      AND (${status}::text IS NULL OR invoices.status = ${status})
       ORDER BY invoices.date DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
@@ -161,17 +172,19 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
   }
 }
 
-export async function fetchInvoicesPages(query: string) {
+export async function fetchInvoicesPages(query: string, status: InvoiceStatusFilter | null = null) {
   try {
     const data = await sql`SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
-    WHERE
+    WHERE (
       customers.name ILIKE ${`%${query}%`} OR
       customers.email ILIKE ${`%${query}%`} OR
       invoices.amount::text ILIKE ${`%${query}%`} OR
       invoices.date::text ILIKE ${`%${query}%`} OR
       invoices.status ILIKE ${`%${query}%`}
+    )
+    AND (${status}::text IS NULL OR invoices.status = ${status})
   `;
 
     const totalPages = Math.ceil(Number(data[0].count) / ITEMS_PER_PAGE);

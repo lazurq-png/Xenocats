@@ -687,3 +687,49 @@ both fixed:
 tsc` exit 0; `npm test` exit 0, 25 files / 375 tests; `npm run build` exit
 0; `npm run test:e2e` exit 0, 61 passed; `E2E_SERVER=start npm run test:e2e`
 exit 0, 61 passed; prettier clean (D1).
+
+## T11 — Invoice status filter (completed)
+
+- Branch `night-2026-10-01-t11-status-filter`, base `623d402`. Started
+  2026-10-01 21:39 (budget 14.15M); completed 2026-10-01 21:50 (budget 14.12M).
+- **Checkpoint 2 CI: failed, fight group only** (inherited, Q1). Runs
+  36915871842 / 36915867669.
+
+**What the code does**
+
+- `app/lib/schemas.ts`: `InvoiceStatusFilter` (paid, pending) and
+  `parseStatusFilter`, which drops anything else.
+- `app/lib/data.ts`: `fetchFilteredInvoices` and `fetchInvoicesPages` take
+  an optional status; the search's `OR`s are parenthesised and `AND (status
+  IS NULL OR invoices.status = status)` added, as a parameter.
+- `app/ui/invoices/status-filter.tsx` (new): a labelled select ("Status": All
+  statuses / Paid / Pending) beside the search; it writes `?status=` like the
+  search writes `?query=`, and goes back to page 1.
+- `app/dashboard/invoices/page.tsx`, `app/ui/invoices/table.tsx`: read and
+  pass the status; the Suspense key includes it. Pagination already keeps
+  every URL parameter.
+- Tests: `parseStatusFilter` unit test; `tests/e2e/invoices-filter.spec.ts`
+  (new, 2): the filter in the URL; page 2 keeps it and shows other paid
+  invoices; with a search for a customer who has both statuses, each filter
+  shows only that customer's invoices of that status; an unknown status shows
+  everything. In CI's first browser group.
+
+**Why**: plan task 11. Design: D19.
+
+**Acceptance criteria evidence**: all four (URL, beside search, through
+pagination, combined with search) by the browser test on both servers.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 25 files / 376 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 63 passed, and `E2E_SERVER=start` 63 passed;
+after the test fix, the spec 6/6 (dev) and 4/4 (start); actionlint clean;
+prettier clean (D1).
+
+**Review**: `reviewer` — product code correct (SQL precedence, parameters,
+NULL handling, URL handling, accessibility); Request Changes on the test:
+(Medium) the "combined with search" step used a customer whose invoices are
+all paid, so it could not fail → a customer with both statuses, both filters
+checked; (Low) page 2 might show page 1's rows → asserted different. Fixed.
+
+**UI**: tested in a browser, not seen. At phone width the search, the select
+and Create share one row; a human should look.

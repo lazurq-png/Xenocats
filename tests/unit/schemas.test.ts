@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CreateInvoice, CustomerForm, CustomerId, UpdateInvoice } from '@/app/lib/schemas';
+import {
+  CreateInvoice,
+  CustomerForm,
+  CustomerId,
+  UpdateInvoice,
+  parseStatusFilter,
+} from '@/app/lib/schemas';
 
 // The actions pass formData.get(...) straight in, so a missing field arrives as null.
 const valid = { customerId: 'c0ffee', amount: '12.50', status: 'paid' };
@@ -94,6 +100,16 @@ describe('CustomerId', () => {
     expect(CustomerId.safeParse('3958dc9e-712f-4377-85e9-fec4b6a6442a').success).toBe(true);
     for (const id of ['', '1', "' OR 1=1 --", '3958dc9e-712f-4377-85e9']) {
       expect(CustomerId.safeParse(id).success).toBe(false);
+    }
+  });
+});
+
+describe('parseStatusFilter', () => {
+  it('keeps a known status and drops anything else', () => {
+    expect(parseStatusFilter('paid')).toBe('paid');
+    expect(parseStatusFilter('pending')).toBe('pending');
+    for (const value of [undefined, '', 'PAID', 'overdue', "paid' OR 1=1"]) {
+      expect(parseStatusFilter(value)).toBeNull();
     }
   });
 });
