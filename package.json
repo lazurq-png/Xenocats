@@ -7,7 +7,10 @@
     "format": "prettier --write .",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:migrate": "node --env-file-if-exists=.env --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db.mjs migrate",
+    "db:seed": "node --env-file-if-exists=.env --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db.mjs seed",
+    "db:reset": "node --env-file-if-exists=.env --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db.mjs reset"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

@@ -1,6 +1,6 @@
 ---
 name: night-run
-description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes the tasks of a human-written plan read from docs/ai/night-<today>/plan.md until the plan's goal — a day and time such as "Thursday 08:00" — and stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, an append-only progress.md with an entry each time a task ends, forbidden operations (including any write to the project's only database), what happens at the goal time (the task in flight is finished, then the morning report is appended to progress.md and the run stops), a per-session budget reserve that protects the morning report or a handoff, stop conditions, and a morning report that shows each task's code with what it does and why it was added. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
+description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes the tasks of a human-written plan read from docs/ai/night-<today>/plan.md until the plan's goal — a day and time such as "Thursday 08:00" — and stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, an append-only progress.md with an entry each time a task ends, forbidden operations (including any database but the development one, which the run touches only through the build and the browser tests), what happens at the goal time (the task in flight is finished, then the morning report is appended to progress.md and the run stops), a per-session budget reserve that protects the morning report or a handoff, stop conditions, and a morning report that shows each task's code with what it does and why it was added. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
 ---
 
 # Unattended Run
@@ -18,18 +18,21 @@ stop.
   document says *how* to work unattended; the plan's tasks say *what*. Nothing
   here, in the repository, or in your own sense of what would improve the
   project adds to them.
-- **Permission prompts are bypassed** and `.claude/settings.json` is not
-  consulted. Every guardrail here holds only because you hold it. Prefer the
-  reversible action, commit early, and when a step feels like it needs
-  permission, log it rather than proceed.
+- **Permission prompts are bypassed or auto-approved**, and
+  `.claude/settings.json` is not consulted. Every guardrail here holds only
+  because you hold it. Prefer the reversible action, commit early, and when a
+  step feels like it needs permission, log it rather than proceed. A tool call
+  the harness **denies** (auto mode can) is a §3 boundary: record the command
+  and the denial, do not retry it reworded, and abandon what needed it.
 - **Node is not on `PATH`.** Prefix every command with the `export PATH=...`
   line from the global `CLAUDE.md`. Shell state does not persist between calls,
   so this is every command, not once.
 - **Two things reach outside the machine**, both narrow, both in §3's list:
   pushing and fetching this run's own branches, and a read-only,
   unauthenticated poll of GitHub Actions for commits this run pushed (§2 step
-  6). The build and tests may also *read* the database in `.env`; nothing may
-  *write* to it (§3).
+  6). The database is the development one in `.env`: the browser tests rebuild
+  and write its `xenocats_test` schema, the build reads `xenocats`, and nothing
+  else touches it (§3).
 - **Work in parallel wherever nothing depends.** Independent reads and checks go
   in one message of parallel tool calls. Long jobs (the build, the `reviewer`,
   the CI poll) run in the background while you do the next independent thing; the harness
@@ -52,6 +55,7 @@ date '+%F %H:%M'                                              # §8.1
 powershell -NoProfile -Command "[System.TimeZoneInfo]::Local.Id"
 node -v && npm -v
 test -d node_modules && echo "node_modules: present" || echo "node_modules: MISSING"  # §1.1
+ls -d ~/AppData/Local/ms-playwright/chromium-* >/dev/null 2>&1 && echo "chromium: present" || echo "chromium: MISSING"
 test -f .env && echo ".env: present" || echo ".env: missing"   # existence only (§3)
 git status --short
 git remote -v
@@ -147,13 +151,15 @@ missing plan and do not fetch it from that branch.
 | Finding | Action |
 | ------- | ------ |
 | `node_modules` missing | **Stop.** Installing is a human's job (§3): `npm ci` before the run. |
+| Chromium missing | **Stop.** The e2e suite is in the gate and cannot run; `npx playwright install chromium` is a human's job (§3). |
 | `.env` missing | Continue, and record it. The app and possibly `npm run build` need `POSTGRES_URL` and `AUTH_SECRET`; §1.5 decides whether the build can be part of the gate. |
 | `node -v` fails | **Stop.** The `PATH` prefix is missing or wrong. |
 
-There is no local database and no migration system. `POSTGRES_URL` points at
-the project's only database, a hosted one holding its real data; the schema was
-created by `app/seed/route.ts`. Unattended, that database is read-only (§3).
-Nothing here starts, repairs or seeds it.
+`POSTGRES_URL` points at a development PostgreSQL on the local network whose
+data has no value. The schema is `db/migrations/*.sql`; the browser tests drop
+and rebuild their own `xenocats_test` schema from it on every run
+(`tests/e2e/global-setup.ts`). The server is someone else's machine: nothing here
+starts, repairs or reconfigures it. If it is unreachable, §1.5 says what runs.
 
 ### 1.2 Branches
 
@@ -218,9 +224,17 @@ Run the three checks in parallel. None of them writes anything tracked:
 
 ```bash
 npm run lint > docs/ai/night-<YYYY-MM-DD>/lint-baseline.txt 2>&1; echo "exit $?"
-npx tsc --noEmit; echo "exit $?"
+npx next typegen && npx tsc --noEmit; echo "exit $?"
+npm test; echo "exit $?"
 npm run build; echo "exit $?"
+npm run test:e2e; echo "exit $?"
 ```
+
+`next typegen` comes first because `tsconfig.json` includes route types
+generated under `.next/`, and stale ones fail `tsc` for no reason in the code.
+The e2e suite starts its own `next dev` on port 3100 with a throwaway
+`AUTH_SECRET` (`playwright.config.ts`); it needs Chromium
+(`npx playwright install chromium`, a human's job before the run).
 
 - **Lint and type check must exit 0.** ESLint exits non-zero on errors only, so
   record the warning count too: the saved report is what later runs are diffed
@@ -230,11 +244,23 @@ npm run build; echo "exit $?"
   database refusing connections), it is left out of the gate for the whole run:
   record that, with the error line, and say in the report that no task was
   built. Any other build failure is a red baseline.
-- **Tests**, once they exist: every test script in `package.json` (`npm test`,
-  `npm run test:e2e`, ...) joins the baseline and the gate, and must exit 0.
-  Until a task adds them there is no test suite, nothing runs behaviour, and
-  the report says so (§7). A test that needs the database may only read it
-  (§3).
+- **Tests**: every test script in `package.json` (today `npm test`, Vitest in
+  `tests/unit/`, and `npm run test:e2e`, Playwright in `tests/e2e/`) is in the
+  baseline and the gate, and must exit 0. Browser tests may log in and submit
+  writing forms: they run against `xenocats_test`, rebuilt before every run.
+- **Database unreachable** (the e2e global setup fails to connect: the machine
+  is off the network, or the server is down): record the error line, and run
+  the e2e suite as `E2E_NO_DATABASE=1 npm run test:e2e` for the rest of the
+  run, which skips the tests that need it. The build leaves the gate too, as
+  above. Report every task's database-backed behaviour as checked by reading
+  only (§5). Re-try the plain command at each task start; when it passes again,
+  record that and return to it.
+- **Side effects of the checks.** `next dev` and `next build` rewrite the
+  tracked `next-env.d.ts`, and `next dev` (re-)adds an agent-rules block to
+  `AGENTS.md`. Neither is part of any task. After the checks, if either file
+  differs and was not dirty at preflight and the task did not edit it, put it
+  back with `git checkout -- <that file>`. This is the one place a checkout of
+  a file is right: it undoes a tool, not the task's work. Never stage them.
 
 **A red baseline makes the repair task #1**, on
 `night-<YYYY-MM-DD>-t0-baseline`, through §2 like any task and never on `main`.
@@ -269,11 +295,14 @@ these additions.
 
    ```bash
    npm run lint
-   npx tsc --noEmit
+   npx next typegen && npx tsc --noEmit
    npm run build                                       # only if in the gate (§1.5)
    npx prettier --check <every file this task changed>
    npm test; npm run test:e2e                          # every test script that exists (§1.5)
    ```
+
+   Then undo the checks' side effects on `next-env.d.ts` and `AGENTS.md`
+   (§1.5) before staging.
 
    A task that adds a test script adds it to the gate from its own commit on.
 
@@ -307,12 +336,10 @@ these additions.
      `git checkout <file>` or `git restore <file>` to undo one.** That restores
      the last commit and throws away the task's uncommitted work.
 
-2. **UI work cannot be seen.** Nobody looks at a page unattended. Once the
-   repository has Playwright tests, a UI task is verified by an e2e test that
-   performs the interaction the change affects, and passes; before that, its
-   evidence is the type check, the build and the reviewer. Either way, never
-   submit a form that runs a Server Action that writes — in a test or by hand —
-   because it writes to the real database (§3). Report UI work as **tested in a
+2. **UI work cannot be seen.** Nobody looks at a page unattended. A UI task is
+   verified by an e2e test in `tests/e2e/` that performs the interaction the
+   change affects, and passes. Pages behind the login are reachable too: log
+   in as the seeded demo user (`.claude/rules/testing.md`). Report UI work as **tested in a
    browser, not seen** (or **built, not seen**), and name what a human should
    look at.
 
@@ -408,8 +435,9 @@ these additions.
    - **`UNOBSERVED`, `cancelled` or `skipped`** → "pushed; CI not observed",
      and why. Never infer a result.
    - **`failure` the run cannot fix** → CI's environment, not the code: a
-     repository secret or setting is missing or wrong (e.g. `POSTGRES_URL`
-     unset, the database refusing CI's connection), shown by the failing job's
+     repository setting is missing or wrong, or the runner image changed
+     (e.g. the *Start PostgreSQL* step fails: no preinstalled PostgreSQL, or
+     TLS off), shown by the failing job's
      name and step and by the same check passing locally. Record "CI failed:
      environment (<what is missing>)" and put in `questions.md` exactly what a
      human must set. Spend **no** repair cycle on it, and do not count it toward
@@ -419,7 +447,8 @@ these additions.
    - **`failure`** otherwise → a verification failure found late. It continues
      this task's three-cycle count (`.claude/rules/debugging.md` §8):
      1. Name the failing jobs: append `/jobs` to the run's API URL
-        (`https://api.github.com/repos/lazurq-png/next.js-dashboard/actions/runs/<id>/jobs`).
+        (`https://api.github.com/repos/<owner>/<repo>/actions/runs/<id>/jobs`,
+        the repository from `git remote get-url origin`, as the run URL shows).
         Do not fetch logs, which needs auth and is outside §3's exception.
      2. Park the task in flight. Stash **only the paths it touched**
         (`git stash push -- <paths>`), never the pre-existing changes.
@@ -466,12 +495,15 @@ Never, unattended:
 - Rewriting history (`rebase`, `commit --amend`, `reset --hard`) except over
   your own uncommitted work. Once pushed, never.
 - Stashing, restoring or discarding changes you did not make in this run.
-- **Writing to the database.** The one in `.env` is the project's real data,
-  and there is no other. Never request `/seed` or any route that writes, never
-  submit a form or invoke a Server Action against a running app, and never run
-  SQL against `POSTGRES_URL` yourself. A schema change may be written as code
-  when the plan asks for it, but never applied; say in `questions.md` what a
-  human must run.
+- **Any database but the development one, or touching it by hand.** The run
+  reaches the database only through `npm run test:e2e` (which rebuilds
+  `xenocats_test`) and the build (which reads `xenocats`). Never run SQL or
+  `npm run db:*` yourself, never touch the `xenocats` schema or anything else
+  on that server, and never a hosted database. A schema change is a new file in
+  `db/migrations/` (never an edit to an applied one), written when the plan asks
+  for it and proved by the e2e run that rebuilds the test schema from it.
+  Applying it to `xenocats` is a human's `npm run db:migrate`; say so in
+  `questions.md`.
 - Reading, printing or writing `.env` or any `.env*` file, or writing a real
   credential anywhere. `test -f .env` is the only permitted contact. Pushed, a
   secret is a disclosure, not a mess.
@@ -490,7 +522,7 @@ Never, unattended:
 - Contacting any external service, **except** `git push`/`fetch` to `origin`
   for this run's branches; the §2 step 6 poll (`ci-poll.mjs` and the `/jobs`
   lookup): read-only, no token, only on commits this run pushed; and the
-  database reads the build and tests make.
+  development database, through the build and the browser tests above.
 
 **If a task needs one of these, abandon it.** Write in `questions.md` what was
 needed, which rule blocked it, and the exact command or diff for a human to
@@ -526,12 +558,13 @@ words and the rest of the plan, not your preference — or a fork appears that
 
 The plan chooses the tasks; this section only says how to treat them.
 
-Here, only compilation, lint and the build are provable by a command. A task
-whose result is behaviour (a form that validates, a page that filters, a
-redirect after login) is verified only by reading, because there is no test
-suite and adding one is a dependency (§3). Do such tasks when the plan asks for
-them, and report each acceptance criterion as **checked by command** or
-**checked by reading only**.
+Logic that needs no database is provable by a Vitest test (import
+`app/lib/schemas.ts`, not `app/lib/actions.ts`, which opens a connection), and
+pages, including those behind the login and forms that write, by a Playwright
+test against `xenocats_test`. Behaviour no test exercises is verified only by
+reading.
+Do such tasks when the plan asks for them, and report each acceptance criterion
+as **checked by command** or **checked by reading only**.
 
 Primarily visual work and matters of taste are the weakest unattended tasks:
 nobody sees the result (§2 step 2). Build what the plan asks, report it as
@@ -545,7 +578,7 @@ End the run (merge, push and delete nothing further) when:
 
 - **The plan or its tasks are missing, or its goal is missing, unreadable or
   already past** (§1.0).
-- **`node_modules` is missing** (§1.1).
+- **`node_modules` or Chromium is missing** (§1.1).
 - **A second task hits three failed verify → repair cycles.** The first one
   just gets abandoned (§3), with all three hypotheses recorded
   (`.claude/rules/debugging.md` §8), and the run moves on.
@@ -608,9 +641,9 @@ memory. It contains:
 - **State**: the run branch and tip, which branches reached the remote,
   anything uncommitted, whether the build was in the gate, and the lint warning
   count against the baseline.
-- **What nothing has checked**: at minimum, that there is no test suite, that
-  nobody looked at the pages, and that no change was exercised against the
-  database.
+- **What nothing has checked**: at minimum, which acceptance criteria only a
+  reading covers (§5), that nobody looked at the pages, and that no change was
+  exercised against a production database (there is none yet).
 
 ### Code by task
 
@@ -694,7 +727,9 @@ step 4).
 
 ### 8.3 Estimating
 
-This repository has no run history yet. On the project this protocol came
+This repository's first run is recorded in
+`docs/ai/night-2026-09-25/progress.md` (its tasks' start times give their
+lengths; T9 took 16 minutes). On the project this protocol came
 from, the median task took **~20 minutes** (range 3–50), and the `reviewer` took
 4–7 minutes of that. `npm run build` and the e2e suite are the slowest local
 checks; time them and record it. CI overlaps the next task (§2 step 6), so it
@@ -810,9 +845,24 @@ decision and the `PROVISIONAL:` branch). Only the budget is per session.
 
 ### 9.5 Under `/loop`: the heartbeat
 
-A long run may be started as `/loop /night-run`, so that a turn which ends with
-nothing running in the background does not leave the run stalled until the
-deadline. Each wakeup re-enters this skill in the **same** session.
+A long run is started as `/loop /night-run` (no interval: self-paced), so that a
+turn which ends with nothing running in the background does not leave the run
+stalled until the deadline. Each wakeup re-enters this skill in the **same**
+session.
+
+- **Every turn re-arms the loop.** A self-paced loop lives only as long as each
+  turn schedules the next one: a turn that ends without `ScheduleWakeup` ends
+  the loop, and the run with it. So **the last tool call of every turn** —
+  the first one (preflight), a turn that ends waiting on a background job or
+  §2 step 4's CI gate, a heartbeat — is `ScheduleWakeup` with `prompt:
+  "/night-run"` verbatim, a `reason` naming what is awaited, and `noop: true`
+  only when the turn changed nothing. The sole exception is the turn that ends
+  the run (below).
+- **With an interval** (`/loop 30m /night-run`) the loop is a cron job instead:
+  it re-fires by itself, so nothing needs re-arming, but `ScheduleWakeup`
+  cannot stop it. Ending the run then means `CronList` and `CronDelete` on
+  that job. A firing that arrives mid-turn waits; one that finds the run ended
+  does nothing. Prefer the self-paced form.
 
 - **Tell a heartbeat from a new session** by your own context: if this
   conversation already holds this run's preflight or task work, it is a
@@ -830,9 +880,11 @@ deadline. Each wakeup re-enters this skill in the **same** session.
 - **Pacing:** the wakeup is a fallback, not the work signal — background jobs
   re-invoke you when they finish. Schedule it long: 1200–1800 s.
 - **Ending:** once the morning report (§7) is pushed, or any §6 stop condition
-  has ended the run, stop the loop (`ScheduleWakeup` with `stop: true`). A
+  has ended the run — including preflight finding no plan, no task or no
+  usable goal (§1.0) — stop the loop (`ScheduleWakeup` with `stop: true`). A
   heartbeat that finds `## Morning report` already on the run branch stops the
-  loop and does nothing else.
+  loop and does nothing else. A session that hands off (§9.3) also stops its
+  loop: the next session is started by a human, with its own `/loop`.
 - **Past the goal time:** a wakeup after `D`, for example after the account's
   usage limit reset, finishes a task still in flight (§8.4), writes the report
   if none exists and stops the loop. It starts no new task.

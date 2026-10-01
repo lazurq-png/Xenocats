@@ -149,10 +149,9 @@ Lint, type check and build prove the code compiles, not that anything renders
 correctly, and none of them are UI evidence. A Playwright test proves an
 interaction works; it does not prove the page looks right.
 
-**Step 5 touches real data.** The app's only database is the one in `.env`;
-creating, editing or deleting an invoice in the browser changes it for real.
-Test mutations deliberately, and undo what you created. Browser tests never
-submit a writing form.
+**Step 5 writes to the development database** in `.env` (schema `xenocats`). Its
+data has no value, and `npm run db:reset` restores the seed data. Browser tests
+use their own schema and may submit writing forms (`.claude/rules/testing.md`).
 
 ### Unattended: nobody can look
 

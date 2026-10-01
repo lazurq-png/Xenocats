@@ -58,10 +58,10 @@ dashboard; the course's look and assets have since been replaced.
 | Types | `app/lib/definitions.ts` |
 | Auth | `auth.ts` (NextAuth v5 beta, credentials + bcrypt), `auth.config.ts` (the `authorized` callback), `proxy.ts` (runs it on every request outside its matcher's exclusions) |
 | UI | `app/ui/**` — Tailwind 3, `@heroicons/react`, `clsx` |
-| One-off routes | `app/seed/route.ts` (creates and fills the schema), `app/query/route.ts` |
+| Schema and seed data | `db/migrations/*.sql`, `scripts/db.mjs` (`npm run db:migrate` / `db:seed` / `db:reset`), `app/lib/placeholder-data.ts` |
 
-There is no ORM, no migration system and no `docs/` or ADR record of decisions.
-The schema exists only as the `CREATE TABLE` statements in `app/seed/route.ts`.
+There is no ORM and no ADR record of decisions. The schema is the numbered SQL
+files in `db/migrations/`, applied by `scripts/db.mjs` (`npm run db:migrate`).
 
 If the task touches a specific domain, read the matching reference in `.claude/rules/` before implementing:
 
@@ -257,11 +257,14 @@ generates under `.next/`, and stale ones (from a build before a route was
 deleted) fail the type check for no reason in the code.
 
 `npm run test:e2e` starts its own `next dev` on port 3100 with a throwaway
-`AUTH_SECRET`, so it needs no `.env` for pages that do not read the database.
+`AUTH_SECRET`. Before the tests, `tests/e2e/global-setup.ts` drops and rebuilds
+the `xenocats_test` schema on the database `POSTGRES_URL` names, and the test
+server uses that schema, so browser tests may log in and submit forms. Without
+a `POSTGRES_URL`, or with `E2E_NO_DATABASE=1` when the server is unreachable
+(off its network), the tests that need it skip; otherwise an unreachable server
+fails the whole suite.
 `E2E_SERVER=start npm run test:e2e` runs the same tests against `next start`
-instead, which needs an existing `npm run build`.
-Browser tests must never submit a form that runs a writing Server Action: there
-is only the real database. `next dev` also (re-)adds a Next.js agent-rules block
+instead, which needs an existing `npm run build`. `next dev` also (re-)adds a Next.js agent-rules block
 to `AGENTS.md` when it detects an AI agent, and flips `next-env.d.ts` between
 its dev and build variants; neither is part of a task's change.
 
@@ -275,20 +278,23 @@ so it produces a drive-by diff. Run `prettier --check` / `--write` on the files
 the task changed.
 
 The running app, and possibly `npm run build` where a page prerenders, need
-`POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` in `.env`. **`POSTGRES_URL` is the
-project's only database**: a hosted PostgreSQL with the real data and no local
-or test copy. Opening a page reads it; submitting any form runs a Server Action
-that writes to it. Treat a browser check that submits a form as a change to real
-data.
+`POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` in `.env`. **`POSTGRES_URL` is a
+development database** on the local network, holding no data of value: the app
+uses its `xenocats` schema, the browser tests `xenocats_test`. The URL carries
+the schema as `?search_path=`. The schema is defined by `db/migrations/*.sql`;
+`npm run db:migrate` applies new ones, `db:seed` loads
+`app/lib/placeholder-data.ts`, and `db:reset` rebuilds a schema from scratch.
+`seed` and `reset` refuse any host outside the private network ranges. There is
+no production database yet: one is built later with `db:migrate`, by a human.
 
 **CI** (`.github/workflows/ci.yml`) runs on every push and pull request, in
 three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
-with the `POSTGRES_URL` repository secret scoped to that step, then the browser
-tests against `next start` (`E2E_SERVER=start`); and *e2e* — the browser tests
-against `next dev`. A red *build* job is therefore either a missing or wrong
-secret (the build step fails) or a browser test failing in production mode (the
-test step fails). Each job that starts Next makes its own throwaway
-`AUTH_SECRET`. It runs on GitHub, not on your machine: never
+over a migrated and seeded `xenocats` schema, then the browser tests against
+`next start` (`E2E_SERVER=start`); and *e2e* — the browser tests against
+`next dev`. The *build* and *e2e* jobs start the PostgreSQL preinstalled on the
+runner (TLS on, throwaway password), so CI needs no repository secret and no
+outside database, and runs the database tests too. Each job that starts Next
+makes its own throwaway `AUTH_SECRET`. It runs on GitHub, not on your machine: never
 report a CI result you have not observed.
 The one sanctioned way to observe one is the night-run skill's read-only poll
 of the public Actions API for a commit that run pushed

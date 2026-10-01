@@ -6,18 +6,36 @@ Open this for schema, migration, and persistence work. Database changes are high
 
 ## This Repository
 
-- **One database, and it is the real one.** `POSTGRES_URL` in `.env` points at a
-  hosted PostgreSQL. There is no local, test or staging copy, so every write
-  during development is a write to the project's data.
-- **No migration system.** The schema exists only as `CREATE TABLE IF NOT EXISTS`
-  statements in `app/seed/route.ts`, which also inserts the placeholder data.
-  `IF NOT EXISTS` means editing those statements changes nothing in a database
-  that already has the table: a schema change needs its own `ALTER` statement,
-  run deliberately by a human.
+- **A development database, no production one yet.** `POSTGRES_URL` in `.env`
+  points at a PostgreSQL on the local network whose data has no value. The app
+  uses the schema the URL names in `?search_path=` (`xenocats`); the browser
+  tests use `xenocats_test`, which they drop and rebuild on every run. Writing
+  to either is ordinary development. The role cannot create tables in `public`.
+- **Migrations** are numbered SQL files in `db/migrations/` (`0002_<what>.sql`
+  next), applied in name order by `npm run db:migrate`, each in a transaction,
+  and recorded in the schema's `schema_migrations` table. A schema change is a
+  new file, never an edit to an applied one. `db:migrate` is also how a
+  production database will be built, so a migration must work on a database
+  that already has data: `ALTER`, not drop-and-recreate.
+- **Seed data** is `app/lib/placeholder-data.ts`, loaded by `npm run db:seed`
+  (idempotent) or `db:reset` (drop, migrate, seed). Both refuse a host that is
+  not `localhost` or a private IP address; the seed includes a demo login that
+  must never reach a public database. The check reads the URL, not the server:
+  a tunnel to a remote server on `localhost` passes it, so never put a
+  tunnelled production URL in `.env`.
+- **CI has its own database**: the PostgreSQL preinstalled on the GitHub
+  runner, started per job, migrated and seeded (`.github/workflows/ci.yml`).
+  It is a fresh, empty server every run, so CI proves every migration applies
+  from scratch.
+- **A future production database** needs a connection that accepts
+  `search_path` as a startup parameter (some poolers, e.g. PgBouncer by
+  default, do not), or `ALTER ROLE ... SET search_path` instead. The app forces
+  TLS (`ssl: 'require'`), so the server must offer it; the development one does.
 - **Access is raw SQL** through the `postgres` library's tagged templates, in
   `app/lib/data.ts` (reads), `app/lib/actions.ts` (writes) and `auth.ts`. The
   template interpolation parameterises values. Never build a query with string
-  concatenation or `sql.unsafe`.
+  concatenation or `sql.unsafe` (`scripts/db.mjs` runs migration files with it;
+  they are repository code, not input).
 - **Money is stored in cents** as integers. Convert at the edges only
   (`actions.ts` on the way in, `formatCurrency` on the way out).
 

@@ -477,8 +477,8 @@ independent task.
 
 This is a change of *response*, not of *threshold*. What counts as consequential
 is unchanged; it is logged and worked around rather than waited on. The
-exceptions that must never be worked around unattended — writes to the
-project's only database, secrets, dependency changes, force-pushes —
+exceptions that must never be worked around unattended — any database other
+than the development one, secrets, dependency changes, force-pushes —
 are listed in `.claude/skills/night-run/SKILL.md`, which governs that mode.
 
 ---
