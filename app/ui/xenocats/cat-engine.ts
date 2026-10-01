@@ -5,7 +5,7 @@
 //
 // `ready` is where a cat waits while another cat's effect is still running: only
 // one effect runs at a time, so its attack is retried every tick until accepted.
-// A summoned cat skips sleeping and waking.
+// A summoned cat skips sleeping and waking, unless it is summoned asleep.
 
 import type { CatType } from './cat-types';
 import { CAT_CONFIG, type CatConfig, type Range } from './config';
@@ -115,13 +115,19 @@ export function createCatEngine(options: {
     centreOf,
 
     /**
-     * Brings a cat of `typeId` on screen now; it attacks as soon as it has arrived.
-     * Null, and nothing changes, when `maxCats` are already on screen, the type is
-     * unknown, or there is no free spot.
+     * Brings a cat of `typeId` on screen now; it attacks as soon as it has arrived,
+     * or, `asleep`, first sleeps and wakes like a spawned cat. Null, and nothing
+     * changes, when `maxCats` are already on screen, the type is unknown, or there
+     * is no free spot.
      */
-    summon(typeId: string, now: number, cursor: Vec | null): Cat | null {
+    summon(
+      typeId: string,
+      now: number,
+      cursor: Vec | null,
+      { asleep = false }: { asleep?: boolean } = {}
+    ): Cat | null {
       const type = types.find((t) => t.id === typeId);
-      return type ? spawn(type, now, cursor, true) : null;
+      return type ? spawn(type, now, cursor, !asleep) : null;
     },
 
     /** Advances every cat to `now`. Returns true if anything a renderer shows changed. */

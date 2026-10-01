@@ -111,6 +111,19 @@ describe('lifecycle', () => {
     expect(phasesOf(e, always, 3000)).toEqual(['appearing', 'attacking', 'leaving', 'gone']);
   });
 
+  it('a cat summoned asleep sleeps and wakes before it attacks, like a spawned cat', () => {
+    const e = engine();
+    e.summon('gravi-coon', 0, null, { asleep: true });
+    expect(phasesOf(e, always, 40_000)).toEqual([
+      'appearing',
+      'sleeping',
+      'waking',
+      'attacking',
+      'leaving',
+      'gone',
+    ]);
+  });
+
   it('asks to attack with the cat and its centre', () => {
     const e = engine();
     const cat = e.summon('pulsar-siamese', 0, null)!;

@@ -18,8 +18,11 @@ import type { CatConfig } from './config';
 import { useXenocatCursor } from './fake-cursor';
 
 export type Xenocats = {
-  /** Brings a cat of this type on screen to attack at once. False if 5 are already there. */
-  summon(typeId: string): boolean;
+  /**
+   * Brings a cat of this type on screen to attack at once or, `asleep`, to sleep
+   * and wake first. False if 5 are already there.
+   */
+  summon(typeId: string, options?: { asleep?: boolean }): boolean;
 };
 
 const CatsContext = createContext<Xenocats | null>(null);
@@ -92,8 +95,8 @@ export function XenocatCatsProvider({
 
   const api = useMemo<Xenocats>(
     () => ({
-      summon: (typeId) => {
-        const cat = engine.summon(typeId, cursor.now(), cursor.position());
+      summon: (typeId, options) => {
+        const cat = engine.summon(typeId, cursor.now(), cursor.position(), options);
         if (cat) setCats(snapshot(engine));
         return cat !== null;
       },

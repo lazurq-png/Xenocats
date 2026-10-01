@@ -9,8 +9,10 @@ import { CAT_TYPES, type CatType } from './cat-types';
 import { XenocatCursorProvider } from './fake-cursor';
 
 /**
- * Every cat type with a Summon button. Cats only come when summoned here, so the
- * page is calm to browse and predictable to test.
+ * Every cat type with two Summon buttons: awake, to pounce as soon as it arrives,
+ * or asleep, to nap and wake first as the dashboard's cats do (and show both poses'
+ * artwork). Cats only come when summoned here, so the page is calm to browse and
+ * predictable to test.
  */
 export default function CatGallery() {
   return (
@@ -26,10 +28,12 @@ function Roster() {
   const cats = useXenocats();
   const [status, setStatus] = useState('');
 
-  const summon = (type: CatType) => {
+  const summon = (type: CatType, asleep: boolean) => {
     // Refused when five cats are already here, or when there is no free spot.
-    const message = cats.summon(type.id)
-      ? `${type.name} is on its way.`
+    const message = cats.summon(type.id, { asleep })
+      ? asleep
+        ? `${type.name} is on its way, and will nap before it pounces.`
+        : `${type.name} is on its way.`
       : 'No room for another cat right now. Wait for one to leave.';
     // Clear first, so a screen reader announces the same message again.
     setStatus('');
@@ -67,14 +71,24 @@ function Roster() {
               </div>
             </div>
             <p className="mt-3 grow text-sm text-aura">{type.effect.description}</p>
-            <Button
-              className="mt-4 justify-center"
-              data-testid={`summon-${type.id}`}
-              aria-label={`Summon ${type.name}`}
-              onClick={() => summon(type)}
-            >
-              Summon
-            </Button>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Button
+                className="justify-center whitespace-nowrap px-1 text-[13px]"
+                data-testid={`summon-${type.id}`}
+                aria-label={`Summon ${type.name} awake`}
+                onClick={() => summon(type, false)}
+              >
+                Summon awake
+              </Button>
+              <Button
+                className="justify-center whitespace-nowrap px-1 text-[13px]"
+                data-testid={`summon-asleep-${type.id}`}
+                aria-label={`Summon ${type.name} asleep`}
+                onClick={() => summon(type, true)}
+              >
+                Summon asleep
+              </Button>
+            </div>
           </li>
         ))}
       </ul>
