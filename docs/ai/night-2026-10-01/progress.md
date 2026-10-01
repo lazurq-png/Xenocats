@@ -514,3 +514,48 @@ fix `fight.spec.ts` 42/42 (`--repeat-each 3`, twice) and `pet-cat.spec.ts`
 → added, tested; (Low) angry combos lost the offset amplification → carried;
 (Low) natural-waking pairing untested → tested; the layer's combo wiring is
 covered by reading only. The pairing state machine itself was found correct.
+
+## T8 — Cats on touch devices (completed)
+
+- Branch `night-2026-10-01-t8-touch`, base `c697632`. Started 2026-10-01
+  20:48 (budget 14.30M); completed 2026-10-01 21:02 (budget 14.27M).
+- **T7 CI: failed, fight group only** (inherited, Q1 — the hardened wave test
+  did not clear it). Runs 36909573185 / 36909567056.
+
+**What the code does**
+
+- `app/ui/xenocats/fake-cursor.tsx`: with no precise pointer (the fake cursor
+  stays off), the provider remembers the last touch (non-mouse
+  `pointerdown`); `attack()` then hits the page elements around that point
+  for the effect's duration, restored by a timer, the next tap past the end,
+  or unmount; taps (`mousedown`, `click`, `dblclick`, `contextmenu` with
+  `detail > 0`) are blocked meanwhile, keyboard clicks never; nothing that
+  starts a scroll is touched. A touch with nothing in reach hits nothing and
+  blocks nothing. `touchPoint()` and a touch-aware `isBusy()` on the context.
+- `app/ui/xenocats/cat-layer.tsx`: a cat with no fake cursor attacks at the
+  touch point; with neither, it pounces at nothing and leaves, as before.
+- Tests: `fake-cursor.test.tsx` (+3: no fake cursor; nothing before a
+  touch; a hit around the touch, one at a time, taps blocked and keyboard
+  clicks not, restored exactly; nothing hit far from everything; restored on
+  unmount). `tests/e2e/touch.spec.ts` (new, Pixel 7 profile): no fake cursor,
+  the system cursor not hidden, the touched button pushed by Pulsar Siamese's
+  attack, a tap during it does not summon, the button byte-identical
+  afterwards and the same tap working again. In CI's cats group.
+
+**Why**: plan task 8. Design: D15.
+
+**Acceptance criteria evidence**: all four (appear, attack page elements only,
+centred on the last touch, fake cursor off) by the touch-profile browser test
+and unit tests. Not checked on a real phone.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 24 files / 354 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 57 passed; actionlint clean; prettier clean (D1).
+
+**Review**: `reviewer` — Request Changes: (Medium) the e2e "tap blocked"
+check could not fail → status-message check plus a positive control; (Medium)
+a touch hitting nothing still froze taps for seconds → no block then, unit
+test; (Low) a device switching from mouse to touch could strand cats → the
+touch path keys on the touch point; (Low) a tap could focus a displaced field
+→ `mousedown` blocked. All applied; no second review pass (each fix is local
+and tested).

@@ -153,12 +153,14 @@ export function XenocatCatsProvider({
         cursor.now(),
         pointer,
         (cat, type, centre, combo) => {
-          // No cursor at all (a touch screen, or the pointer not seen yet): the cat
-          // pounces at nothing and leaves, rather than waiting on screen for ever.
-          if (cursor.position() === null) return true;
+          // A touch screen (no fake cursor) attacks the page around the last touch.
+          // No cursor and no touch yet: the cat pounces at nothing and leaves, rather
+          // than waiting on screen for ever.
+          const touch = cursor.touchPoint();
+          if (touch === null && cursor.position() === null) return true;
           // The pointer is off the page: wait, rather than block clicks with an effect
           // nobody sees.
-          if (!cursor.isPresent()) return false;
+          if (touch === null && !cursor.isPresent()) return false;
           // The page is drawing its own pointer (a locked Fight game): wait until it is done.
           if (cursor.isHidden()) return false;
           // A combo attacks with both cats' fused effect; a cat clicked awake (either

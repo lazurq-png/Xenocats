@@ -355,3 +355,29 @@ unit-tested.
   (Low) pairing through natural waking is now tested as well as through pokes;
   the layer's combo wiring (sounds, field guide for both cats) is covered by
   reading only.
+
+## D15 — T8: cats on touch devices
+
+Plan task 8: on touch devices cats appear and attack page elements only
+(task 3), centred on the last touch point; the fake cursor stays off; an e2e
+test with a touch device profile.
+
+- "Touch device" = no precise pointer (`(pointer: fine)` false), the same test
+  that keeps the fake cursor off. Cats already appeared there; their attacks
+  used to pounce at nothing.
+- The cursor provider now remembers the last non-mouse `pointerdown` as the
+  touch point. An attack with no fake cursor hits the page around that point
+  (`hitPage`, same radius and effects) for the effect's duration, restored by
+  a timer (and on unmount). Taps (`click`/`dblclick`/`contextmenu` with
+  `detail > 0`) are blocked meanwhile, keeping task 3's "clicks stay blocked
+  while elements are displaced"; keyboard-made clicks never are. One attack
+  at a time, as with the cursor.
+- No touch yet → the cat pounces at nothing and leaves, as before. Petting
+  needs a hovering pointer, so it does not happen on touch screens; poking
+  (tapping a sleeping cat) does, at the tap.
+- After review: an attack whose touch point has nothing within reach hits
+  nothing and blocks no tap (the page would otherwise look frozen); the touch
+  path is chosen by the touch point itself, so a device switching from mouse
+  to touch cannot leave cats waiting; `mousedown` is blocked too, so a tap
+  cannot focus a displaced field; the e2e test proves the tap is blocked (no
+  summon message) and works again after the effect (positive control).

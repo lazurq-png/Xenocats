@@ -14,6 +14,11 @@ export type XenocatCursor = {
   isBusy(): boolean;
   /** Where the fake cursor is, or null before the pointer has been seen. */
   position(): Vec | null;
+  /**
+   * On a touch screen (no fake cursor): where the screen was last touched, or null.
+   * An attack there hits only the page elements around that point.
+   */
+  touchPoint(): Vec | null;
   /** False while the pointer is outside the page; nobody would see an attack. */
   isPresent(): boolean;
   /** The clock the cursor runs on; cats use the same one. */
@@ -61,6 +66,10 @@ const PRESS_ENDS = new Set(['click', 'auxclick', 'contextmenu']);
 
 export const HIDE_CURSOR_CLASS = 'xenocat-cursor-hidden';
 
+// What a tap can do (mousedown focuses a field); blocked on a touch screen while a
+// cat's attack hits the page. Nothing that starts a scroll is.
+const TOUCH_BLOCKED = ['mousedown', 'click', 'dblclick', 'contextmenu'] as const;
+
 /** Draws a cursor element (or one of its decoys) at `at`, looking as `look` says. */
 export function placeCursor(element: HTMLElement, at: Vec, look: CursorLook) {
   const filter = [
@@ -102,6 +111,10 @@ export function XenocatCursorProvider({
   const hiddenRef = useRef(false);
   // Puts back the page elements the running attack hit (page-hits.ts).
   const restoreHitsRef = useRef<(() => void) | null>(null);
+  // Touch screens: the last touch, and until when a touch attack runs.
+  const touchRef = useRef<Vec | null>(null);
+  const touchUntilRef = useRef(0);
+  const touchTimerRef = useRef(0);
 
   useEffect(() => {
     nowRef.current = now;
@@ -210,9 +223,60 @@ export function XenocatCursorProvider({
     };
   }, [enabled, controller]);
 
+  // Touch screens: no fake cursor, but cats still attack the page around the last
+  // touch, and taps are blocked while they do (as clicks are with a cursor).
+  useEffect(() => {
+    if (enabled) return;
+    const endTouchHit = () => {
+      window.clearTimeout(touchTimerRef.current);
+      touchUntilRef.current = 0;
+      restoreHitsRef.current?.();
+      restoreHitsRef.current = null;
+    };
+    const onDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') touchRef.current = { x: event.clientX, y: event.clientY };
+    };
+    const onActivate = (event: Event) => {
+      if (touchUntilRef.current === 0) return;
+      if (nowRef.current() >= touchUntilRef.current) {
+        endTouchHit();
+        return;
+      }
+      // Only a tap: a keyboard-made click has detail 0, and is never blocked.
+      if ((event as MouseEvent).detail === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+    for (const type of TOUCH_BLOCKED) window.addEventListener(type, onActivate, true);
+    return () => {
+      endTouchHit();
+      window.removeEventListener('pointerdown', onDown, { capture: true });
+      for (const type of TOUCH_BLOCKED) window.removeEventListener(type, onActivate, true);
+    };
+  }, [enabled]);
+
   const api = useMemo<XenocatCursor>(
     () => ({
       attack: (effect, cat) => {
+        if (!enabled) {
+          // A touch screen: hit the page around the last touch, for the effect's time.
+          const touch = touchRef.current;
+          const time = nowRef.current();
+          if (!touch || time < touchUntilRef.current) return false;
+          restoreHitsRef.current?.();
+          restoreHitsRef.current = hitPage(document.body, effect.id, touch, cat, random);
+          // Nothing near the touch: the cat pounces at nothing, and no tap is blocked.
+          if (!restoreHitsRef.current) return true;
+          touchUntilRef.current = time + effect.durationMs;
+          window.clearTimeout(touchTimerRef.current);
+          touchTimerRef.current = window.setTimeout(() => {
+            touchUntilRef.current = 0;
+            restoreHitsRef.current?.();
+            restoreHitsRef.current = null;
+          }, effect.durationMs);
+          return true;
+        }
         if (!controller.attack(effect, cat, nowRef.current())) return false;
         // Every attack also hits the page around the pointer, for as long as it lasts.
         const pointer = controller.position();
@@ -222,8 +286,12 @@ export function XenocatCursorProvider({
           : null;
         return true;
       },
-      isBusy: () => controller.isBlocking(nowRef.current()),
+      isBusy: () =>
+        enabled
+          ? controller.isBlocking(nowRef.current())
+          : nowRef.current() < touchUntilRef.current,
       position: () => controller.position(),
+      touchPoint: () => (enabled ? null : touchRef.current),
       isPresent: () => controller.isPresent(),
       now: () => nowRef.current(),
       random,
@@ -232,7 +300,7 @@ export function XenocatCursorProvider({
       },
       isHidden: () => hiddenRef.current,
     }),
-    [controller, random]
+    [controller, random, enabled]
   );
 
   const layer = 'pointer-events-none fixed left-0 top-0 z-[9999] origin-top-left';

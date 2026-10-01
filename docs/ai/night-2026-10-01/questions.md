@@ -42,3 +42,8 @@ and as a real failure if anything else does.
   after which the wave can never reach 2. That is a likely cause of the CI
   failure too (a slower runner, more landings). T7 makes the test start a new
   game when one ends; if T7's CI passes the fight group, Q1 is answered.
+- **Update (T8):** T7's CI (`c697632`, runs 36909573185 / 36909567056) still
+  fails the fight group only, with the wave test hardened — so that test was
+  not (or not the only) cause. Remaining suspects: the pause/Tab test and the
+  pointer-lock test (both added in checkpoint 1). The report artifact of any of
+  these runs names the failing test.

@@ -112,9 +112,9 @@ jobs:
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
-      - name: Browser tests against next start (cats, petting)
+      - name: Browser tests against next start (cats, petting, touch)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat --output test-results/cats
+        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
@@ -178,9 +178,9 @@ jobs:
           --output test-results/smoke
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
-      - name: Browser tests (cats, petting)
+      - name: Browser tests (cats, petting, touch)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat --output test-results/cats
+        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
       - name: Browser tests (fight)

@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { vanish } from '@/app/ui/xenocats/effects';
+import { jitter, vanish } from '@/app/ui/xenocats/effects';
 import {
   HIDE_CURSOR_CLASS,
   type XenocatCursor,
@@ -308,6 +308,78 @@ describe('XenocatCursorProvider', () => {
     });
     expect(save.hasAttribute('data-xenocat-hit')).toBe(true);
     // Unmounting the provider removes the button too; keep a handle and check it.
+    cleanup();
+    expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
+  });
+});
+
+describe('on a touch screen', () => {
+  // A short effect, so the test waits for its real end.
+  const quickJitter = { ...jitter, durationMs: 60 };
+
+  it('draws no fake cursor, but attacks the page around the last touch, then puts it back', async () => {
+    mockPointer(false);
+    const onClick = renderPage();
+    expect(screen.queryByTestId('fake-cursor')).toBeNull();
+    const save = screen.getByText('Save');
+    save.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
+    const before = save.outerHTML;
+
+    // No touch yet: nothing to attack.
+    expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(false);
+    expect(cursor.touchPoint()).toBeNull();
+
+    fireEvent.pointerDown(window, { clientX: 10, clientY: 10, pointerType: 'touch' });
+    expect(cursor.touchPoint()).toEqual({ x: 10, y: 10 });
+    expect(cursor.position()).toBeNull();
+    act(() => {
+      expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(true);
+    });
+    expect(save.getAttribute('data-xenocat-hit')).toBe('shake');
+    expect(cursor.isBusy()).toBe(true);
+    // One at a time.
+    expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(false);
+    // A tap is blocked while the page is hit; a keyboard click is not.
+    fireEvent.click(save, { detail: 1 });
+    expect(onClick).not.toHaveBeenCalled();
+    fireEvent.click(save, { detail: 0 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    clock = quickJitter.durationMs;
+    await waitFor(() => expect(save.outerHTML).toBe(before));
+    expect(cursor.isBusy()).toBe(false);
+    fireEvent.click(save, { detail: 1 });
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('a touch far from everything: the cat pounces at nothing and no tap is blocked', () => {
+    mockPointer(false);
+    const onClick = renderPage();
+    const save = screen.getByText('Save');
+    save.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
+    fireEvent.pointerDown(window, { clientX: 900, clientY: 700, pointerType: 'touch' });
+    act(() => {
+      expect(cursor.attack({ ...jitter, durationMs: 5000 }, { x: 300, y: 300 })).toBe(true);
+    });
+    expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
+    expect(cursor.isBusy()).toBe(false);
+    fireEvent.click(save, { detail: 1 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts the page back if it goes away mid-attack', () => {
+    mockPointer(false);
+    renderPage();
+    const save = screen.getByText('Save');
+    save.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
+    fireEvent.pointerDown(window, { clientX: 10, clientY: 10, pointerType: 'touch' });
+    act(() => {
+      cursor.attack({ ...jitter, durationMs: 5000 }, { x: 300, y: 300 });
+    });
+    expect(save.hasAttribute('data-xenocat-hit')).toBe(true);
     cleanup();
     expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
   });
