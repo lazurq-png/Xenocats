@@ -21,19 +21,29 @@ describe('CAT_ART', () => {
 });
 
 describe('catArt', () => {
-  const withAwakeOnly = Object.keys(CAT_ART).find((id) => CAT_ART[id].awake && !CAT_ART[id].asleep);
-
   it('gives a pose its artwork, and nothing for cats without any', () => {
     expect(catArt('void-tabby', 'awake')).toBe('/xenocats/cats/void-tabby-awake.webp');
+    expect(catArt('void-tabby', 'asleep')).toBe('/xenocats/cats/void-tabby-asleep.webp');
     const withoutArt = CAT_TYPES.find((type) => !CAT_ART[type.id])!;
     expect(catArt(withoutArt.id, 'awake')).toBeUndefined();
   });
 
+  it('with wholeSet, gives a cat with both poses its artwork', () => {
+    expect(catArt('void-tabby', 'awake', { wholeSet: true })).toBeDefined();
+    expect(catArt('void-tabby', 'asleep', { wholeSet: true })).toBeDefined();
+  });
+
   it('with wholeSet, holds the artwork back until the cat has both poses', () => {
-    expect(withAwakeOnly).toBeDefined();
-    expect(catArt(withAwakeOnly!, 'awake')).toBeDefined();
-    expect(catArt(withAwakeOnly!, 'awake', { wholeSet: true })).toBeUndefined();
-    expect(catArt(withAwakeOnly!, 'asleep', { wholeSet: true })).toBeUndefined();
+    // No real cat is half done, so lend the map one for this test.
+    const art = CAT_ART as Record<string, Partial<Record<'awake' | 'asleep', string>>>;
+    art['half-done'] = { awake: '/half-done-awake.webp' };
+    try {
+      expect(catArt('half-done', 'awake')).toBeDefined();
+      expect(catArt('half-done', 'awake', { wholeSet: true })).toBeUndefined();
+      expect(catArt('half-done', 'asleep', { wholeSet: true })).toBeUndefined();
+    } finally {
+      delete art['half-done'];
+    }
   });
 });
 
