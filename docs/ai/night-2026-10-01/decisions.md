@@ -118,3 +118,54 @@ overlay 60 times a second (expensive in dev mode). It now moves cat elements
 directly (`data-cat-id`, `placeCat`) and re-renders only when what React shows
 changes. The reviewer checked that a re-render for any other reason cannot
 put a cat back at an old position.
+
+## D9 — T3: cats hit page elements (acceptance criteria and mechanism)
+
+From plan task 3: (1) every attack also hits elements near the pointer —
+buttons, links, text, cards, table rows, inputs — within a radius set in the
+config module (`CAT_CONFIG.pageHitRadius` = 120 px, at most
+`maxPageTargets` = 6); (2) only shake, tilt, blur, flip, glow, temporary
+displacement, scrambled or swapped text, each matched to the attack
+(`PAGE_HITS`, one per effect id); (3) everything reverts exactly when the
+effect ends — layout, content, attributes, focus; (4) clicks stay blocked while
+elements are displaced; (5) assistive technology keeps the real text; (6) never
+the text or value of a focused or edited field; (7) unit tests for target
+selection and exact restoration; e2e on `/cats` for a displaced element and
+scrambled text restoring.
+
+Mechanism (`page-hits.ts`):
+
+- Hit in `XenocatCursorProvider.attack` when the attack starts; restored in the
+  cursor's draw loop on the **first frame the cursor no longer blocks clicks**
+  (same clock as the blocking), and on unmount — so (4) holds by construction.
+- An effect only adds `data-xenocat-hit` / `data-xenocat-hit-text` attributes
+  and `--xenocat-hit-*` custom properties; CSS rules in `global.css` keyed on
+  them do the visuals. Restore puts the `style` attribute back as the exact
+  string it was (absent stays absent) and removes the attributes. Focus is
+  never touched.
+- Text: never rewritten. The real text gets a transparent text fill and stays
+  in the DOM (what AT reads); the scrambled/swapped text is a `::after` with
+  `content: attr(data-xenocat-hit-text) / ''` (empty CSS alt text, so not read
+  out). Text effects only go to elements whose only content is text, never to
+  inputs, `contenteditable`, or anything containing the focused element; those
+  shake instead.
+- First attempt set the text colour as an inline custom property; Chrome then
+  left `style=""` on those elements after the attribute was removed (traced:
+  no script wrote it). Switching to `-webkit-text-fill-color` removed inline
+  style from text hits entirely.
+- Targets: elements matching controls/text/rows/cards (`HIT_SELECTOR`; cards
+  are marked `data-xenocat-card` on the dashboard cards and gallery cards)
+  within the radius, nearest first (smaller first on a tie), never one inside
+  another already hit; anything `aria-hidden` or `data-xenocat-ignore` (the
+  cats, the cursor, the Fight overlay) is skipped.
+- "Restores exactly" is enforced against the page's own state at the start of
+  the attack: if React changes an element's inline `style` during the attack,
+  restore puts back the pre-attack string. No element the cats can hit has a
+  React-managed inline style today; recorded as a known limit.
+- After review: the restore also runs inside the click-blocking listener, so no
+  click can arrive in the frame between the effect's end and the next draw; an
+  element containing a focused field (input, select, textarea,
+  contenteditable) is not hit at all, so the field being typed in is never
+  blurred, flipped or pushed; boxes under 2 × 2 px (screen-reader-only labels)
+  are skipped; tables are hit by row (`td`/`th` are not targets, since a cell
+  always outranks its row).

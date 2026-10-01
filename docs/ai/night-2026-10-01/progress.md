@@ -169,3 +169,66 @@ Second pass after the fixes and D8: **Approve**.
 **UI**: tested in a browser (fallback), not seen. A human should look at the
 Taming overlay: the blink (drawn as a fast slide at 15% opacity, not a true
 vanish), the hold glow and progress bar, and Taming under real pointer lock.
+
+## T3 — Cats attack page elements too (completed)
+
+- Branch `night-2026-10-01-t3-page-hits`, base `87faef3`. Started 2026-10-01
+  16:07 (budget 14.70M); completed 17:02 (budget 14.63M).
+- **T2 CI: passed** — `night-2026-10-01-t2-taming`
+  https://github.com/lazurq-png/Xenocats/actions/runs/36873722004 and
+  `night-2026-10-01` https://github.com/lazurq-png/Xenocats/actions/runs/36873731696.
+- The machine load from T2 (D7) had gone: the plain `npm run test:e2e` passed
+  in ~60 s again and is the gate's e2e step once more.
+
+**What the code does**
+
+- `app/ui/xenocats/page-hits.ts` (new): every attack's effect on the page.
+  `PAGE_HITS` maps each of the 20 attacks to a page effect (blur, push away /
+  toward / down / up / sideways, flip, shake, wobble, tilt, glow, scramble,
+  swap). `selectTargets` picks controls, text, rows, cards and inputs within
+  the radius, nearest first, never nested, skipping hidden (< 2 px), ignored
+  (`aria-hidden`, `data-xenocat-ignore`) and anything containing a focused
+  field. `applyHits` marks targets with `data-xenocat-hit*` attributes and
+  `--xenocat-hit-*` properties and returns a restore that puts the `style`
+  attribute back verbatim and removes the attributes. Scramble/swap draw text
+  over the real text via `::after` with empty alt text.
+- `app/ui/xenocats/fake-cursor.tsx`: `attack()` hits the page around the
+  pointer when an attack starts; the page is restored on the first frame the
+  clicks are no longer blocked, in the blocking listener itself if a click
+  comes first, and on unmount.
+- `app/ui/global.css`: the CSS for each hit kind, keyed on `data-xenocat-hit`.
+- `app/ui/xenocats/config.ts`: `pageHitRadius` (120 px), `maxPageTargets` (6).
+- `app/ui/dashboard/cards.tsx`, `cat-gallery.tsx`: cards marked
+  `data-xenocat-card`; `fight.tsx`: the game overlay is `data-xenocat-ignore`.
+- Tests: `tests/unit/xenocats/page-hits.test.ts` (new, 32: every attack has a
+  page effect; selection by radius/order/max/nesting/size/ignore/focused
+  field/rows; scrambling; exact restoration of the whole DOM and focus for
+  every one of the 20 effects, with the real text unchanged throughout),
+  `fake-cursor.test.tsx` (+2: hit on attack, restored exactly at the effect's
+  end and on unmount), `tests/e2e/cats.spec.ts` (+2: Pulsar Siamese pushes the
+  button under the pointer, which is byte-identical afterwards; Decoy Burmese
+  scrambles card text for the eye only, the accessible heading stays, the
+  card is byte-identical afterwards).
+
+**Why**: plan task 3. Mechanism and derived criteria: D9.
+
+**Acceptance criteria evidence**: (1) radius/config, (2), (3) exact restore,
+(5) AT text, (6) focused field — unit tests; (3) and (5) also in the browser
+for push and scramble; (4) clicks blocked while displaced — by construction
+(same clock and check) and by reading; not tested by a click in the gap.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 20 files / 299 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 46 passed (59 s); prettier clean on every changed
+file (D1). The scramble e2e test first failed: Chrome left `style=""` after
+restoring text hits; traced to inline custom properties and fixed by moving
+text hits to CSS only (D9).
+
+**Review**: `reviewer` — Approve with 4 Low findings, all applied: one-frame
+click gap before restore; the focused field could still be blurred/flipped;
+`position: relative` pulled sr-only labels into the flow (now skipped as
+< 2 px); rows never selected because cells won (now rows are the unit).
+
+**UI**: tested in a browser (push, scramble), not seen. A human should look at
+the 20 page effects on the dashboard, especially scrambled text over coloured
+buttons and the swap.

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { type CursorController, createCursorController } from './cursor-controller';
 import { type CursorKind, cursorKindFor } from './cursor-kind';
 import { type CursorLook, type Effect, MAX_DECOYS, type Vec } from './effects';
+import { hitPage } from './page-hits';
 import { type Random, createRandom, freshSeed } from './random';
 
 export type XenocatCursor = {
@@ -99,6 +100,8 @@ export function XenocatCursorProvider({
   const decoyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const nowRef = useRef(now);
   const hiddenRef = useRef(false);
+  // Puts back the page elements the running attack hit (page-hits.ts).
+  const restoreHitsRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     nowRef.current = now;
@@ -134,6 +137,12 @@ export function XenocatCursorProvider({
     let swallowPress = false;
     const onPointerAction = (event: Event) => {
       const blocking = controller.isBlocking(nowRef.current());
+      // The effect is over but the next frame has not put the page back yet: do it
+      // now, so no click ever reaches a displaced element.
+      if (!blocking && restoreHitsRef.current) {
+        restoreHitsRef.current();
+        restoreHitsRef.current = null;
+      }
       if (event.type === 'pointerdown') swallowPress = blocking;
       else if (event.type === 'mousedown' && blocking) swallowPress = true;
       const fromPointer = !ALSO_KEYBOARD.has(event.type) || (event as MouseEvent).detail > 0;
@@ -162,6 +171,12 @@ export function XenocatCursorProvider({
     let frameId = 0;
     const draw = () => {
       const time = nowRef.current();
+      // The page is put back on the first frame the clicks are no longer blocked, so
+      // an element is never displaced while it can be clicked.
+      if (restoreHitsRef.current && !controller.isBlocking(time)) {
+        restoreHitsRef.current();
+        restoreHitsRef.current = null;
+      }
       const drawn = controller.frame(time);
       const look = hiddenRef.current ? { ...drawn, visible: false, decoys: undefined } : drawn;
       const place = (element: HTMLElement, at: Vec) => placeCursor(element, at, look);
@@ -184,6 +199,8 @@ export function XenocatCursorProvider({
     return () => {
       cancelAnimationFrame(frameId);
       root.classList.remove(HIDE_CURSOR_CLASS);
+      restoreHitsRef.current?.();
+      restoreHitsRef.current = null;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerout', onOut);
       window.removeEventListener('blur', onBlur);
@@ -195,7 +212,16 @@ export function XenocatCursorProvider({
 
   const api = useMemo<XenocatCursor>(
     () => ({
-      attack: (effect, cat) => controller.attack(effect, cat, nowRef.current()),
+      attack: (effect, cat) => {
+        if (!controller.attack(effect, cat, nowRef.current())) return false;
+        // Every attack also hits the page around the pointer, for as long as it lasts.
+        const pointer = controller.position();
+        restoreHitsRef.current?.();
+        restoreHitsRef.current = pointer
+          ? hitPage(document.body, effect.id, pointer, cat, random)
+          : null;
+        return true;
+      },
       isBusy: () => controller.isBlocking(nowRef.current()),
       position: () => controller.position(),
       isPresent: () => controller.isPresent(),

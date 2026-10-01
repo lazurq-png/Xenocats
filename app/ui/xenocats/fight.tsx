@@ -473,6 +473,7 @@ export default function Fight({
             aria-label={kind === 'survival' ? 'Fight a cat: Survival' : 'Fight a cat: Taming'}
             tabIndex={-1}
             data-testid="fight-overlay"
+            data-xenocat-ignore
             data-mode={mode}
             data-kind={kind}
             data-phase={phase}

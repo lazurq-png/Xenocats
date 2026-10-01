@@ -58,6 +58,7 @@ function Roster({ disabled }: { disabled: boolean }) {
           <li
             key={type.id}
             data-testid={`cat-card-${type.id}`}
+            data-xenocat-card
             className="flex flex-col rounded-2xl border border-line bg-panel p-4 transition-colors hover:border-aura/60"
           >
             <div className="flex items-center gap-4">

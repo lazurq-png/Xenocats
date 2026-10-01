@@ -275,4 +275,40 @@ describe('XenocatCursorProvider', () => {
     fireEvent.pointerOut(document.body, { relatedTarget: null });
     await waitFor(() => expect(fake.style.opacity).toBe('0'));
   });
+  it('every attack also hits the page near the pointer, and puts it back exactly when it ends', async () => {
+    mockPointer(true);
+    renderPage();
+    const save = screen.getByText('Save');
+    save.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
+    const before = save.outerHTML;
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    await waitFor(() => expect(cursor.position()).not.toBeNull());
+    act(() => {
+      cursor.attack(vanish, { x: 300, y: 300 });
+    });
+    expect(save.getAttribute('data-xenocat-hit')).toBe('blur');
+    clock = vanish.durationMs - 1;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(save.getAttribute('data-xenocat-hit')).toBe('blur');
+    clock = vanish.durationMs;
+    await waitFor(() => expect(save.outerHTML).toBe(before));
+  });
+
+  it('puts the page back if it goes away mid-attack', async () => {
+    mockPointer(true);
+    renderPage();
+    const save = screen.getByText('Save');
+    save.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    await waitFor(() => expect(cursor.position()).not.toBeNull());
+    act(() => {
+      cursor.attack(vanish, { x: 300, y: 300 });
+    });
+    expect(save.hasAttribute('data-xenocat-hit')).toBe(true);
+    // Unmounting the provider removes the button too; keep a handle and check it.
+    cleanup();
+    expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
+  });
 });

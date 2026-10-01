@@ -467,3 +467,45 @@ test('all 20 cats are on /cats, and a sixth summon is refused while five are on 
   await expect(page.getByTestId('xenocat')).toHaveCount(5);
   await expect(page.locator('[data-cat-type="hypno-rex"]')).toHaveCount(0);
 });
+
+test('an attack pushes the page elements near the pointer, and puts them back exactly', async ({
+  page,
+}) => {
+  await openCats(page);
+  const button = page.getByTestId('summon-pulsar-siamese');
+  await summon(page, 'pulsar-siamese');
+  const before = await button.evaluate((el) => el.outerHTML);
+  // Pulsar Siamese's knockback pushes the button under the pointer away from it.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
+  await expect(button).toHaveAttribute('data-xenocat-hit', 'push');
+  await expect.poll(() => button.evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  // When the effect ends (1.5 s) the button is exactly as it was.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
+  await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
+});
+
+test('an attack scrambles the text near the pointer for the eye only, then restores it', async ({
+  page,
+}) => {
+  await openCats(page);
+  const card = page.getByTestId('cat-card-decoy-burmese');
+  const texts = await card.evaluate((el) =>
+    Array.from(el.querySelectorAll('*'), (child) => child.textContent)
+  );
+  const before = await card.evaluate((el) => el.outerHTML);
+  await summon(page, 'decoy-burmese');
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'decoys');
+  const scrambled = card.locator('[data-xenocat-hit="text"]').first();
+  await expect(scrambled).toBeAttached();
+  const shown = await scrambled.getAttribute('data-xenocat-hit-text');
+  expect(shown).not.toBe(await scrambled.textContent());
+  // The real text, which assistive technology reads, never changes.
+  await expect(card.getByRole('heading', { name: 'Decoy Burmese' })).toBeVisible();
+  expect(
+    await card.evaluate((el) => Array.from(el.querySelectorAll('*'), (child) => child.textContent))
+  ).toEqual(texts);
+  // After the effect (5 s) nothing is left of it.
+  await expect(card.locator('[data-xenocat-hit]')).toHaveCount(0, { timeout: 8000 });
+  // The card is exactly as it was before the cat came.
+  expect(await card.evaluate((el) => el.outerHTML)).toBe(before);
+});
