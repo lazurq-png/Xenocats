@@ -232,3 +232,64 @@ click gap before restore; the focused field could still be blurred/flipped;
 **UI**: tested in a browser (push, scramble), not seen. A human should look at
 the 20 page effects on the dashboard, especially scrambled text over coloured
 buttons and the swap.
+
+## T4 — Sound effects (completed)
+
+- Branch `night-2026-10-01-t4-sounds`, base `fbf3daf`. Started 2026-10-01
+  16:28 (budget 14.62M); completed 2026-10-01 16:38 (budget 14.59M).
+- **Correction to T3's entry:** T3 completed at 16:27, not 17:02 as written
+  there (written before reading the clock).
+- **T3 CI: passed** — `night-2026-10-01-t3-page-hits`
+  https://github.com/lazurq-png/Xenocats/actions/runs/36876486641 and
+  `night-2026-10-01` https://github.com/lazurq-png/Xenocats/actions/runs/36876490694.
+
+**What the code does**
+
+- `app/ui/xenocats/sounds.ts` (new): every sound as a list of synthesised
+  tones (oscillator or white noise, with glide and envelope); 20 distinct
+  attack sounds keyed by effect id; per-cat-pitched wake and arrival sounds
+  (`soundsFor`); the on/off choice in localStorage (`xenocats:sound`, on by
+  default) with a subscribe/get pair for React; and the player, which makes the
+  AudioContext only after a gesture, skips sounds while the context is still
+  suspended, and swallows every Web Audio failure.
+- `app/ui/xenocats/cat-layer.tsx`: the cats provider unlocks audio on the
+  first gesture, plays a cat's arrival sound when it appears, its wake sound
+  when it wakes and its attack sound when the attack is accepted; exposes
+  `sound(typeId, which)`; renders the speaker toggle (bottom-right button,
+  `aria-label="Cat sounds"`, `aria-pressed`, keyboard operable, immune to page
+  hits).
+- `app/ui/xenocats/fight.tsx`: game cats play their arrival sound when they
+  appear; Survival plays the attack sound when a landed attack's effect runs.
+- Tests: `tests/unit/xenocats/sounds.test.ts` (new, 9: every type has
+  playable attack/wake/arrival sounds; attacks all differ; wake/arrival pitched
+  per type; nothing before a gesture; plays every tone after; nothing on a
+  suspended context; nothing when off; silent without or with failing Web
+  Audio; the switch is on by default and remembers off).
+  `tests/e2e/sound.spec.ts` (new, 3, Web Audio stubbed to count tones): the
+  toggle is on by default, labelled, operated with Enter and Space, and
+  remembered across a reload; a cat makes sound after the first click; with
+  sound off the cats are silent.
+
+**Why**: plan task 4. Design and derived criteria: D10.
+
+**Acceptance criteria evidence**: (1), (2), (6), (7) unit tests; (3), (4)
+toggle e2e; (5) unit (nothing before unlock) and e2e (sound after the first
+click). Reading only: real audio output — nobody listened; touch-screen unlock.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 21 files / 308 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 49 passed (1.1 min); prettier clean (D1). The
+first gate run failed the new "a cat sounds" e2e test once: it clicked before
+hydration; the spec now waits for the fake cursor like the other specs, and
+passed 9/9 with `--repeat-each 3`.
+
+**Review**: `reviewer` — first pass Request Changes: (Medium) touch screens
+never unlocked audio and suspended sounds piled up → gesture list and state
+check; (Low) Survival sounded refused attacks → fixed; (Low) Fight cats had no
+arrival sound → added; toggle could be hit by page effects → ignored. Second
+pass: **Approve**, with N1 (first sound after the first gesture may be skipped,
+accepted in D10) and N2 (D10 wording, fixed).
+
+**UI**: tested in a browser with a stubbed AudioContext, not heard or seen. A
+human should listen to the 20 attack sounds and look at the toggle's corner
+position on the dashboard at phone width.

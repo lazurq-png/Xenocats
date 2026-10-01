@@ -169,3 +169,36 @@ Mechanism (`page-hits.ts`):
   blurred, flipped or pushed; boxes under 2 × 2 px (screen-reader-only labels)
   are skipped; tables are hit by row (`td`/`th` are not targets, since a cell
   always outranks its row).
+
+## D10 — T4: sound effects
+
+Acceptance criteria from plan task 4: (1) synthesised with Web Audio, no audio
+files; (2) a distinct sound for every cat's attack, plus waking up and
+spawning; (3) a speaker toggle in a corner, on by default, remembered in
+localStorage; (4) keyboard reachable and labelled; (5) audio only after the
+first user gesture; (6) fails silently without Web Audio; (7) unit tests that
+every cat type has its sounds; an e2e test for the toggle.
+
+- `sounds.ts`: each sound is a list of tones (oscillator shape or white
+  noise, glide, start, duration, gain). 20 distinct attack sounds keyed by
+  effect id; one wake and one arrival sound shared in shape but pitched per
+  cat type (`pitchFor`, ±½ octave), so "waking up and spawning" also differ
+  per cat. The player creates the AudioContext only on the first gesture
+  (see the gesture list under "After review"), and swallows every Web Audio
+  error.
+- Played from the cats provider: arrival when a cat enters `appearing`, wake
+  on `waking`, attack when the cursor accepts the attack; Survival's landed
+  attacks play the attack sound too (`Xenocats.sound`).
+- The toggle (`SoundToggle`, bottom-right, `aria-label="Cat sounds"`,
+  `aria-pressed`) mutes sound only; it is not an off switch for the cats (the
+  plan's "no off switch" rule). Stored as `xenocats:sound` = `on`/`off`.
+- After review: audio unlocks on `keydown`, `mousedown`, `pointerdown`,
+  `pointerup`, `touchend` and `click` (on touch screens only the last three
+  count as activation); a sound is skipped, not queued, while the context is
+  still suspended (its clock stands still, so queued sounds would all fire at
+  once). Fight cats make their arrival sound when they first appear; Survival
+  plays the attack sound only when the effect is accepted. The toggle is
+  `data-xenocat-ignore`, so page hits never move or hide it.
+- Accepted (reviewer N1, Low): a context created on the very first gesture
+  may still report `suspended` on the next frame, so that one first sound can be
+  skipped; every later sound plays.

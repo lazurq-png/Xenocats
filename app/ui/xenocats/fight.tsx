@@ -277,6 +277,16 @@ export default function Fight({
     const game = gameRef.current;
     if (!game) return;
 
+    // Each game cat makes its arrival sound once, when it first shows up.
+    const heard = new Set<number>();
+    const hearArrivals = (list: readonly { id: number; typeId: string }[]) => {
+      for (const cat of list) {
+        if (heard.has(cat.id)) continue;
+        heard.add(cat.id);
+        cats.sound(cat.typeId, 'arrive');
+      }
+    };
+
     const moveCats = (list: readonly { id: number; x: number; y: number }[]) => {
       const elements = dialogRef.current?.querySelectorAll<HTMLElement>('[data-cat-id]') ?? [];
       for (const element of elements) {
@@ -312,6 +322,7 @@ export default function Fight({
             setMessage(`You tamed ${catTypeById(tamed)?.name ?? 'a cat'}!`);
           }
           const snapshot = game.taming.snapshot(now);
+          hearArrivals(snapshot.cat ? [snapshot.cat] : []);
           moveCats(snapshot.cat ? [snapshot.cat] : []);
           const { cat, hold } = snapshot;
           const key = `${cat?.id}|${cat?.doing}|${Math.round(hold * 50)}|${snapshot.tamed.length}`;
@@ -325,10 +336,14 @@ export default function Fight({
             const type = catTypeById(cat.typeId);
             if (!type) continue;
             // One effect at a time: a cat landing during another's still costs a life.
-            if (game.mode === 'locked' && game.pointer) game.pointer.attack(type.effect, cat, now);
-            else cursor.attack(type.effect, cat);
+            const hit =
+              game.mode === 'locked' && game.pointer
+                ? game.pointer.attack(type.effect, cat, now)
+                : cursor.attack(type.effect, cat);
+            if (hit) cats.sound(type.id, 'attack');
           }
           const snapshot = game.survival.snapshot();
+          hearArrivals(snapshot.cats);
           moveCats(snapshot.cats);
           const { status, lives, wave, score } = snapshot;
           const ids = snapshot.cats.map((cat) => cat.id).join(',');
