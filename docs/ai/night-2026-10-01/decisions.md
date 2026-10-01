@@ -381,3 +381,26 @@ test with a touch device profile.
   to touch cannot leave cats waiting; `mousedown` is blocked too, so a tap
   cannot focus a displaced field; the e2e test proves the tap is blocked (no
   summon message) and works again after the effect (positive control).
+
+## D16 — T9: invoice foreign key and indexes
+
+Plan task 9: migration — `invoices.customer_id` references `customers(id)`
+`ON DELETE RESTRICT`; indexes for the invoice search, date sorting and status;
+check that the seed data satisfies the key.
+
+- `db/migrations/0002_invoice_keys_and_indexes.sql`: the key, plus
+  `invoices(customer_id)` (the search's and the list's join, and the lookup a
+  customer delete needs), `invoices(date DESC)` (every list sorts by date),
+  `invoices(status, date DESC)` (status filter, newest first — task 11).
+  `ALTER`/`CREATE INDEX` only: it works on a database that already has data,
+  and fails without changing anything if an invoice names a missing customer.
+- **The search itself is not indexed.** It matches `ILIKE '%…%'` across names,
+  emails, amounts, dates and statuses, which no B-tree index can serve; only a
+  trigram index (`pg_trgm`) could. An extension needs database privileges and
+  is installed per database, not per schema (the test schema is dropped and
+  rebuilt), so whether to add one is a human's decision: Q2 (which also explains why the invoice search would need restructuring too).
+- Seed: checked by a unit test (every invoice names a seeded customer, ids
+  unique) and in a real database by the e2e global setup, which rebuilds
+  `xenocats_test` from the migrations and seeds it (customers are inserted
+  before invoices). CI's build job does the same on its own server. The run
+  never applies it to `xenocats` (Q3).

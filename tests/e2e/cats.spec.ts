@@ -327,17 +327,26 @@ test('the stomp shake never moves the cats or the cursor, even on a scrolled pag
   // Sample while the shake class is on: the cat and the cursor must stay put.
   const samples = await page.evaluate(
     () =>
-      new Promise<{ catY: number; cursor: string }[]>((resolve) => {
+      new Promise<{ cat: string; layer: string; cursor: string }[]>((resolve) => {
         const target = document.querySelector('[data-testid="xenocat-page"]')!;
         // The last frame before the shake is the baseline; then five frames during it.
-        const out: { catY: number; cursor: string }[] = [];
-        let before: { catY: number; cursor: string } | null = null;
+        // The cat's own arrival animation moves its drawn box, so what is compared
+        // is what a scroll jump would move: the cat layer's box and the cat's place
+        // in it (offsetTop/offsetLeft ignore its animation), and the cursor.
+        const out: { cat: string; layer: string; cursor: string }[] = [];
+        let before: { cat: string; layer: string; cursor: string } | null = null;
         const sample = () => {
-          const cat = document.querySelector('[data-testid="xenocat"]');
+          const cat = document.querySelector('[data-testid="xenocat"]') as HTMLElement | null;
+          const layer = document.querySelector('[data-testid="xenocat-layer"]')!;
           const cursor = document.querySelector('[data-testid="fake-cursor"]') as HTMLElement;
           if (cat) {
             const box = cursor.getBoundingClientRect();
-            const now = { catY: cat.getBoundingClientRect().top, cursor: `${box.left},${box.top}` };
+            const layerBox = layer.getBoundingClientRect();
+            const now = {
+              cat: `${cat.offsetLeft},${cat.offsetTop}`,
+              layer: `${layerBox.left},${layerBox.top}`,
+              cursor: `${box.left},${box.top}`,
+            };
             if (!target.classList.contains('xenocat-shake')) before = now;
             else {
               if (out.length === 0 && before) out.push(before);
@@ -354,7 +363,8 @@ test('the stomp shake never moves the cats or the cursor, even on a scrolled pag
   expect(samples.length).toBeGreaterThan(0);
   const before = samples[0];
   for (const s of samples) {
-    expect(Math.abs(s.catY - before.catY)).toBeLessThan(40); // the stomp's own squash, not a scroll jump
+    expect(s.cat).toBe(before.cat);
+    expect(s.layer).toBe(before.layer);
     expect(s.cursor).toBe(before.cursor);
   }
   // The cursor is still drawn at the pointer.

@@ -559,3 +559,43 @@ test; (Low) a device switching from mouse to touch could strand cats → the
 touch path keys on the touch point; (Low) a tap could focus a displaced field
 → `mousedown` blocked. All applied; no second review pass (each fix is local
 and tested).
+
+## T9 — Foreign keys and indexes (completed)
+
+- Branch `night-2026-10-01-t9-keys-indexes`, base `fab97df`. Started
+  2026-10-01 21:02 (budget 14.27M); completed 2026-10-01 21:10 (budget 14.24M).
+- **T8 CI: failed, fight group only** (inherited, Q1); the new touch test
+  passed in CI. Runs 36911310720 / 36911305669.
+
+**What the code does**
+
+- `db/migrations/0002_invoice_keys_and_indexes.sql` (new): `invoices.customer_id`
+  references `customers(id)` `ON DELETE RESTRICT`; indexes on
+  `invoices(customer_id)`, `invoices(date DESC)` and `invoices(status, date
+  DESC)`. Adds only; on a database with an orphan invoice it fails and
+  changes nothing; it briefly blocks writes while it runs.
+- `tests/unit/seed-data.test.ts` (new, 4): every seeded invoice names a seeded
+  customer, customer ids are unique, migrations are numbered without gaps,
+  0002 adds the key and drops nothing. In CI's dashboard unit group.
+- `tests/e2e/cats.spec.ts`: the stomp-shake test (failed under load in T5,
+  T6 and T9's first gate: 40.9 px against a 40 px tolerance) now compares
+  what a scroll jump would move — the cat layer's box and the cat's layout
+  position — exactly, instead of the cat's drawn box (which its own arrival
+  animation moves) within a tolerance.
+
+**Why**: plan task 9. Design and the unindexed substring search: D16, Q2.
+Applying it to `xenocats` is a human's step: Q3.
+
+**Acceptance criteria evidence**: the key and indexes apply, and the seed
+satisfies the key, in a real PostgreSQL (the e2e global setup logged "applied
+0002_invoice_keys_and_indexes.sql" then "seeded schema"); unit tests for the
+seed. The key's effect on a customer delete is exercised by task 10.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 25 files / 358 tests; `npm run build` exit 0;
+`npm run test:e2e` 56 passed, 1 failed (the stomp-shake flake), then the
+rewritten test 6/6 and `cats.spec.ts` 28/28; actionlint clean.
+
+**Review**: `reviewer` — Approve; two Low wording corrections applied (Q2's
+trigram advice would only help the customers search; the migration's write
+locks are now stated).

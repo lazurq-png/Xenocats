@@ -47,3 +47,25 @@ and as a real failure if anything else does.
   not (or not the only) cause. Remaining suspects: the pause/Tab test and the
   pointer-lock test (both added in checkpoint 1). The report artifact of any of
   these runs names the failing test.
+
+## Q2 — An index for the searches? (needs an extension, and a query change)
+
+The invoice search matches `ILIKE '%term%'` with one `OR` across both joined
+tables (customer name and email, invoice amount, date and status). B-tree
+indexes cannot serve a leading wildcard. A trigram index (`pg_trgm`) can, but
+the run did not create the extension (database privileges; extensions live per
+database, while the app and the tests use schemas). Even with it, trigram
+indexes on `customers.name`/`email` would speed up the **customers** search
+only: the invoice search's `OR` spans two tables of a join, which the planner
+cannot serve from per-table indexes, so it would also need restructuring (e.g. a
+`UNION` of customer-side and invoice-side matches, or one indexed text column of
+the searched fields). Recommendation: only if the tables grow large.
+
+## Q3 — Apply tonight's migrations to the `xenocats` schema
+
+The run never writes to `xenocats`. A human runs `npm run db:migrate` to apply
+`0002_invoice_keys_and_indexes.sql` (and any later migration from tonight). It
+fails without changing anything if an invoice there names a missing customer.
+It takes write-blocking locks on `invoices` and `customers` while it checks the
+rows and builds the indexes (one transaction, so no `CONCURRENTLY`): on a large
+live table, apply it when traffic is low.
