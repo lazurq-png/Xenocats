@@ -69,5 +69,14 @@ The run cannot fix any of these, and most of them end it silently:
 6. The session runs with permission prompts off (bypass or auto mode), the
    machine will not sleep, and the editor or terminal stays open: closing it
    ends the session.
-7. Start it with **`/loop /night-run`** (no interval). The loop re-arms itself
-   each turn and stops itself when the run ends.
+7. Start it with the prompt below, sent as one message. The `/loop` is the run's
+   timer: it fires every 20 minutes whenever the session is idle, however the
+   last turn ended, so a run stopped by the usage limit (even during preflight)
+   resumes within about 20 minutes of the limit resetting. If nothing has
+   started a minute after sending it, send it once more without `/loop 20m`.
+   Never use `/loop` without an interval: that form dies at the first usage
+   limit.
+
+```text
+/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.5): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.5); (2) a night-* run branch exists whose committed progress.md has no "## Morning report" → resume it (§9.2); (3) no branch night-<today> exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline and its tasks are the only work.
+```

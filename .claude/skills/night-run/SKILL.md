@@ -67,12 +67,15 @@ for b in $(git branch --list 'night-*' --format='%(refname:short)' \
 done
 ```
 
-- **This session is already running the run** (a `/loop` heartbeat, §9.5): do
+- **This session is already running the run** (a timer heartbeat, §9.5): do
   not run this preflight at all. Go to §9.5.
 - **The loop prints a run branch** → you are **resuming** it: go to §9.2. Do
   not run §1.0, §1.2 or §1.4. Recreating the branch or state files is how a run
   loses its history.
-- **It prints nothing** → a new run: §1.0–§1.5 in order.
+- **It prints nothing** → a new run: §1.0–§1.5 in order, **unless this turn's
+  prompt forbids starting one** (the run's own timer does, §9.5): then delete
+  that timer (`CronList`, `CronDelete`) and stop, skipping §1.0 and writing
+  nothing.
 
 The loop reads `progress.md` from each run branch, never from the working tree.
 A new run is cut from `main`, which lacks unmerged earlier runs, so the tree
@@ -217,6 +220,8 @@ Create, delete or fetch nothing else on the remote.
   `## Limits`. The budget thresholds are proportions of that starting figure,
   and compaction will lose it if it is not written down. From here on
   `progress.md` only grows at its end.
+- **Arm the timer** (§9.5) right after the run-start entry, so that from here on
+  a usage limit or a stalled turn cannot end the run.
 
 ### 1.5 Baseline
 
@@ -687,8 +692,8 @@ budget, cut prose, never facts.
 
 The run ends at whichever comes first: the **goal time** `D` (§8.1–§8.4), which
 the plan sets, or the session **budget** (§8.5). If the account's usage limit
-runs out first, the session simply stops; §2's commit-and-push per task is what
-bounds that loss. Both reserve room for the report instead of leaving it the
+runs out first, the run pauses until the timer's next firing after it resets
+(§9.5); §2's commit-and-push per task bounds what an interrupted turn loses. Both reserve room for the report instead of leaving it the
 remainder.
 
 ### 8.1 Reading the clock
@@ -785,7 +790,7 @@ compaction, trust `progress.md` over memory.
 ## 9. Running across sessions
 
 The run branch and `docs/ai/night-<YYYY-MM-DD>/` *are* the run. A session only
-holds them for a while, and nothing of its conversation survives it. A `/loop`
+holds them for a while, and nothing of its conversation survives it. A timer
 heartbeat is not a new session (§9.5).
 
 ### 9.1 What a session owes the next
@@ -821,7 +826,8 @@ git log --oneline main..HEAD
    it again from §2 step 0.
 5. Pick up an abandoned task only if it was abandoned for budget. The
    three-cycle limit belongs to the run and does not reset.
-6. Continue at §2 step 0. The resume entry is committed with the next task.
+6. Arm the timer if this session has none (§9.5).
+7. Continue at §2 step 0. The resume entry is committed with the next task.
 
 ### 9.3 The handoff
 
@@ -843,27 +849,39 @@ These carry across sessions and never reset: the three-cycle limit, the dated
 deadline, the append-only `progress.md`, and parked questions (a later session inherits the
 decision and the `PROVISIONAL:` branch). Only the budget is per session.
 
-### 9.5 Under `/loop`: the heartbeat
+### 9.5 The timer: heartbeats and usage limits
 
-A long run is started as `/loop /night-run` (no interval: self-paced), so that a
-turn which ends with nothing running in the background does not leave the run
-stalled until the deadline. Each wakeup re-enters this skill in the **same**
-session.
+A run is started with a plain **`/night-run`**. The run then arms its own timer
+(§1.4, §9.2 step 6), a recurring Claude Code job that fires in this session
+every 20 minutes whenever the session is idle (a firing during a turn waits for
+it to end). It keeps firing however the previous turn ended, so a run cut off by
+the account's **usage limit** resumes by itself at the first firing after the
+limit resets: within one interval, plus up to 10% jitter. Firings while the
+limit is still in force fail and cost nothing.
 
-- **Every turn re-arms the loop.** A self-paced loop lives only as long as each
-  turn schedules the next one: a turn that ends without `ScheduleWakeup` ends
-  the loop, and the run with it. So **the last tool call of every turn** —
-  the first one (preflight), a turn that ends waiting on a background job or
-  §2 step 4's CI gate, a heartbeat — is `ScheduleWakeup` with `prompt:
-  "/night-run"` verbatim, a `reason` naming what is awaited, and `noop: true`
-  only when the turn changed nothing. The sole exception is the turn that ends
-  the run (below).
-- **With an interval** (`/loop 30m /night-run`) the loop is a cron job instead:
-  it re-fires by itself, so nothing needs re-arming, but `ScheduleWakeup`
-  cannot stop it. Ending the run then means `CronList` and `CronDelete` on
-  that job. A firing that arrives mid-turn waits; one that finds the run ended
-  does nothing. Prefer the self-paced form.
+**Arming it.** `CronList` first; if any job whose prompt invokes the night-run
+skill exists (this one, or a human's `/loop` that says it is the run's timer),
+do nothing.
+Otherwise `CronCreate` with `cron: "7,27,47 * * * *"`, `recurring: true` and
+exactly this prompt:
 
+```text
+Run unattended. Invoke the night-run skill. If this session already holds the run, this is a heartbeat (§9.5). Otherwise, if a night-* run branch exists whose progress.md has no "## Morning report", resume it (§9.2). Otherwise stop immediately: skip §1.0, create no branch, write no file, and delete this timer.
+```
+
+The prompt can only continue a run, never start one, so a firing after the run
+has ended writes nothing. Record the job id in `current-task.txt`.
+
+- **Started under a `/loop`.** A human may instead start with `/loop <interval>
+  <prompt>`, whose prompt invokes this skill and may allow starting a run; then
+  that loop is the timer, §1.4 finds it with `CronList` and arms nothing, and
+  ending deletes that loop. A self-paced `/loop` (no interval) lives
+  only as long as every turn ends with `ScheduleWakeup`; a turn the usage limit
+  cuts off never gets there, and the run dies. If a run is under one, arm the
+  timer anyway and stop calling `ScheduleWakeup`.
+- **The timer lives in this session.** It is gone if the editor or terminal
+  closes or the machine sleeps; then a human resumes with a new session (§9.2).
+  It expires after 7 days, far beyond any run.
 - **Tell a heartbeat from a new session** by your own context: if this
   conversation already holds this run's preflight or task work, it is a
   heartbeat. After a compaction, `progress.md` on the run branch, with this
@@ -873,18 +891,25 @@ session.
   `current-task.txt` in the scratchpad and the last entry of `progress.md`, then
   carry on where they say:
   - a background job (build, `reviewer`, CI poll) still running → nothing to
-    do; schedule the next wakeup;
+    do; end the turn and let its notification or the next firing resume you;
   - a task in flight → continue it from its current step;
   - between tasks → §2 step 0 for the next one, or, at or past `D`, the
     morning report (§8.2).
-- **Pacing:** the wakeup is a fallback, not the work signal — background jobs
-  re-invoke you when they finish. Schedule it long: 1200–1800 s.
+- **After an interruption** (a usage limit, or a turn that ended mid-step):
+  nothing from the cut-off turn is trusted. A background job started before it
+  may have finished while the limit was in force, and its notification is then
+  lost: check whether it is still running and read its output file rather than
+  waiting for it; if neither is available, run it again. A check whose result
+  is not in `current-task.txt` or `progress.md` is re-run. Edits on disk are
+  kept and re-verified, never assumed done. Append the gap (from when to when)
+  to `progress.md` with the next entry; the report lists it under Clock (§7).
 - **Ending:** once the morning report (§7) is pushed, or any §6 stop condition
-  has ended the run — including preflight finding no plan, no task or no
-  usable goal (§1.0) — stop the loop (`ScheduleWakeup` with `stop: true`). A
-  heartbeat that finds `## Morning report` already on the run branch stops the
-  loop and does nothing else. A session that hands off (§9.3) also stops its
-  loop: the next session is started by a human, with its own `/loop`.
-- **Past the goal time:** a wakeup after `D`, for example after the account's
-  usage limit reset, finishes a task still in flight (§8.4), writes the report
-  if none exists and stops the loop. It starts no new task.
+  has ended the run, delete the timer: `CronList`, then `CronDelete` on the
+  job whose prompt invokes the night-run skill. A
+  firing that finds `## Morning report` already on the run branch deletes it
+  and does nothing else. A session that hands off (§9.3) deletes its timer
+  too: the next session is started by a human with `/night-run`, and arms its
+  own.
+- **Past the goal time:** a firing after `D`, for example the first one after a
+  usage limit resets, finishes a task still in flight (§8.4), writes the report
+  if none exists and deletes the timer. It starts no new task.
