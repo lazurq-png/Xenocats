@@ -35,6 +35,7 @@ describe('every cat type has its sounds', () => {
       valid(sounds.attack);
       valid(sounds.wake);
       valid(sounds.arrive);
+      valid(sounds.purr);
       expect(ATTACK_SOUNDS[type.effect.id], type.id).toBe(sounds.attack);
     }
   });

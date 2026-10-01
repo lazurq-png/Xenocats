@@ -17,6 +17,7 @@ import { catArt } from './cat-art';
 import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import type { CatConfig } from './config';
+import { strengthen } from './effects';
 import { useXenocatCursor } from './fake-cursor';
 import { recordStat } from './field-guide';
 import {
@@ -107,6 +108,20 @@ export function XenocatCatsProvider({
     ] as const;
     for (const type of gestures) window.addEventListener(type, unlock, { capture: true });
 
+    // Clicking a sleeping cat wakes it at once, angry. The click itself goes on to
+    // whatever is under the cat, as always (the cats never take clicks).
+    // A mouse click lands where the visible cursor is; a tap or a pen, where it
+    // touched. Not while an effect blocks clicks.
+    const onPoke = (event: PointerEvent) => {
+      if (cursor.isBusy()) return;
+      const touched = { x: event.clientX, y: event.clientY };
+      const at = event.pointerType === 'mouse' ? (cursor.position() ?? touched) : touched;
+      if (engine.poke(at, cursor.now())) {
+        setCats(snapshot(engine));
+      }
+    };
+    window.addEventListener('pointerdown', onPoke, { capture: true });
+
     // A cat's sounds follow its phases: arriving, then waking up.
     const phases = new Map<number, CatPhase>();
     const playPhases = () => {
@@ -128,20 +143,35 @@ export function XenocatCatsProvider({
 
     const tick = () => {
       playPhases();
-      const changed = engine.tick(cursor.now(), cursor.position(), (_cat, type, centre) => {
-        // No cursor at all (a touch screen, or the pointer not seen yet): the cat
-        // pounces at nothing and leaves, rather than waiting on screen for ever.
-        if (cursor.position() === null) return true;
-        // The pointer is off the page: wait, rather than block clicks with an effect
-        // nobody sees.
-        if (!cursor.isPresent()) return false;
-        // The page is drawing its own pointer (a locked Fight game): wait until it is done.
-        if (cursor.isHidden()) return false;
-        if (!cursor.attack(type.effect, centre)) return false;
-        player.play(soundsFor(type).attack);
-        recordStat(type.id, 'survived');
-        return true;
-      });
+      const purr = (cat: Cat) => {
+        const type = typesRef.current.find((t) => t.id === cat.typeId);
+        if (type) player.play(soundsFor(type).purr);
+      };
+      // Petting needs the pointer on the page: one that has left it pets nothing.
+      const pointer = cursor.isPresent() ? cursor.position() : null;
+      const changed = engine.tick(
+        cursor.now(),
+        pointer,
+        (cat, type, centre) => {
+          // No cursor at all (a touch screen, or the pointer not seen yet): the cat
+          // pounces at nothing and leaves, rather than waiting on screen for ever.
+          if (cursor.position() === null) return true;
+          // The pointer is off the page: wait, rather than block clicks with an effect
+          // nobody sees.
+          if (!cursor.isPresent()) return false;
+          // The page is drawing its own pointer (a locked Fight game): wait until it is done.
+          if (cursor.isHidden()) return false;
+          // A cat clicked awake attacks angrily: harder and for longer.
+          const effect = cat.angry
+            ? strengthen(type.effect, engine.config.angryFactor)
+            : type.effect;
+          if (!cursor.attack(effect, centre)) return false;
+          player.play(soundsFor(type).attack);
+          recordStat(type.id, 'survived');
+          return true;
+        },
+        purr
+      );
       if (changed) setCats(snapshot(engine));
       frameId = requestAnimationFrame(tick);
     };
@@ -151,6 +181,7 @@ export function XenocatCatsProvider({
       cancelAnimationFrame(frameId);
       window.removeEventListener('resize', onResize);
       for (const type of gestures) window.removeEventListener(type, unlock, { capture: true });
+      window.removeEventListener('pointerdown', onPoke, { capture: true });
     };
   }, [engine, cursor, player]);
 
@@ -265,7 +296,9 @@ function CatView({
       data-testid="xenocat"
       data-cat-type={type.id}
       data-phase={cat.phase}
-      className={`absolute ${outer?.className ?? ''}`}
+      data-angry={cat.angry || undefined}
+      data-petted={cat.petted || undefined}
+      className={`absolute ${outer?.className ?? ''} ${cat.angry ? 'xenocat-angry' : ''}`}
       style={style}
     >
       <div

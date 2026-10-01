@@ -6,6 +6,10 @@
 // `ready` is where a cat waits while another cat's effect is still running: only
 // one effect runs at a time, so its attack is retried every tick until accepted.
 // A summoned cat skips sleeping and waking, unless it is summoned asleep.
+//
+// A sleeping cat with the pointer resting on it for `petMs` is petted: it purrs and
+// sleeps on for at least `petSleepMs`. A sleeping cat clicked (`poke`) wakes at once,
+// angry: its attack is `angryFactor` times stronger (effects.ts `strengthen`).
 
 import type { CatType } from './cat-types';
 import { CAT_CONFIG, type CatConfig, type Range } from './config';
@@ -26,6 +30,12 @@ export type Cat = {
   phaseEndsAt: number;
   /** Summoned cats attack as soon as they have arrived. */
   eager: boolean;
+  /** Clicked awake: its attack is stronger. */
+  angry: boolean;
+  /** Has purred at least once. */
+  petted: boolean;
+  /** Since when the pointer has rested on it while it sleeps, or null. */
+  petSince: number | null;
 };
 
 /** Called when a cat is ready to pounce; false while another effect still runs. */
@@ -55,6 +65,13 @@ export function createCatEngine(options: {
     x: cat.x + config.catSize / 2,
     y: cat.y + config.catSize / 2,
   });
+
+  /** True if `point` is on the cat's square. */
+  const covers = (cat: Cat, point: Vec) =>
+    point.x >= cat.x &&
+    point.x <= cat.x + config.catSize &&
+    point.y >= cat.y &&
+    point.y <= cat.y + config.catSize;
 
   function setPhase(cat: Cat, phase: CatPhase, at: number, lasts: number) {
     cat.phase = phase;
@@ -96,6 +113,9 @@ export function createCatEngine(options: {
       phaseStartedAt: now,
       phaseEndsAt: now + type.entranceMs,
       eager,
+      angry: false,
+      petted: false,
+      petSince: null,
     };
     cats.push(cat);
     return cat;
@@ -130,9 +150,45 @@ export function createCatEngine(options: {
       return type ? spawn(type, now, cursor, !asleep) : null;
     },
 
-    /** Advances every cat to `now`. Returns true if anything a renderer shows changed. */
-    tick(now: number, cursor: Vec | null, tryAttack: TryAttack): boolean {
+    /**
+     * A click at `point`: a sleeping cat under it wakes at once, angry. Returns
+     * that cat, or null if the click hit no sleeping cat.
+     */
+    poke(point: Vec, now: number): Cat | null {
+      const cat = cats.find((c) => c.phase === 'sleeping' && covers(c, point));
+      if (!cat) return null;
+      cat.angry = true;
+      cat.petSince = null;
+      setPhase(cat, 'waking', now, config.wakeMs);
+      return cat;
+    },
+
+    /**
+     * Advances every cat to `now`. Returns true if anything a renderer shows
+     * changed. `onPurr` is called for each cat petted this tick.
+     */
+    tick(
+      now: number,
+      cursor: Vec | null,
+      tryAttack: TryAttack,
+      onPurr: (cat: Cat) => void = () => {}
+    ): boolean {
       let changed = false;
+
+      for (const cat of cats) {
+        if (cat.phase !== 'sleeping' || !cursor || !covers(cat, cursor)) {
+          cat.petSince = null;
+          continue;
+        }
+        cat.petSince ??= now;
+        if (now - cat.petSince >= config.petMs) {
+          cat.petSince = now;
+          cat.phaseEndsAt = Math.max(cat.phaseEndsAt, now + config.petSleepMs);
+          if (!cat.petted) changed = true;
+          cat.petted = true;
+          onPurr(cat);
+        }
+      }
 
       if (autoSpawn) {
         nextSpawnAt ??= now + between(config.firstSpawnMs);

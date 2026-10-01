@@ -289,3 +289,36 @@ visitor.
   test now checks the documented behaviour for whichever focus the browser
   reports; both branches were run locally (the unfocused one by faking
   `hasFocus`).
+
+## D13 — T6: petting and poking a sleeping cat
+
+Plan task 6: hovering a sleeping cat for 1 s makes it purr (a sound from task 4)
+and delays its wake-up; clicking a sleeping cat wakes it early and angry, its
+attack stronger by an amount set in the config.
+
+- Petting lives in the pure engine (`cat-engine.ts`): the pointer resting on a
+  sleeping cat's square for `petMs` (1000) purrs (`onPurr`, a per-cat-pitched
+  `purr` sound) and makes it sleep on for at least `petSleepMs` (4000) after
+  that purr; continued petting keeps it asleep. Moving off restarts the second.
+- A click on a sleeping cat (`poke`, from a captured `pointerdown`) wakes it at
+  once and marks it angry; it glows red. The click is not swallowed: it still
+  reaches whatever is under the cat, as every click does (the cats never take
+  clicks).
+- "Stronger by an amount set in the config": `CAT_CONFIG.angryFactor` (1.5).
+  `strengthen(effect, factor)` makes the effect last 1.5× as long (within the
+  10 s cap), with 1.5× the blur and scale; only effects marked
+  `amplify: 'offset'` also move the cursor 1.5× as far from the real pointer
+  (see "After review" below). The wrapped effect still sees its own
+  unstrengthened previous look, so one that builds on it (fall) does not
+  compound frame after frame (unit-tested).
+- Only cat-layer cats can be petted or poked; Fight game cats are never asleep.
+- After review: (Medium) scaling the cursor's distance from the real pointer
+  only makes sense for effects that draw the cursor at an offset from it —
+  knockback, drift, jitter, drunk, decoys, teleport, fall, now marked
+  `amplify: 'offset'`; the others (freeze, heavy, magnet, orbit, spiral,
+  bounce, axis-lock…) only last longer and blur/scale more, so a strengthened
+  freeze still freezes. (Low) petting needs the pointer on the page. (Low) a
+  click pokes at the visible cursor (real pointer on touch screens) and not
+  while an effect blocks clicks.
+- After re-review (Low): a tap or pen pokes where it touched, a mouse click
+  where the visible cursor is (a touchscreen laptop has both).

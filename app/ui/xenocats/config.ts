@@ -25,6 +25,12 @@ export type CatConfig = {
   pageHitRadius: number;
   /** At most this many page elements per attack. */
   maxPageTargets: number;
+  /** Resting the pointer on a sleeping cat this long pets it: it purrs. */
+  petMs: number;
+  /** A petted cat sleeps on at least this long after the last purr. */
+  petSleepMs: number;
+  /** A cat clicked awake is angry: its attack is this many times stronger. */
+  angryFactor: number;
 };
 
 export const CAT_CONFIG: CatConfig = {
@@ -39,4 +45,7 @@ export const CAT_CONFIG: CatConfig = {
   attackMs: 600,
   pageHitRadius: 120,
   maxPageTargets: 6,
+  petMs: 1000,
+  petSleepMs: 4000,
+  angryFactor: 1.5,
 };

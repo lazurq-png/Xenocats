@@ -47,7 +47,7 @@ jobs:
         run: >-
           npx vitest run tests/unit/xenocats/survival tests/unit/xenocats/locked-pointer
           tests/unit/xenocats/taming tests/unit/xenocats/page-hits tests/unit/xenocats/sounds
-          tests/unit/xenocats/field-guide
+          tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat
       # A test file in no group would never run: each unit test must be named in a
       # group above, each browser test in a group of both browser jobs below.
       - name: Every test file is in a group
@@ -112,9 +112,9 @@ jobs:
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
-      - name: Browser tests against next start (cats)
+      - name: Browser tests against next start (cats, petting)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats --output test-results/cats
+        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat --output test-results/cats
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
@@ -178,9 +178,9 @@ jobs:
           --output test-results/smoke
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
-      - name: Browser tests (cats)
+      - name: Browser tests (cats, petting)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats --output test-results/cats
+        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat --output test-results/cats
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
       - name: Browser tests (fight)

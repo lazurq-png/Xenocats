@@ -91,7 +91,7 @@ const transpose = (sound: Sound, factor: number): Sound =>
     ...(t.endFreq ? { endFreq: t.endFreq * factor } : {}),
   }));
 
-export type CatSounds = { attack: Sound; wake: Sound; arrive: Sound };
+export type CatSounds = { attack: Sound; wake: Sound; arrive: Sound; purr: Sound };
 
 /** A cat type's three sounds. */
 export function soundsFor(type: CatType): CatSounds {
@@ -105,6 +105,11 @@ export function soundsFor(type: CatType): CatSounds {
     ),
     // A soft rising pop.
     arrive: transpose([tone('sine', 196, 0, 0.25, 0.35, 392)], pitch),
+    // A low, rolling purr: quick soft pulses.
+    purr: transpose(
+      [0, 0.09, 0.18, 0.27, 0.36, 0.45].map((at) => tone('sawtooth', 55, at, 0.07, 0.25)),
+      pitch
+    ),
   };
 }
 

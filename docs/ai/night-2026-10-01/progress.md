@@ -388,3 +388,77 @@ Re-check of the fixes: **Approve**, no new findings.
 tsc` exit 0; `npm test` exit 0, 22 files / 317 tests; `npm run build` exit 0;
 `npm run test:e2e` exit 0, 54 passed (1.3 min); prettier clean (D1);
 `fight.spec.ts` 28/28 with `--repeat-each 4`.
+
+## Checkpoint 1 — CI (appended after the checkpoint's own entry)
+
+- `c4df896` (checkpoint 1): **CI failed** — both browser-test jobs; checks
+  job passed. Runs 36882816905 / 36882811268.
+- Fix cycle 1, `53251eb` (lock test skips when the lock is refused): **CI
+  failed**, same jobs. Runs 36885127092 / 36885123305.
+- Fix cycle 2, `fdbc6cd` (named per-spec browser groups with separate
+  reports; all unit tests now in CI groups, five older ones included, plus a
+  guard; Taming dodge-test flake fixed): **CI failed, only the fight group**,
+  in both jobs. Runs 36904288443 / 36904284951.
+- Fix cycle 3, `6a30700` (lock test checks pause vs. game over by the
+  browser's focus): **CI failed**, fight group only. Runs 36906133949 /
+  36906128598.
+- Three cycles reached: the checkpoint's branches stay pushed as they are;
+  the hypotheses and evidence are in D12 and Q1. Every check passes locally,
+  also with CI's settings, on both servers. The run's three-cycle limit has
+  been used once; a second task reaching it ends the run.
+- **Gap:** no activity between about 17:45 and 19:49 (session paused,
+  probably a usage limit); work resumed on the timer's next firing.
+
+## T6 — Pet a sleeping cat (completed)
+
+- Branch `night-2026-10-01-t6-pet-cat`, base `c4df896`, rebased by
+  fast-forward onto `6a30700` while the checkpoint's CI was being fixed (the
+  task's work was parked in a stash meanwhile). Started 2026-10-01 17:16
+  (budget 14.49M); completed 2026-10-01 20:32 (budget 14.35M).
+
+**What the code does**
+
+- `app/ui/xenocats/cat-engine.ts`: petting — the pointer resting on a
+  sleeping cat for 1 s (`petMs`) purrs and keeps it asleep at least 4 s
+  (`petSleepMs`) after the last purr; `poke` — a click on a sleeping cat
+  wakes it at once and marks it angry.
+- `app/ui/xenocats/effects.ts`: `strengthen(effect, factor)` — the effect
+  lasts `factor` times as long (within the 10 s cap), blurs and scales more,
+  and, for effects marked `amplify: 'offset'` (knockback, drift, jitter,
+  drunk, decoys, teleport, fall), throws the cursor that much further; the
+  wrapped effect still sees its own previous look, so nothing compounds.
+- `app/ui/xenocats/cat-layer.tsx`: purrs with the cat's purr sound; an angry
+  cat attacks with its effect strengthened by `angryFactor` (1.5) and glows
+  red; clicks poke at the visible cursor (a tap where it touched), not while
+  an effect blocks clicks; petting only while the pointer is on the page.
+- `app/ui/xenocats/config.ts`, `sounds.ts`, `global.css`: the three settings,
+  a per-cat-pitched purr, the angry glow.
+- Tests: `tests/unit/xenocats/pet-cat.test.ts` (new, 12), `sounds.test.ts`
+  (purr), `tests/e2e/pet-cat.spec.ts` (new, 2: petting purrs and keeps the
+  cat asleep past its longest nap; a click wakes it angry and its vanish lasts
+  1.5× as long). Both added to CI's groups (`.github/workflows/ci.yml`).
+
+**Why**: plan task 6. Design: D13.
+
+**Acceptance criteria evidence**: hover 1 s → purr and later waking; click →
+early, angry wake; stronger attack by a config amount — unit and browser
+tests. Nobody heard the purr.
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `npm test` exit 0, 23 files / 329 tests; `npm run build` exit 0;
+`npm run test:e2e` exit 0, 56 passed (on base `fdbc6cd`); after the move to
+`6a30700` (a one-test change) lint, tsc, `npm test` (329) and the fight and
+pet-cat specs (9 passed) again; actionlint clean with the CI group change.
+The first gate failed the angry-click e2e test: the click on the cat also
+pressed a Summon button under it (D13: clicks pass through), whose cat's
+attack followed — the test now checks that the vanish ended.
+
+**Review**: `reviewer` — Request Changes: (Medium) `strengthen` scaled every
+effect's distance from the real pointer, turning freeze, heavy, orbit, spiral,
+bounce, axis-lock and magnet into different effects, hidden by a test that
+held the real pointer still → only offset effects are amplified, tests move
+the pointer; (Low) petting while the pointer was off the page → gated; (Low)
+clicks poked at the real pointer, not the visible cursor → fixed. Re-review:
+**Approve**, two Lows applied (tap coordinates; D13 wording).
+
+**CI**: will inherit the fight-group failure (Q1).
