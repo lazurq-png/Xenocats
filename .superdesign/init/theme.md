@@ -1,0 +1,1206 @@
+# Theme
+
+# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 3.4 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
+
+## Part 1: Token summary
+
+Dark-only. Tailwind tokens (tailwind.config.ts `theme.extend`), sampled from the Canva mockup "Xenocat Analytics website mockup":
+
+| Token | Value | Use |
+|---|---|---|
+| `void` | #070b14 | dashboard background |
+| `void-login` | #04051f | login background |
+| `void-landing` | #040a19 | landing / cats background |
+| `panel` | #0a0e1c | cards/panels |
+| `panel-raised` | #12162b | raised panels, inputs |
+| `panel-glass` | rgba(43,43,73,0.16) | glass panels |
+| `line` | #2d2f47 | borders / dividers |
+| `plasma` | #c1e838 | primary accent (lime): buttons, highlights |
+| `plasma-dim` | #aacf22 | primary hover |
+| `aura` | #9d86ff | secondary accent (violet) |
+| `aura-login` | #8c88ff | login accent |
+| `aura-link` | #7a7ff1 | links |
+| `cream` | #e0e0b3 | display headings |
+
+Fonts: `font-display` Orbitron (headings), `font-sans` Montserrat (public pages), `font-ui` Roboto 400/500/700 (dashboard).
+Shadows: `shadow-glow` 0 0 28px -2px rgba(193,232,56,.55) (lime glow); `shadow-halo` 0 0 80px -10px rgba(140,136,255,.55) (violet halo).
+Radius/spacing/breakpoints: Tailwind defaults; pill buttons `rounded-full`, content frame `md:rounded-bl-[40px]`. Breakpoint `md` (768px) switches sidebar from top to left.
+Background texture: `.xenocat-stars` (global.css) starfield. Glow pulse: `.xenocat-glow`, `.xenocat-art-glow`. Most of global.css is cat entrance/exit keyframes (`.xenocat-enter-*`, `.xenocat-exit-*`).
+
+Cat palettes (per cat, `CAT_TYPES` in app/ui/xenocats/cat-types.ts): body / belly / glow / accent, e.g. Void Tabby #3b3552 / #6d6590 / #a78bfa / #16131f; Gravi Coon #8a6d4b / #d9c2a0 / #fbbf24 / #3f2f1f; Pulsar Siamese #efe6d8 / #fffaf2 / #38bdf8 / #5b4636.
+
+## Part 2: Raw sources
+
+### tailwind.config.ts
+```ts
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      gridTemplateColumns: {
+        '13': 'repeat(13, minmax(0, 1fr))',
+      },
+      // Sampled from the Canva mockup ("Xenocat Analytics website mockup").
+      colors: {
+        void: { DEFAULT: '#070b14', login: '#04051f', landing: '#040a19' },
+        panel: { DEFAULT: '#0a0e1c', raised: '#12162b', glass: 'rgba(43, 43, 73, 0.16)' },
+        line: '#2d2f47',
+        plasma: { DEFAULT: '#c1e838', dim: '#aacf22' },
+        aura: { DEFAULT: '#9d86ff', login: '#8c88ff', link: '#7a7ff1' },
+        cream: '#e0e0b3',
+      },
+      fontFamily: {
+        display: ['var(--font-display)', 'sans-serif'],
+        sans: ['var(--font-sans)', 'sans-serif'],
+        ui: ['var(--font-ui)', 'sans-serif'],
+      },
+      boxShadow: {
+        glow: '0 0 28px -2px rgba(193, 232, 56, 0.55)',
+        halo: '0 0 80px -10px rgba(140, 136, 255, 0.55)',
+      },
+    },
+    keyframes: {
+      shimmer: {
+        '100%': {
+          transform: 'translateX(100%)',
+        },
+      },
+    },
+  },
+  plugins: [require('@tailwindcss/forms')],
+};
+export default config;
+```
+
+### app/ui/fonts.tsx
+```tsx
+import { Montserrat, Orbitron, Roboto } from 'next/font/google';
+
+// The mockup's three typefaces: Orbitron for display type, Montserrat for the
+// public pages' copy, Roboto for the dashboard. Exposed as CSS variables that
+// tailwind.config.ts maps to font-display, font-sans and font-ui.
+export const display = Orbitron({ subsets: ['latin'], variable: '--font-display' });
+export const sans = Montserrat({ subsets: ['latin'], variable: '--font-sans' });
+export const ui = Roboto({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-ui',
+});
+```
+
+### app/ui/global.css
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The whole site is night-side; each page adds its own sky (stars, glow). */
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply min-h-screen bg-void text-white;
+  }
+
+  ::selection {
+    @apply bg-plasma text-black;
+  }
+}
+
+/* A scatter of stars for the public pages, layered over their background colour. */
+.xenocat-stars {
+  background-image:
+    radial-gradient(1px 1px at 8% 14%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1px 1px at 38% 6%, rgba(255, 255, 255, 0.45), transparent 60%),
+    radial-gradient(1.5px 1.5px at 44% 12%, rgba(157, 134, 255, 0.8), transparent 60%),
+    radial-gradient(1px 1px at 61% 30%, rgba(255, 255, 255, 0.4), transparent 60%),
+    radial-gradient(1px 1px at 88% 22%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(1.5px 1.5px at 72% 64%, rgba(157, 134, 255, 0.6), transparent 60%),
+    radial-gradient(1px 1px at 23% 58%, rgba(255, 255, 255, 0.35), transparent 60%),
+    radial-gradient(1px 1px at 95% 90%, rgba(255, 255, 255, 0.4), transparent 60%);
+}
+
+/* Pages with cats draw their own cursor (app/ui/xenocats/fake-cursor.tsx). */
+html.xenocat-cursor-hidden,
+html.xenocat-cursor-hidden * {
+  cursor: none !important;
+}
+
+/* Xenocats (app/ui/xenocats/cat-layer.tsx). The one-shot animations (arrival, waking,
+   pounce, departure) get their duration inline from the cat type or config.ts; the
+   durations written here are only fallbacks. The loops (glow, breathing, z's,
+   wobble) are decorative and keep their own. */
+
+.xenocat-glow {
+  animation: xenocat-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes xenocat-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Rendered cat artwork (cat-art.ts): the cat's glow colour pulses around it,
+   standing in for the SVG sprite's glowing eyes and antenna tips. */
+.xenocat-art-glow {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: xenocat-art-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes xenocat-art-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 6px var(--xenocat-glow));
+  }
+  50% {
+    filter: drop-shadow(0 0 1px var(--xenocat-glow));
+  }
+}
+
+/* Asleep: the body breathes and z's drift up. */
+.xenocat-sleeping .xenocat-body {
+  animation: xenocat-breathe 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+@keyframes xenocat-breathe {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.03, 1.07);
+  }
+}
+
+.xenocat-z {
+  position: absolute;
+  right: 0;
+  top: 0;
+  opacity: 0;
+  font:
+    700 13px/1 ui-sans-serif,
+    system-ui,
+    sans-serif;
+  animation: xenocat-z 2.4s ease-out infinite;
+}
+
+@keyframes xenocat-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(14px, -26px) scale(1.25);
+  }
+}
+
+/* Waking: a stretch. Ready: a twitchy wobble while it waits its turn. */
+.xenocat-waking {
+  animation: xenocat-stretch 0.9s ease-in-out both;
+  transform-origin: 50% 100%;
+}
+
+@keyframes xenocat-stretch {
+  0% {
+    transform: scale(1, 1);
+  }
+  40% {
+    transform: scale(1.1, 0.88);
+  }
+  70% {
+    transform: translateY(-6px) scale(0.95, 1.07);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.xenocat-ready {
+  animation: xenocat-wobble 0.45s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+
+@keyframes xenocat-wobble {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+/* Attacking: the pounce. */
+.xenocat-attacking {
+  animation: xenocat-pounce 0.6s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  transform-origin: 50% 100%;
+}
+
+@keyframes xenocat-pounce {
+  0% {
+    transform: none;
+  }
+  45% {
+    transform: translateY(-14px) scale(1.2);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* The default arrival and departure. Each cat type names its own pair. */
+.xenocat-enter-fade {
+  animation-name: xenocat-enter-fade;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+@keyframes xenocat-enter-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.xenocat-exit-fade {
+  animation-name: xenocat-exit-fade;
+  animation-timing-function: ease-in;
+  animation-fill-mode: both;
+}
+
+@keyframes xenocat-exit-fade {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Per-cat arrivals and departures (cat-types.ts). Class `xenocat-enter-<name>` /
+   `xenocat-exit-<name>`; the duration is set inline from the cat type. */
+
+[class*='xenocat-enter-'],
+[class*='xenocat-exit-'] {
+  animation-fill-mode: both;
+}
+
+/* 1 Void Tabby: a black hole opens and it steps out; collapses into a point. */
+.xenocat-enter-black-hole {
+  animation-name: xenocat-enter-black-hole;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@keyframes xenocat-enter-black-hole {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(-540deg);
+    filter: brightness(0) drop-shadow(0 0 0 #000);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(0.35) rotate(-180deg);
+    filter: brightness(0) drop-shadow(0 0 14px #1e1b2e);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.xenocat-exit-collapse {
+  animation-name: xenocat-exit-collapse;
+  animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.4);
+}
+@keyframes xenocat-exit-collapse {
+  from {
+    transform: none;
+    filter: none;
+  }
+  to {
+    opacity: 0.6;
+    transform: scale(0) rotate(540deg);
+    filter: brightness(0);
+  }
+}
+
+/* 2 Gravi Coon: drops from the top with a thud; sinks through the floor. */
+.xenocat-enter-thud {
+  animation-name: xenocat-enter-thud;
+  animation-timing-function: linear;
+  transform-origin: 50% 100%;
+}
+@keyframes xenocat-enter-thud {
+  0% {
+    opacity: 1;
+    transform: translateY(-110vh);
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
+  }
+  65% {
+    transform: translateY(0) scale(1.25, 0.7);
+  }
+  80% {
+    transform: translateY(-4px) scale(0.92, 1.08);
+  }
+  100% {
+    transform: none;
+  }
+}
+.xenocat-exit-sink {
+  animation-name: xenocat-exit-sink;
+  animation-timing-function: ease-in;
+}
+@keyframes xenocat-exit-sink {
+  from {
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    transform: translateY(100%);
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+/* 3 Pulsar Siamese: a pulse ring expands; pulses out. */
+.xenocat-enter-pulse,
+.xenocat-exit-pulse-out {
+  border-radius: 9999px;
+}
+.xenocat-enter-pulse {
+  animation-name: xenocat-enter-pulse;
+  animation-timing-function: ease-out;
+}
+@keyframes xenocat-enter-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.9);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    transform: none;
+    box-shadow: 0 0 0 40px rgba(56, 189, 248, 0);
+  }
+}
+.xenocat-exit-pulse-out {
+  animation-name: xenocat-exit-pulse-out;
+  animation-timing-function: ease-in;
+}
+@keyframes xenocat-exit-pulse-out {
+  0% {
+    transform: none;
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.9);
+  }
+  40% {
+    transform: scale(1.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0);
+    box-shadow: 0 0 0 40px rgba(56, 189, 248, 0);
+  }
+}
+
+/* 4 Mirror Sphynx: steps out of a mirror shard; shatters. */
+.xenocat-enter-mirror {
+  animation-name: xenocat-enter-mirror;
+  animation-timing-function: ease-out;
+}
+@keyframes xenocat-enter-mirror {
+  0% {
+    opacity: 0;
+    transform: perspective(200px) rotateY(90deg) skewY(-12deg);
+    clip-path: polygon(40% 0, 60% 0, 55% 100%, 45% 100%);
+    filter: brightness(2) saturate(0);
+  }
+  60% {
+    opacity: 1;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  }
+  100% {
+    transform: none;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    filter: none;
+  }
+}
+.xenocat-exit-shatter {
+  animation-name: xenocat-exit-shatter;
+  animation-timing-function: steps(5, end);
+}
+@keyframes xenocat-exit-shatter {
+  0% {
+    clip-path: polygon(0 0, 50% 0, 100% 0, 100% 50%, 100% 100%, 50% 100%, 0 100%, 0 50%);
+    filter: none;
+  }
+  40% {
+    clip-path: polygon(0 0, 45% 10%, 100% 0, 90% 55%, 100% 100%, 50% 85%, 0 100%, 10% 45%);
+    filter: brightness(1.8) saturate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3) rotate(8deg);
+    clip-path: polygon(48% 48%, 50% 47%, 52% 48%, 53% 50%, 52% 52%, 50% 53%, 48% 52%, 47% 50%);
+  }
+}
+
+/* 5 Static Calico: TV-static flicker in; flicker out. */
+.xenocat-enter-static,
+.xenocat-exit-static-out {
+  animation-timing-function: steps(1, end);
+}
+.xenocat-enter-static {
+  animation-name: xenocat-enter-static;
+}
+@keyframes xenocat-enter-static {
+  0%,
+  20%,
+  45% {
+    opacity: 0;
+  }
+  10%,
+  30%,
+  55% {
+    opacity: 1;
+    transform: translateX(3px) skewX(10deg);
+    filter: contrast(3) grayscale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(-2px);
+    filter: contrast(2) grayscale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.xenocat-exit-static-out {
+  animation-name: xenocat-exit-static-out;
+}
+@keyframes xenocat-exit-static-out {
+  0% {
+    opacity: 1;
+    filter: contrast(2) grayscale(0.6);
+  }
+  25%,
+  60% {
+    opacity: 0;
+  }
+  40%,
+  75% {
+    opacity: 1;
+    transform: translateX(-3px) skewX(-10deg);
+    filter: contrast(3) grayscale(1);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 6 Cryo Persian: an ice crystal grows; melts. */
+.xenocat-enter-crystal {
+  animation-name: xenocat-enter-crystal;
+  animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes xenocat-enter-crystal {
+  0% {
+    opacity: 0;
+    transform: scale(0.1) rotate(45deg);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    filter: hue-rotate(40deg) brightness(1.6) drop-shadow(0 0 10px #7dd3fc);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.05) rotate(0deg);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  }
+  100% {
+    transform: none;
+    clip-path: polygon(-20% -20%, 120% -20%, 120% 120%, -20% 120%);
+    filter: none;
+  }
+}
+.xenocat-exit-melt {
+  animation-name: xenocat-exit-melt;
+  animation-timing-function: ease-in;
+  transform-origin: 50% 100%;
+}
+@keyframes xenocat-exit-melt {
+  from {
+    transform: none;
+    filter: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4, 0.1);
+    filter: blur(2px) hue-rotate(40deg);
+  }
+}
+
+/* 7 Nebula Ragdoll: condenses from a gas cloud; dissipates. */
+.xenocat-enter-condense {
+  animation-name: xenocat-enter-condense;
+  animation-timing-function: ease-out;
+}
+@keyframes xenocat-enter-condense {
+  from {
+    opacity: 0;
+    transform: scale(1.8) rotate(-20deg);
+    filter: blur(14px) saturate(2);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.xenocat-exit-dissipate {
+  animation-name: xenocat-exit-dissipate;
+  animation-timing-function: ease-in;
+}
+@keyframes xenocat-exit-dissipate {
+  from {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.8) rotate(20deg);
+    filter: blur(14px) saturate(2);
+  }
+}
+
+/* Titan Forest Cat's stomp shakes the page content (cat-layer.tsx, useStompShake) —
+   not <body>, whose transform would move the fixed cat and cursor layers. */
+.xenocat-shake {
+  animation: xenocat-shake 0.35s linear both;
+}
+@keyframes xenocat-shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translate(-4px, 2px);
+  }
+  40% {
+    transform: translate(4px, -2px);
+  }
+  60% {
+    transform: translate(-3px, -1px);
+  }
+  80% {
+    transform: translate(2px, 2px);
+  }
+}
+
+/* 8 Quantum Kitten: blinks in at several spots; blinks out. */
+.xenocat-enter-blink {
+  animation-name: xenocat-enter-blink;
+  animation-timing-function: steps(1, end);
+}
+@keyframes xenocat-enter-blink {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+    transform: translate(-60px, 30px) scale(0.8);
+  }
+  22% {
+    opacity: 0;
+  }
+  34% {
+    opacity: 1;
+    transform: translate(50px, -40px) scale(0.8);
+  }
+  46% {
+    opacity: 0;
+  }
+  58% {
+    opacity: 1;
+    transform: translate(-25px, -50px) scale(0.9);
+  }
+  70% {
+    opacity: 0;
+  }
+  82%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.xenocat-exit-blink-out {
+  animation-name: xenocat-exit-blink-out;
+  animation-timing-function: steps(1, end);
+}
+@keyframes xenocat-exit-blink-out {
+  0%,
+  30%,
+  60% {
+    opacity: 1;
+  }
+  15%,
+  45%,
+  75%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 9 Magneto Bengal: slides in along a screen edge; slides off. */
+.xenocat-enter-slide-edge {
+  animation-name: xenocat-enter-slide-edge;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@keyframes xenocat-enter-slide-edge {
+  from {
+    transform: translateX(-110vw) skewX(-15deg);
+  }
+  80% {
+    transform: translateX(6px) skewX(4deg);
+  }
+  to {
+    transform: none;
+  }
+}
+.xenocat-exit-slide-off {
+  animation-name: xenocat-exit-slide-off;
+  animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.3);
+}
+@keyframes xenocat-exit-slide-off {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateX(110vw) skewX(-15deg);
+  }
+}
+
+/* 10 Orbit Abyssinian: spirals in; spirals out. */
+.xenocat-enter-spiral {
+  animation-name: xenocat-enter-spiral;
+  animation-timing-function: ease-out;
+}
+@keyframes xenocat-enter-spiral {
+  0% {
+    opacity: 0;
+    transform: rotate(0deg) translateX(120px) rotate(0deg) scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: rotate(360deg) translateX(50px) rotate(-360deg) scale(0.7);
+  }
+  100% {
+    transform: rotate(720deg) translateX(0) rotate(-720deg);
+  }
+}
+.xenocat-exit-spiral-out {
+  animation-name: xenocat-exit-spiral-out;
+  animation-timing-function: ease-in;
+}
+@keyframes xenocat-exit-spiral-out {
+  0% {
+    transform: rotate(0deg) translateX(0) rotate(0deg);
+  }
+  50% {
+    transform: rotate(360deg) translateX(50px) rotate(-360deg) scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(720deg) translateX(120px) rotate(-720deg) scale(0.3);
+  }
+}
+
+/* 11 Decoy Burmese: splits from its own shadow; merges back into it. */
+.xenocat-enter-shadow-split {
+  animation-name: xenocat-enter-shadow-split;
+  animation-timing-function: ease-out;
+}
+@keyframes xenocat-enter-shadow-split {
+  0% {
+    opacity: 0.5;
+    transform: translate(10px, 14px) skewX(-30deg) scaleY(0.4);
+    filter: brightness(0) blur(2px);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(3px, 4px);
+    filter: brightness(0.3);
+  }
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+.xenocat-exit-shadow-merge {
+  animation-name: xenocat-exit-shadow-merge;
+  animation-timing-function: ease-in;
+}
+@keyframes xenocat-exit-shadow-merge {
+  0% {
+    transform: none;
+    filter: none;
+  }
+  50% {
+    transform: translate(3px, 4px);
+    filter: brightness(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(10px, 14px) skewX(-30deg) scaleY(0.4);
+    filter: brightness(0) blur(2px);
+  }
+}
+
+/* 12 Wobble Fold: tumbles in; rolls away. */
+.xenocat-enter-tumble {
+  animation-name: xenocat-enter-tumble;
+  animation-timing-function: cubic-bezier(0.3, 0.9, 0.4, 1.3);
+}
+@keyframes xenocat-enter-tumble {
+  from {
+    opacity: 0;
+    transform: translate(-140px, -80px) rotate(-540deg) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.xenocat-exit-roll-away {
+  animation-name: xenocat-exit-roll-away;
+  animation-timing-function: ease-in;
+}
+@keyframes xenocat-exit-roll-away {
+  from {
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(180px) rotate(540deg);
+  }
+}
+
+/* 13 Munchkin Mite: grows from a dot; shrinks to nothing. */
+.xenocat-enter-grow-dot {
+  animation-name: xenocat-enter-grow-dot;
+  animation-timing-function: cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+@keyframes xenocat-enter-grow-dot {
+  from {
+    transform: scale(0.03);
+    filter: brightness(3);
+  }
+  to {
+    transform: none;
+    filter: none;
+  }
+}
+.xenocat-exit-shrink {
+  animation-name: xenocat-exit-shrink;
+  animation-timing-function: ease-in;
+}
+@keyframes xenocat-exit-shrink {
+  from {
+    transform: none;
+  }
+  to {
+    transform: scale(0);
+  }
+}
+
+/* 14 Titan Forest Cat: stomps in (the page shakes as it lands); stomps out. */
+.xenocat-enter-stomp {
+  animation-name: xenocat-enter-stomp;
+  animation-timing-function: linear;
+  transform-origin: 50% 100%;
+}
+@keyframes xenocat-enter-stomp {
+  0% {
+    transform: translateY(-160px) scale(1.4);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.6, 0, 1, 1);
+  }
+  10% {
+    opacity: 1;
+  }
+  60% {
+    transform: translateY(0) scale(1.45, 0.75);
+  }
+  75% {
+    transform: scale(0.95, 1.08);
+  }
+  100% {
+    transform: none;
+  }
+}
+.xenocat-exit-stomp-out {
+  animation-name: xenocat-exit-stomp-out;
+  transform-origin: 50% 100%;
+}
+@keyframes xenocat-exit-stomp-out {
+  0% {
+    transform: none;
+  }
+  25% {
+    transform: scale(1.3, 0.75);
+    animation-timing-function: cubic-bezier(0, 0, 0.4, 1);
+  }
+  60% {
+    transform: translateY(-120px) scale(0.9, 1.15);
+    animation-timing-function: cubic-bezier(0.6, 0, 1, 1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.6);
+  }
+}
+
+/* 15 Lag Ragamuffin: fades in in slow motion; a slow fade. */
+.xenocat-enter-slow-motion {
+  animation-name: xenocat-enter-slow-motion;
+  animation-timing-function: cubic-bezier(0.1, 0, 0.2, 1);
+}
+@keyframes xenocat-enter-slow-motion {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.92);
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.xenocat-exit-slow-fade {
+  animation-name: xenocat-exit-slow-fade;
+  animation-timing-function: cubic-bezier(0.6, 0, 0.9, 1);
+}
+@keyframes xenocat-exit-slow-fade {
+  from {
+    opacity: 1;
+    filter: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+}
+
+/* 16 Gravity Manx: lowered on a UFO beam; beamed up. The beam is the ::before. */
+.xenocat-enter-beam-down::before,
+.xenocat-exit-beam-up::before {
+  content: '';
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: 20%;
+  height: 240px;
+  background: linear-gradient(to bottom, rgba(190, 242, 100, 0.05), rgba(190, 242, 100, 0.55));
+  clip-path: polygon(40% 0, 60% 0, 100% 100%, 0 100%);
+  animation: xenocat-beam var(--xenocat-ms, 1s) ease-in-out both;
+}
+@keyframes xenocat-beam {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+}
+.xenocat-enter-beam-down {
+  animation-name: xenocat-enter-beam-down;
+  animation-timing-function: ease-in-out;
+}
+@keyframes xenocat-enter-beam-down {
+  0%,
+  15% {
+    transform: translateY(-160px);
+  }
+  100% {
+    transform: none;
+  }
+}
+.xenocat-exit-beam-up {
+  animation-name: xenocat-exit-beam-up;
+  animation-timing-function: ease-in-out;
+}
+@keyframes xenocat-exit-beam-up {
+  0%,
+  15% {
+    transform: none;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-160px) scale(0.7);
+  }
+}
+
+/* 17 Smoke Bombay: materialises from smoke; a poof of smoke. */
+.xenocat-enter-smoke {
+  animation-name: xenocat-enter-smoke;
+  animation-timing-function: ease-out;
+}
+@keyframes xenocat-enter-smoke {
+  0% {
+    opacity: 0;
+    transform: scale(1.3);
+    filter: blur(12px) grayscale(1) brightness(2.5);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(4px) grayscale(0.6) brightness(1.5);
+  }
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+.xenocat-exit-poof {
+  animation-name: xenocat-exit-poof;
+  animation-timing-function: ease-out;
+}
+@keyframes xenocat-exit-poof {
+  0% {
+    transform: none;
+    filter: none;
+  }
+  30% {
+    transform: scale(0.9);
+    filter: grayscale(1) brightness(2.5) blur(2px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+    filter: grayscale(1) brightness(3) blur(14px);
+  }
+}
+
+/* 18 Hypno Rex: eyes appear first, then the body; the body fades, eyes last.
+   The outer element only carries the duration; the stages run on the parts. */
+.xenocat-enter-eyes-first {
+  animation-name: xenocat-enter-eyes-first;
+}
+@keyframes xenocat-enter-eyes-first {
+  from,
+  to {
+    opacity: 1;
+  }
+}
+.xenocat-exit-eyes-last {
+  animation-name: xenocat-exit-eyes-last;
+}
+@keyframes xenocat-exit-eyes-last {
+  from,
+  to {
+    opacity: 1;
+  }
+}
+.xenocat-enter-eyes-first .xenocat-body > :not(.xenocat-eyes) {
+  animation: xenocat-body-late var(--xenocat-ms, 1s) ease-in both;
+}
+.xenocat-enter-eyes-first .xenocat-eyes {
+  animation: xenocat-eyes-early var(--xenocat-ms, 1s) ease-out both;
+}
+@keyframes xenocat-body-late {
+  0%,
+  45% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes xenocat-eyes-early {
+  0% {
+    opacity: 0;
+  }
+  25%,
+  100% {
+    opacity: 1;
+  }
+}
+.xenocat-exit-eyes-last .xenocat-body > :not(.xenocat-eyes) {
+  animation: xenocat-body-early-out var(--xenocat-ms, 1s) ease-in both;
+}
+.xenocat-exit-eyes-last .xenocat-eyes {
+  animation: xenocat-eyes-late-out var(--xenocat-ms, 1s) ease-in both;
+}
+@keyframes xenocat-body-early-out {
+  0% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes xenocat-eyes-late-out {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 19 Pinball Devon: bounces in; bounces off. */
+.xenocat-enter-bounce-in {
+  animation-name: xenocat-enter-bounce-in;
+  animation-timing-function: linear;
+  transform-origin: 50% 100%;
+}
+@keyframes xenocat-enter-bounce-in {
+  0% {
+    opacity: 0;
+    transform: translate(-120px, -140px);
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
+  }
+  10% {
+    opacity: 1;
+  }
+  40% {
+    transform: translate(-40px, 0) scale(1.1, 0.85);
+    animation-timing-function: cubic-bezier(0, 0, 0.5, 1);
+  }
+  60% {
+    transform: translate(-15px, -45px);
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
+  }
+  80% {
+    transform: translate(0, 0) scale(1.05, 0.92);
+    animation-timing-function: cubic-bezier(0, 0, 0.5, 1);
+  }
+  90% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: none;
+  }
+}
+.xenocat-exit-bounce-off {
+  animation-name: xenocat-exit-bounce-off;
+  animation-timing-function: linear;
+  transform-origin: 50% 100%;
+}
+@keyframes xenocat-exit-bounce-off {
+  0% {
+    transform: scale(1.1, 0.85);
+    animation-timing-function: cubic-bezier(0, 0, 0.5, 1);
+  }
+  40% {
+    transform: translate(60px, -90px);
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
+  }
+  70% {
+    transform: translate(110px, 0) scale(1.1, 0.85);
+    animation-timing-function: cubic-bezier(0, 0, 0.5, 1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(170px, -120px);
+  }
+}
+
+/* 20 Laser Ocicat: slides in along a laser line; slides off along it. */
+.xenocat-enter-laser-in::before,
+.xenocat-exit-laser-out::before {
+  content: '';
+  position: absolute;
+  top: 60%;
+  left: -220px;
+  right: -220px;
+  height: 2px;
+  background: linear-gradient(to right, transparent, #ef4444 30%, #ef4444 70%, transparent);
+  box-shadow: 0 0 6px 1px rgba(239, 68, 68, 0.8);
+  animation: xenocat-beam var(--xenocat-ms, 1s) ease-in-out both;
+}
+.xenocat-enter-laser-in {
+  animation-name: xenocat-enter-laser-in;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@keyframes xenocat-enter-laser-in {
+  0%,
+  15% {
+    opacity: 0;
+    transform: translateX(-200px);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+.xenocat-exit-laser-out {
+  animation-name: xenocat-exit-laser-out;
+  animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.3);
+}
+@keyframes xenocat-exit-laser-out {
+  0% {
+    transform: none;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(200px);
+  }
+}
+```

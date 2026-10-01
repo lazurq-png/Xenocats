@@ -13,6 +13,7 @@ export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = 
   'void-tabby': { awake: '/xenocats/cats/void-tabby-awake.webp' },
   'gravi-coon': { awake: '/xenocats/cats/gravi-coon-awake.webp' },
   'pulsar-siamese': { awake: '/xenocats/cats/pulsar-siamese-awake.webp' },
+  'mirror-sphynx': { awake: '/xenocats/cats/mirror-sphynx-awake.webp' },
 };
 
 /**
