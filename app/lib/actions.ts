@@ -2,11 +2,13 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import bcryptjs from 'bcryptjs';
 import postgres from 'postgres';
 import { auth, signIn } from '@/auth';
 import { AuthError, type CredentialsSignin } from 'next-auth';
-import { LOCKED } from '@/app/lib/login-limit';
+import { LOCKED, claimAttempt, clearFailures, loginKey, loginLimits } from '@/app/lib/login-limit';
 import {
+  ChangePasswordForm,
   CreateInvoice,
   CustomerForm,
   CustomerId,
@@ -281,4 +283,65 @@ export async function authenticate(prevState: string | undefined, formData: Form
     }
     throw error;
   }
+}
+
+export type PasswordState = {
+  errors?: {
+    currentPassword?: string[];
+    newPassword?: string[];
+    confirmPassword?: string[];
+  };
+  message?: string | null;
+  /** The password was changed. */
+  done?: boolean;
+};
+
+/**
+ * The logged-in user changes their password: the current one must be right, the
+ * new one valid (ChangePasswordForm); it is stored as a bcrypt hash. Checking the
+ * current password is a guess at it like a login, so it counts towards the same
+ * lockout (app/lib/login-limit.ts).
+ */
+export async function changePassword(
+  prevState: PasswordState,
+  formData: FormData
+): Promise<PasswordState> {
+  const session = await auth();
+  const email = session?.user?.email;
+  if (!email) return { message: 'You must be logged in to change your password.' };
+
+  const validatedFields = ChangePasswordForm.safeParse({
+    currentPassword: formData.get('currentPassword'),
+    newPassword: formData.get('newPassword'),
+    confirmPassword: formData.get('confirmPassword'),
+  });
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Your password was not changed.',
+    };
+  }
+
+  const { currentPassword, newPassword } = validatedFields.data;
+  const key = loginKey(email);
+  try {
+    if (!(await claimAttempt(sql, key, loginLimits()))) {
+      return { message: 'Too many failed attempts for this account. Try again later.' };
+    }
+    const [user] = await sql<{ id: string; password: string }[]>`
+      SELECT id, password FROM users WHERE email = ${email}`;
+    if (!user || !(await bcryptjs.compare(currentPassword, user.password))) {
+      return {
+        errors: { currentPassword: ['That is not your current password.'] },
+        message: 'Your password was not changed.',
+      };
+    }
+    await clearFailures(sql, key);
+    const hash = await bcryptjs.hash(newPassword, 10);
+    await sql`UPDATE users SET password = ${hash} WHERE id = ${user.id}`;
+  } catch (error) {
+    console.error('Database Error:', error);
+    return { message: 'Database Error: Failed to change the password.' };
+  }
+  return { done: true, message: 'Your password has been changed.' };
 }

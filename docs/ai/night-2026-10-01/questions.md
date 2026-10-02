@@ -129,3 +129,11 @@ need `'unsafe-inline'`, which weakens CSP's protection against injected
 scripts (D26). A per-request nonce (set in `proxy.ts`, read by Next) would
 allow dropping it for scripts, at the cost of rendering every page
 dynamically. Worth a task if the app ever renders user-supplied HTML.
+
+## Q9 — After a password change, other sessions stay logged in (T19)
+
+Sessions are JWTs (NextAuth's default), so changing the password does not end
+the user's other sessions. Ending them needs either a session store or a
+`password_changed_at` column compared with the token's issue time on every
+request. Proposed for a next plan, with an email notice of the change if mail
+is ever set up.

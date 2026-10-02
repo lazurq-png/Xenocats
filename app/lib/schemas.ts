@@ -47,3 +47,31 @@ export type InvoiceStatusFilter = z.infer<typeof InvoiceStatusFilter>;
 
 export const parseStatusFilter = (value: string | undefined): InvoiceStatusFilter | null =>
   InvoiceStatusFilter.safeParse(value).data ?? null;
+
+const BCRYPT_MAX_BYTES = 72;
+
+/**
+ * The change-password form: the current password, and the new one typed twice.
+ * At least 8 characters; at most 72 bytes, beyond which bcrypt ignores the rest.
+ */
+export const ChangePasswordForm = z
+  .object({
+    currentPassword: z
+      .string({ invalid_type_error: 'Please enter your current password.' })
+      .min(1, { message: 'Please enter your current password.' }),
+    newPassword: z
+      .string({ invalid_type_error: 'Please choose a new password.' })
+      .min(8, { message: 'A new password needs at least 8 characters.' })
+      .refine((password) => new TextEncoder().encode(password).length <= BCRYPT_MAX_BYTES, {
+        message: 'A new password can be at most 72 bytes long.',
+      }),
+    confirmPassword: z.string({ invalid_type_error: 'Please type the new password again.' }),
+  })
+  .refine((form) => form.newPassword === form.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'The two new passwords do not match.',
+  })
+  .refine((form) => form.newPassword !== form.currentPassword, {
+    path: ['newPassword'],
+    message: 'The new password must differ from the current one.',
+  });

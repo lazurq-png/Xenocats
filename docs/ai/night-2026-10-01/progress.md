@@ -1181,3 +1181,64 @@ forms) running under the policy on both servers.
 - `blob:` was unused (dropped).
 
 The re-review approved. Its Low (D26 out of date) is fixed.
+
+## T19 — Change password (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24).
+
+- Branch `night-2026-10-01-t19-change-password`, base `fd9a0dc`. Started
+  2026-10-02 03:40 (budget 13.60M); completed 2026-10-02 05:53 (budget 13.57M).
+- **Gap:** no activity from about 03:49 to 05:49 (session paused, probably a
+  usage limit); the timer's next firing resumed it.
+- **T18 CI: failed, fight group only** (inherited, Q1). The security-headers
+  spec and everything else passed on both servers. Runs 36952074136 /
+  36952074265.
+
+**What the code does**
+
+- `app/dashboard/settings/page.tsx` and `app/ui/settings/password-form.tsx`
+  (new): a Settings page (behind the login). Its "Change password" form has:
+  - the current password, the new one, and the new one again
+    (`autocomplete` set);
+  - an error region beside each field, and a live message.
+
+  A Settings link is added to the side navigation (`nav-links.tsx`).
+- `app/lib/schemas.ts`, `ChangePasswordForm`: the current password is
+  required. The new one needs at least 8 characters, at most 72 bytes, the
+  same text twice, and must differ from the current one.
+- `app/lib/actions.ts`, `changePassword` (a Server Action):
+  - checks the session itself and takes the user from the session's email;
+  - validates the form, then counts the attempt towards the T17 lockout and
+    compares the current password with bcrypt;
+  - stores `bcrypt.hash(new, 10)`;
+  - returns generic errors only.
+- Tests:
+  - unit: the schema rules; the action refuses without a session, refuses an
+    invalid form before any SQL, refuses a wrong current password without
+    updating, refuses a locked account before comparing, and stores a hash
+    that bcrypt verifies, for the session's user.
+  - browser (`change-password.spec.ts`, on a user of its own): wrong current
+    password and mismatched confirmation are refused beside their fields;
+    the change succeeds; then the old password is refused and the new one
+    logs in. Also, the page is behind the login.
+
+**Why**: plan task 19. Design: D27. Other sessions stay logged in: Q9.
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 418 passed and 16 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e`: 83 passed.
+- `E2E_SERVER=start`: 82 passed, 1 failed. The new test timed out waiting
+  for network idle after reaching the page by a client-side navigation:
+  under `next start` that page keeps prefetching. It now checks the link's
+  target and loads the page afresh, as the other specs do. After that, the
+  spec passed 6/6 on start (three repeats) and 4/4 on dev, and the full start
+  suite passed 83/83.
+- actionlint and prettier clean.
+
+**Review**: `reviewer` approved, with no findings.
+
+**UI**: tested in a browser, not seen. A human should look at the Settings
+page and the new navigation link at phone and desktop width.

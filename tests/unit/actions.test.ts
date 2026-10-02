@@ -1,3 +1,4 @@
+import bcryptjs from 'bcryptjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Nothing here reaches a database or a real session: `postgres`, `@/auth` and the
@@ -30,6 +31,7 @@ const {
   updateCustomer,
   deleteCustomer,
   authenticate,
+  changePassword,
 } = await import('@/app/lib/actions');
 
 function invoiceForm(fields: Record<string, string> = {}) {
@@ -299,5 +301,76 @@ describe('authenticate', () => {
     expect(await authenticate(undefined, new FormData())).toBe(
       'Too many failed logins for this email. Try again later.'
     );
+  });
+});
+
+describe('changePassword', () => {
+  const passwordForm = (fields: Record<string, string> = {}) => {
+    const form = new FormData();
+    const values = {
+      currentPassword: 'old-password',
+      newPassword: 'new-password-1',
+      confirmPassword: 'new-password-1',
+      ...fields,
+    };
+    for (const [key, value] of Object.entries(values)) form.set(key, value);
+    return form;
+  };
+  const statements = () => sql.mock.calls.map((call) => (call[0] as string[]).join('?'));
+
+  it('refuses without a session, and touches nothing', async () => {
+    auth.mockResolvedValue(null);
+    expect(await changePassword({}, passwordForm())).toEqual({
+      message: 'You must be logged in to change your password.',
+    });
+    expect(sql).not.toHaveBeenCalled();
+  });
+
+  it('refuses an invalid form before anything else', async () => {
+    auth.mockResolvedValue(signedIn);
+    const result = await changePassword({}, passwordForm({ confirmPassword: 'other-password' }));
+    expect(result.errors?.confirmPassword).toEqual(['The two new passwords do not match.']);
+    expect(sql).not.toHaveBeenCalled();
+  });
+
+  it('refuses a wrong current password, and changes nothing', async () => {
+    auth.mockResolvedValue(signedIn);
+    const hash = await bcryptjs.hash('the-real-one', 4);
+    sql
+      .mockResolvedValueOnce([{ attempt: 1 }])
+      .mockResolvedValueOnce([{ id: 'u1', password: hash }]);
+    const result = await changePassword({}, passwordForm());
+    expect(result.errors?.currentPassword).toEqual(['That is not your current password.']);
+    expect(statements().some((text) => text.includes('UPDATE users'))).toBe(false);
+  });
+
+  it('refuses while the account is locked out, before comparing', async () => {
+    auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce([{ attempt: 99 }]);
+    expect((await changePassword({}, passwordForm())).message).toBe(
+      'Too many failed attempts for this account. Try again later.'
+    );
+    expect(sql).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores a bcrypt hash of the new password for the logged-in user', async () => {
+    auth.mockResolvedValue(signedIn);
+    const hash = await bcryptjs.hash('old-password', 4);
+    sql
+      .mockResolvedValueOnce([{ attempt: 1 }])
+      .mockResolvedValueOnce([{ id: 'u1', password: hash }]);
+    expect(await changePassword({}, passwordForm())).toEqual({
+      done: true,
+      message: 'Your password has been changed.',
+    });
+    // Looked up by the session's email, never by anything the form sends.
+    expect(sql.mock.calls[1].slice(1)).toEqual(['user@example.com']);
+    const update = sql.mock.calls.find((call) =>
+      (call[0] as string[]).join('?').includes('UPDATE users')
+    )!;
+    const [stored, id] = update.slice(1) as [string, string];
+    expect(id).toBe('u1');
+    expect(stored).not.toContain('new-password-1');
+    expect(await bcryptjs.compare('new-password-1', stored)).toBe(true);
   });
 });

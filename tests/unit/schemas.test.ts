@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ChangePasswordForm,
   CreateInvoice,
   CustomerForm,
   CustomerId,
@@ -122,5 +123,55 @@ describe('parseStatusFilter', () => {
     for (const value of [undefined, '', 'PAID', 'Overdue', "paid' OR 1=1"]) {
       expect(parseStatusFilter(value)).toBeNull();
     }
+  });
+});
+
+describe('ChangePasswordForm', () => {
+  const form = (fields: Record<string, string | null> = {}) =>
+    ChangePasswordForm.safeParse({
+      currentPassword: 'old-password',
+      newPassword: 'new-password-1',
+      confirmPassword: 'new-password-1',
+      ...fields,
+    });
+  const errors = (result: ReturnType<typeof form>) =>
+    result.success ? {} : result.error.flatten().fieldErrors;
+
+  it('takes a current password and a new one typed twice', () => {
+    expect(form().success).toBe(true);
+  });
+
+  it('says what is missing, per field', () => {
+    expect(
+      errors(form({ currentPassword: null, newPassword: null, confirmPassword: null }))
+    ).toEqual({
+      currentPassword: ['Please enter your current password.'],
+      newPassword: ['Please choose a new password.'],
+      confirmPassword: ['Please type the new password again.'],
+    });
+    expect(errors(form({ currentPassword: '' })).currentPassword).toEqual([
+      'Please enter your current password.',
+    ]);
+  });
+
+  it('wants at least 8 characters and at most 72 bytes', () => {
+    expect(errors(form({ newPassword: 'short1', confirmPassword: 'short1' })).newPassword).toEqual([
+      'A new password needs at least 8 characters.',
+    ]);
+    // 24 three-byte characters: 72 bytes, the most bcrypt reads; one more is too long.
+    const at72 = '€'.repeat(24);
+    expect(form({ newPassword: at72, confirmPassword: at72 }).success).toBe(true);
+    expect(
+      errors(form({ newPassword: at72 + 'a', confirmPassword: at72 + 'a' })).newPassword
+    ).toEqual(['A new password can be at most 72 bytes long.']);
+  });
+
+  it('refuses a confirmation that differs, and a new password equal to the current one', () => {
+    expect(errors(form({ confirmPassword: 'something-else' })).confirmPassword).toEqual([
+      'The two new passwords do not match.',
+    ]);
+    expect(
+      errors(form({ newPassword: 'old-password', confirmPassword: 'old-password' })).newPassword
+    ).toEqual(['The new password must differ from the current one.']);
   });
 });

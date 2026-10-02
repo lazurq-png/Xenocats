@@ -706,3 +706,29 @@ a browser test that they are present and the pages still work.
   a fifth test injects an outside image and checks that the policy blocks it
   and the watcher reports it. The whole browser suite (cats, sounds, forms)
   also runs under the policy.
+
+## D27 — T19: change password
+
+Plan task 19: a settings page where the logged-in user changes their
+password; current password required, new one validated, bcrypt; a browser
+test on a user of its own.
+
+- **Page** `/dashboard/settings` (behind the login like the rest of
+  `/dashboard`), with a Settings link in the side navigation; a "Change
+  password" section with three password fields (`autocomplete`
+  current-password / new-password), each with its `aria-describedby` error
+  region, and a live message.
+- **Action** `changePassword` (Server Action): checks the session itself and
+  takes the user from the session's email, never from the form; validates
+  with `ChangePasswordForm` (zod): current password present; new one at least
+  8 characters and at most 72 bytes (bcrypt ignores the rest), typed twice
+  alike, and different from the current one. Then compares the current
+  password with bcrypt and stores `bcryptjs.hash(new, 10)` — the cost the
+  seed uses.
+- **Counts towards the lockout** (T17): checking the current password is a
+  guess at it, so a session holder could otherwise try passwords here without
+  limit. It claims an attempt for the user's email first and clears on
+  success; a locked account is refused before comparing.
+- **Not done**: other sessions of the user stay valid (JWT sessions cannot be
+  revoked without a session store or a password-change timestamp checked on
+  every request), and no email notice is sent. Q9.
