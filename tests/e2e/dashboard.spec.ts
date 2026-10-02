@@ -20,9 +20,12 @@ test('the demo user logs in and the dashboard shows the seeded data', async ({ p
   await expect(page.getByRole('cell', { name: 'Evil Rabbit' }).first()).toBeVisible();
 });
 
-test('a wrong password is refused', async ({ page }) => {
+// An email no user has gets the same answer as a wrong password. (A wrong password
+// for a real user is in login-limit.spec.ts, on a user of its own: a failed login
+// counts towards a lockout, so no test fails the demo user's.)
+test('an unknown email is refused like a wrong password', async ({ page }) => {
   await page.goto('/login');
-  await page.getByLabel('Email').fill('user@nextmail.com');
+  await page.getByLabel('Email').fill(`nobody-${Date.now().toString(36)}@example.com`);
   await page.getByLabel('Password', { exact: true }).fill('not-the-password');
   await page.getByRole('button', { name: /log in/i }).click();
 

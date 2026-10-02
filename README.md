@@ -15,8 +15,10 @@ npm ci
 npm run dev
 ```
 
-The app reads `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` from `.env`. The
-checks (lint, type check, unit and browser tests, build) are listed in
+The app reads `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` from `.env`, and
+optionally `LOGIN_MAX_FAILURES` and `LOGIN_LOCK_MINUTES`: after that many
+failed logins in a row an email is refused for that many minutes (default 5
+and 15). The checks (lint, type check, unit and browser tests, build) are listed in
 `CLAUDE.md` §9.
 
 ## Design

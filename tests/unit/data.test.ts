@@ -7,7 +7,8 @@ import { percentChange } from '@/app/lib/dashboard';
 import { customers, invoices } from '@/app/lib/placeholder-data';
 import { formatCurrency } from '@/app/lib/utils';
 
-// Every query in app/lib/data.ts against a real database: its own schema,
+// Every query in app/lib/data.ts (and the login lockout's statements) against a
+// real database: its own schema,
 // `xenocats_vitest`, on the server POSTGRES_URL names (the environment's, else
 // .env's), rebuilt from db/migrations and the seed before this file runs. The
 // browser tests use `xenocats_test`, so the two suites never meet. Like them,
@@ -295,6 +296,59 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
       ]);
       expect(await data.fetchInvoicesPages(tag, 'overdue')).toBe(1);
     });
+  });
+});
+
+// The login lockout's statements (app/lib/login-limit.ts) against the same schema,
+// which the suite above has just rebuilt; each test on an email of its own.
+describe.skipIf(!url)('the login lockout in the database', () => {
+  let sql: postgres.Sql;
+  let lockout: typeof import('@/app/lib/login-limit');
+  const limits = { maxFailures: 3, lockMinutes: 15 };
+  const email = (name: string) => `${name}-${Date.now().toString(36)}@example.com`;
+
+  beforeAll(async () => {
+    sql = postgres(url!, { ssl: 'require', max: 8, onnotice: () => {} });
+    lockout = await import('@/app/lib/login-limit');
+  });
+
+  afterAll(async () => {
+    await sql.end();
+  });
+
+  it('lets exactly N of many simultaneous attempts through, then holds the lock', async () => {
+    const key = email('burst');
+    const results = await Promise.all(
+      Array.from({ length: limits.maxFailures + 5 }, () => lockout.claimAttempt(sql, key, limits))
+    );
+    expect(results.filter(Boolean)).toHaveLength(limits.maxFailures);
+    expect(await lockout.claimAttempt(sql, key, limits)).toBe(false);
+    const [row] = await sql`
+      SELECT locked_until > now() + interval '14 minutes' AS locked FROM login_failures
+      WHERE email = ${key}`;
+    expect(row.locked).toBe(true);
+  });
+
+  it('a success clears the count and the lock its last attempt set', async () => {
+    const key = email('success');
+    for (let i = 0; i < limits.maxFailures; i++) {
+      expect(await lockout.claimAttempt(sql, key, limits)).toBe(true);
+    }
+    // The Nth attempt's password was right after all.
+    await lockout.clearFailures(sql, key);
+    expect(await lockout.claimAttempt(sql, key, limits)).toBe(true);
+  });
+
+  it('a lock that has run out starts the count again', async () => {
+    const key = email('expired');
+    for (let i = 0; i <= limits.maxFailures; i++) await lockout.claimAttempt(sql, key, limits);
+    expect(await lockout.claimAttempt(sql, key, limits)).toBe(false);
+    await sql`
+      UPDATE login_failures SET locked_until = now() - interval '1 second' WHERE email = ${key}`;
+    for (let i = 0; i < limits.maxFailures; i++) {
+      expect(await lockout.claimAttempt(sql, key, limits)).toBe(true);
+    }
+    expect(await lockout.claimAttempt(sql, key, limits)).toBe(false);
   });
 });
 

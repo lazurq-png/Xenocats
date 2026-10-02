@@ -46,7 +46,11 @@ test('an invoice has a detail page, reached from the list', async ({ page }) => 
   const details = page.locator('dl');
   await expect(details).toContainText(dollars(cents));
   await expect(details).toContainText('amy@burns.com');
-  await expect(page.getByText('Pending')).toBeVisible();
+  // Within the invoice's own section: just after the client navigation the list's
+  // rows (with their own "Pending") can still be in the page.
+  await expect(
+    page.getByRole('region', { name: 'Amy Burns' }).getByText('Pending', { exact: true })
+  ).toBeVisible();
 });
 
 test('deleting asks first, in a dialog that keeps focus, cancels on Esc and gives focus back', async ({

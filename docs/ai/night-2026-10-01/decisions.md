@@ -627,3 +627,44 @@ without a database.
   `.env` has one).
 - Docs that described the database's users updated: `CLAUDE.md` §9,
   `.claude/rules/testing.md`, `.claude/rules/database.md`.
+
+## D25 — T17: login lockout
+
+Plan task 17: after N failed logins for one email, refuse that email for M
+minutes; N and M in config; stored in a new table (migration).
+
+- **Config = the environment**, as for the app's other settings:
+  `LOGIN_MAX_FAILURES` (N, default 5) and `LOGIN_LOCK_MINUTES` (M, default
+  15); anything but a whole number above zero falls back to the default
+  (`app/lib/login-limit.ts`, documented in the README). Not added to any
+  `.env*` file: the run may not touch them.
+- **Table `login_failures`** (`0004_login_failures.sql`, new, changes nothing
+  existing): email (trimmed, lower-cased) → attempts since the last success
+  or since a lock ran out, and `locked_until`.
+- **Per email, whether or not a user has it**: a lockout reveals nothing about
+  which emails exist, and a locked email is refused even with the right
+  password, which is never looked at.
+- **Every attempt is counted before its password is compared**
+  (`claimAttempt`: one `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`),
+  and only attempts 1..N may compare. Concurrent attempts each get their own
+  number, so a burst lets exactly N through. (The first version checked the
+  lock, compared, then counted the failure: the reviewer showed that all
+  attempts in flight before the Nth failure was written got compared.) The
+  Nth attempt sets the lock as it is counted; if its password was right, the
+  success deletes the row, lock included. Attempts during a lock are counted
+  too (and refused). A lock that has run out restarts the count at 1.
+- **Raising `LOGIN_MAX_FAILURES` while an email is locked** lets it compare
+  up to the difference early (the limit is held by the count): an operator
+  action, not an attacker's; accepted (reviewer, Low).
+- **The message** for a locked email: "Too many failed logins for this email.
+  Try again later." (the time left differs from lock to lock), carried as the
+  `code` of a `CredentialsSignin` subclass, which Auth.js passes through
+  unchanged to `signIn`'s caller.
+- **Not done (outside the task's words)**: limiting per IP address; pruning
+  rows for emails that never succeed (an attacker spraying addresses grows the
+  table by one row per address); equalising the time an unknown email takes
+  (it skips the password hash, as before this task). Q7.
+- **Tests**: a failed login for the demo user would now count towards
+  locking it, which parallel tests log in as; so the dashboard spec's
+  wrong-password test now uses an unknown email, and wrong passwords for a real
+  user are in `login-limit.spec.ts`, each test on a user it creates (plan rule).

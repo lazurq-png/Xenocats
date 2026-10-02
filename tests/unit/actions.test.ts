@@ -2,16 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Nothing here reaches a database or a real session: `postgres`, `@/auth` and the
 // Next.js runtime helpers the actions call are all replaced with fakes.
-const { sql, auth, revalidatePath, redirect } = vi.hoisted(() => ({
+const { sql, auth, signIn, revalidatePath, redirect } = vi.hoisted(() => ({
   sql: vi.fn(),
   auth: vi.fn(),
+  signIn: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
 
 vi.mock('postgres', () => ({ default: () => sql }));
-vi.mock('@/auth', () => ({ auth, signIn: vi.fn() }));
-vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
+vi.mock('@/auth', () => ({ auth, signIn }));
+vi.mock('next-auth', () => ({
+  AuthError: class AuthError extends Error {
+    type = 'CredentialsSignin';
+    code = 'credentials';
+  },
+}));
 vi.mock('next/cache', () => ({ revalidatePath }));
 vi.mock('next/navigation', () => ({ redirect }));
 
@@ -23,6 +29,7 @@ const {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  authenticate,
 } = await import('@/app/lib/actions');
 
 function invoiceForm(fields: Record<string, string> = {}) {
@@ -273,5 +280,24 @@ describe('amounts in cents', () => {
       invoiceForm({ amount: '0.29' })
     );
     expect(sql.mock.calls[0][2]).toBe(29);
+  });
+});
+
+describe('authenticate', () => {
+  const failure = async (code: string) => {
+    const { AuthError } = await import('next-auth');
+    return Object.assign(new AuthError(), { code });
+  };
+
+  it('says the credentials are wrong, and nothing more', async () => {
+    signIn.mockRejectedValue(await failure('credentials'));
+    expect(await authenticate(undefined, new FormData())).toBe('Invalid credentials.');
+  });
+
+  it('says when the email is locked out', async () => {
+    signIn.mockRejectedValue(await failure('locked'));
+    expect(await authenticate(undefined, new FormData())).toBe(
+      'Too many failed logins for this email. Try again later.'
+    );
   });
 });

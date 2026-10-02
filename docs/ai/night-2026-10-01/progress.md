@@ -1042,3 +1042,77 @@ against the seed and the migrations. Its two Lows were both about this
 commit and are handled: keep `next-env.d.ts` out; put the
 `E2E_NO_DATABASE=1` rule where a resuming session reads first (the box
 above).
+
+## T17 — Login lockout (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24).
+
+- Branch `night-2026-10-01-t17-login-rate-limit`, base `bc4e8f9`. Started
+  2026-10-02 03:01 (budget 13.73M); completed 2026-10-02 03:22 (budget 13.66M).
+- **T16 CI: failed, fight group only** (inherited, Q1). **The new
+  `Database tests` step passed** in the build job: T16's database tests ran
+  and passed there on their first run. Runs 36948903376 / 36948903281.
+
+**What the code does**
+
+- `db/migrations/0004_login_failures.sql` (new): the `login_failures` table,
+  holding an email, its attempts, and `locked_until`. Not applied to
+  `xenocats`; until a human applies it, logins there fail (Q7).
+- `app/lib/login-limit.ts` (new):
+  - N and M come from `LOGIN_MAX_FAILURES` and `LOGIN_LOCK_MINUTES`
+    (default 5 and 15).
+  - `claimAttempt` counts every attempt atomically, before the password is
+    compared; only attempts 1..N may compare, and the Nth sets the lock.
+  - `clearFailures` runs on success.
+- `auth.ts`: `authorize` claims first. A refused claim throws a
+  `CredentialsSignin` with the code `locked`. An unknown email counts like a
+  wrong password.
+- `app/lib/actions.ts`: `authenticate` shows "Too many failed logins for
+  this email. Try again later." for a locked email.
+- `playwright.config.ts`: the test server gets the limits pinned.
+- `README.md`: the two variables are documented.
+- Tests:
+  - unit, for the settings, the key, the claim decisions (a simulated burst
+    of N+3 lets exactly N through), clearing, and the message;
+  - database (`data.test.ts`, CI only), against real PostgreSQL: N+5
+    simultaneous claims over 8 connections let exactly N through, a success
+    clears the lock, and an expired lock restarts the count;
+  - browser (`login-limit.spec.ts`, each test with its own user): after 5
+    failures the email is refused even with the right password, and in any
+    case; a success restarts the count.
+  - The dashboard spec's wrong-password test now uses an unknown email, so no
+    test fails the demo user's login.
+- `tests/e2e/invoice-detail.spec.ts` (T12's test): its "Pending" check is
+  scoped to the invoice's own section. Just after the client navigation, the
+  list's rows can still be in the page, and the unscoped check sometimes
+  matched three elements. Caught with its log this time
+  (`invoice-detail.spec.ts:49`, strict-mode violation); most likely the
+  unidentified `toBeVisible` flake in T16's entry.
+
+**Why**: plan task 17. Design: D25. Proposed follow-ups: Q7.
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 409 passed and 16 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e`: 76 passed.
+- `E2E_SERVER=start`: 75 passed with 1 failed (the detail-spec flake above).
+  After the fix, the detail spec passed 16/16 (four repeats) on start and the
+  full start suite passed 76/76.
+- An earlier gate run broke because I edited files while it ran (the dev
+  server loaded a half-done edit). It was discarded.
+- actionlint and prettier clean.
+- The database block runs first in this commit's CI.
+
+**Review**: `reviewer` asked for changes.
+- **(Medium) Fixed.** The check-then-compare-then-count design let
+  concurrent attempts get past N. Now each attempt is claimed first, in one
+  upsert.
+- **(Low) Fixed.** The message named the full lock time; it now says "later".
+- **(Low) Fixed.** `.env` could change the browser test's limits; they are
+  now pinned.
+
+The re-review approved. Its two Lows: D25 and the migration's comment
+described the old design (both updated); raising N during a lock lets the
+email in early (an operator action, accepted in D25).

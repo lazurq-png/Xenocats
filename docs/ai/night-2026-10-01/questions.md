@@ -106,3 +106,18 @@ things for a human:
 - If unattended runs should run them too, the skill's §3 needs to name
   `npm test` beside `npm run test:e2e`; otherwise runs keep setting
   `E2E_NO_DATABASE=1`.
+
+## Q7 — Login lockout: what T17 left out (proposed follow-ups)
+
+T17 locks an email after N failures (D25). Its table comes from
+`0004_login_failures.sql`, which a human applies to `xenocats` like the
+others (Q3); it changes nothing existing. **Until it is applied, every login
+to the app after T17 fails** ("Something went wrong."): the lock check needs
+the table. Not built, as no task names them:
+- a limit per client address, so one source cannot try many emails;
+- pruning `login_failures` rows of emails that never log in (one row per
+  address an attacker tries);
+- `LOGIN_MAX_FAILURES` / `LOGIN_LOCK_MINUTES` in `.env.example` or the
+  deployment's settings, if wanted (the run may not touch `.env*` files);
+- an unknown email skips the password hash and answers faster than a wrong
+  password (as before T17), which tells timing apart.

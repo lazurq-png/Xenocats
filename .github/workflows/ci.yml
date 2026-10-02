@@ -32,6 +32,7 @@ jobs:
           npx vitest run tests/unit/actions tests/unit/schemas tests/unit/utils
           tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
           tests/unit/csv tests/unit/export-route tests/unit/invoice-status
+          tests/unit/login-limit
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
         run: >-
@@ -111,7 +112,7 @@ jobs:
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard
           tests/e2e/customers tests/e2e/invoices-filter tests/e2e/invoice-detail
-          tests/e2e/invoice-export tests/e2e/invoices
+          tests/e2e/invoice-export tests/e2e/invoices tests/e2e/login-limit
           --output test-results/smoke
         env:
           E2E_SERVER: start
@@ -186,7 +187,7 @@ jobs:
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard
           tests/e2e/customers tests/e2e/invoices-filter tests/e2e/invoice-detail
-          tests/e2e/invoice-export tests/e2e/invoices
+          tests/e2e/invoice-export tests/e2e/invoices tests/e2e/login-limit
           --output test-results/smoke
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke

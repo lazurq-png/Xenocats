@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import postgres from 'postgres';
 import { auth, signIn } from '@/auth';
-import { AuthError } from 'next-auth';
+import { AuthError, type CredentialsSignin } from 'next-auth';
+import { LOCKED } from '@/app/lib/login-limit';
 import {
   CreateInvoice,
   CustomerForm,
@@ -269,6 +270,10 @@ export async function authenticate(prevState: string | undefined, formData: Form
     if (error instanceof AuthError) {
       switch (error.type) {
         case 'CredentialsSignin':
+          if ((error as CredentialsSignin).code === LOCKED) {
+            // Not how long: the time left differs from lock to lock.
+            return 'Too many failed logins for this email. Try again later.';
+          }
           return 'Invalid credentials.';
         default:
           return 'Something went wrong.';

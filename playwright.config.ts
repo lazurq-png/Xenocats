@@ -56,6 +56,10 @@ export default defineConfig({
       AUTH_TRUST_HOST: 'true',
       // .env's AUTH_URL names `npm run dev`'s port; after a login NextAuth would redirect there.
       AUTH_URL: `http://localhost:${PORT}`,
+      // The login lockout's limits, as tests/e2e/login-limit.spec.ts expects them,
+      // whatever .env sets.
+      LOGIN_MAX_FAILURES: '5',
+      LOGIN_LOCK_MINUTES: '15',
       // Overrides .env, which Next would otherwise load: the server must use the test schema.
       ...(database ? { POSTGRES_URL: database } : {}),
     },
