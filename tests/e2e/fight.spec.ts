@@ -352,8 +352,26 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
   // the crosshair, before and after, and measured again if one began meanwhile.
   const crosshair = page.getByTestId('fight-crosshair');
   const calm = async () => ((await crosshair.getAttribute('data-effect')) ?? '') === '';
+  // Every mouse movement the page receives, as the game sees it: if the crosshair
+  // does not follow, the failure says what the browser reported instead.
+  await page.evaluate(() => {
+    const seen: unknown[] = [];
+    (window as unknown as { seenMoves: unknown[] }).seenMoves = seen;
+    document.addEventListener(
+      'mousemove',
+      (event) =>
+        seen.push({
+          movement: [event.movementX, event.movementY],
+          client: [event.clientX, event.clientY],
+          locked: document.pointerLockElement === document.body,
+        }),
+      { capture: true }
+    );
+  });
+  const seenMoves = () =>
+    page.evaluate(() => (window as unknown as { seenMoves: unknown[] }).seenMoves.slice(0, 40));
   let way = 1;
-  await expect
+  const moved = expect
     .poll(
       async () => {
         if (!(await calm())) return false;
@@ -378,6 +396,17 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
       { timeout: 20_000, intervals: [100] }
     )
     .toBe(true);
+  try {
+    await moved;
+  } catch (error) {
+    const moves = JSON.stringify(await seenMoves(), null, 1);
+    await test.info().attach('mouse moves the page received', {
+      body: moves,
+      contentType: 'application/json',
+    });
+    console.log(`Mouse moves the page received under pointer lock:\n${moves}`);
+    throw error;
+  }
 
   // Losing the lock ends the game if the page still has focus (that is Esc) and
   // pauses it if not (another window took it). Some headless browsers never give a
