@@ -162,3 +162,6 @@ reaches `fetchFilteredInvoices` and PostgreSQL rejects the negative `OFFSET`;
 the page shows the error state. Not fixed tonight (no task names it).
 Proposed: clamp to a whole number of at least 1 (and at most the page count),
 with a unit test, as the status filter already ignores unknown values.
+
+**Q11, resolved by T25-1** (2026-10-02 07:18): `parsePage` reads a nonsense
+page as page 1; a browser test that failed before the fix passes now.
