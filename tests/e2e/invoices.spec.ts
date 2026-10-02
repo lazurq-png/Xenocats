@@ -1,0 +1,146 @@
+import { type Page, expect, test } from '@playwright/test';
+
+// Invoice create, edit and delete through the forms, logged in as the demo user,
+// against the test schema global-setup.ts rebuilds. Each test makes its own
+// invoice, with an amount no other invoice has, and asserts only on it.
+test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
+
+async function logIn(page: Page) {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('user@nextmail.com');
+  await page.getByLabel('Password', { exact: true }).fill('123456');
+  await page.getByRole('button', { name: /log in/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+}
+
+/** An amount in cents that no seeded or other test's invoice has. */
+const uniqueCents = () => 1_000_000 + Math.floor(Math.random() * 8_999_999);
+
+const dollars = (cents: number) =>
+  (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+async function openCreateForm(page: Page) {
+  await page.goto('/dashboard/invoices/create');
+  // Filled before hydration, the form would be reset under the test's hands.
+  await page.waitForLoadState('networkidle');
+}
+
+/** Creates a pending invoice for Amy Burns for `cents`. */
+async function createInvoice(page: Page, cents: number) {
+  await openCreateForm(page);
+  await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
+  await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
+  await page.getByLabel('Pending').check();
+  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
+}
+
+/** The invoice list's rows for that amount (the search matches cents). */
+async function rowsFor(page: Page, cents: number) {
+  await page.goto(`/dashboard/invoices?query=${cents}`);
+  return page.locator('table tbody tr').filter({ hasText: dollars(cents) });
+}
+
+test('an incomplete create form is refused with an error per field, and nothing is created', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openCreateForm(page);
+  await page.getByRole('button', { name: 'Create Invoice' }).click();
+
+  // Each error is in the region its field names with aria-describedby.
+  await expect(page.locator('#customer-error')).toHaveText('Please select a customer.');
+  await expect(page.locator('#amount-error')).toHaveText('Please enter an amount greater than $0');
+  await expect(page.locator('#status-error')).toHaveText('Please select an invoice status.');
+  await expect(page.getByLabel('Choose an amount')).toHaveAttribute(
+    'aria-describedby',
+    'amount-error'
+  );
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/create$/);
+
+  // Valid but for the missing status: refused for that alone, and no invoice
+  // with that (unique) amount exists afterwards.
+  const cents = uniqueCents();
+  await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
+  await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
+  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await expect(page.locator('#status-error')).toHaveText('Please select an invoice status.');
+  await expect(page.locator('#customer-error')).toBeEmpty();
+  await expect(page.locator('#amount-error')).toBeEmpty();
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/create$/);
+  await expect(await rowsFor(page, cents)).toHaveCount(0);
+});
+
+test('an invoice is created and listed', async ({ page }) => {
+  test.setTimeout(60_000);
+  await logIn(page);
+  const cents = uniqueCents();
+  await openCreateForm(page);
+
+  // A zero amount is refused first; the other fields' choices are not errors.
+  await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
+  await page.getByLabel('Choose an amount').fill('0');
+  await page.getByLabel('Paid').check();
+  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await expect(page.locator('#amount-error')).toHaveText('Please enter an amount greater than $0');
+  await expect(page.locator('#customer-error')).toBeEmpty();
+  await expect(page.locator('#status-error')).toBeEmpty();
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/create$/);
+
+  await createInvoice(page, cents);
+  const row = await rowsFor(page, cents);
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Amy Burns');
+  await expect(row).toContainText('Pending');
+});
+
+test('an invoice is edited: a bad amount is refused, then the change is saved', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await logIn(page);
+  const cents = uniqueCents();
+  await createInvoice(page, cents);
+
+  await (await rowsFor(page, cents)).getByRole('link', { name: 'Edit' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}\/edit$/);
+  await page.waitForLoadState('networkidle');
+  const amount = page.getByLabel('Choose an amount');
+  expect(Number(await amount.inputValue())).toBe(cents / 100);
+  const editUrl = page.url();
+
+  await amount.fill('-5');
+  await page.getByRole('button', { name: 'Edit Invoice' }).click();
+  await expect(page.locator('#amount-error')).toHaveText('Please enter an amount greater than $0');
+  await expect(page).toHaveURL(editUrl);
+
+  // Saved: a new amount and paid; the old amount is gone from the list.
+  const newCents = uniqueCents();
+  await amount.fill((newCents / 100).toFixed(2));
+  await page.getByLabel('Paid').check();
+  await page.getByRole('button', { name: 'Edit Invoice' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
+  const row = await rowsFor(page, newCents);
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Amy Burns');
+  await expect(row).toContainText('Paid');
+  await expect(await rowsFor(page, cents)).toHaveCount(0);
+});
+
+test('an invoice is deleted, and stays deleted after a reload', async ({ page }) => {
+  test.setTimeout(60_000);
+  await logIn(page);
+  const cents = uniqueCents();
+  await createInvoice(page, cents);
+
+  const row = await rowsFor(page, cents);
+  await row
+    .getByRole('button', { name: `Delete invoice for Amy Burns, ${dollars(cents)}` })
+    .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete invoice' }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(row).toHaveCount(0);
+
+  // A fresh load of the list (a page load waits for the whole streamed table).
+  await expect(await rowsFor(page, cents)).toHaveCount(0);
+});

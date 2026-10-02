@@ -896,3 +896,43 @@ be fake demo data); the text search matches the stored status, not the word
 **UI**: tested in a browser, not seen. A human should look at the Overdue
 pill in the invoice table, the dashboard's latest invoices and the detail
 page (with its Due line), at phone and desktop width.
+
+## T15 — Browser tests for invoice create, edit and delete (completed)
+
+- Branch `night-2026-10-01-t15-invoice-crud-e2e`, base `6e5f60d`. Started
+  2026-10-02 01:50 (budget 13.86M); completed 2026-10-02 02:33 (budget 13.83M).
+- **T14**: committed `6e5f60d`, merged and pushed. CI: **failed, fight group only** (inherited, Q1); every other step passed, including the production job's migrate-and-seed, so CI applied `0003` from scratch. Runs 36942947776 / 36942947674.
+- **Correction to the T14 entry:** T13's CI was not "not observed". The poll was given a short SHA, and the API's `head_sha` filter needs the full one, so it found no runs (same for T14's first poll). Re-polled with the full SHAs: T13 **failed, fight group only** (inherited, Q1), runs 36940057306 / 36940057463.
+
+**What the code does**
+
+- `tests/e2e/invoices.spec.ts` (new, 4 tests, each on its own invoice with a
+  unique 7-digit amount in cents, so a search finds only it):
+  - an incomplete create form: empty, each field's error in its
+    `aria-describedby` region; then valid but for the status, refused for
+    that alone, and no invoice with its amount exists afterwards;
+  - create: a zero amount is refused (only the amount error), then the
+    invoice is created and listed for Amy Burns as Pending;
+  - edit: the form opens prefilled with this invoice's amount; a negative
+    amount is refused; a new amount and Paid are saved — one row at the new
+    amount, Paid, none at the old;
+  - delete: through the list's confirmation dialog; gone, also after a
+    fresh load of the list.
+- `.github/workflows/ci.yml`: the spec in the first browser group of both
+  browser jobs.
+
+**Why**: plan task 15. No production code changed, so no decision record.
+
+**Verification**: `npm run lint` exit 0, 0 warnings (baseline 0);
+`next typegen && tsc` exit 0; `npm test` 27 files / 394 tests, exit 0;
+`npm run build` exit 0; `npm run test:e2e` 74 passed and
+`E2E_SERVER=start` 74 passed; the new spec 12/12 over three repeats before
+the review, and after the review fix 8/8 (dev, two repeats) and 4/4
+(start); actionlint clean; prettier clean (D1).
+
+**Review**: `reviewer` — Approve; two Lows. (1) Two "nothing is created"
+checks could not fail (one asserted nothing, one searched for an amount
+never submitted): fixed — the incomplete-form test now submits a unique
+amount and checks no such invoice exists; the vacuous line is gone. (2) The
+delete test overlaps `invoice-detail.spec.ts`: kept, because the task asks
+for delete explicitly and this one adds the check after a fresh load.
