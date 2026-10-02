@@ -1,18 +1,21 @@
 import Link from 'next/link';
-import { FaceFrownIcon } from '@heroicons/react/24/solid';
+import CatState, { catStateLinkClass } from '@/app/ui/cat-state';
 
 export default function NotFound() {
   return (
-    <main className="flex h-full flex-col items-center justify-center gap-2">
-      <FaceFrownIcon className="w-10 text-aura" />
-      <h2 className="text-xl font-semibold text-white">404 Not Found</h2>
-      <p className="text-aura">Could not find the requested customer.</p>
-      <Link
-        href="/dashboard/customers"
-        className="mt-4 rounded-xl bg-plasma px-4 py-2 text-sm font-semibold text-void transition hover:shadow-glow"
+    <main className="flex h-full flex-col items-center justify-center">
+      <CatState
+        art="asleep"
+        title="404 Not Found"
+        as="h1"
+        action={
+          <Link href="/dashboard/customers" className={catStateLinkClass}>
+            Back to the customers
+          </Link>
+        }
       >
-        Go Back
-      </Link>
+        Could not find the requested customer.
+      </CatState>
     </main>
   );
 }

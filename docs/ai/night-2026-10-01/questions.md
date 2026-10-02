@@ -154,3 +154,11 @@ computed from invoices (D29). Proposed for a next plan: a migration
 `DROP TABLE revenue` (after any deployed app version that reads it is gone),
 and remove `revenue` from `app/lib/placeholder-data.ts` and the seed in
 `scripts/db.mjs`. The task said not to drop it tonight.
+
+## Q11 — A negative `?page=` crashes the invoice list (found by T22)
+
+`app/dashboard/invoices/page.tsx` takes `Number(page) || 1`, so `?page=-1`
+reaches `fetchFilteredInvoices` and PostgreSQL rejects the negative `OFFSET`;
+the page shows the error state. Not fixed tonight (no task names it).
+Proposed: clamp to a whole number of at least 1 (and at most the page count),
+with a unit test, as the status filter already ignores unknown values.

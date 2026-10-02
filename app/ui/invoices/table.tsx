@@ -1,3 +1,4 @@
+import CatState from '@/app/ui/cat-state';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import { DeleteInvoice, UpdateInvoice, ViewInvoice } from '@/app/ui/invoices/buttons';
 import InvoiceStatus from '@/app/ui/invoices/status';
@@ -105,6 +106,12 @@ export default async function InvoicesTable({
               ))}
             </tbody>
           </table>
+          {invoices.length === 0 && (
+            <CatState art="empty" title="No invoices found">
+              No invoices to show here. If a search or a status is set, try another, or All
+              statuses.
+            </CatState>
+          )}
         </div>
       </div>
     </div>

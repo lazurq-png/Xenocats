@@ -1,3 +1,4 @@
+import CatState from '@/app/ui/cat-state';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { fetchLatestInvoices } from '@/app/lib/data';
@@ -35,6 +36,11 @@ export default async function LatestInvoices() {
           </li>
         ))}
       </ul>
+      {latestInvoices.length === 0 && (
+        <CatState art="empty" title="No invoices yet" as="h3">
+          Invoices appear here as soon as one is created.
+        </CatState>
+      )}
     </div>
   );
 }

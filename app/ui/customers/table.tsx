@@ -1,3 +1,4 @@
+import CatState from '@/app/ui/cat-state';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import { DeleteCustomer, UpdateCustomer } from '@/app/ui/customers/buttons';
 import { FormattedCustomersTable } from '@/app/lib/definitions';
@@ -96,7 +97,10 @@ export default function CustomersTable({ customers }: { customers: FormattedCust
               </tbody>
             </table>
             {customers.length === 0 && (
-              <p className="px-4 py-8 text-center text-sm text-aura">No customers found.</p>
+              <CatState art="empty" title="No customers found">
+                No customers to show here. If a search is set, try fewer letters, or another name or
+                email.
+              </CatState>
             )}
           </div>
         </div>

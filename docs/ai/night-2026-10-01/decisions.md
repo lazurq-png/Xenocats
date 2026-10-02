@@ -769,3 +769,40 @@ table; propose that in `questions.md`."
   this month's and an earlier month's totals and in the 12-month cards, with
   exact sums (the seed is outside the window) — and the proposal (Q10). No
   application code changed.
+
+## D30 — T22: cat not-found, error and empty states
+
+Plan task 22: cat-themed not-found, error and "no results" states across the
+dashboard, using the existing artwork.
+
+- **One component**, `app/ui/cat-state.tsx`: a cat, a heading, a sentence,
+  and an optional way on; three existing pictures — the sleeping cat
+  (`cat-sleeping.webp`) for not found, the login page's lookout
+  (`cat-login-peek.webp`) for errors, the peeking cat (`cat-peek.webp`) for
+  empty results. The cats are decorative (`alt=""`, `aria-hidden`), like the
+  rest of them; the heading and text carry the meaning.
+- **Not found**: the three existing `not-found.tsx` (invoice, invoice edit,
+  customer edit) keep their tested sentence ("Could not find the requested
+  …") and now lead back to their list; a new root `app/not-found.tsx` (the
+  site's own 404, styled like the public pages, `h1`) for unknown addresses,
+  which until now got Next's default page. A logged-in user is redirected to
+  `/dashboard` from any path outside it (`auth.config.ts`), so sees it only
+  for unknown `/dashboard/...` addresses (reviewer's note).
+- **Headings after review**: a state that is the whole page (the three
+  dashboard not-founds, the error state) uses `h1`; the one inside the
+  "Latest invoices" card (titled `h2`) uses `h3`. The empty lists no longer
+  blame a search when there was none ("No invoices to show here…").
+- **Errors**: `app/ui/cat-error.tsx` (client) renders the state with Try
+  again and logs the error to the console as before (never on the page); the
+  two existing `error.tsx` use it, and a new `app/dashboard/error.tsx` covers
+  the dashboard pages that had none (overview, settings).
+- **Empty**: the invoice table (which showed nothing at all when a search
+  matched nothing), the customers table (was a plain line) and the dashboard's
+  latest invoices. The revenue chart's "No invoices in this period." keeps
+  its place: the chart already carries the peeking cat above it.
+- **Tests**: browser — the root 404 (status 404, cat, link home), an unknown
+  invoice (cat, link back), empty searches in both lists; unit — the error
+  state (heading, hidden cat, Try again calls reset, error text not shown). An
+  error cannot be caused on purpose in the browser.
+- **Found, not fixed**: `?page=-1` on the invoice list crashes it (negative
+  SQL offset) — now into the cat error state. Q11.

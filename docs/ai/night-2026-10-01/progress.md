@@ -1369,3 +1369,59 @@ round.
 - The new database test first runs in this commit's CI.
 
 **Review**: not dispatched (a test and records only, no code change).
+
+## T22 — Cat not-found, error and empty states (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24, Q6).
+
+- Branch `night-2026-10-01-t22-cat-states`, base `886bd2b`. Started
+  2026-10-02 06:27 (budget 13.51M); completed 2026-10-02 06:38 (budget 13.48M).
+- **T21 CI: failed, fight group only** (inherited, Q1). The new chart test
+  passed in `Database tests`. Runs 36964595594 / 36964595219.
+
+**What the code does**
+
+- `app/ui/cat-state.tsx` (new): one state, made of a cat (existing artwork,
+  decorative and hidden from assistive technology), a heading, a sentence and
+  a way on.
+- **Not found:** the invoice, invoice-edit and customer-edit pages keep their
+  sentence and gain a sleeping cat, an `h1` and a link back to their list.
+  New: a root `app/not-found.tsx`, the site's own 404 (it was Next's
+  default).
+- **Errors:** `app/ui/cat-error.tsx` (new) shows a peeking cat, an `h1` and
+  Try again, and logs the error to the console only. The invoices and
+  customers `error.tsx` use it, and a new `app/dashboard/error.tsx` covers
+  the overview and settings, which had none.
+- **Empty:** the invoice table (it showed nothing at all when a search
+  matched nothing), the customers table and the dashboard's latest invoices
+  (an `h3` inside its card).
+- Tests:
+  - browser (`cat-states.spec.ts`): the root 404 (status 404, cat, link
+    home); an unknown invoice (cat, `h1`, link back); empty searches in both
+    lists.
+  - unit (`cat-error.test.tsx`): the error state.
+  - Both are in CI.
+
+**Why**: plan task 22. Design: D30. Found on the way: a negative `?page=`
+crashes the invoice list (Q11, not fixed).
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 420 passed and 17 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e` and `E2E_SERVER=start`: 86 passed each.
+- After the review fixes, with a rebuild: the affected specs passed 16/16 on
+  dev, and the full start suite passed 86/86.
+- actionlint and prettier clean.
+
+**Review**: `reviewer` approved, with three Lows, all fixed:
+- the full-page states had no `h1`;
+- the latest-invoices empty state was a sibling `h2` of its card;
+- the empty lists blamed a search even when none was set.
+
+Its note on who sees the root 404 is now in D30.
+
+**UI**: tested in a browser, not seen. A human should look at the sleeping
+cat on the dashboard 404s, the peeking cats in the empty lists, and the root
+404 on its starfield, at phone and desktop width.
