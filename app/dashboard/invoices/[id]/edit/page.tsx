@@ -18,7 +18,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   }
 
   return (
-    <main>
+    <div>
       <Breadcrumbs
         breadcrumbs={[
           { label: 'Invoices', href: '/dashboard/invoices' },
@@ -30,6 +30,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         ]}
       />
       <Form invoice={invoice} customers={customers} />
-    </main>
+    </div>
   );
 }

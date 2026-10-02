@@ -806,3 +806,40 @@ dashboard, using the existing artwork.
   error cannot be caused on purpose in the browser.
 - **Found, not fixed**: `?page=-1` on the invoice list crashes it (negative
   SQL offset) — now into the cat error state. Q11.
+
+## D31 — T23: keyboard and accessibility pass
+
+Plan task 23: skip link, visible focus states, labelled controls, and browser
+tests that walk the dashboard and `/cats` by keyboard only.
+
+- **Skip link** first in the tab order on every dashboard page (in the
+  layout) and on `/cats`; hidden until focused, then shown top left; it moves
+  focus to `#main-content`. On the dashboard that is the content area, now the
+  page's single `<main>` landmark (the layout's; ten pages and the error state
+  had their own `<main>` and two pages none — those became `<div>`s). On
+  `/cats`, whose header links sit inside `<main>`, the target is the content
+  after the header.
+- **Visible focus**: a base `:focus-visible` style (2px lime outline, offset)
+  for everything that does not draw its own (nav links, pagination, cards'
+  links had none); inputs keep their focus ring.
+- **Labelled controls**: the browser test checks every visible link, button
+  and field on five dashboard pages and `/cats` for an accessible name. It
+  found the pagination arrows (icon-only links) unnamed → "Previous page" /
+  "Next page", icons hidden.
+- **Tests** (`keyboard.spec.ts`): `/cats` — skip link first and visible,
+  Enter moves focus past the header, Tab reaches a Summon button with a
+  visible focus ring at every stop, Enter summons a cat, and the keyboard
+  still moves focus with the cat on screen; dashboard — skip link into
+  `<main>`, Tab/Enter through the navigation to the invoices, Tab to the
+  search and type; names on every control of five pages.
+- **After review** (Request Changes, two Mediums, both fixed): (1) the focus
+  check passed even with focus hidden or the new rule removed — it now needs a
+  solid, opaque outline of at least 2px (form fields: their ring), checks the
+  skip link (which only the base rule styles), and was shown to fail with the
+  rule removed and pass with it; (2) at phone width the navigation links, Sign
+  out and the two Create links showed icons only with their text
+  `display:none`, so had no names — their text is now `sr-only` below `md`, and
+  the naming check also runs at 390×844.
+- **Not done**: a full audit (contrast, screen-reader announcements of every
+  live region) — no tool for it without a dependency; focus rings checked by
+  computed style, not seen.

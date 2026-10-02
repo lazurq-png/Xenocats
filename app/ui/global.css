@@ -15,6 +15,11 @@
   ::selection {
     @apply bg-plasma text-black;
   }
+
+  /* Keyboard focus is always visible: a lime ring, unless a control draws its own. */
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-plasma;
+  }
 }
 
 /* A scatter of stars for the public pages, layered over their background colour. */

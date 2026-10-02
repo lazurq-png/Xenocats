@@ -10,6 +10,12 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <div className="xenocat-stars min-h-screen bg-void-landing">
+      <a
+        href="#main-content"
+        className="sr-only rounded-xl bg-plasma px-4 py-2 font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[10000]"
+      >
+        Skip to main content
+      </a>
       <main className="mx-auto max-w-[1366px] px-6 pb-12 pt-4 md:px-12">
         <header className="mb-12 flex items-center justify-between gap-4">
           <Link href="/" aria-label="Xenocat Analytics home">
@@ -22,7 +28,8 @@ export default function Page() {
             Back to the dashboard
           </Link>
         </header>
-        <div className="mb-6">
+        {/* The skip link's target: past the header's links, to the cats. */}
+        <div id="main-content" tabIndex={-1} className="mb-6 focus-visible:outline-none">
           <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">
             The <span className="text-plasma">cats</span>
           </h1>

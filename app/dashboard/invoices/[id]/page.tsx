@@ -28,7 +28,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   ] as const;
 
   return (
-    <main>
+    <div>
       <Breadcrumbs
         breadcrumbs={[
           { label: 'Invoices', href: '/dashboard/invoices' },
@@ -68,6 +68,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           ))}
         </dl>
       </section>
-    </main>
+    </div>
   );
 }

@@ -1425,3 +1425,50 @@ Its note on who sees the root 404 is now in D30.
 **UI**: tested in a browser, not seen. A human should look at the sleeping
 cat on the dashboard 404s, the peeking cats in the empty lists, and the root
 404 on its starfield, at phone and desktop width.
+
+## T23 — Keyboard and accessibility pass (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24, Q6).
+
+- Branch `night-2026-10-01-t23-keyboard-a11y`, base `f5682f3`. Started
+  2026-10-02 06:38 (budget 13.48M); completed 2026-10-02 06:57 (budget 13.44M).
+- **T22 CI: failed, fight group only** (inherited, Q1). The cat-states spec
+  and the new unit test passed. Runs 36965442844 / 36965442968.
+
+**What the code does**
+
+- **Skip link** first in the tab order on every dashboard page (layout) and
+  on `/cats`; shown when focused; moves focus to the page's content. The
+  dashboard layout now holds the single `<main>` landmark (ten pages and the
+  error state had their own, two none; theirs became `<div>`s).
+- **Visible focus**: a base `:focus-visible` style (2px lime outline) in
+  `global.css` for everything without a focus style of its own.
+- **Names**: the pagination arrows ("Previous page" / "Next page"); at phone
+  width the navigation links, Sign out and the Create Invoice / Create
+  Customer links had their only text `display:none` — now `sr-only` below
+  `md`.
+- `tests/e2e/keyboard.spec.ts` (new, 3 tests, in CI): `/cats` and the
+  dashboard by keyboard only (skip link, a visible focus ring at every Tab
+  stop, a cat summoned with Enter, the keyboard unaffected with a cat on
+  screen, navigation and search by keyboard); every visible control on five
+  dashboard pages named, also at 390×844.
+
+**Why**: plan task 23. Design: D31.
+
+**Acceptance criteria evidence**: all four by the browser test on both
+servers. The focus check was shown to fail with the new rule removed and to
+pass with it (a temporary edit, reverted).
+
+**Verification**: `npm run lint` exit 0, 0 warnings; `next typegen && tsc`
+exit 0; `E2E_NO_DATABASE=1 npm test` exit 0, 420 passed and 17 skipped;
+`npm run build` exit 0; `npm run test:e2e` and `E2E_SERVER=start` 89 passed
+each; actionlint and prettier clean.
+
+**Review**: `reviewer` — Request Changes, two Mediums, both fixed: the focus
+check passed even with focus invisible (now strict, and pinned to the new
+rule through the skip link); controls unnamed at phone width (now named, and
+tested there). Re-review: Approve.
+
+**UI**: tested in a browser, not seen. A human should look at the skip link
+(Tab once on any dashboard page), the lime focus ring on the navigation and
+links, and the phone-width navigation.

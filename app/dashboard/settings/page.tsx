@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <main className="max-w-xl">
+    <div className="max-w-xl">
       <h1 className="mb-8 font-display text-3xl font-black uppercase text-plasma md:text-[40px]">
         Settings
       </h1>
@@ -17,6 +17,6 @@ export default function Page() {
         </h2>
         <PasswordForm />
       </section>
-    </main>
+    </div>
   );
 }

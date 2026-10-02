@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export default async function Page(props: { searchParams?: Promise<{ range?: string }> }) {
   const range = parseRange((await props.searchParams)?.range);
   return (
-    <main>
+    <div>
       <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1>
@@ -40,6 +40,6 @@ export default async function Page(props: { searchParams?: Promise<{ range?: str
           <LatestInvoices />
         </Suspense>
       </div>
-    </main>
+    </div>
   );
 }

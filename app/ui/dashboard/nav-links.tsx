@@ -36,7 +36,8 @@ export default function NavLinks() {
               <span className="absolute -left-4 top-1/2 hidden h-12 w-1.5 -translate-y-1/2 rounded-r-full bg-plasma shadow-[0_0_14px_rgba(193,232,56,0.7)] md:block" />
             )}
             <LinkIcon className="w-7" />
-            <p className="hidden md:block">{link.name}</p>
+            {/* Text only from md up, but always the link's name. */}
+            <p className="sr-only md:not-sr-only">{link.name}</p>
           </Link>
         );
       })}

@@ -24,7 +24,7 @@ export default function SideNav() {
         >
           <button className={navLinkClass}>
             <ArrowRightStartOnRectangleIcon className="w-7" />
-            <div className="hidden md:block">Sign out</div>
+            <div className="sr-only md:not-sr-only">Sign out</div>
           </button>
         </form>
       </div>

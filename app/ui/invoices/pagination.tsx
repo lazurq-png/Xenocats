@@ -110,12 +110,20 @@ function PaginationArrow({
   );
 
   const icon =
-    direction === 'left' ? <ArrowLeftIcon className="w-4" /> : <ArrowRightIcon className="w-4" />;
+    direction === 'left' ? (
+      <ArrowLeftIcon className="w-4" aria-hidden />
+    ) : (
+      <ArrowRightIcon className="w-4" aria-hidden />
+    );
+  // Icon-only: the name says where it leads.
+  const label = direction === 'left' ? 'Previous page' : 'Next page';
 
   return isDisabled ? (
-    <div className={className}>{icon}</div>
+    <div className={className} aria-hidden>
+      {icon}
+    </div>
   ) : (
-    <Link className={className} href={href}>
+    <Link className={className} href={href} aria-label={label}>
       {icon}
     </Link>
   );

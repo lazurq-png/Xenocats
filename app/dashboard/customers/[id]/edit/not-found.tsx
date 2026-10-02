@@ -3,7 +3,7 @@ import CatState, { catStateLinkClass } from '@/app/ui/cat-state';
 
 export default function NotFound() {
   return (
-    <main className="flex h-full flex-col items-center justify-center">
+    <div className="flex h-full flex-col items-center justify-center">
       <CatState
         art="asleep"
         title="404 Not Found"
@@ -16,6 +16,6 @@ export default function NotFound() {
       >
         Could not find the requested customer.
       </CatState>
-    </main>
+    </div>
   );
 }

@@ -16,7 +16,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   if (!customer) notFound();
 
   return (
-    <main>
+    <div>
       <Breadcrumbs
         breadcrumbs={[
           { label: 'Customers', href: '/dashboard/customers' },
@@ -24,6 +24,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         ]}
       />
       <CustomerForm customer={customer} />
-    </main>
+    </div>
   );
 }

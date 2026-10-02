@@ -16,7 +16,7 @@ export default function CatError({
   }, [error]);
 
   return (
-    <main className="flex h-full flex-col items-center justify-center">
+    <div className="flex h-full flex-col items-center justify-center">
       <CatState
         art="peeking"
         title="Something went wrong!"
@@ -29,6 +29,6 @@ export default function CatError({
       >
         A cat got into the wiring. Try again; if it keeps happening, come back in a while.
       </CatState>
-    </main>
+    </div>
   );
 }

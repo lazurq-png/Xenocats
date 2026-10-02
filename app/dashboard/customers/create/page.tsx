@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <main>
+    <div>
       <Breadcrumbs
         breadcrumbs={[
           { label: 'Customers', href: '/dashboard/customers' },
@@ -16,6 +16,6 @@ export default function Page() {
         ]}
       />
       <CustomerForm />
-    </main>
+    </div>
   );
 }
