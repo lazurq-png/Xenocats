@@ -92,3 +92,17 @@ list's Pending filter is empty while the dashboard shows a pending total. Not
 wrong in the data, but two meanings of one word. Options: relabel those
 figures "Unpaid" (smallest), or show overdue separately there too. The run
 left them as they are (no task names them); checkpoint 3 raised it.
+
+## Q6 — `npm test` now writes a schema on the development database (T16)
+
+T16 (as the plan asked: "part of `npm test`") makes `npm test` rebuild the
+`xenocats_vitest` schema on the server in `.env`'s `POSTGRES_URL`, like the
+browser tests rebuild `xenocats_test`. `E2E_NO_DATABASE=1` skips it. The
+night-run skill's database rule (§3) names only the browser tests and the
+build, so this run never ran the file locally; CI ran it (build job). Two
+things for a human:
+- Run `npm test` once with `.env` present to see the database tests pass on
+  the development server (CI's server is a fresh PostgreSQL with TLS on).
+- If unattended runs should run them too, the skill's §3 needs to name
+  `npm test` beside `npm run test:e2e`; otherwise runs keep setting
+  `E2E_NO_DATABASE=1`.

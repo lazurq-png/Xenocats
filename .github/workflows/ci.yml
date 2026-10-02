@@ -97,7 +97,8 @@ jobs:
           sudo systemctl start postgresql.service
           sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
           test "$(sudo -u postgres psql -Atc 'SHOW ssl')" = on
-      - run: npm run db:migrate && npm run db:seed
+      - id: database
+        run: npm run db:migrate && npm run db:seed
       - run: npm run build
       - id: install
         run: npx playwright install --with-deps chromium
@@ -135,6 +136,12 @@ jobs:
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/sound
+      # Only this job has a database for them (the checks job skips this file),
+      # whether or not the build and browser tests passed. The tests rebuild
+      # their own schema, xenocats_vitest, on this job's server.
+      - name: Database tests
+        if: ${{ !cancelled() && steps.database.outcome == 'success' }}
+        run: npx vitest run tests/unit/data
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

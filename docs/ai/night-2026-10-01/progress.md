@@ -979,3 +979,66 @@ The reviewer then re-reviewed the fixes: Approve.
 - `E2E_SERVER=start npm run test:e2e`: exit 0, 74 passed.
 - The detail spec: 12/12 over three repeats after the fix.
 - actionlint and prettier: clean (D1).
+
+## T16 — Database integration tests (completed)
+
+> **For every later session of this run: run `npm test` (and any Vitest
+> command) as `E2E_NO_DATABASE=1 npm test`.** Plain `npm test` now rebuilds
+> a schema on the development database, which the skill's §3 does not allow
+> the run (D24, Q6). The database tests are checked in CI only.
+
+- Branch `night-2026-10-01-t16-db-tests`, base `792ffe1`. Started
+  2026-10-02 02:46 (budget 13.79M); completed 2026-10-02 03:01 (budget 13.74M).
+- **Checkpoint 3 CI: failed, fight group only** (inherited, Q1). Runs
+  36947670498 / 36947670581.
+
+**What the code does**
+
+- `tests/unit/data.test.ts` (new, 13 tests) runs every query in
+  `app/lib/data.ts` against `xenocats_vitest`, its own schema, which it
+  rebuilds (migrations + seed) when it runs. Expected values are computed
+  from the seed. It covers:
+  - the latest invoices; the cards for all time and for 12 months, with the
+    comparison;
+  - monthly totals, including empty months;
+  - pagination and page counts;
+  - the search over name, email, amount, date and status, case-insensitive,
+    with a query that looks like SQL;
+  - the three disjoint status filters, alone and combined with a search;
+  - the export rows;
+  - invoice by id and detail, and the customers queries with their totals;
+  - its own invoices, pending vs. overdue, which it deletes afterwards;
+  - migration 0003 on a table that already holds invoices (backfill, the
+    default, the check), in a scratch schema it drops afterwards.
+
+  It skips without a database URL, or with `E2E_NO_DATABASE=1`.
+- `.github/workflows/ci.yml`: a `Database tests` step at the end of the
+  build job, against that job's PostgreSQL, run even when the browser tests
+  failed.
+- `CLAUDE.md` §9, `.claude/rules/testing.md` and `database.md`: the new
+  schema, and when the file skips.
+
+**Why**: plan task 16. Design and the conflict with the run's database rule:
+D24. A question for a human: Q6.
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 399 passed and 13 skipped (the new
+  file).
+- `npm run build`: exit 0.
+- `npm run test:e2e`: 74 passed.
+- `E2E_SERVER=start npm run test:e2e`: **1 failed, 73 passed on the first
+  run.** It was a `toBeVisible` assertion; which test is unidentified,
+  because that run's full log was not kept. The next three runs passed
+  74/74. This task changes no app code and no browser test, so it is
+  recorded as an unidentified flake: watch for it.
+- actionlint clean; prettier clean (D1).
+- **The new tests have not run anywhere yet.** Their first run is this
+  commit's CI build job (`Database tests` step), reported in the next entry.
+
+**Review**: `reviewer` — Approve. It worked through every assertion
+against the seed and the migrations. Its two Lows were both about this
+commit and are handled: keep `next-env.d.ts` out; put the
+`E2E_NO_DATABASE=1` rule where a resuming session reads first (the box
+above).

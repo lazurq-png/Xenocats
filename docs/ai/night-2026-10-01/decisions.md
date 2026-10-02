@@ -594,3 +594,36 @@ shown for unpaid invoices past it and filterable, seed data updated.
   a failure → `unstable_rethrow` first, so Next follows the redirect.
 - **Finding 3 (Low), recorded as Q5**: "Pending" in the list vs. the
   dashboard totals; a product decision, no task names those figures.
+
+## D24 — T16: database integration tests, and where the run may run them
+
+Plan task 16: Vitest tests for every query in `app/lib/data.ts` against the
+test schema, with their own schema or rows, part of `npm test`, skipping
+without a database.
+
+- **One file, its own schema.** `tests/unit/data.test.ts` drops and rebuilds
+  `xenocats_vitest` (through `scripts/db.mjs reset`, which refuses a
+  non-private host) when it runs, then imports `data.ts` against it. The
+  browser tests' `xenocats_test` is never touched, so the suites cannot
+  collide. One file, so its tests run in order: the seed-only tests first
+  (exact values, computed from `placeholder-data.ts`), then a block that adds
+  its own customer and invoices (pending vs. overdue) and deletes them after.
+- **The migration backfill** (left open by checkpoint 3): a second scratch
+  schema, `xenocats_vitest_migrations`, gets 0001 and 0002, rows without a due
+  date, then 0003; the test checks date + 30 on those rows, the default for
+  an insert that names none, and the check constraint. Dropped afterwards.
+- **Skips** without a URL (environment, else `.env`, which the file parses
+  without loading into its environment) or with `E2E_NO_DATABASE=1` — the
+  existing switch for "no database", so one variable covers both suites.
+- **Conflict with the run's rules, resolved in their favour.** The night-run
+  skill (§3) lets the run reach the development database *only* through
+  `npm run test:e2e` and the build, and no plan lifts that rule. So the run
+  never runs this file against it: every `npm test` the run makes from here
+  on sets `E2E_NO_DATABASE=1`. The tests run in CI instead, in the *build*
+  job, against that job's own throwaway PostgreSQL (`Database tests` step,
+  at the end of the job, so a failure there hides no other result), and the
+  run checks that step through the sanctioned read-only `/jobs` lookup. Q6
+  asks a human to confirm the default (`npm test` touching the database when
+  `.env` has one).
+- Docs that described the database's users updated: `CLAUDE.md` §9,
+  `.claude/rules/testing.md`, `.claude/rules/database.md`.

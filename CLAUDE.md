@@ -268,6 +268,12 @@ instead, which needs an existing `npm run build`. `next dev` also (re-)adds a Ne
 to `AGENTS.md` when it detects an AI agent, and flips `next-env.d.ts` between
 its dev and build variants; neither is part of a task's change.
 
+`npm test` includes `tests/unit/data.test.ts`, which runs every query in
+`app/lib/data.ts` against a real database: it drops and rebuilds its own
+`xenocats_vitest` schema (and a scratch `xenocats_vitest_migrations`) on the
+server `POSTGRES_URL` names, and skips like the browser tests do — no URL, or
+`E2E_NO_DATABASE=1`. In CI it runs in the *build* job, which has a database.
+
 `lint` exits non-zero on **errors only**; warnings print without failing, so a
 clean exit does not mean an empty report. Read the output; do not report "lint
 passed" as though it found nothing.
@@ -280,7 +286,8 @@ the task changed.
 The running app, and possibly `npm run build` where a page prerenders, need
 `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` in `.env`. **`POSTGRES_URL` is a
 development database** on the local network, holding no data of value: the app
-uses its `xenocats` schema, the browser tests `xenocats_test`. The URL carries
+uses its `xenocats` schema, the browser tests `xenocats_test`, the database unit
+tests `xenocats_vitest`. The URL carries
 the schema as `?search_path=`. The schema is defined by `db/migrations/*.sql`;
 `npm run db:migrate` applies new ones, `db:seed` loads
 `app/lib/placeholder-data.ts`, and `db:reset` rebuilds a schema from scratch.
