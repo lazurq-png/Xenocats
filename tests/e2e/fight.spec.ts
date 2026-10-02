@@ -329,7 +329,7 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
   await openFight(page, undefined, { lock: true });
   const startButton = page.getByTestId('fight-start');
   const box = (await startButton.boundingBox())!;
-  let mouse = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const mouse = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.mouse.move(mouse.x, mouse.y);
   await startButton.click();
   const overlay = page.getByTestId('fight-overlay');
@@ -346,32 +346,18 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
   await expect(page.getByTestId('fight-player').locator('svg').first()).toBeVisible();
   await expect(page.getByTestId('fight-crosshair').locator('svg')).toBeVisible();
 
-  // The crosshair moves by the mouse's movement. A cat pounces on it from 2.5 s into
-  // the game, and its effect moves the crosshair too (Axis lock holds one axis,
-  // Drift pushes it, ...): so the movement is measured only while no effect runs on
-  // the crosshair, before and after, and measured again if one began meanwhile.
+  // The crosshair moves by the mouse's movement: under lock the browser reports only
+  // how far the mouse moved (movementX/Y), and the game adds that up. The movement
+  // is sent as the browser sends it, not made with page.mouse: under lock, headless
+  // Chrome on Linux (CI) reports each simulated move as a jump to the pointer's
+  // position on the page and straight back, which adds up to no movement at all.
+  // A cat pounces on the crosshair from 2.5 s into the game, and its effect moves
+  // it too (Axis lock holds one axis, Drift pushes it, ...): so the movement is
+  // measured only while no effect runs on it, and measured again if one began.
   const crosshair = page.getByTestId('fight-crosshair');
   const calm = async () => ((await crosshair.getAttribute('data-effect')) ?? '') === '';
-  // Every mouse movement the page receives, as the game sees it: if the crosshair
-  // does not follow, the failure says what the browser reported instead.
-  await page.evaluate(() => {
-    const seen: unknown[] = [];
-    (window as unknown as { seenMoves: unknown[] }).seenMoves = seen;
-    document.addEventListener(
-      'mousemove',
-      (event) =>
-        seen.push({
-          movement: [event.movementX, event.movementY],
-          client: [event.clientX, event.clientY],
-          locked: document.pointerLockElement === document.body,
-        }),
-      { capture: true }
-    );
-  });
-  const seenMoves = () =>
-    page.evaluate(() => (window as unknown as { seenMoves: unknown[] }).seenMoves.slice(0, 40));
   let way = 1;
-  const moved = expect
+  await expect
     .poll(
       async () => {
         if (!(await calm())) return false;
@@ -379,8 +365,13 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
         // Back and forth, so the crosshair stays clear of the edges however often.
         const step = { x: 60 * way, y: -40 * way };
         way = -way;
-        mouse = { x: mouse.x + step.x, y: mouse.y + step.y };
-        await page.mouse.move(mouse.x, mouse.y, { steps: 4 });
+        await page.evaluate(
+          ({ x, y }) =>
+            document.dispatchEvent(
+              new MouseEvent('mousemove', { movementX: x, movementY: y, bubbles: true })
+            ),
+          step
+        );
         // Let the game draw the move.
         await page.evaluate(
           () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
@@ -396,17 +387,6 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
       { timeout: 20_000, intervals: [100] }
     )
     .toBe(true);
-  try {
-    await moved;
-  } catch (error) {
-    const moves = JSON.stringify(await seenMoves(), null, 1);
-    await test.info().attach('mouse moves the page received', {
-      body: moves,
-      contentType: 'application/json',
-    });
-    console.log(`Mouse moves the page received under pointer lock:\n${moves}`);
-    throw error;
-  }
 
   // Losing the lock ends the game if the page still has focus (that is Esc) and
   // pauses it if not (another window took it). Some headless browsers never give a
