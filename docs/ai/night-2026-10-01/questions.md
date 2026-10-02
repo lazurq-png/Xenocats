@@ -81,3 +81,14 @@ T14 gives every invoice the due date "invoice date + 30 days" (D22); the forms
 neither show nor change it. If invoices need other terms, a next plan could add
 a due-date field to the create and edit forms (validated not before the
 invoice date, as the database's check already requires).
+
+## Q5 — "Pending" in the list vs. the dashboard's pending totals (product decision)
+
+Since T14 the invoice list, its filter and the CSV split unpaid invoices into
+Pending (not yet due) and Overdue. The dashboard's pending card and chart and
+the customers table's "total pending" still add up every unpaid invoice,
+overdue included; on the seed data every unpaid invoice is overdue, so the
+list's Pending filter is empty while the dashboard shows a pending total. Not
+wrong in the data, but two meanings of one word. Options: relabel those
+figures "Unpaid" (smallest), or show overdue separately there too. The run
+left them as they are (no task names them); checkpoint 3 raised it.

@@ -936,3 +936,46 @@ never submitted): fixed — the incomplete-form test now submits a unique
 amount and checks no such invoice exists; the vacuous line is gone. (2) The
 delete test overlaps `invoice-detail.spec.ts`: kept, because the task asks
 for delete explicitly and this one adds the check after a fresh load.
+
+## Checkpoint 3 (after T15; range `623d402..9ea0277`, tasks 11–15) (completed)
+
+- Branch `night-2026-10-01-c3-checkpoint`, base `9ea0277`. Started
+  2026-10-02 02:33 (budget 13.83M); completed 2026-10-02 02:46 (budget 13.79M).
+- **T15 CI: failed, fight group only** (inherited, Q1); the new invoice CRUD
+  tests passed in CI against both servers. Runs 36946614975 / 36946614688.
+
+**1. Tests.** Gaps found and filled (D23):
+- the seed's due dates are checked against the database's rule;
+- migration 0003's shape is checked (add, fill, then require; drops nothing);
+- a unit test for the status pill: Overdue only for unpaid invoices, never
+  over Paid;
+- a browser check that the pending filter leaves out overdue invoices.
+
+Still untested: the migration's backfill on a table that already holds rows.
+That belongs to T16's database tests. No test was removed.
+
+**2. Quality and security.** `reviewer` covered the range with the security,
+backend and database rules. It found no security issue in authentication,
+the new action, the export route, SQL, CSV escaping, error leakage, money or
+the migration. Its three cross-task findings:
+- **(Medium) Fixed.** T15's edit test marks a new invoice paid while T11's
+  pagination test reads the paid pages, which could fail that test
+  intermittently. The page-2 check no longer depends on rows other tests add.
+- **(Low) Fixed.** A successful delete from the detail page briefly showed
+  "could not be deleted": the dialog took Next's redirect for a failure, and
+  now passes it on with `unstable_rethrow`. A browser check failed 2/2 before
+  the fix and passes after; it also asserts that the page raises no errors.
+- **(Low) Recorded as Q5.** "Pending" in the list (not yet due) differs from
+  the dashboard's pending totals (all unpaid). This is a product decision.
+
+The reviewer then re-reviewed the fixes: Approve.
+
+**3. Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `npm test`: exit 0, 28 files / 399 tests.
+- `npm run build`: exit 0.
+- `npm run test:e2e`: exit 0, 74 passed.
+- `E2E_SERVER=start npm run test:e2e`: exit 0, 74 passed.
+- The detail spec: 12/12 over three repeats after the fix.
+- actionlint and prettier: clean (D1).

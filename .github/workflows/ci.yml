@@ -31,7 +31,7 @@ jobs:
         run: >-
           npx vitest run tests/unit/actions tests/unit/schemas tests/unit/utils
           tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
-          tests/unit/csv tests/unit/export-route
+          tests/unit/csv tests/unit/export-route tests/unit/invoice-status
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
         run: >-

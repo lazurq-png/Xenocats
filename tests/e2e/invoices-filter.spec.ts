@@ -60,13 +60,21 @@ test('the status filter lives in the URL, combines with search and survives pagi
   const firstPage = await rowTexts(page);
 
   // Eight seeded invoices are paid: two pages. Page 2 keeps the filter, and shows
-  // other paid invoices than page 1.
+  // other paid invoices than page 1. Some, not all: a test running alongside may
+  // mark a new invoice paid (dated today, it goes first), moving page 1's last
+  // row onto page 2 between the two reads.
   await page.getByRole('link', { name: '2', exact: true }).click();
   await expect(page).toHaveURL(/status=paid/);
   await expect(page).toHaveURL(/page=2/);
   await expectEveryRow(page, 'Paid');
   await expect
-    .poll(async () => (await rowTexts(page)).every((text) => !firstPage.includes(text)))
+    .poll(async () => {
+      const texts = await rowTexts(page);
+      return (
+        texts.every((text) => text.includes('Paid')) &&
+        texts.some((text) => !firstPage.includes(text))
+      );
+    })
     .toBe(true);
   await expect(filter).toHaveValue('paid');
 
@@ -82,6 +90,12 @@ test('the status filter lives in the URL, combines with search and survives pagi
   await expect(page).toHaveURL(/status=overdue/);
   await expect(page).toHaveURL(/query=Balazs\+Orban/);
   await expectEveryRow(page, 'Overdue', 'Balazs Orban');
+
+  // Pending is unpaid and not yet due: none of his (no test adds invoices for
+  // him). Loaded afresh, since a page load waits for the whole streamed list.
+  await page.goto('/dashboard/invoices?query=Balazs+Orban&status=pending');
+  await expect(filter).toHaveValue('pending');
+  await expect(rows(page)).toHaveCount(0);
 
   // Every status again (the search still applies).
   await filter.selectOption('');

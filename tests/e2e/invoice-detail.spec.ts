@@ -102,9 +102,24 @@ test('deleting from the detail page goes back to the list', async ({ page }) => 
   await row.getByRole('link', { name: /^View invoice/ }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/);
   const detail = page.url();
+  const pageErrors: Error[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error));
+  // The action's redirect must not pass for a failure, even for a moment: note
+  // any "could not be deleted" text (the window survives the client navigation).
+  await page.evaluate(() => {
+    const seen = window as unknown as { sawDeleteError?: boolean };
+    new MutationObserver(() => {
+      if (document.body.textContent?.includes('could not be deleted')) seen.sawDeleteError = true;
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
   await page.getByRole('button', { name: /^Delete invoice for Amy Burns/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
+  await page.waitForLoadState('networkidle');
+  expect(
+    await page.evaluate(() => (window as unknown as { sawDeleteError?: boolean }).sawDeleteError)
+  ).toBeUndefined();
+  expect(pageErrors).toEqual([]);
   await page.goto(detail);
   await expect(page.getByText('Could not find the requested invoice.')).toBeVisible();
 });

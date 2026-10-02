@@ -1,6 +1,7 @@
 'use client';
 
 import { TrashIcon } from '@heroicons/react/20/solid';
+import { unstable_rethrow } from 'next/navigation';
 import { useId, useRef, useState, useTransition } from 'react';
 import { deleteInvoice, deleteInvoiceAndReturn } from '@/app/lib/actions';
 
@@ -37,7 +38,10 @@ export function DeleteInvoice({
       try {
         // From the detail page the action itself redirects to the list.
         await (fromDetailPage ? deleteInvoiceAndReturn : deleteInvoice)(id);
-      } catch {
+      } catch (error) {
+        // The detail page's redirect arrives here as a thrown error: let Next
+        // follow it rather than report a delete that succeeded as a failure.
+        unstable_rethrow(error);
         setError('The invoice could not be deleted. Please try again.');
         return;
       }

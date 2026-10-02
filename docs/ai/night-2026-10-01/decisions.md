@@ -571,3 +571,26 @@ shown for unpaid invoices past it and filterable, seed data updated.
   Overdue. The status-filter browser test now checks Overdue on the seed rows
   and Pending on an invoice of its own (new today, due in 30 days).
 - Not applied to `xenocats` (plan rule): Q3.
+
+## D23 — Checkpoint 3 (T11–T15)
+
+- **Tests added**: the seed's due dates against the database's check; the
+  shape of migration 0003 (add, fill, then require; nothing dropped); the
+  status pill (Overdue only for unpaid, never over Paid) as a unit test
+  (`tests/unit/invoice-status.test.tsx`); the pending filter excluding
+  overdue invoices (browser). The migration's backfill is not run against a
+  table that already holds rows by any test: the e2e setup migrates an empty
+  schema, then seeds. T16 (database tests) is where that belongs.
+- **No test removed**: the delete test in `invoices.spec.ts` overlaps
+  `invoice-detail.spec.ts` but adds the after-reload check, and the task
+  named delete.
+- **Reviewer finding 1 (Medium), fixed**: T15's edit test marks a new
+  invoice paid while T11's pagination test reads the paid pages, so page 1's
+  last row could move to page 2 → page 2 must show *some* invoice page 1 did
+  not, every row paid.
+- **Finding 2 (Low), fixed, with a browser test that failed before it (2/2)**:
+  deleting from the detail page flashed "could not be deleted" — Next rejects
+  the action's promise with its redirect, which the dialog's `catch` took for
+  a failure → `unstable_rethrow` first, so Next follows the redirect.
+- **Finding 3 (Low), recorded as Q5**: "Pending" in the list vs. the
+  dashboard totals; a product decision, no task names those figures.
