@@ -668,3 +668,41 @@ minutes; N and M in config; stored in a new table (migration).
   locking it, which parallel tests log in as; so the dashboard spec's
   wrong-password test now uses an unknown email, and wrong passwords for a real
   user are in `login-limit.spec.ts`, each test on a user it creates (plan rule).
+
+## D26 — T18: security headers
+
+Plan task 18: Content-Security-Policy and the other standard headers in
+`next.config.ts`, compatible with Next, the cats' inline styles and Web Audio;
+a browser test that they are present and the pages still work.
+
+- **Static policy, as the task places it** (`next.config.ts` `headers()`, on
+  every path). A static policy cannot carry a per-request nonce, so Next's
+  inline scripts (flight data) need `script-src 'unsafe-inline'`; the inline
+  `style` attributes (cats, charts, avatars) and next/font's style tags need
+  `style-src 'unsafe-inline'`. A nonce-based policy would need the proxy to
+  set the header per request and every page rendered dynamically — a larger
+  change than the task, Q8.
+- **Everything else is `'self'`**: no external origins are loaded (fonts are
+  self-hosted by next/font, images come from `/public` and `/_next/image`,
+  sounds are synthesised — CSP does not govern Web Audio). `img-src` also
+  allows `data:` (the form plugin's SVG icons); `blob:` was dropped after
+  review, as nothing uses it. `object-src 'none'`,
+  `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`.
+- **Dev only**: `'unsafe-eval'` (React's dev tooling) and `ws:`/`wss:` (hot
+  reload), when `NODE_ENV` is `development` — never in a build.
+- **Other headers**: `X-Content-Type-Options: nosniff`, `X-Frame-Options:
+  DENY` (for browsers without `frame-ancestors`), `Referrer-Policy:
+  strict-origin-when-cross-origin`, `Strict-Transport-Security` (2 years,
+  subdomains; ignored over plain HTTP, so harmless on localhost; no
+  `preload`, a decision for whoever owns the domain), `Permissions-Policy`
+  turning off camera, microphone, geolocation, payment and USB, none of which
+  the app uses. Pointer lock (the fight) is not a Permissions-Policy feature.
+  No `upgrade-insecure-requests`: it would break `next start` over HTTP.
+- **Test** (`security-headers.spec.ts`): the headers on four pages; the
+  public pages, three dashboard pages (logged in) and `/cats` with a summoned
+  cat load, hydrate and react with no CSP violation and no page error. A
+  violation is caught twice over: the DOM's `securitypolicyviolation` event,
+  relayed to the console by an init script, and Chrome's own console report;
+  a fifth test injects an outside image and checks that the policy blocks it
+  and the watcher reports it. The whole browser suite (cats, sounds, forms)
+  also runs under the policy.

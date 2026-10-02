@@ -1116,3 +1116,68 @@ above).
 The re-review approved. Its two Lows: D25 and the migration's comment
 described the old design (both updated); raising N during a lock lets the
 email in early (an operator action, accepted in D25).
+
+## T18 — Security headers (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24).
+
+- Branch `night-2026-10-01-t18-security-headers`, base `1374021`, rebased
+  by fast-forward onto `f41719c` (T17's CI fix, below). Started 2026-10-02
+  03:22 (budget 13.65M); completed 2026-10-02 03:40 (budget 13.60M).
+- **T17 CI (run 36950655255 / 36950655239)**: fight group failed (inherited,
+  Q1). **Also failed: the production job's first browser group** (smoke,
+  branding, dashboard, customers, invoices, login). The dev job passed the
+  same group, and the `Database tests` step passed, including the new
+  lockout block on real PostgreSQL. It did not reproduce locally: two
+  CI-like runs (`CI=1`, 2 workers, `next start`) passed 32/32. Logs are out
+  of reach, so **repair cycle 1** (commit `f41719c`, on T17's branch, T18
+  parked meanwhile) split that group into three named steps in both jobs,
+  so the next run names the failing area. Its result (runs 36951390394 /
+  36951390509): all three new steps **passed** in both jobs, and only the
+  inherited fight group failed. The earlier failure was intermittent (it
+  failed its CI retry too, but did not recur and never reproduced). It is
+  recorded as an unidentified flake; a recurrence will now name its area.
+
+**What the code does**
+
+- `next.config.ts`: security headers on every response.
+  - A Content-Security-Policy: `'self'` everywhere, plus `'unsafe-inline'`
+    for scripts (Next's inline flight data; a static policy cannot carry a
+    nonce) and for styles (the cats', charts' and avatars' inline styles,
+    next/font).
+  - `img-src` also allows `data:`.
+  - `object-src 'none'`, `base-uri`/`form-action 'self'`, `frame-ancestors
+    'none'`.
+  - In `next dev` only: `'unsafe-eval'` and WebSockets.
+  - Also `X-Content-Type-Options`, `X-Frame-Options: DENY`,
+    `Referrer-Policy`, HSTS and a `Permissions-Policy` that turns off camera,
+    microphone, geolocation, payment and USB.
+- `tests/e2e/security-headers.spec.ts` (new, 5 tests):
+  - the headers on four pages;
+  - with no CSP violation and no page error: the public pages, three
+    dashboard pages (logged in), and `/cats` with a summoned cat;
+  - an outside image is blocked, and the watcher reports it.
+
+  It sits in CI's first browser step of both jobs.
+
+**Why**: plan task 18. Design: D26. A nonce-based policy is proposed as Q8.
+
+**Acceptance criteria evidence**: headers present (browser test); pages still
+work under them — this spec, plus the whole browser suite (cats, sounds,
+forms) running under the policy on both servers.
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 409 passed and 16 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e` and `E2E_SERVER=start`: 81 passed each.
+- actionlint and prettier clean.
+
+**Review**: `reviewer` approved, with three Lows, all taken:
+- the cats were not watched (now `/cats` with a summoned cat);
+- the watcher relied on Chrome's console wording (now the DOM event, plus a
+  test proving the watcher reports a violation);
+- `blob:` was unused (dropped).
+
+The re-review approved. Its Low (D26 out of date) is fixed.

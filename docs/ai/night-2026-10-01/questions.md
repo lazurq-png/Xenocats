@@ -121,3 +121,11 @@ the table. Not built, as no task names them:
   deployment's settings, if wanted (the run may not touch `.env*` files);
 - an unknown email skips the password hash and answers faster than a wrong
   password (as before T17), which tells timing apart.
+
+## Q8 — A nonce-based Content-Security-Policy? (proposed, not built)
+
+T18's policy is static (in `next.config.ts`, as the task says), so scripts
+need `'unsafe-inline'`, which weakens CSP's protection against injected
+scripts (D26). A per-request nonce (set in `proxy.ts`, read by Next) would
+allow dropping it for scripts, at the cost of rendering every page
+dynamically. Worth a task if the app ever renders user-supplied HTML.
