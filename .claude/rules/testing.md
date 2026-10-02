@@ -15,7 +15,10 @@ one schema: a test that writes creates its own rows and asserts only on them,
 never on counts or on seed rows another test may change. Tests that need the
 database skip when no `POSTGRES_URL` is configured, or with `E2E_NO_DATABASE=1`
 (the server is unreachable). The schema is shared: two machines running the
-suite at once drop it under each other.
+suite at once drop it under each other. The queries in `app/lib/data.ts` are
+tested in Vitest by `tests/unit/data.test.ts`, against its own schema
+(`xenocats_vitest`, rebuilt when the file runs), so they never meet the browser
+tests' rows; it skips the same way.
 
 ---
 

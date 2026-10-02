@@ -1,0 +1,167 @@
+# Questions — night-2026-10-01
+
+## Q1 — CI: the "fight" browser tests fail on GitHub's runner, pass locally (most consequential)
+
+**State.** Since checkpoint 1 (`c4df896`), both CI browser jobs fail, and since
+`fdbc6cd` the named groups show it is only `tests/e2e/fight.spec.ts`: the
+"Browser tests (fight)" and "Browser tests against next start (fight)" steps,
+~45 s each, failing even with CI's one retry. Everything else in CI passes,
+including every unit group. Locally the same file passes every time, also
+under `CI=1 --workers=1`, against `next dev` and against `next start`. The
+run cannot read CI logs (they need auth), so it could only infer the cause.
+
+**Three fix cycles, all failed** (the run's limit for one failure):
+1. `53251eb` — hypothesis: Linux headless refuses pointer lock → the lock test
+   skips itself when refused. CI still failed.
+2. `fdbc6cd` — no guess: named per-spec groups so CI reports which spec fails
+   (it is fight), each group's report kept separately; also fixed a real flake
+   in the Taming dodge test (polling missed one-frame dodges). Still failed.
+3. `6a30700` — hypothesis: the headless page has no focus, so losing the lock
+   pauses instead of ending the game → the lock test checks whichever the
+   browser's focus calls for. Still failed.
+
+**Suspects left** (all added in checkpoint 1, since `fight.spec.ts` passed CI
+through T5): the pause test ("losing focus pauses the game… Resume carries
+on", incl. Tab/Shift+Tab wrapping) and the pointer-lock test's earlier steps
+(pointer moving by exactly the mouse movement; the banish loop).
+
+**What a human should do:** open run
+https://github.com/lazurq-png/Xenocats/actions/runs/36906133949, download the
+`playwright-report` artifact, and look at `playwright-report/fight/` (the
+failing test, its error and its retry trace under `test-results/fight/`).
+Then either fix the test or, if it cannot be made reliable on the runner,
+skip it there.
+
+**Meanwhile:** every later task tonight is pushed onto a run branch whose CI
+already fails in this one group; its own CI result is recorded as
+"CI failed: inherited fight-group failure (Q1)" when only that group fails,
+and as a real failure if anything else does.
+- **Update (T7):** T7's local gate failed "Survival: banishing every cat of a
+  wave survives it" once: it never reached wave 2 in 40 s because cats landed
+  while it clicked others, their effects blocked clicks, and the game ended —
+  after which the wave can never reach 2. That is a likely cause of the CI
+  failure too (a slower runner, more landings). T7 makes the test start a new
+  game when one ends; if T7's CI passes the fight group, Q1 is answered.
+- **Update (T8):** T7's CI (`c697632`, runs 36909573185 / 36909567056) still
+  fails the fight group only, with the wave test hardened — so that test was
+  not (or not the only) cause. Remaining suspects: the pause/Tab test and the
+  pointer-lock test (both added in checkpoint 1). The report artifact of any of
+  these runs names the failing test.
+
+## Q2 — An index for the searches? (needs an extension, and a query change)
+
+The invoice search matches `ILIKE '%term%'` with one `OR` across both joined
+tables (customer name and email, invoice amount, date and status). B-tree
+indexes cannot serve a leading wildcard. A trigram index (`pg_trgm`) can, but
+the run did not create the extension (database privileges; extensions live per
+database, while the app and the tests use schemas). Even with it, trigram
+indexes on `customers.name`/`email` would speed up the **customers** search
+only: the invoice search's `OR` spans two tables of a join, which the planner
+cannot serve from per-table indexes, so it would also need restructuring (e.g. a
+`UNION` of customer-side and invoice-side matches, or one indexed text column of
+the searched fields). Recommendation: only if the tables grow large.
+
+## Q3 — Apply tonight's migrations to the `xenocats` schema
+
+The run never writes to `xenocats`. A human runs `npm run db:migrate` to apply
+`0002_invoice_keys_and_indexes.sql` (and any later migration from tonight). It
+fails without changing anything if an invoice there names a missing customer.
+It takes write-blocking locks on `invoices` and `customers` while it checks the
+rows and builds the indexes (one transaction, so no `CONCURRENTLY`): on a large
+live table, apply it when traffic is low.
+
+Also `0003_invoice_due_dates.sql` (T14): adds `invoices.due_date`, fills it with
+each invoice's date + 30 days, and makes it required. Until it is applied, the
+app after T14 fails on every invoice read and insert against `xenocats`
+(the column does not exist), so apply it before running that app.
+
+## Q4 — Payment terms other than 30 days? (proposed task, not built)
+
+T14 gives every invoice the due date "invoice date + 30 days" (D22); the forms
+neither show nor change it. If invoices need other terms, a next plan could add
+a due-date field to the create and edit forms (validated not before the
+invoice date, as the database's check already requires).
+
+## Q5 — "Pending" in the list vs. the dashboard's pending totals (product decision)
+
+Since T14 the invoice list, its filter and the CSV split unpaid invoices into
+Pending (not yet due) and Overdue. The dashboard's pending card and chart and
+the customers table's "total pending" still add up every unpaid invoice,
+overdue included; on the seed data every unpaid invoice is overdue, so the
+list's Pending filter is empty while the dashboard shows a pending total. Not
+wrong in the data, but two meanings of one word. Options: relabel those
+figures "Unpaid" (smallest), or show overdue separately there too. The run
+left them as they are (no task names them); checkpoint 3 raised it.
+
+## Q6 — `npm test` now writes a schema on the development database (T16)
+
+T16 (as the plan asked: "part of `npm test`") makes `npm test` rebuild the
+`xenocats_vitest` schema on the server in `.env`'s `POSTGRES_URL`, like the
+browser tests rebuild `xenocats_test`. `E2E_NO_DATABASE=1` skips it. The
+night-run skill's database rule (§3) names only the browser tests and the
+build, so this run never ran the file locally; CI ran it (build job). Two
+things for a human:
+- Run `npm test` once with `.env` present to see the database tests pass on
+  the development server (CI's server is a fresh PostgreSQL with TLS on).
+- If unattended runs should run them too, the skill's §3 needs to name
+  `npm test` beside `npm run test:e2e`; otherwise runs keep setting
+  `E2E_NO_DATABASE=1`.
+
+## Q7 — Login lockout: what T17 left out (proposed follow-ups)
+
+T17 locks an email after N failures (D25). Its table comes from
+`0004_login_failures.sql`, which a human applies to `xenocats` like the
+others (Q3); it changes nothing existing. **Until it is applied, every login
+to the app after T17 fails** ("Something went wrong."): the lock check needs
+the table. Not built, as no task names them:
+- a limit per client address, so one source cannot try many emails;
+- pruning `login_failures` rows of emails that never log in (one row per
+  address an attacker tries);
+- `LOGIN_MAX_FAILURES` / `LOGIN_LOCK_MINUTES` in `.env.example` or the
+  deployment's settings, if wanted (the run may not touch `.env*` files);
+- an unknown email skips the password hash and answers faster than a wrong
+  password (as before T17), which tells timing apart.
+
+## Q8 — A nonce-based Content-Security-Policy? (proposed, not built)
+
+T18's policy is static (in `next.config.ts`, as the task says), so scripts
+need `'unsafe-inline'`, which weakens CSP's protection against injected
+scripts (D26). A per-request nonce (set in `proxy.ts`, read by Next) would
+allow dropping it for scripts, at the cost of rendering every page
+dynamically. Worth a task if the app ever renders user-supplied HTML.
+
+## Q9 — After a password change, other sessions stay logged in (T19)
+
+Sessions are JWTs (NextAuth's default), so changing the password does not end
+the user's other sessions. Ending them needs either a session store or a
+`password_changed_at` column compared with the token's issue time on every
+request. Proposed for a next plan, with an email notice of the change if mail
+is ever set up.
+
+**Q6, added by checkpoint 4:** the reviewer rated this Medium — a new run
+following the skill as written would run plain `npm test` and so rebuild
+`xenocats_vitest` on the development server, which the skill's §3 forbids.
+Two ways out, either a human's call: (a) make `tests/unit/data.test.ts`
+opt-in (skip unless `DATABASE_TESTS=1`, set on CI's "Database tests" step) —
+safest, but no longer "part of `npm test`" as the plan wrote; or (b) change
+the skill's baseline and gate to `E2E_NO_DATABASE=1 npm test`, or name
+`npm test` in §3 beside `npm run test:e2e`.
+
+## Q10 — Drop the `revenue` table (proposed by T21, not done)
+
+Nothing in the app reads `revenue` since `c495f87`; the chart and cards are
+computed from invoices (D29). Proposed for a next plan: a migration
+`DROP TABLE revenue` (after any deployed app version that reads it is gone),
+and remove `revenue` from `app/lib/placeholder-data.ts` and the seed in
+`scripts/db.mjs`. The task said not to drop it tonight.
+
+## Q11 — A negative `?page=` crashes the invoice list (found by T22)
+
+`app/dashboard/invoices/page.tsx` takes `Number(page) || 1`, so `?page=-1`
+reaches `fetchFilteredInvoices` and PostgreSQL rejects the negative `OFFSET`;
+the page shows the error state. Not fixed tonight (no task names it).
+Proposed: clamp to a whole number of at least 1 (and at most the page count),
+with a unit test, as the status filter already ignores unknown values.
+
+**Q11, resolved by T25-1** (2026-10-02 07:18): `parsePage` reads a nonsense
+page as page 1; a browser test that failed before the fix passes now.

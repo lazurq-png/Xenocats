@@ -63,4 +63,13 @@ describe('CatSprite with artwork', () => {
       cleanup();
     }
   });
+
+  it('still, holds the glow steady instead of pulsing it', () => {
+    const { container } = render(
+      <CatSprite palette={type.palette} look={type.look} pose="awake" art="/cat.webp" still />
+    );
+    const img = container.querySelector('img')!;
+    expect(img.classList.contains('xenocat-art-glow-still')).toBe(true);
+    expect(img.classList.contains('xenocat-art-glow')).toBe(false);
+  });
 });

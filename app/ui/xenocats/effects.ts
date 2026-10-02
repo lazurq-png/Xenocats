@@ -29,7 +29,7 @@ export type CursorLook = {
 
 export const MAX_DECOYS = 4;
 
-/** Longest an effect may run; clicks are blocked for its whole duration. */
+/** Longest an effect may run. */
 export const MAX_EFFECT_MS = 10_000;
 
 export type EffectInput<S = unknown> = {
@@ -68,6 +68,12 @@ export type Effect<S = unknown> = {
   description: string;
   /** At most MAX_EFFECT_MS. */
   durationMs: number;
+  /**
+   * 'offset' for an effect that draws the cursor at an offset from the real
+   * pointer: made stronger, the offset grows. Others place it elsewhere (a fixed
+   * point, the cat, their own path), and are only made longer (`strengthen`).
+   */
+  amplify?: 'offset';
   step(input: EffectInput<S>): EffectFrame<S>;
 };
 
@@ -128,6 +134,7 @@ export const KNOCKBACK_FLIGHT_MS = 250;
 
 export const knockback: Effect = {
   id: 'knockback',
+  amplify: 'offset',
   name: 'Knockback',
   description: 'Your cursor is flung 300 px away from the cat.',
   durationMs: 1500,
@@ -159,6 +166,7 @@ export const JITTER_STEP_MS = 40;
 
 export const jitter: Effect = {
   id: 'jitter',
+  amplify: 'offset',
   name: 'Jitter',
   description: 'Your cursor shakes for 4 seconds.',
   durationMs: 4000,
@@ -191,6 +199,7 @@ export const DRIFT_PX_PER_S = 110;
 
 export const drift: Effect = {
   id: 'drift',
+  amplify: 'offset',
   name: 'Drift',
   description: 'Your cursor is pushed steadily in one direction for 5 seconds.',
   durationMs: 5000,
@@ -221,6 +230,7 @@ type TeleportState = { jump: number; anchor: Vec; spot: Vec };
 
 export const teleport: Effect<TeleportState> = {
   id: 'teleport',
+  amplify: 'offset',
   name: 'Teleport',
   description: 'Your cursor jumps to a random spot, three times.',
   durationMs: TELEPORT_JUMPS * TELEPORT_EVERY_MS,
@@ -304,6 +314,7 @@ export const DECOY_RING: readonly [number, number] = [80, 160];
 
 export const decoys: Effect = {
   id: 'decoys',
+  amplify: 'offset',
   name: 'Decoys',
   description: 'Four identical cursors for 5 seconds. Which one is yours?',
   durationMs: 5000,
@@ -347,6 +358,7 @@ export const DRUNK_AMPLITUDE = 40;
 
 export const drunk: Effect = {
   id: 'drunk',
+  amplify: 'offset',
   name: 'Drunk',
   description: 'Your cursor wobbles about for 5 seconds.',
   durationMs: 5000,
@@ -421,6 +433,7 @@ export const FALL_PX_PER_S = 260;
 
 export const fall: Effect = {
   id: 'fall',
+  amplify: 'offset',
   name: 'Fall',
   description: 'Your cursor sinks towards the bottom unless you keep moving up, for 4 seconds.',
   durationMs: 4000,
@@ -524,3 +537,54 @@ export const axisLock: Effect = {
     };
   },
 };
+
+/** What a strengthened effect carries between frames: the effect's own state and look. */
+type Strengthened<S> = { inner: S | undefined; look: CursorLook | null };
+
+/**
+ * The same effect, `factor` times stronger: it lasts that much longer (within
+ * MAX_EFFECT_MS), blurs and grows or shrinks the cursor that much more, and, for an
+ * effect that draws the cursor at an offset from the real pointer (`amplify:
+ * 'offset'`), moves it that much further (decoys too). An effect that places the
+ * cursor elsewhere keeps its path: freeze stays frozen, orbit circles the cat. The
+ * effect itself still sees its own, unstrengthened previous look, so one that
+ * builds on it does not compound. An angry cat attacks with this (cat-engine.ts).
+ */
+export function strengthen<S>(effect: Effect<S>, factor: number): Effect<Strengthened<S>> {
+  return {
+    id: effect.id,
+    name: effect.name,
+    description: effect.description,
+    amplify: effect.amplify,
+    durationMs: Math.min(Math.round(effect.durationMs * factor), MAX_EFFECT_MS),
+    step(input) {
+      const own = input.state;
+      const frame = effect.step({
+        ...input,
+        previous: own?.look ?? input.previous,
+        state: own?.inner,
+      });
+      const { look } = frame;
+      const away = (point: Vec): Vec =>
+        effect.amplify !== 'offset'
+          ? point
+          : clampToViewport(
+              {
+                x: input.real.x + (point.x - input.real.x) * factor,
+                y: input.real.y + (point.y - input.real.y) * factor,
+              },
+              input.viewport
+            );
+      return {
+        look: {
+          ...look,
+          ...away(look),
+          blur: look.blur * factor,
+          scale: look.scale ** factor,
+          ...(look.decoys ? { decoys: look.decoys.map(away) } : {}),
+        },
+        state: { inner: frame.state, look },
+      };
+    },
+  };
+}

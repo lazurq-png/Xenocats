@@ -3,13 +3,13 @@
 import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/20/solid';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { generatePagination } from '@/app/lib/utils';
+import { generatePagination, parsePage } from '@/app/lib/utils';
 import { usePathname, useSearchParams } from 'next/navigation';
 
 export default function Pagination({ totalPages }: { totalPages: number }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const currentPage = Number(searchParams.get('page')) || 1;
+  const currentPage = parsePage(searchParams.get('page'));
 
   const createPageURL = (pageNumber: number | string) => {
     const params = new URLSearchParams(searchParams);
@@ -110,12 +110,20 @@ function PaginationArrow({
   );
 
   const icon =
-    direction === 'left' ? <ArrowLeftIcon className="w-4" /> : <ArrowRightIcon className="w-4" />;
+    direction === 'left' ? (
+      <ArrowLeftIcon className="w-4" aria-hidden />
+    ) : (
+      <ArrowRightIcon className="w-4" aria-hidden />
+    );
+  // Icon-only: the name says where it leads.
+  const label = direction === 'left' ? 'Previous page' : 'Next page';
 
   return isDisabled ? (
-    <div className={className}>{icon}</div>
+    <div className={className} aria-hidden>
+      {icon}
+    </div>
   ) : (
-    <Link className={className} href={href}>
+    <Link className={className} href={href} aria-label={label}>
       {icon}
     </Link>
   );

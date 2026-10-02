@@ -13,11 +13,11 @@ import {
 const now = new Date('2026-09-30T12:00:00Z');
 
 describe('parseRange', () => {
-  it('reads "all" and defaults everything else to the last 12 months', () => {
+  it('reads "12m" and defaults everything else to all time', () => {
     expect(parseRange('all')).toBe('all');
     expect(parseRange('12m')).toBe('12m');
-    expect(parseRange(undefined)).toBe('12m');
-    expect(parseRange('forever')).toBe('12m');
+    expect(parseRange(undefined)).toBe('all');
+    expect(parseRange('forever')).toBe('all');
   });
 });
 

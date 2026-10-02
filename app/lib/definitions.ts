@@ -47,6 +47,8 @@ export type LatestInvoice = {
   amount: string;
   date: string;
   status: 'pending' | 'paid';
+  /** Pending and past its due date. */
+  overdue: boolean;
 };
 
 // The database returns a number for amount, but we later format it to a string with the formatCurrency function
@@ -63,6 +65,8 @@ export type InvoicesTable = {
   date: string;
   amount: number;
   status: 'pending' | 'paid';
+  /** Pending and past its due date. */
+  overdue: boolean;
 };
 
 export type CustomersTableType = {
@@ -85,6 +89,13 @@ export type FormattedCustomersTable = {
   total_paid: string;
 };
 
+/** A customer as the edit form shows it. */
+export type CustomerEdit = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export type CustomerField = {
   id: string;
   name: string;
@@ -95,4 +106,18 @@ export type InvoiceForm = {
   customer_id: string;
   amount: number;
   status: 'pending' | 'paid';
+};
+
+/** An invoice and its customer, as the detail page shows them. */
+export type InvoiceDetail = {
+  id: string;
+  amount: number;
+  status: 'pending' | 'paid';
+  date: string;
+  due_date: string;
+  /** Pending and past its due date. */
+  overdue: boolean;
+  customer_id: string;
+  name: string;
+  email: string;
 };

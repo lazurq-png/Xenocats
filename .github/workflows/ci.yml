@@ -24,22 +24,51 @@ jobs:
       - run: npm run lint
       - name: Type check
         run: npx next typegen && npx tsc --noEmit
-      # The unit tests run in three named groups, each even if an earlier one failed,
+      # The unit tests run in named groups, each even if an earlier one failed,
       # so a failure is identifiable from the job's step names alone.
       - name: Unit tests (dashboard)
         if: ${{ !cancelled() }}
-        run: npx vitest run tests/unit/actions tests/unit/schemas tests/unit/utils
+        run: >-
+          npx vitest run tests/unit/actions tests/unit/schemas tests/unit/utils
+          tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
+          tests/unit/csv tests/unit/export-route tests/unit/invoice-status
+          tests/unit/login-limit tests/unit/cat-error
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
         run: >-
           npx vitest run tests/unit/xenocats/random tests/unit/xenocats/effects
           tests/unit/xenocats/cursor-controller tests/unit/xenocats/cat-engine
-          tests/unit/xenocats/cat-types
+          tests/unit/xenocats/cat-types tests/unit/xenocats/intensity
       - name: Unit tests (cats, jsdom)
         if: ${{ !cancelled() }}
         run: >-
           npx vitest run tests/unit/xenocats/cursor-kind tests/unit/xenocats/fake-cursor
-          tests/unit/xenocats/cat-layer
+          tests/unit/xenocats/cat-layer tests/unit/xenocats/cat-art tests/unit/xenocats/cat-sprite
+      - name: Unit tests (cats, games, page, sound)
+        if: ${{ !cancelled() }}
+        run: >-
+          npx vitest run tests/unit/xenocats/survival tests/unit/xenocats/locked-pointer
+          tests/unit/xenocats/taming tests/unit/xenocats/page-hits tests/unit/xenocats/sounds
+          tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat tests/unit/xenocats/combos
+          tests/unit/xenocats/gun tests/unit/xenocats/puppets
+      # A test file in no group would never run: each unit test must be named in a
+      # group above, each browser test in a group of both browser jobs below.
+      - name: Every test file is in a group
+        if: ${{ !cancelled() }}
+        run: |
+          missing=0
+          for file in tests/unit/*.test.ts* tests/unit/xenocats/*.test.ts* tests/e2e/*.spec.ts; do
+            name="${file%.test.ts*}"
+            name="${name%.spec.ts}"
+            need=1
+            case "$file" in tests/e2e/*) need=2 ;; esac
+            found=$(grep -cE "(^|[[:space:]])${name}([[:space:]]|$)" .github/workflows/ci.yml || true)
+            if [ "$found" -lt "$need" ]; then
+              echo "::error file=$file::$file is in no test group in ci.yml (named $found times, needs $need)"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
   build:
     name: Build + browser tests (production)
@@ -70,18 +99,76 @@ jobs:
           sudo systemctl start postgresql.service
           sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
           test "$(sudo -u postgres psql -Atc 'SHOW ssl')" = on
-      - run: npm run db:migrate && npm run db:seed
+      - id: database
+        run: npm run db:migrate && npm run db:seed
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - name: Browser tests against next start
-        run: npm run test:e2e
+      - id: install
+        run: npx playwright install --with-deps chromium
+      # The browser tests run in named groups, each even if an earlier one failed,
+      # so a failure is identifiable from the job's step names alone (but not when
+      # the build or the browser install failed). Each keeps its own report and
+      # traces: a Playwright run clears the previous run's.
+      - name: Browser tests against next start (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
+          tests/e2e/change-password
+          tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
+          tests/e2e/intensity tests/e2e/dashboard-range
+          --output test-results/smoke
         env:
           E2E_SERVER: start
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
+      - name: Browser tests against next start (customers)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/customers
+          --output test-results/customers
+        env:
+          E2E_SERVER: start
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/customers
+      - name: Browser tests against next start (invoices)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/invoices-filter tests/e2e/invoice-detail tests/e2e/invoice-export
+          tests/e2e/invoices
+          --output test-results/invoices
+        env:
+          E2E_SERVER: start
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/invoices
+      - name: Browser tests against next start (cats, petting, touch)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx playwright test tests/e2e/cats tests/e2e/cats-link tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
+        env:
+          E2E_SERVER: start
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
+      - name: Browser tests against next start (fight)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx playwright test tests/e2e/fight --output test-results/fight
+        env:
+          E2E_SERVER: start
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/fight
+      - name: Browser tests against next start (sound, field guide)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/sound tests/e2e/field-guide
+          --output test-results/sound
+        env:
+          E2E_SERVER: start
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/sound
+      # Only this job has a database for them (the checks job skips this file),
+      # whether or not the build and browser tests passed. The tests rebuild
+      # their own schema, xenocats_vitest, on this job's server.
+      - name: Database tests
+        if: ${{ !cancelled() && steps.database.outcome == 'success' }}
+        run: npx vitest run tests/unit/data
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report-production
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
 
   e2e:
@@ -110,12 +197,57 @@ jobs:
           sudo systemctl start postgresql.service
           sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
           test "$(sudo -u postgres psql -Atc 'SHOW ssl')" = on
-      - run: npx playwright install --with-deps chromium
-      # Needs no db:migrate: the tests rebuild their own xenocats_test schema.
-      - run: npm run test:e2e
+      - id: install
+        run: npx playwright install --with-deps chromium
+      # Needs no db:migrate: the tests rebuild their own xenocats_test schema. Named
+      # groups, each with its own report and traces, as in the build job.
+      - name: Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
+          tests/e2e/change-password
+          tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
+          tests/e2e/intensity tests/e2e/dashboard-range
+          --output test-results/smoke
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
+      - name: Browser tests (customers)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/customers
+          --output test-results/customers
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/customers
+      - name: Browser tests (invoices)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/invoices-filter tests/e2e/invoice-detail tests/e2e/invoice-export
+          tests/e2e/invoices
+          --output test-results/invoices
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/invoices
+      - name: Browser tests (cats, petting, touch)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx playwright test tests/e2e/cats tests/e2e/cats-link tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
+      - name: Browser tests (fight)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx playwright test tests/e2e/fight --output test-results/fight
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/fight
+      - name: Browser tests (sound, field guide)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          npx playwright test tests/e2e/sound tests/e2e/field-guide
+          --output test-results/sound
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/sound
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7

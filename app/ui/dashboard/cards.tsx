@@ -41,7 +41,10 @@ export function Card({
   const Icon = iconMap[type];
 
   return (
-    <div className="relative rounded-2xl border border-line bg-panel-glass p-5 pb-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+    <div
+      data-xenocat-card
+      className="relative rounded-2xl border border-line bg-panel-glass p-5 pb-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+    >
       <span className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.04]">
         <Icon className="h-6 w-6 text-aura/40" />
       </span>

@@ -9,13 +9,26 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
-import { type Cat, type CatEngine, createCatEngine } from './cat-engine';
+import { SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/solid';
+import { type Cat, type CatEngine, type CatPhase, createCatEngine } from './cat-engine';
 import { catArt } from './cat-art';
 import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import type { CatConfig } from './config';
+import { strengthen } from './effects';
 import { useXenocatCursor } from './fake-cursor';
+import { recordStat } from './field-guide';
+import { INTENSITY_CONFIG, getIntensity, subscribeIntensity } from './intensity';
+import {
+  type CatSounds,
+  sharedSoundPlayer,
+  getSoundEnabled,
+  setSoundEnabled,
+  soundsFor,
+  subscribeSound,
+} from './sounds';
 
 export type Xenocats = {
   /**
@@ -23,6 +36,10 @@ export type Xenocats = {
    * and wake first. False if 5 are already there.
    */
   summon(typeId: string, options?: { asleep?: boolean }): boolean;
+  /** How many of these cats are on screen now. */
+  count(): number;
+  /** Plays one of a cat type's sounds (if sound is on and allowed yet). */
+  sound(typeId: string, which: keyof CatSounds): void;
 };
 
 const CatsContext = createContext<Xenocats | null>(null);
@@ -62,9 +79,32 @@ export function XenocatCatsProvider({
     })
   );
   const [cats, setCats] = useState<Cat[]>([]);
+  // How often cats come and how many at once: the visitor's setting, where cats
+  // come on their own (not where they only come when summoned). Normal is this
+  // provider's own configuration, as it was created.
+  const intensity = useSyncExternalStore(subscribeIntensity, getIntensity, () => 'normal' as const);
+  const [normal] = useState(() => ({
+    maxCats: engine.config.maxCats,
+    firstSpawnMs: engine.config.firstSpawnMs,
+    spawnEveryMs: engine.config.spawnEveryMs,
+  }));
+  useEffect(() => {
+    if (!autoSpawn) return;
+    if (intensity === 'normal' && engine.config.spawnEveryMs === normal.spawnEveryMs) return;
+    engine.configure(intensity === 'normal' ? normal : INTENSITY_CONFIG[intensity]);
+  }, [autoSpawn, engine, intensity, normal]);
+  const [player] = useState(() => sharedSoundPlayer());
+  // Read by the loop and the API, which should not restart when a caller passes a
+  // new (equal) list.
+  const typesRef = useRef(types);
+  useEffect(() => {
+    typesRef.current = types;
+  }, [types]);
   // What a stomp shakes: the page content only. The cat layer (below) and the fake
   // cursor sit outside it, so a transform here can never move them.
   const pageRef = useRef<HTMLDivElement>(null);
+  // Asks the loop below for a frame; it sleeps where no cat is due (see tick).
+  const wakeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const onResize = () => engine.resize({ width: window.innerWidth, height: window.innerHeight });
@@ -72,41 +112,165 @@ export function XenocatCatsProvider({
     window.addEventListener('resize', onResize);
 
     let frameId = 0;
-    const tick = () => {
-      const changed = engine.tick(cursor.now(), cursor.position(), (_cat, type, centre) => {
-        // No cursor at all (a touch screen, or the pointer not seen yet): the cat
-        // pounces at nothing and leaves, rather than waiting on screen for ever.
-        if (cursor.position() === null) return true;
-        // The pointer is off the page: wait, rather than block clicks with an effect
-        // nobody sees.
-        if (!cursor.isPresent()) return false;
-        return cursor.attack(type.effect, centre);
-      });
-      if (changed) setCats(snapshot(engine));
-      frameId = requestAnimationFrame(tick);
+    // Browsers let audio start only after a user gesture: one of these (on a touch
+    // screen only pointerup, touchend and click count).
+    const unlock = () => player.unlock();
+    const gestures = [
+      'keydown',
+      'mousedown',
+      'pointerdown',
+      'pointerup',
+      'touchend',
+      'click',
+    ] as const;
+    for (const type of gestures) window.addEventListener(type, unlock, { capture: true });
+
+    // Clicking a sleeping cat wakes it at once, angry. The click itself goes on to
+    // whatever is under the cat, as always (the cats never take clicks).
+    // A mouse click lands where the visible cursor is; a tap or a pen, where it
+    // touched, even while an effect runs.
+    // A press that pokes a cat is the cat's: the rest of it (up to and including
+    // its click) never reaches what lies beneath — a hidden Delete button, say.
+    // Keyboard-made clicks (detail 0) never come through here.
+    let swallowPress = false;
+    const onPoke = (event: PointerEvent) => {
+      swallowPress = false;
+      const touched = { x: event.clientX, y: event.clientY };
+      const at = event.pointerType === 'mouse' ? (cursor.position() ?? touched) : touched;
+      if (engine.poke(at, cursor.now())) {
+        setCats(snapshot(engine));
+        swallowPress = true;
+        event.preventDefault();
+        event.stopPropagation();
+      }
     };
-    frameId = requestAnimationFrame(tick);
+    const onPressRest = (event: Event) => {
+      if (!swallowPress) return;
+      if (event.type === 'click' && (event as MouseEvent).detail === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === 'click' || event.type === 'contextmenu') swallowPress = false;
+    };
+    const endPress = () => {
+      swallowPress = false;
+    };
+    const pressRest = ['pointerup', 'mousedown', 'mouseup', 'click', 'contextmenu'] as const;
+    window.addEventListener('pointerdown', onPoke, { capture: true });
+    for (const type of pressRest) window.addEventListener(type, onPressRest, { capture: true });
+    window.addEventListener('pointercancel', endPress, { capture: true });
+
+    // A cat's sounds follow its phases: arriving, then waking up.
+    const phases = new Map<number, CatPhase>();
+    const playPhases = () => {
+      const seen = new Set<number>();
+      for (const cat of engine.cats()) {
+        seen.add(cat.id);
+        if (phases.get(cat.id) === cat.phase) continue;
+        phases.set(cat.id, cat.phase);
+        const type = typesRef.current.find((t) => t.id === cat.typeId);
+        if (!type) continue;
+        if (cat.phase === 'appearing') {
+          player.play(soundsFor(type).arrive);
+          recordStat(type.id, 'met');
+        }
+        if (cat.phase === 'waking') player.play(soundsFor(type).wake);
+      }
+      for (const id of phases.keys()) if (!seen.has(id)) phases.delete(id);
+    };
+
+    const purr = (cat: Cat) => {
+      const type = typesRef.current.find((t) => t.id === cat.typeId);
+      if (type) player.play(soundsFor(type).purr);
+    };
+
+    const wake = () => {
+      if (!frameId) frameId = requestAnimationFrame(tick);
+    };
+    wakeRef.current = wake;
+
+    function tick() {
+      frameId = 0;
+      playPhases();
+      // Petting needs the pointer on the page: one that has left it pets nothing.
+      const pointer = cursor.isPresent() ? cursor.position() : null;
+      const changed = engine.tick(
+        cursor.now(),
+        pointer,
+        (cat, type, centre, combo) => {
+          // A touch screen (no fake cursor) attacks the page around the last touch.
+          // No cursor and no touch yet: the cat pounces at nothing and leaves, rather
+          // than waiting on screen for ever.
+          const touch = cursor.touchPoint();
+          if (touch === null && cursor.position() === null) return true;
+          // The pointer is off the page: wait, rather than spend an effect
+          // nobody sees.
+          if (touch === null && !cursor.isPresent()) return false;
+          // The page is drawing its own pointer (a locked Fight game): wait until it is done.
+          if (cursor.isHidden()) return false;
+          // A combo attacks with both cats' fused effect; a cat clicked awake (either
+          // of the pair) attacks angrily: harder and for longer.
+          const partner = combo ? engine.cats().find((c) => c.id === cat.comboWith) : undefined;
+          const partnerType = partner
+            ? typesRef.current.find((t) => t.id === partner.typeId)
+            : undefined;
+          const base = combo ? combo.effect : type.effect;
+          const effect =
+            cat.angry || partner?.angry ? strengthen(base, engine.config.angryFactor) : base;
+          if (!cursor.attack(effect, centre)) return false;
+          for (const attacker of partnerType ? [type, partnerType] : [type]) {
+            player.play(soundsFor(attacker).attack);
+            recordStat(attacker.id, 'survived');
+          }
+          return true;
+        },
+        purr
+      );
+      if (changed) setCats(snapshot(engine));
+      // Where cats only come when summoned and none is here, there is nothing to do
+      // each frame: sleep until a summon wakes the loop.
+      if (autoSpawn || engine.cats().length > 0) wake();
+    }
+    wake();
 
     return () => {
       cancelAnimationFrame(frameId);
+      frameId = 0;
+      wakeRef.current = () => {};
       window.removeEventListener('resize', onResize);
+      for (const type of gestures) window.removeEventListener(type, unlock, { capture: true });
+      window.removeEventListener('pointerdown', onPoke, { capture: true });
+      for (const type of pressRest)
+        window.removeEventListener(type, onPressRest, { capture: true });
+      window.removeEventListener('pointercancel', endPress, { capture: true });
     };
-  }, [engine, cursor]);
+  }, [engine, cursor, player, autoSpawn]);
 
   const api = useMemo<Xenocats>(
     () => ({
       summon: (typeId, options) => {
         const cat = engine.summon(typeId, cursor.now(), cursor.position(), options);
-        if (cat) setCats(snapshot(engine));
+        if (cat) {
+          setCats(snapshot(engine));
+          wakeRef.current();
+        }
         return cat !== null;
       },
+      count: () => engine.cats().length,
+      sound: (typeId, which) => {
+        const type = typesRef.current.find((t) => t.id === typeId);
+        if (type) player.play(soundsFor(type)[which]);
+      },
     }),
-    [engine, cursor]
+    [engine, cursor, player]
   );
 
   return (
     <CatsContext.Provider value={api}>
-      <div ref={pageRef} data-testid="xenocat-page">
+      <div
+        ref={pageRef}
+        data-testid="xenocat-page"
+        data-cat-intensity={autoSpawn ? intensity : undefined}
+      >
         {children}
       </div>
       <div
@@ -127,6 +291,7 @@ export function XenocatCatsProvider({
           ) : null;
         })}
       </div>
+      <SoundToggle />
     </CatsContext.Provider>
   );
 }
@@ -198,7 +363,10 @@ function CatView({
       data-testid="xenocat"
       data-cat-type={type.id}
       data-phase={cat.phase}
-      className={`absolute ${outer?.className ?? ''}`}
+      data-angry={cat.angry || undefined}
+      data-combo={cat.combo ?? undefined}
+      data-petted={cat.petted || undefined}
+      className={`absolute ${outer?.className ?? ''} ${cat.angry ? 'xenocat-angry' : ''}`}
       style={style}
     >
       <div
@@ -225,5 +393,25 @@ function CatView({
         </div>
       )}
     </div>
+  );
+}
+
+/** The speaker in the corner: cat sounds on (the default) or off, remembered. */
+function SoundToggle() {
+  const on = useSyncExternalStore(subscribeSound, getSoundEnabled, () => true);
+  const Icon = on ? SpeakerWaveIcon : SpeakerXMarkIcon;
+  return (
+    <button
+      type="button"
+      data-testid="sound-toggle"
+      data-xenocat-ignore
+      aria-label="Cat sounds"
+      aria-pressed={on}
+      title={on ? 'Cat sounds on' : 'Cat sounds off'}
+      onClick={() => setSoundEnabled(!on)}
+      className="fixed bottom-4 right-4 z-[9997] flex h-10 w-10 items-center justify-center rounded-full border border-line bg-panel text-aura shadow-glow transition hover:text-plasma focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma"
+    >
+      <Icon className="h-5 w-5" aria-hidden="true" />
+    </button>
   );
 }

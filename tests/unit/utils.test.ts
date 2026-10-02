@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCurrency, formatDateToLocal, generatePagination } from '@/app/lib/utils';
+import { formatCurrency, formatDateToLocal, generatePagination, parsePage } from '@/app/lib/utils';
 
 describe('formatCurrency', () => {
   it('formats cents as US dollars', () => {
@@ -38,5 +38,18 @@ describe('generatePagination', () => {
 
   it('in the middle shows the current page with its neighbours', () => {
     expect(generatePagination(5, 10)).toEqual([1, '...', 4, 5, 6, '...', 10]);
+  });
+});
+
+describe('parsePage', () => {
+  it('takes a whole page number from 1 up', () => {
+    expect(parsePage('1')).toBe(1);
+    expect(parsePage('3')).toBe(3);
+  });
+
+  it('reads anything else as page 1, never a negative or fractional page', () => {
+    for (const value of [null, undefined, '', '0', '-1', '-0', '2.5', 'abc', '1e400', 'Infinity']) {
+      expect(parsePage(value), String(value)).toBe(1);
+    }
   });
 });

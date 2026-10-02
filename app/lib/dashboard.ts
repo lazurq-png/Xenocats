@@ -8,9 +8,9 @@ export const RANGES: { value: Range; label: string }[] = [
   { value: 'all', label: 'All time' },
 ];
 
-/** The range in the URL, defaulting to the last 12 months for anything unknown. */
+/** The range in the URL, defaulting to all time for anything unknown. */
 export function parseRange(value: string | undefined): Range {
-  return value === 'all' ? 'all' : '12m';
+  return value === '12m' ? '12m' : 'all';
 }
 
 /** 'YYYY-MM' for a date, in UTC like the stored invoice dates. */

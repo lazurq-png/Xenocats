@@ -9,8 +9,9 @@ Open this for schema, migration, and persistence work. Database changes are high
 - **A development database, no production one yet.** `POSTGRES_URL` in `.env`
   points at a PostgreSQL on the local network whose data has no value. The app
   uses the schema the URL names in `?search_path=` (`xenocats`); the browser
-  tests use `xenocats_test`, which they drop and rebuild on every run. Writing
-  to either is ordinary development. The role cannot create tables in `public`.
+  tests use `xenocats_test`, which they drop and rebuild on every run, and the
+  database unit tests (`tests/unit/data.test.ts`) `xenocats_vitest`. Writing
+  to any of them is ordinary development. The role cannot create tables in `public`.
 - **Migrations** are numbered SQL files in `db/migrations/` (`0002_<what>.sql`
   next), applied in name order by `npm run db:migrate`, each in a transaction,
   and recorded in the schema's `schema_migrations` table. A schema change is a

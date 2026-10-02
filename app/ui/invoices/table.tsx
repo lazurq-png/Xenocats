@@ -1,22 +1,30 @@
+import CatState from '@/app/ui/cat-state';
 import CustomerAvatar from '@/app/ui/customer-avatar';
-import { UpdateInvoice, DeleteInvoice } from '@/app/ui/invoices/buttons';
+import { DeleteInvoice, UpdateInvoice, ViewInvoice } from '@/app/ui/invoices/buttons';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
 import { fetchFilteredInvoices } from '@/app/lib/data';
+import type { InvoiceStatusFilter } from '@/app/lib/schemas';
+
+/** How an invoice is named to a screen reader: "invoice for Evil Rabbit, $666.00". */
+const label = (invoice: { name: string; amount: number }) =>
+  `invoice for ${invoice.name}, ${formatCurrency(invoice.amount)}`;
 
 export default async function InvoicesTable({
   query,
   currentPage,
+  status = null,
 }: {
   query: string;
   currentPage: number;
+  status?: InvoiceStatusFilter | null;
 }) {
-  const invoices = await fetchFilteredInvoices(query, currentPage);
+  const invoices = await fetchFilteredInvoices(query, currentPage, status);
 
   return (
     <div className="mt-6 flow-root">
       <div className="inline-block min-w-full align-middle">
-        <div className="rounded-2xl border border-line bg-panel p-2 md:pt-0">
+        <div data-xenocat-frame className="rounded-2xl border border-line bg-panel p-2 md:pt-0">
           <div className="md:hidden">
             {invoices?.map((invoice) => (
               <div key={invoice.id} className="mb-2 w-full rounded-xl bg-void/60 p-4">
@@ -28,7 +36,7 @@ export default async function InvoicesTable({
                     </div>
                     <p className="text-sm text-aura">{invoice.email}</p>
                   </div>
-                  <InvoiceStatus status={invoice.status} />
+                  <InvoiceStatus status={invoice.status} overdue={invoice.overdue} />
                 </div>
                 <div className="flex w-full items-center justify-between pt-4">
                   <div>
@@ -38,8 +46,9 @@ export default async function InvoicesTable({
                     <p>{formatDateToLocal(invoice.date)}</p>
                   </div>
                   <div className="flex justify-end gap-2">
+                    <ViewInvoice id={invoice.id} label={label(invoice)} />
                     <UpdateInvoice id={invoice.id} />
-                    <DeleteInvoice id={invoice.id} />
+                    <DeleteInvoice id={invoice.id} label={label(invoice)} />
                   </div>
                 </div>
               </div>
@@ -84,18 +93,25 @@ export default async function InvoicesTable({
                   <td className="whitespace-nowrap px-3 py-3">{formatCurrency(invoice.amount)}</td>
                   <td className="whitespace-nowrap px-3 py-3">{formatDateToLocal(invoice.date)}</td>
                   <td className="whitespace-nowrap px-3 py-3">
-                    <InvoiceStatus status={invoice.status} />
+                    <InvoiceStatus status={invoice.status} overdue={invoice.overdue} />
                   </td>
                   <td className="whitespace-nowrap py-3 pl-6 pr-3">
                     <div className="flex justify-end gap-3">
+                      <ViewInvoice id={invoice.id} label={label(invoice)} />
                       <UpdateInvoice id={invoice.id} />
-                      <DeleteInvoice id={invoice.id} />
+                      <DeleteInvoice id={invoice.id} label={label(invoice)} />
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {invoices.length === 0 && (
+            <CatState art="empty" title="No invoices found">
+              No invoices to show here. If a search or a status is set, try another, or All
+              statuses.
+            </CatState>
+          )}
         </div>
       </div>
     </div>
