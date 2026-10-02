@@ -24,7 +24,7 @@ export default async function InvoicesTable({
   return (
     <div className="mt-6 flow-root">
       <div className="inline-block min-w-full align-middle">
-        <div className="rounded-2xl border border-line bg-panel p-2 md:pt-0">
+        <div data-xenocat-frame className="rounded-2xl border border-line bg-panel p-2 md:pt-0">
           <div className="md:hidden">
             {invoices?.map((invoice) => (
               <div key={invoice.id} className="mb-2 w-full rounded-xl bg-void/60 p-4">

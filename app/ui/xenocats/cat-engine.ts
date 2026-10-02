@@ -3,8 +3,9 @@
 //
 //   appearing → sleeping → waking → ready → attacking → leaving → (gone)
 //
-// `ready` is where a cat waits while another cat's effect is still running: only
-// one effect runs at a time, so its attack is retried every tick until accepted.
+// `ready` is where a cat waits while its attack is refused (the pointer is off the
+// page, say): it is retried every tick until accepted. The page's cursor takes
+// attacks while others still run and stacks them (cursor-controller.ts).
 // A summoned cat skips sleeping and waking, unless it is summoned asleep.
 //
 // A sleeping cat with the pointer resting on it for `petMs` is petted: it purrs and

@@ -25,6 +25,22 @@ import {
 /** What a combined effect carries between frames: each part's own state and look. */
 type Parts = { a?: unknown; b?: unknown; lookA?: CursorLook; lookB?: CursorLook };
 
+/**
+ * How the cursor looks with `second` drawn on top of `first`: where `second` put it,
+ * hidden if either hides it, their sizes, blurs and fades compounded.
+ */
+export function combineLooks(first: CursorLook, second: CursorLook): CursorLook {
+  return {
+    ...second,
+    visible: first.visible && second.visible,
+    scale: first.scale * second.scale,
+    blur: first.blur + second.blur,
+    opacity: first.opacity * second.opacity,
+    ...(first.tint || second.tint ? { tint: second.tint ?? first.tint } : {}),
+    ...(first.decoys || second.decoys ? { decoys: second.decoys ?? first.decoys } : {}),
+  };
+}
+
 /** `b` applied on top of `a`: `b` sees the cursor where `a` put it as the real pointer. */
 export function layer(a: Effect, b: Effect): Omit<Effect<Parts>, 'id' | 'name' | 'description'> {
   return {
@@ -40,19 +56,7 @@ export function layer(a: Effect, b: Effect): Omit<Effect<Parts>, 'id' | 'name' |
         state: own.b,
       });
       return {
-        look: {
-          ...second.look,
-          visible: first.look.visible && second.look.visible,
-          scale: first.look.scale * second.look.scale,
-          blur: first.look.blur + second.look.blur,
-          opacity: first.look.opacity * second.look.opacity,
-          ...(first.look.tint || second.look.tint
-            ? { tint: second.look.tint ?? first.look.tint }
-            : {}),
-          ...(first.look.decoys || second.look.decoys
-            ? { decoys: second.look.decoys ?? first.look.decoys }
-            : {}),
-        },
+        look: combineLooks(first.look, second.look),
         state: { a: first.state, b: second.state, lookA: first.look, lookB: second.look },
       };
     },

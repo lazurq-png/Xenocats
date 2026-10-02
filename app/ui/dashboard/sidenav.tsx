@@ -8,7 +8,10 @@ import { signOut } from '@/auth';
 
 export default function SideNav() {
   return (
-    <div className="relative flex h-full flex-col overflow-hidden border-line/80 bg-panel px-3 py-4 md:rounded-r-[28px] md:border md:border-l-0 md:px-4 md:pt-12">
+    <div
+      data-xenocat-frame
+      className="relative flex h-full flex-col overflow-hidden border-line/80 bg-panel px-3 py-4 md:rounded-r-[28px] md:border md:border-l-0 md:px-4 md:pt-12"
+    >
       <Link className="mb-4 flex justify-center rounded-xl p-2 md:mb-12" href="/">
         <XenocatLogo variant="dashboard" />
       </Link>

@@ -11,6 +11,7 @@ import {
   placeCursor,
   useXenocatCursor,
 } from '@/app/ui/xenocats/fake-cursor';
+import { INTENSITY_KEY } from '@/app/ui/xenocats/intensity';
 
 function mockPointer(fine: boolean) {
   window.matchMedia = vi.fn().mockReturnValue({
@@ -83,25 +84,22 @@ describe('XenocatCursorProvider', () => {
     expect(screen.queryByTestId('fake-cursor')).toBeNull();
   });
 
-  it('blocks clicks while an effect runs, and only then', () => {
+  it('never blocks a click, even while an effect runs', () => {
     mockPointer(true);
     const onClick = renderPage();
     fireEvent.pointerMove(window, { clientX: 50, clientY: 60 });
-
-    fireEvent.click(screen.getByText('Save'), { detail: 1 });
-    expect(onClick).toHaveBeenCalledTimes(1);
-
     act(() => {
       expect(cursor.attack(vanish, { x: 0, y: 0 })).toBe(true);
     });
     expect(cursor.isBusy()).toBe(true);
+    // It lands on whatever is under the real pointer, wherever the cursor is drawn.
     fireEvent.click(screen.getByText('Save'), { detail: 1 });
     expect(onClick).toHaveBeenCalledTimes(1);
-
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    screen.getByText('Save').dispatchEvent(drop);
+    expect(drop.defaultPrevented).toBe(false);
     clock = vanish.durationMs;
     expect(cursor.isBusy()).toBe(false);
-    fireEvent.click(screen.getByText('Save'), { detail: 1 });
-    expect(onClick).toHaveBeenCalledTimes(2);
   });
 
   it('never blocks the keyboard', () => {
@@ -121,64 +119,6 @@ describe('XenocatCursorProvider', () => {
     expect(onKeyDown).toHaveBeenCalledTimes(1);
   });
 
-  it('lets keyboard activation through during an effect: Enter/Space clicks, submit, menu key', () => {
-    mockPointer(true);
-    const onClick = vi.fn();
-    const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
-    const onContextMenu = vi.fn();
-    render(
-      <XenocatCursorProvider now={() => clock}>
-        <CaptureCursor />
-        <form onSubmit={onSubmit}>
-          <input aria-label="Search" onContextMenu={onContextMenu} />
-          <button onClick={onClick}>Save</button>
-        </form>
-      </XenocatCursorProvider>
-    );
-    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
-    act(() => {
-      cursor.attack(vanish, { x: 0, y: 0 });
-    });
-    // Keyboard-made events carry detail 0: they must reach the page.
-    fireEvent.click(screen.getByText('Save'), { detail: 0 });
-    expect(onClick).toHaveBeenCalledTimes(1);
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-    fireEvent.contextMenu(screen.getByLabelText('Search'), { detail: 0 });
-    expect(onContextMenu).toHaveBeenCalledTimes(1);
-    // The same click made by the pointer is blocked.
-    fireEvent.click(screen.getByText('Save'), { detail: 1 });
-    expect(onClick).toHaveBeenCalledTimes(1);
-  });
-
-  it('never lets an unfinished pointer press swallow a later keyboard activation', () => {
-    mockPointer(true);
-    const onClick = renderPage();
-    const save = screen.getByText('Save');
-    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
-    act(() => {
-      cursor.attack(vanish, { x: 0, y: 0 });
-    });
-    fireEvent.pointerDown(save); // a press that never produces a click
-    clock = vanish.durationMs + 100;
-    fireEvent.click(save, { detail: 0 }); // Enter on the focused button
-    expect(onClick).toHaveBeenCalledTimes(1);
-  });
-
-  it('forgets a press the browser cancelled', () => {
-    mockPointer(true);
-    const onClick = renderPage();
-    const save = screen.getByText('Save');
-    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
-    act(() => {
-      cursor.attack(vanish, { x: 0, y: 0 });
-    });
-    fireEvent.pointerDown(save);
-    fireEvent.pointerCancel(save);
-    clock = vanish.durationMs + 100;
-    fireEvent.click(save, { detail: 1 });
-    expect(onClick).toHaveBeenCalledTimes(1);
-  });
-
   it('lets keyboard text selection start during an effect', () => {
     mockPointer(true);
     render(
@@ -196,52 +136,15 @@ describe('XenocatCursorProvider', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it('refuses a second attack while one runs', () => {
+  it('takes a second attack while one runs: the effects stack', () => {
     mockPointer(true);
     renderPage();
     fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
     act(() => {
       expect(cursor.attack(vanish, { x: 0, y: 0 })).toBe(true);
-      expect(cursor.attack(vanish, { x: 0, y: 0 })).toBe(false);
+      expect(cursor.attack(vanish, { x: 0, y: 0 })).toBe(true);
     });
-  });
-
-  it('swallows a press that began during an effect, even if it ends after', () => {
-    mockPointer(true);
-    const onClick = renderPage();
-    const save = screen.getByText('Save');
-    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
-    act(() => {
-      cursor.attack(vanish, { x: 0, y: 0 });
-    });
-    fireEvent.pointerDown(save);
-    fireEvent.mouseDown(save);
-    clock = vanish.durationMs + 100; // the effect is over before the button is released
-    fireEvent.pointerUp(save);
-    fireEvent.mouseUp(save);
-    fireEvent.click(save, { detail: 1 });
-    expect(onClick).not.toHaveBeenCalled();
-    // The next, ordinary press works again.
-    fireEvent.pointerDown(save);
-    fireEvent.click(save, { detail: 1 });
-    expect(onClick).toHaveBeenCalledTimes(1);
-  });
-
-  it('blocks drag-and-drop during an effect', () => {
-    mockPointer(true);
-    const onDrop = vi.fn();
-    render(
-      <XenocatCursorProvider now={() => clock}>
-        <CaptureCursor />
-        <div data-testid="target" onDrop={onDrop} />
-      </XenocatCursorProvider>
-    );
-    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
-    act(() => {
-      cursor.attack(vanish, { x: 0, y: 0 });
-    });
-    fireEvent.drop(screen.getByTestId('target'));
-    expect(onDrop).not.toHaveBeenCalled();
+    expect(cursor.isBusy()).toBe(true);
   });
 
   it('shares one seeded random source, so a seed repeats the same numbers', () => {
@@ -277,7 +180,7 @@ describe('XenocatCursorProvider', () => {
     fireEvent.pointerOut(document.body, { relatedTarget: null });
     await waitFor(() => expect(fake.style.opacity).toBe('0'));
   });
-  it('every attack also hits the page near the pointer, and puts it back exactly when it ends', async () => {
+  it('every attack also attacks the page near the pointer as it does the cursor, and puts it back exactly when it ends', async () => {
     mockPointer(true);
     renderPage();
     const save = screen.getByText('Save');
@@ -289,12 +192,36 @@ describe('XenocatCursorProvider', () => {
     act(() => {
       cursor.attack(vanish, { x: 300, y: 300 });
     });
-    expect(save.getAttribute('data-xenocat-hit')).toBe('blur');
+    // Vanish hides the cursor: the button vanishes too.
+    await waitFor(() => expect(save.style.opacity).toBe('0'));
     clock = vanish.durationMs - 1;
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    expect(save.getAttribute('data-xenocat-hit')).toBe('blur');
+    expect(save.style.opacity).toBe('0');
     clock = vanish.durationMs;
     await waitFor(() => expect(save.outerHTML).toBe(before));
+  });
+
+  it('calm: an attack only nudges the page near the pointer', async () => {
+    window.localStorage.setItem(INTENSITY_KEY, 'calm');
+    try {
+      mockPointer(true);
+      renderPage();
+      const save = screen.getByText('Save');
+      save.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
+      const before = save.outerHTML;
+      fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+      await waitFor(() => expect(cursor.position()).not.toBeNull());
+      act(() => {
+        cursor.attack(vanish, { x: 300, y: 300 });
+      });
+      expect(save.getAttribute('data-xenocat-hit')).toBe('blur');
+      expect(save.style.opacity).toBe('');
+      clock = vanish.durationMs;
+      await waitFor(() => expect(save.outerHTML).toBe(before));
+    } finally {
+      window.localStorage.removeItem(INTENSITY_KEY);
+    }
   });
 
   it('puts the page back if it goes away mid-attack', async () => {
@@ -308,10 +235,10 @@ describe('XenocatCursorProvider', () => {
     act(() => {
       cursor.attack(vanish, { x: 300, y: 300 });
     });
-    expect(save.hasAttribute('data-xenocat-hit')).toBe(true);
+    await waitFor(() => expect(save.hasAttribute('style')).toBe(true));
     // Unmounting the provider removes the button too; keep a handle and check it.
     cleanup();
-    expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
+    expect(save.hasAttribute('style')).toBe(false);
   });
 });
 
@@ -342,10 +269,8 @@ describe('on a touch screen', () => {
     expect(cursor.isBusy()).toBe(true);
     // One at a time.
     expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(false);
-    // A tap is blocked while the page is hit; a keyboard click is not.
+    // A tap goes through, onto whatever has moved under it.
     fireEvent.click(save, { detail: 1 });
-    expect(onClick).not.toHaveBeenCalled();
-    fireEvent.click(save, { detail: 0 });
     expect(onClick).toHaveBeenCalledTimes(1);
 
     clock = quickJitter.durationMs;
@@ -355,7 +280,8 @@ describe('on a touch screen', () => {
     expect(onClick).toHaveBeenCalledTimes(2);
   });
 
-  it('a touch far from everything: the cat pounces at nothing and no tap is blocked', () => {
+  // A touch screen gets the calm hits at every intensity: only near the touch.
+  it('a touch far from everything: the cat pounces at nothing', () => {
     mockPointer(false);
     const onClick = renderPage();
     const save = screen.getByText('Save');
@@ -363,7 +289,7 @@ describe('on a touch screen', () => {
       ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
     fireEvent.pointerDown(window, { clientX: 900, clientY: 700, pointerType: 'touch' });
     act(() => {
-      expect(cursor.attack({ ...jitter, durationMs: 5000 }, { x: 300, y: 300 })).toBe(true);
+      expect(cursor.attack({ ...vanish, durationMs: 5000 }, { x: 300, y: 300 })).toBe(true);
     });
     expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
     expect(cursor.isBusy()).toBe(false);

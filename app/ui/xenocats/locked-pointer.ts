@@ -52,7 +52,7 @@ export function createLockedPointer(options: { viewport: Size; start: Vec; rando
 
     /** Advances one frame; returns where the pointer is and how it looks. */
     frame(now: number): CursorLook {
-      const active = controller.isBlocking(now);
+      const active = controller.isActive(now);
       if (wasActive && !active) {
         // The effect is over: the pointer is where the effect put it.
         moved = clampToViewport({ x: look.x, y: look.y }, viewport);

@@ -55,7 +55,11 @@ describe('every cat type has its sounds', () => {
 
 /** A stand-in AudioContext that counts what it is asked to play. */
 function fakeContext() {
-  const param = () => ({ setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() });
+  const param = () => ({
+    setValueAtTime: vi.fn(),
+    exponentialRampToValueAtTime: vi.fn(),
+    setValueCurveAtTime: vi.fn(),
+  });
   const node = () => ({ connect: vi.fn(), start: vi.fn(), stop: vi.fn() });
   const ctx = {
     currentTime: 0,
@@ -69,16 +73,21 @@ function fakeContext() {
     oscillators: 0,
     noises: 0,
     createGain: () => ({ ...node(), gain: param() }),
+    filters: 0,
     createOscillator: () => {
       ctx.oscillators++;
-      return { ...node(), type: 'sine', frequency: param() };
+      return { ...node(), type: 'sine', frequency: param(), detune: param() };
+    },
+    createBiquadFilter: () => {
+      ctx.filters++;
+      return { ...node(), type: 'lowpass', frequency: param(), Q: param() };
     },
     createBuffer: (_channels: number, length: number) => ({
       getChannelData: () => new Float32Array(length),
     }),
     createBufferSource: () => {
       ctx.noises++;
-      return { ...node(), buffer: null };
+      return { ...node(), buffer: null, loop: false };
     },
   };
   return ctx;
@@ -104,8 +113,14 @@ describe('the player', () => {
     expect(ctx.resume).toHaveBeenCalled();
     const knockback = ATTACK_SOUNDS.knockback;
     expect(player.play(knockback)).toBe(true);
-    expect(ctx.oscillators).toBe(knockback.filter((t) => t.wave !== 'noise').length);
-    expect(ctx.noises).toBe(knockback.filter((t) => t.wave === 'noise').length);
+    // A voice is an oscillator, and so is each vibrato and each pulse moving it.
+    const count = (test: (t: Sound[number]) => boolean) => knockback.filter(test).length;
+    expect(ctx.oscillators).toBe(
+      count((t) => t.wave !== 'noise') + count((t) => !!t.vibrato) + count((t) => !!t.pulse)
+    );
+    expect(ctx.noises).toBe(count((t) => t.wave === 'noise'));
+    // Every formant of every tone is a band of its own.
+    expect(ctx.filters).toBe(knockback.reduce((n, t) => n + (t.formants?.length ?? 0), 0));
   });
 
   it('queues nothing on a context that is still suspended, and asks it to run', () => {

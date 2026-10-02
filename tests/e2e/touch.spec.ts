@@ -31,17 +31,13 @@ test('on a touch screen the fake cursor stays off, and a cat attacks the page ar
     el.outerHTML.replace(/ data-xenocat-hit="[^"]*"/, '')
   );
   await expect(button).toHaveAttribute('data-xenocat-hit', 'push', { timeout: 5000 });
-  // …and a tap meanwhile does nothing: the card's other Summon button does not
-  // summon (its status message never appears).
+  // …and a tap meanwhile still goes through: the card's other Summon button
+  // summons.
   const status = page.getByTestId('summon-status');
   const asleep = page.getByTestId('summon-asleep-pulsar-siamese');
   await asleep.tap();
-  await page.waitForTimeout(300);
-  await expect(status).not.toContainText('will nap');
+  await expect(status).toContainText('Pulsar Siamese is on its way, and will nap');
   // When the effect is over (1.5 s) it is exactly as it was.
   await expect(button).not.toHaveAttribute('data-xenocat-hit', { timeout: 5000 });
   expect(await button.evaluate((el) => el.outerHTML)).toBe(before);
-  // The same tap works again now.
-  await asleep.tap();
-  await expect(status).toContainText('Pulsar Siamese is on its way, and will nap');
 });

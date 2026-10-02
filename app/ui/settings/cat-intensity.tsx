@@ -12,16 +12,16 @@ import {
 } from '@/app/ui/xenocats/intensity';
 
 const DESCRIPTIONS: Record<Intensity, string> = {
-  calm: 'Now and then, at most two at once.',
-  normal: 'The cats as they have always been.',
-  chaos: 'Often, and up to five at once.',
+  calm: 'Now and then, at most two at once. They only nudge what is near your pointer.',
+  normal: 'The cats as they have always been: they knock the page about, panels and all.',
+  chaos: 'Often, up to five at once, and the page goes wild: things fly right off it.',
 };
 
 /** Calm, normal or chaos: how hard the cats haunt the dashboard. Saved in this browser. */
 export default function CatIntensity() {
   const current = useSyncExternalStore(subscribeIntensity, getIntensity, () => 'normal' as const);
   return (
-    <fieldset className="rounded-2xl border border-line bg-panel p-4 md:p-6">
+    <fieldset data-xenocat-frame className="rounded-2xl border border-line bg-panel p-4 md:p-6">
       <legend className="sr-only">Cat intensity</legend>
       <div className="grid gap-3 sm:grid-cols-3">
         {INTENSITIES.map((level) => (

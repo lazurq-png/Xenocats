@@ -2,12 +2,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import {
+  HIT_LEVELS,
   HIT_ATTRIBUTE,
   PAGE_HITS,
   TEXT_ATTRIBUTE,
   applyHits,
   distanceToRect,
   hitPage,
+  hitText,
+  pickAnywhere,
+  pickTargets,
   scrambleText,
   selectTargets,
 } from '@/app/ui/xenocats/page-hits';
@@ -136,12 +140,91 @@ describe('target selection', () => {
     restore!();
   });
 
-  it('hitPage hits nothing, and returns null, with nothing near', () => {
+  it('hitPage hits nothing, and returns null, with nothing near or on screen', () => {
     document.body.innerHTML = '<button id="far">Far</button>';
+    // Off screen (jsdom's window is 1024 × 768).
     place(document.getElementById('far')!, 900, 900, 50, 20);
     expect(
       hitPage(document.body, 'jitter', { x: 0, y: 0 }, { x: 0, y: 0 }, createRandom(1))
     ).toBeNull();
+  });
+});
+
+describe('attacks that move elements reach further', () => {
+  const contains = (a: string, b: string) => a !== b && b.startsWith(`${a}/`);
+
+  it('pickAnywhere adds random on-screen elements, never one already hit, inside or around one', () => {
+    const candidates = [
+      { item: 'panel', rect: rect(0, 0, 400, 300) },
+      { item: 'panel/button', rect: rect(10, 10, 50, 20) },
+      { item: 'title', rect: rect(500, 10, 100, 30) },
+      { item: 'row', rect: rect(500, 400, 300, 30) },
+      { item: 'offscreen', rect: rect(2000, 10, 50, 20) },
+      { item: 'tiny', rect: rect(700, 10, 1, 1) },
+    ];
+    const viewport = { width: 1000, height: 800 };
+    for (let seed = 1; seed < 20; seed++) {
+      const extra = pickAnywhere(
+        candidates,
+        ['panel/button'],
+        10,
+        viewport,
+        contains,
+        createRandom(seed)
+      );
+      expect(extra.sort()).toEqual(['row', 'title']);
+    }
+    const one = pickAnywhere(candidates, [], 1, viewport, contains, createRandom(3));
+    expect(one).toHaveLength(1);
+  });
+
+  it('calm reaches only what is near the pointer; normal and chaos reach panels and far off', () => {
+    const { calm, normal, chaos } = HIT_LEVELS;
+    expect(calm.puppets).toBeNull();
+    expect(calm.reach).toMatchObject({ anywhere: 0, frames: false });
+    for (const level of [normal, chaos]) {
+      expect(level.puppets).not.toBeNull();
+      expect(level.reach.frames).toBe(true);
+      expect(level.reach.anywhere).toBeGreaterThan(0);
+    }
+    expect(chaos.reach.radius).toBeGreaterThan(normal.reach.radius);
+    expect(chaos.reach.max + chaos.reach.anywhere).toBeGreaterThan(
+      normal.reach.max + normal.reach.anywhere
+    );
+    expect(chaos.puppets!.fling).toBeGreaterThan(normal.puppets!.fling);
+    expect(chaos.puppets!.weird).toBeGreaterThan(normal.puppets!.weird);
+  });
+
+  it('pickTargets takes panels and elements anywhere on screen, but never a field being typed in', () => {
+    document.body.innerHTML = `
+      <div data-xenocat-frame id="panel"><p id="text">Revenue</p></div>
+      <button id="near">Pay</button>
+      <h2 id="far">Invoices</h2>
+      <input id="typing" />`;
+    place(document.getElementById('panel')!, 0, 0, 300, 200);
+    place(document.getElementById('text')!, 10, 10, 100, 20);
+    place(document.getElementById('near')!, 320, 10, 60, 30);
+    place(document.getElementById('far')!, 900, 700, 100, 30);
+    place(document.getElementById('typing')!, 900, 10, 100, 30);
+    (document.getElementById('typing') as HTMLInputElement).focus();
+    const ids = (reach: (typeof HIT_LEVELS)['normal']['reach']) =>
+      pickTargets(document.body, { x: 150, y: 100 }, reach, createRandom(2))
+        .map((element) => element.id)
+        .sort();
+    // The pointer is on the panel, away from its text: the panel is hit whole.
+    expect(ids(HIT_LEVELS.normal.reach)).toEqual(['far', 'near', 'panel']);
+    // Calm: no panels and nothing far off; the text inside the panel instead.
+    expect(ids(HIT_LEVELS.calm.reach)).toEqual(['text']);
+  });
+
+  it('hitText scrambles or swaps text for the attacks that do, and nothing else', () => {
+    document.body.innerHTML = '<p id="a">Paid</p><p id="b">Pending</p>';
+    const targets = ['a', 'b'].map((id) => document.getElementById(id)!);
+    expect(hitText(targets, 'bounce', createRandom(1))).toBeNull();
+    const restore = hitText(targets, 'teleport', createRandom(1))!;
+    expect(targets[0].getAttribute(TEXT_ATTRIBUTE)).toBe('Pending');
+    restore();
+    expect(targets[0].hasAttribute(TEXT_ATTRIBUTE)).toBe(false);
   });
 });
 

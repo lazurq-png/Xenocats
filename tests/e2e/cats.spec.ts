@@ -4,7 +4,13 @@ import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 // The /cats page needs no login and no database. Each test summons a cat and
 // watches what its attack does to the fake cursor.
 
-async function openCats(page: Page) {
+async function openCats(page: Page, { intensity }: { intensity?: string } = {}) {
+  if (intensity) {
+    await page.addInitScript(
+      (level) => window.localStorage.setItem('xenocats:intensity', level),
+      intensity
+    );
+  }
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/cats');
   await expect(page.getByRole('heading', { name: 'The cats' })).toBeVisible();
@@ -87,24 +93,22 @@ test('the page swaps the system cursor for the fake one, which follows the point
   await expect.poll(() => cursorAt(page)).toEqual({ x: 400, y: 300 });
 });
 
-test('Void Tabby makes the cursor vanish, and clicks are blocked meanwhile', async ({ page }) => {
+test('Void Tabby makes the cursor vanish, and clicks still go through meanwhile', async ({
+  page,
+}) => {
   await openCats(page);
   await summon(page, 'void-tabby');
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'vanish');
   await expect(fakeCursor(page)).toHaveCSS('opacity', '0');
 
-  // A click during the effect does nothing: the status line does not change.
+  // A click during the effect is never blocked: it lands where the real pointer is.
   const status = page.getByTestId('summon-status');
-  const before = await status.textContent();
   await page.getByTestId('summon-gravi-coon').click({ force: true });
-  await expect(status).toHaveText(before ?? '');
-  await expect(page.locator('[data-cat-type="gravi-coon"]')).toHaveCount(0);
-
-  // After 3 s the cursor is back and clicks work again.
-  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
-  await expect(fakeCursor(page)).toHaveCSS('opacity', '1');
-  await page.getByTestId('summon-gravi-coon').click();
   await expect(status).toHaveText('Gravi Coon is on its way.');
+
+  // After 3 s the cursor is back (the Gravi Coon it summoned may be attacking it by then).
+  await expect(fakeCursor(page)).not.toHaveAttribute('data-effect', /vanish/, { timeout: 5000 });
+  await expect(fakeCursor(page)).toHaveCSS('opacity', '1');
 });
 
 test('Gravi Coon makes the cursor heavy', async ({ page }) => {
@@ -437,6 +441,34 @@ test('Pinball Devon sends the cursor bouncing around the screen', async ({ page 
   expect(furthest).toBeGreaterThan(200);
 });
 
+/** Page elements an attack is moving as it moves the cursor (puppets.ts), with their centres. */
+const puppets = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .filter((element) => element.style.translate !== '')
+      .map((element) => {
+        const r = element.getBoundingClientRect();
+        const frame = element.matches('[data-xenocat-frame], [data-xenocat-card]');
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, frame };
+      })
+  );
+
+test('Pinball Devon bounces page elements about as it does the cursor: near the pointer, whole cards and others far off', async ({
+  page,
+}) => {
+  await openCats(page);
+  const pointer = await summon(page, 'pinball-devon');
+  await expect.poll(async () => (await puppets(page)).length).toBeGreaterThanOrEqual(6);
+  // Some beyond the 220 px reach round the pointer: picked anywhere on screen.
+  // They bounce about, so where they are says little; where they started does.
+  const moving = await puppets(page);
+  expect(moving.some((box) => box.frame)).toBe(true);
+  expect(moving.some((box) => distance(box, pointer) > 400)).toBe(true);
+  // Pinball runs 4 s; everything is put back when it ends, and the page unmarked.
+  await expect.poll(async () => (await puppets(page)).length, { timeout: 8000 }).toBe(0);
+  await expect(page.locator('html')).not.toHaveAttribute('data-xenocat-puppets');
+});
+
 test('Laser Ocicat locks the cursor to one axis', async ({ page }) => {
   await openCats(page);
   const pointer = await summon(page, 'laser-ocicat');
@@ -460,9 +492,9 @@ test('all 20 cats are on /cats, and a sixth summon is refused while five are on 
   await openCats(page);
   await expect(page.locator('[data-testid^="cat-card-"]')).toHaveCount(20);
   // Summon with the keyboard: it is never blocked, even once the first cats attack.
-  // Lag Ragamuffin first: the first cat is the only one that attacks and leaves while
-  // the rest wait their turn, and its slow arrival and departure keep it on screen
-  // for about 4 s, so all five are still there when the sixth is summoned.
+  // All five attack at once (their effects stack), and each stays on screen through
+  // its arrival, its pounce and its departure, so all five are still there when
+  // the sixth is summoned a moment later.
   const ids = ['lag-ragamuffin', 'gravi-coon', 'munchkin-mite', 'smoke-bombay', 'laser-ocicat'];
   for (const id of ids) {
     await page.getByTestId(`summon-${id}`).focus();
@@ -478,10 +510,10 @@ test('all 20 cats are on /cats, and a sixth summon is refused while five are on 
   await expect(page.locator('[data-cat-type="hypno-rex"]')).toHaveCount(0);
 });
 
-test('an attack pushes the page elements near the pointer, and puts them back exactly', async ({
+test('calm: an attack nudges the page elements near the pointer, and puts them back exactly', async ({
   page,
 }) => {
-  await openCats(page);
+  await openCats(page, { intensity: 'calm' });
   const button = page.getByTestId('summon-pulsar-siamese');
   await summon(page, 'pulsar-siamese');
   const before = await button.evaluate((el) => el.outerHTML);
@@ -489,6 +521,29 @@ test('an attack pushes the page elements near the pointer, and puts them back ex
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
   await expect(button).toHaveAttribute('data-xenocat-hit', 'push');
   await expect.poll(() => button.evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  // When the effect ends (1.5 s) the button is exactly as it was.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
+  await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
+});
+
+test('normal: an attack flings the element under the pointer as it does the cursor, then puts it back exactly', async ({
+  page,
+}) => {
+  await openCats(page);
+  const button = page.getByTestId('summon-pulsar-siamese');
+  await button.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const before = await button.evaluate((el) => el.outerHTML);
+  await summon(page, 'pulsar-siamese');
+  // Knockback flings the cursor 300 px from the cat; the button goes with it.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
+  await expect
+    .poll(() =>
+      button.evaluate((el) => {
+        const [x, y] = (el as HTMLElement).style.translate.split(' ').map(parseFloat);
+        return Math.hypot(x || 0, y || 0);
+      })
+    )
+    .toBeGreaterThan(100);
   // When the effect ends (1.5 s) the button is exactly as it was.
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
   await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);

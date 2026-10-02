@@ -103,7 +103,7 @@ describe('XenocatCatsProvider', () => {
     expect(phases()).toEqual(['attacking']);
   });
 
-  it('with the real cursor, only one of two ready cats attacks at a time', async () => {
+  it('with the real cursor, two ready cats attack at the same time; their effects stack', async () => {
     renderCats();
     fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
     act(() => {
@@ -112,13 +112,15 @@ describe('XenocatCatsProvider', () => {
     });
     clock = 1000; // both have arrived and want to attack
     await frames();
-    expect(phases().sort()).toEqual(['attacking', 'ready']);
-    // Once the first cat's 3 s vanish is over, the waiting one gets its turn.
-    clock = 1000 + 3000 + 700;
+    expect(phases()).toEqual(['attacking', 'attacking']);
+    expect(screen.getByTestId('fake-cursor').dataset.effect?.split('+').sort()).toEqual([
+      'heavy',
+      'vanish',
+    ]);
+    // Once the 3 s vanish is over, the 5 s heavy runs on alone.
+    clock = 1000 + 3000 + 100;
     await frames();
     expect(screen.getByTestId('fake-cursor').dataset.effect).toBe('heavy');
-    expect(phases()).not.toContain('ready');
-    expect(phases()).toContain('attacking');
   });
 
   it('a ready cat waits while the pointer is off the page', async () => {

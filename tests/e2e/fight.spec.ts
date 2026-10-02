@@ -41,7 +41,48 @@ async function start(page: Page) {
   return overlay;
 }
 
-test('Survival: banishing every cat of a wave survives it; Esc ends the game and keeps the best score', async ({
+/** Where the game drew an element it places itself (the ranger, the crosshair, a beam). */
+async function placed(page: Page, testId: string) {
+  const transform = await page
+    .getByTestId(testId)
+    .last()
+    .evaluate((el) => (el as HTMLElement).style.transform);
+  const [, x, y] = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform)!;
+  return { x: Number(x), y: Number(y) };
+}
+
+/**
+ * Moves the mouse so the crosshair lands on `target`. The crosshair moves by how far
+ * the mouse moves (a cat's attack can leave it apart from the mouse), so this moves
+ * the mouse by the distance from the crosshair to the target. Returns the new mouse.
+ */
+async function aimAt(
+  page: Page,
+  mouse: { x: number; y: number },
+  target: { x: number; y: number }
+) {
+  const crosshair = await placed(page, 'fight-crosshair');
+  const next = { x: mouse.x + target.x - crosshair.x, y: mouse.y + target.y - crosshair.y };
+  await page.mouse.move(next.x, next.y);
+  return next;
+}
+
+/** The centre of the cat nearest the ranger, or null when there is none. */
+async function nearestCat(page: Page) {
+  const player = await placed(page, 'fight-player').catch(() => null);
+  if (!player) return null;
+  const distance = (c: { x: number; y: number }) => Math.hypot(c.x - player.x, c.y - player.y);
+  let best: { x: number; y: number } | null = null;
+  for (const cat of await page.getByTestId('fight-cat').all()) {
+    const box = await cat.boundingBox({ timeout: 200 }).catch(() => null);
+    if (!box) continue;
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    if (!best || distance(centre) < distance(best)) best = centre;
+  }
+  return best;
+}
+
+test('Survival: the self-firing beam sends every cat of a wave home; Esc ends the game and keeps the best score', async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -50,26 +91,30 @@ test('Survival: banishing every cat of a wave survives it; Esc ends the game and
   await start(page);
   await expect(page.getByTestId('fight-lives')).toHaveText('Lives: 3');
   await expect(page.getByTestId('fight-wave')).toHaveText('Wave 1');
+  await expect(page.getByTestId('fight-player').locator('svg').first()).toBeVisible();
   // No cat can be summoned during a game.
   await expect(page.getByTestId('summon-void-tabby')).toBeDisabled();
 
-  // Click every cat that shows up until wave 1 is over. It is a real-time game: a
-  // cat can reach the pointer while another is being clicked, its effect blocks
-  // clicks, and three such cats end the game; then a new game is started (its
+  // Keep the crosshair on the nearest cat until wave 1 is over: the gun fires by
+  // itself. It is a real-time game: cats scramble the ranger, its aim and its gun,
+  // and three that reach the ranger end the game; then a new game is started (its
   // score is 0, so the best score below still comes from the wave survived here).
+  let mouse = { x: 640, y: 400 };
   await expect
     .poll(
       async () => {
-        if ((await page.getByTestId('fight-overlay').count()) === 0) await start(page);
-        const cat = page.getByTestId('fight-cat').first();
-        const box = await cat.boundingBox({ timeout: 1000 }).catch(() => null);
-        if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        if ((await page.getByTestId('fight-overlay').count()) === 0) {
+          await start(page);
+          mouse = { x: 640, y: 400 };
+        }
+        const cat = await nearestCat(page);
+        if (cat) mouse = await aimAt(page, mouse, cat).catch(() => mouse);
         return page
           .getByTestId('fight-wave')
           .getAttribute('data-wave', { timeout: 1000 })
           .catch(() => null);
       },
-      { timeout: 50_000, intervals: [100] }
+      { timeout: 60_000, intervals: [50] }
     )
     .toBe('2');
   await expect(page.getByTestId('fight-score')).toHaveText('Survived: 1');
@@ -85,22 +130,87 @@ test('Survival: banishing every cat of a wave survives it; Esc ends the game and
   await expect(page.getByTestId('fight-start')).toHaveText('Play again');
 });
 
-test('Survival: a cat that reaches the pointer costs a life and attacks the cursor', async ({
+test('Survival: the gun fires by itself, from the ranger towards the crosshair', async ({
   page,
 }) => {
+  await openFight(page);
+  await start(page);
+  const player = await placed(page, 'fight-player');
+  // Aim straight up from the ranger, before any cat arrives: beams leave upwards.
+  await aimAt(page, { x: 640, y: 400 }, { x: player.x, y: player.y - 200 });
+  await expect
+    .poll(async () => {
+      const beam = await placed(page, 'fight-beam').catch(() => null);
+      return beam !== null && Math.abs(beam.x - player.x) < 2 && beam.y < player.y - 40;
+    })
+    .toBe(true);
+});
+
+test('Survival: WASD walks the ranger, which faces the crosshair', async ({ page }) => {
+  await openFight(page);
+  await start(page);
+  const player = page.getByTestId('fight-player');
+  const before = await placed(page, 'fight-player');
+  await page.keyboard.down('d');
+  await expect(player).toHaveAttribute('data-walking', 'true');
+  await page.waitForTimeout(400);
+  await page.keyboard.up('d');
+  await expect(player).toHaveAttribute('data-walking', 'false');
+  const after = await placed(page, 'fight-player');
+  expect(after.x).toBeGreaterThan(before.x + 50);
+  expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+
+  let mouse = { x: 640, y: 400 };
+  mouse = await aimAt(page, mouse, { x: after.x - 200, y: after.y });
+  await expect(player).toHaveAttribute('data-facing', 'w');
+  await aimAt(page, mouse, { x: after.x, y: after.y + 200 });
+  await expect(player).toHaveAttribute('data-facing', 's');
+});
+
+test('Survival: a cat pounces soon after it arrives, scrambling the ranger and the crosshair', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await openFight(page);
+  await start(page);
+  // Aim at a corner, so the beams leave the cats alone.
+  await aimAt(page, { x: 640, y: 400 }, { x: 0, y: 0 });
+  // The first cat arrives after 1.5 s and pounces 1 to 3 s later. Its effect may be
+  // short (Knockback), so record every effect the page ever shows.
+  await page.evaluate(() => {
+    const seen = { player: false, crosshair: false };
+    (window as unknown as { scrambled: typeof seen }).scrambled = seen;
+    new MutationObserver(() => {
+      const effect = (id: string) =>
+        document.querySelector(`[data-testid="${id}"]`)?.getAttribute('data-effect');
+      if (effect('fight-player')) seen.player = true;
+      if (effect('fight-crosshair')) seen.crosshair = true;
+    }).observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-effect'],
+    });
+  });
+  await expect(page.locator('[data-testid="fight-cat"][data-pounced="true"]').first()).toBeAttached(
+    { timeout: 10_000 }
+  );
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { scrambled: object }).scrambled))
+    .toEqual({ player: true, crosshair: true });
+});
+
+test('Survival: a cat that touches the ranger costs a life', async ({ page }) => {
   test.setTimeout(60_000);
   await openFight(page);
   await start(page);
-  await page.mouse.move(640, 420);
-  // The first cat arrives after 1.5 s at least 240 px away and walks at 80 px/s.
-  // Two cats can land in the same moment, so this asserts a loss, not exactly one.
+  // Aim at a corner and let the cats come.
+  await aimAt(page, { x: 640, y: 400 }, { x: 0, y: 0 });
   await expect
     .poll(async () => Number(await page.getByTestId('fight-lives').getAttribute('data-lives')), {
-      timeout: 30_000,
+      timeout: 40_000,
       intervals: [50],
     })
     .toBeLessThan(3);
-  await expect(page.getByTestId('fake-cursor')).not.toHaveAttribute('data-effect', '');
 });
 
 test('Taming: a still pointer draws the cat over, holding still on it tames it into the collection', async ({
@@ -193,6 +303,7 @@ test('Survival: losing focus pauses the game, and the cats wait; Resume carries 
   await expect(cat).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await expect(overlay).toHaveAttribute('data-phase', 'paused');
+  await expect(page.getByTestId('fight-player').locator('svg').first()).toBeVisible();
   const at = await cat.boundingBox();
   await page.waitForTimeout(600);
   expect(await cat.boundingBox()).toEqual(at);
@@ -211,19 +322,10 @@ test('Survival: losing focus pauses the game, and the cats wait; Resume carries 
   await expect.poll(() => cat.boundingBox()).not.toEqual(at);
 });
 
-/** Where the game draws its own pointer under pointer lock. */
-async function lockedPointer(page: Page) {
-  const transform = await page
-    .getByTestId('fight-pointer')
-    .evaluate((el) => (el as HTMLElement).style.transform);
-  const [, x, y] = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform)!;
-  return { x: Number(x), y: Number(y) };
-}
-
-test('Survival under pointer lock: the game owns the pointer, a click banishes the cat under it, and losing the lock ends it', async ({
+test('Survival under pointer lock: the mouse moves the crosshair, and losing the lock ends it', async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(30_000);
   await openFight(page, undefined, { lock: true });
   const startButton = page.getByTestId('fight-start');
   const box = (await startButton.boundingBox())!;
@@ -239,63 +341,18 @@ test('Survival under pointer lock: the game owns the pointer, a click banishes t
     'This browser refused pointer lock.'
   );
   expect(await page.evaluate(() => document.pointerLockElement === document.body)).toBe(true);
-  // The page's fake cursor is hidden; the game draws the pointer it owns.
+  // The page's fake cursor is hidden; the game draws the ranger and its crosshair.
   await expect(page.getByTestId('fake-cursor')).toHaveCSS('opacity', '0');
-  await expect(page.getByTestId('fight-pointer')).toBeVisible();
+  await expect(page.getByTestId('fight-player').locator('svg').first()).toBeVisible();
+  await expect(page.getByTestId('fight-crosshair').locator('svg')).toBeVisible();
 
-  // The game's pointer moves by the mouse's movement.
-  const before = await lockedPointer(page);
+  // The crosshair moves by the mouse's movement (before any cat can scramble it).
+  const before = await placed(page, 'fight-crosshair');
   mouse = { x: mouse.x + 60, y: mouse.y - 40 };
   await page.mouse.move(mouse.x, mouse.y, { steps: 4 });
-  await expect.poll(() => lockedPointer(page)).toEqual({ x: before.x + 60, y: before.y - 40 });
-
-  // Steer the game's pointer next to a cat and click: that cat is banished.
-  // It is a real-time game: a cat can reach the pointer before the click lands (and
-  // three such cats end the game), so this keeps playing, in a new game if need be,
-  // until one click banishes a cat without losing a life.
-  let banished = false;
   await expect
-    .poll(
-      async () => {
-        if ((await overlay.count()) === 0) {
-          const again = (await startButton.boundingBox())!;
-          mouse = { x: again.x + again.width / 2, y: again.y + again.height / 2 };
-          await startButton.click();
-          await expect(overlay).toHaveAttribute('data-mode', 'locked');
-        }
-        const cat = page.getByTestId('fight-cat').first();
-        const id = await cat.getAttribute('data-cat-id').catch(() => null);
-        const catBox = await cat.boundingBox().catch(() => null);
-        if (!id || !catBox) return false;
-        const livesNow = () =>
-          page
-            .getByTestId('fight-lives')
-            .getAttribute('data-lives', { timeout: 1000 })
-            .catch(() => null);
-        const lives = await livesNow();
-        const centre = { x: catBox.x + catBox.width / 2, y: catBox.y + catBox.height / 2 };
-        const pointer = await lockedPointer(page);
-        // 34 px from the cat's centre, on the pointer's side: within a click's reach
-        // (36 px), outside an attack's (24 px).
-        const dx = pointer.x - centre.x;
-        const dy = pointer.y - centre.y;
-        const length = Math.hypot(dx, dy) || 1;
-        const target = { x: centre.x + (dx / length) * 34, y: centre.y + (dy / length) * 34 };
-        mouse = { x: mouse.x + target.x - pointer.x, y: mouse.y + target.y - pointer.y };
-        await page.mouse.move(mouse.x, mouse.y);
-        // Let the game draw the pointer there before clicking.
-        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
-        await page.mouse.down();
-        await page.mouse.up();
-        banished =
-          (await page.locator(`[data-cat-id="${id}"]`).count()) === 0 &&
-          lives !== null &&
-          (await livesNow()) === lives;
-        return banished;
-      },
-      { timeout: 40_000, intervals: [100] }
-    )
-    .toBe(true);
+    .poll(() => placed(page, 'fight-crosshair'))
+    .toEqual({ x: before.x + 60, y: before.y - 40 });
 
   // Losing the lock ends the game if the page still has focus (that is Esc) and
   // pauses it if not (another window took it). Some headless browsers never give a

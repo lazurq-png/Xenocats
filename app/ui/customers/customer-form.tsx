@@ -15,7 +15,7 @@ export default function CustomerForm({ customer }: { customer?: CustomerEdit }) 
 
   return (
     <form action={formAction}>
-      <div className="rounded-2xl border border-line bg-panel p-4 md:p-6">
+      <div data-xenocat-frame className="rounded-2xl border border-line bg-panel p-4 md:p-6">
         <div className="mb-4">
           <label htmlFor="name" className="mb-2 block text-sm font-medium text-white">
             Name

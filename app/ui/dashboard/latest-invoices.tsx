@@ -13,7 +13,7 @@ export default async function LatestInvoices() {
   const latestInvoices = await fetchLatestInvoices();
 
   return (
-    <div className="rounded-2xl border border-line bg-panel p-5">
+    <div data-xenocat-frame className="rounded-2xl border border-line bg-panel p-5">
       <h2 className="mb-6 text-[19.4px] font-bold text-white">Latest invoices</h2>
       <ul className="border-t border-line">
         {latestInvoices.map((invoice) => (

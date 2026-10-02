@@ -19,7 +19,7 @@ export default function PasswordForm() {
 
   return (
     <form action={formAction}>
-      <div className="rounded-2xl border border-line bg-panel p-4 md:p-6">
+      <div data-xenocat-frame className="rounded-2xl border border-line bg-panel p-4 md:p-6">
         {fields.map((field) => (
           <div key={field.name} className="mb-4 last:mb-0">
             <label htmlFor={field.name} className="mb-2 block text-sm font-medium text-white">

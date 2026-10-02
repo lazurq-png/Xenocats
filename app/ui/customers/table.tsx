@@ -8,7 +8,10 @@ export default function CustomersTable({ customers }: { customers: FormattedCust
     <div className="mt-6 flow-root">
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
-          <div className="overflow-hidden rounded-2xl border border-line bg-panel p-2 md:pt-0">
+          <div
+            data-xenocat-frame
+            className="overflow-hidden rounded-2xl border border-line bg-panel p-2 md:pt-0"
+          >
             <div className="md:hidden">
               {customers.map((customer) => (
                 <div key={customer.id} className="mb-2 w-full rounded-xl bg-void/60 p-4">

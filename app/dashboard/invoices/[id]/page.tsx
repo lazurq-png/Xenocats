@@ -37,6 +37,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       />
       <section
         aria-labelledby="invoice-heading"
+        data-xenocat-frame
         className="rounded-2xl border border-line bg-panel p-4 md:p-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-4">

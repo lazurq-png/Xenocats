@@ -4,13 +4,19 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { type CursorController, createCursorController } from './cursor-controller';
 import { type CursorKind, cursorKindFor } from './cursor-kind';
 import { type CursorLook, type Effect, MAX_DECOYS, type Vec } from './effects';
-import { hitPage } from './page-hits';
+import { getIntensity } from './intensity';
+import { HIT_LEVELS, hitPage, hitText, pickTargets } from './page-hits';
+import { createPuppetTheatre } from './puppets';
 import { type Random, createRandom, freshSeed } from './random';
 
 export type XenocatCursor = {
-  /** Starts `effect` from a cat centred at `cat`. False if another effect is still running. */
+  /**
+   * Starts `effect` from a cat centred at `cat`, on top of any still running (or
+   * fused with one into a combo). False before the pointer has been seen, and, on a
+   * touch screen, while another attack still hits the page.
+   */
   attack(effect: Effect, cat: Vec): boolean;
-  /** True while an effect runs (and clicks are blocked). */
+  /** True while an effect runs (on a touch screen: while an attack hits the page). */
   isBusy(): boolean;
   /** Where the fake cursor is, or null before the pointer has been seen. */
   position(): Vec | null;
@@ -39,36 +45,7 @@ export function useXenocatCursor(): XenocatCursor {
   return cursor;
 }
 
-// Every way a pointer can activate or drag something. The keyboard must never be
-// affected, so `selectstart` is not here (Ctrl+A and Shift+Arrow fire it too;
-// cancelling `mousedown` already stops a mouse selection).
-const BLOCKED_EVENTS = [
-  'pointerdown',
-  'pointerup',
-  'mousedown',
-  'mouseup',
-  'click',
-  'dblclick',
-  'auxclick',
-  'contextmenu',
-  'dragstart',
-  'drop',
-] as const;
-
-// Browsers also fire these for the keyboard: Enter/Space on a button, Enter in a
-// form (implicit submit), Shift+F10. A keyboard-made one has `detail === 0`; a
-// pointer-made one has its click count (>= 1), or belongs to a press we swallowed.
-const ALSO_KEYBOARD = new Set(['click', 'dblclick', 'auxclick', 'contextmenu']);
-
-// A press ends with one of these; a press that began while blocked is swallowed up
-// to and including its end, even if the effect has finished by then.
-const PRESS_ENDS = new Set(['click', 'auxclick', 'contextmenu']);
-
 export const HIDE_CURSOR_CLASS = 'xenocat-cursor-hidden';
-
-// What a tap can do (mousedown focuses a field); blocked on a touch screen while a
-// cat's attack hits the page. Nothing that starts a scroll is.
-const TOUCH_BLOCKED = ['mousedown', 'click', 'dblclick', 'contextmenu'] as const;
 
 // What each cursor element was last drawn as: a frame that would draw the same again
 // writes nothing, so a cursor at rest costs no style work and no repaint.
@@ -117,8 +94,11 @@ export function XenocatCursorProvider({
 }) {
   const [random] = useState<Random>(() => createRandom(seed ?? freshSeed()));
   const [controller] = useState<CursorController>(() =>
-    createCursorController({ viewport: { width: 0, height: 0 }, random })
+    // The page's cats attack at the same time: their effects stack.
+    createCursorController({ viewport: { width: 0, height: 0 }, random, stack: true })
   );
+  // The page elements an attack makes puppets of the mouse (puppets.ts).
+  const [theatre] = useState(() => createPuppetTheatre({ random }));
   const [enabled, setEnabled] = useState(false);
   const [kind, setKind] = useState<CursorKind>('arrow');
   const cursorRef = useRef<HTMLDivElement>(null);
@@ -187,49 +167,25 @@ export function XenocatCursorProvider({
       wake();
     };
 
-    let swallowPress = false;
-    const onPointerAction = (event: Event) => {
-      const blocking = controller.isBlocking(nowRef.current());
-      // The effect is over but the next frame has not put the page back yet: do it
-      // now, so no click ever reaches a displaced element.
-      if (!blocking && restoreHitsRef.current) {
-        restoreHitsRef.current();
-        restoreHitsRef.current = null;
-      }
-      if (event.type === 'pointerdown') swallowPress = blocking;
-      else if (event.type === 'mousedown' && blocking) swallowPress = true;
-      const fromPointer = !ALSO_KEYBOARD.has(event.type) || (event as MouseEvent).detail > 0;
-      // A keyboard-made event is never swallowed, even after a pointer press that
-      // never ended in a click (so left the flag set).
-      const swallow = fromPointer && (swallowPress || blocking);
-      if (PRESS_ENDS.has(event.type)) swallowPress = false;
-      if (!swallow) return;
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
+    // Clicks are never blocked: one made while an effect runs lands where the real
+    // pointer is, not where the cursor is drawn, on whatever has moved there.
     onResize();
     window.addEventListener('pointermove', onMove, { passive: true });
     window.addEventListener('pointerout', onOut);
     window.addEventListener('blur', onBlur);
-    // A press the browser turned into a scroll never ends in a click.
-    const onCancel = () => {
-      swallowPress = false;
-    };
-    window.addEventListener('pointercancel', onCancel, true);
     window.addEventListener('resize', onResize);
-    // Capture phase on window runs before anything on the page sees the event.
-    for (const type of BLOCKED_EVENTS) window.addEventListener(type, onPointerAction, true);
 
     function draw() {
       frameId = 0;
       const time = nowRef.current();
-      // The page is put back on the first frame the clicks are no longer blocked, so
-      // an element is never displaced while it can be clicked.
-      if (restoreHitsRef.current && !controller.isBlocking(time)) {
+      // The page is put back on the first frame no effect runs.
+      if (restoreHitsRef.current && !controller.isActive(time)) {
         restoreHitsRef.current();
         restoreHitsRef.current = null;
       }
+      // Elements attacked as the cursor is move on their own (puppets.ts); the
+      // frame also frees those whose attack is over.
+      theatre.frame(time, { width: window.innerWidth, height: window.innerHeight });
       const drawn = controller.frame(time);
       const look = hiddenRef.current ? { ...drawn, visible: false, decoys: undefined } : drawn;
       const place = (element: HTMLElement, at: Vec) => placeCursor(element, at, look);
@@ -248,7 +204,7 @@ export function XenocatCursorProvider({
       });
       // An effect animates on its own, and its end must still be drawn (and the page
       // put back): keep going while one plays. Otherwise sleep until woken.
-      if (controller.isBlocking(time)) wake();
+      if (controller.isActive(time) || theatre.isActive(time)) wake();
     }
     wake();
 
@@ -262,14 +218,12 @@ export function XenocatCursorProvider({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerout', onOut);
       window.removeEventListener('blur', onBlur);
-      window.removeEventListener('pointercancel', onCancel, true);
       window.removeEventListener('resize', onResize);
-      for (const type of BLOCKED_EVENTS) window.removeEventListener(type, onPointerAction, true);
     };
-  }, [enabled, controller]);
+  }, [enabled, controller, theatre]);
 
   // Touch screens: no fake cursor, but cats still attack the page around the last
-  // touch, and taps are blocked while they do (as clicks are with a cursor).
+  // touch. Taps go through, onto whatever has moved under them.
   useEffect(() => {
     if (enabled) return;
     const endTouchHit = () => {
@@ -281,23 +235,10 @@ export function XenocatCursorProvider({
     const onDown = (event: PointerEvent) => {
       if (event.pointerType !== 'mouse') touchRef.current = { x: event.clientX, y: event.clientY };
     };
-    const onActivate = (event: Event) => {
-      if (touchUntilRef.current === 0) return;
-      if (nowRef.current() >= touchUntilRef.current) {
-        endTouchHit();
-        return;
-      }
-      // Only a tap: a keyboard-made click has detail 0, and is never blocked.
-      if ((event as MouseEvent).detail === 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-    };
     window.addEventListener('pointerdown', onDown, { capture: true, passive: true });
-    for (const type of TOUCH_BLOCKED) window.addEventListener(type, onActivate, true);
     return () => {
       endTouchHit();
       window.removeEventListener('pointerdown', onDown, { capture: true });
-      for (const type of TOUCH_BLOCKED) window.removeEventListener(type, onActivate, true);
     };
   }, [enabled]);
 
@@ -311,7 +252,7 @@ export function XenocatCursorProvider({
           if (!touch || time < touchUntilRef.current) return false;
           restoreHitsRef.current?.();
           restoreHitsRef.current = hitPage(document.body, effect.id, touch, cat, random);
-          // Nothing near the touch: the cat pounces at nothing, and no tap is blocked.
+          // Nothing near the touch: the cat pounces at nothing.
           if (!restoreHitsRef.current) return true;
           touchUntilRef.current = time + effect.durationMs;
           window.clearTimeout(touchTimerRef.current);
@@ -322,20 +263,39 @@ export function XenocatCursorProvider({
           }, effect.durationMs);
           return true;
         }
-        if (!controller.attack(effect, cat, nowRef.current())) return false;
-        // Every attack also hits the page around the pointer, for as long as it lasts.
+        const time = nowRef.current();
+        if (!controller.attack(effect, cat, time)) return false;
+        // Every attack also hits the page around the pointer, until no effect runs:
+        // calm, with a nudge; above it, attacking the elements as it does the cursor
+        // (page-hits.ts, puppets.ts). Stacked attacks pile their hits up; they are
+        // put back newest first, so each element ends as it was before the first.
         const pointer = controller.position();
-        restoreHitsRef.current?.();
-        restoreHitsRef.current = pointer
-          ? hitPage(document.body, effect.id, pointer, cat, random)
-          : null;
+        const earlier = restoreHitsRef.current;
+        const level = HIT_LEVELS[getIntensity()];
+        let hits: (() => void) | null = null;
+        if (pointer && level.puppets) {
+          const targets = pickTargets(document.body, pointer, level.reach, random);
+          theatre.add(targets, effect, cat, time, level.puppets);
+          const text = hitText(targets, effect.id, random);
+          hits = () => {
+            text?.();
+            theatre.clear();
+          };
+        } else if (pointer) {
+          hits = hitPage(document.body, effect.id, pointer, cat, random);
+        }
+        restoreHitsRef.current =
+          earlier && hits
+            ? () => {
+                hits();
+                earlier();
+              }
+            : (hits ?? earlier);
         wakeRef.current();
         return true;
       },
       isBusy: () =>
-        enabled
-          ? controller.isBlocking(nowRef.current())
-          : nowRef.current() < touchUntilRef.current,
+        enabled ? controller.isActive(nowRef.current()) : nowRef.current() < touchUntilRef.current,
       position: () => controller.position(),
       touchPoint: () => (enabled ? null : touchRef.current),
       isPresent: () => controller.isPresent(),
@@ -347,7 +307,7 @@ export function XenocatCursorProvider({
       },
       isHidden: () => hiddenRef.current,
     }),
-    [controller, random, enabled]
+    [controller, theatre, random, enabled]
   );
 
   const layer = 'pointer-events-none fixed left-0 top-0 z-[9999] origin-top-left';

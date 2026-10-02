@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { findCombo } from '@/app/ui/xenocats/combos';
 import { createCursorController } from '@/app/ui/xenocats/cursor-controller';
-import { type Effect, heavy, knockback, restingLook, vanish } from '@/app/ui/xenocats/effects';
+import {
+  type Effect,
+  TINY_SCALE,
+  bounce,
+  freeze,
+  heavy,
+  knockback,
+  restingLook,
+  tiny,
+  vanish,
+} from '@/app/ui/xenocats/effects';
 import { createRandom } from '@/app/ui/xenocats/random';
 
 const viewport = { width: 1000, height: 800 };
@@ -25,17 +36,17 @@ describe('cursor controller', () => {
     expect(c.frame(16)).toMatchObject({ x: 30, y: 40 });
   });
 
-  it('blocks clicks only while an effect runs', () => {
+  it('is active only while an effect runs', () => {
     const c = controller();
     c.pointerMove({ x: 10, y: 20 });
-    expect(c.isBlocking(0)).toBe(false);
+    expect(c.isActive(0)).toBe(false);
     expect(c.attack(vanish, cat, 1000)).toBe(true);
-    expect(c.isBlocking(1000)).toBe(true);
-    expect(c.isBlocking(1000 + vanish.durationMs - 1)).toBe(true);
-    expect(c.isBlocking(1000 + vanish.durationMs)).toBe(false);
+    expect(c.isActive(1000)).toBe(true);
+    expect(c.isActive(1000 + vanish.durationMs - 1)).toBe(true);
+    expect(c.isActive(1000 + vanish.durationMs)).toBe(false);
   });
 
-  it('runs one effect at a time', () => {
+  it('without stacking (the games), runs one effect at a time', () => {
     const c = controller();
     c.pointerMove({ x: 10, y: 20 });
     expect(c.attack(vanish, cat, 0)).toBe(true);
@@ -44,6 +55,59 @@ describe('cursor controller', () => {
     // Once the first has ended, the next may start.
     expect(c.attack(heavy, cat, vanish.durationMs)).toBe(true);
     expect(c.activeEffectId(vanish.durationMs)).toBe('heavy');
+  });
+
+  describe('stacking (the page’s cursor)', () => {
+    const stacking = () =>
+      createCursorController({ viewport, random: createRandom(1), stack: true });
+
+    it('takes a second attack while one runs, and draws both', () => {
+      const c = stacking();
+      c.pointerMove({ x: 500, y: 400 });
+      c.frame(0);
+      expect(c.attack(heavy, cat, 0)).toBe(true);
+      expect(c.attack(tiny, cat, 100)).toBe(true);
+      expect(c.activeEffectId(100)).toBe('heavy+tiny');
+      c.pointerMove({ x: 600, y: 400 });
+      // Slowed by heavy and shrunk by tiny, at once.
+      const look = c.frame(116);
+      expect(look.x).toBeCloseTo(530);
+      expect(look.scale).toBe(TINY_SCALE);
+    });
+
+    it('each stacked effect ends on its own; it stays active until the last', () => {
+      const c = stacking();
+      c.pointerMove({ x: 500, y: 400 });
+      c.frame(0);
+      c.attack(vanish, cat, 0);
+      c.attack(tiny, cat, 1000);
+      expect(c.frame(1000).visible).toBe(false);
+      // Vanish is over: visible again, still tiny.
+      const after = c.frame(vanish.durationMs);
+      expect(after).toMatchObject({ visible: true, scale: TINY_SCALE });
+      expect(c.activeEffectId(vanish.durationMs)).toBe('tiny');
+      expect(c.isActive(1000 + tiny.durationMs - 1)).toBe(true);
+      expect(c.isActive(1000 + tiny.durationMs)).toBe(false);
+      expect(c.frame(1000 + tiny.durationMs)).toMatchObject({ x: 500, y: 400, scale: 1 });
+    });
+
+    it('two attacks that make a combo fuse into it', () => {
+      const c = stacking();
+      c.pointerMove({ x: 500, y: 400 });
+      c.attack(freeze, cat, 0);
+      c.attack(bounce, cat, 500);
+      expect(c.activeEffectId(500)).toBe(findCombo('freeze', 'bounce')!.effect.id);
+      // The combo starts afresh when it forms.
+      expect(c.isActive(500 + bounce.durationMs - 1)).toBe(true);
+    });
+
+    it('without stacking, the second attack is still refused', () => {
+      const c = controller();
+      c.pointerMove({ x: 500, y: 400 });
+      c.attack(freeze, cat, 0);
+      expect(c.attack(bounce, cat, 500)).toBe(false);
+      expect(c.activeEffectId(500)).toBe('freeze');
+    });
   });
 
   it('applies the effect frame by frame, then snaps back to the real pointer', () => {
@@ -127,14 +191,14 @@ describe('cursor controller', () => {
     expect(dts).toEqual([0, 16, 34]);
   });
 
-  it('refuses an effect that could block clicks for too long', () => {
+  it('refuses an effect that could last too long', () => {
     const c = controller();
     c.pointerMove({ x: 10, y: 10 });
     const forever: Effect = { ...vanish, id: 'forever', durationMs: Infinity };
     const long: Effect = { ...vanish, id: 'long', durationMs: 10_001 };
     expect(() => c.attack(forever, cat, 0)).toThrow(RangeError);
     expect(() => c.attack(long, cat, 0)).toThrow(RangeError);
-    expect(c.isBlocking(0)).toBe(false);
+    expect(c.isActive(0)).toBe(false);
   });
 
   it('hides the cursor while the pointer is outside the page', () => {

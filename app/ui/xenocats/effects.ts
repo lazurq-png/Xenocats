@@ -29,7 +29,7 @@ export type CursorLook = {
 
 export const MAX_DECOYS = 4;
 
-/** Longest an effect may run; clicks are blocked for its whole duration. */
+/** Longest an effect may run. */
 export const MAX_EFFECT_MS = 10_000;
 
 export type EffectInput<S = unknown> = {

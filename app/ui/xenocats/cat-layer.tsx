@@ -128,14 +128,13 @@ export function XenocatCatsProvider({
     // Clicking a sleeping cat wakes it at once, angry. The click itself goes on to
     // whatever is under the cat, as always (the cats never take clicks).
     // A mouse click lands where the visible cursor is; a tap or a pen, where it
-    // touched. Not while an effect blocks clicks.
+    // touched, even while an effect runs.
     // A press that pokes a cat is the cat's: the rest of it (up to and including
     // its click) never reaches what lies beneath — a hidden Delete button, say.
     // Keyboard-made clicks (detail 0) never come through here.
     let swallowPress = false;
     const onPoke = (event: PointerEvent) => {
       swallowPress = false;
-      if (cursor.isBusy()) return;
       const touched = { x: event.clientX, y: event.clientY };
       const at = event.pointerType === 'mouse' ? (cursor.position() ?? touched) : touched;
       if (engine.poke(at, cursor.now())) {
@@ -203,7 +202,7 @@ export function XenocatCatsProvider({
           // than waiting on screen for ever.
           const touch = cursor.touchPoint();
           if (touch === null && cursor.position() === null) return true;
-          // The pointer is off the page: wait, rather than block clicks with an effect
+          // The pointer is off the page: wait, rather than spend an effect
           // nobody sees.
           if (touch === null && !cursor.isPresent()) return false;
           // The page is drawing its own pointer (a locked Fight game): wait until it is done.

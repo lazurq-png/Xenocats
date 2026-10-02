@@ -1,7 +1,15 @@
-// What a cat's attack does to the page around the pointer: every attack also hits
-// the elements near it (buttons, links, text, cards, table rows, inputs) with an
-// effect matched to the cat's attack — a shake, tilt, blur, flip or glow, a push,
-// or scrambled or swapped text. It all reverts exactly when the attack ends.
+// What a cat's attack does to the page around the pointer. Which elements it hits
+// and how depends on the cat intensity (intensity.ts):
+//
+//   calm     the elements near the pointer (buttons, links, text, cards, table
+//            rows, inputs) get an effect matched to the attack — a shake, tilt,
+//            blur, flip or glow, a push, or scrambled or swapped text.
+//   normal   more elements, whole panels (frames) and a few anywhere on screen are
+//            attacked the way the cursor is: each becomes a puppet of the mouse
+//            under the cat's effect (puppets.ts). Scrambled or swapped text too.
+//   chaos    most of the screen, flung much further: things fly off the page.
+//
+// It all reverts exactly when the attack ends.
 //
 // How it stays reversible: an effect only adds `data-xenocat-hit*` attributes and
 // a few `--xenocat-hit-*` custom properties, which CSS rules in global.css turn
@@ -13,6 +21,7 @@
 
 import { CAT_CONFIG } from './config';
 import type { Vec } from './effects';
+import type { Intensity } from './intensity';
 import type { Random } from './random';
 
 export type HitKind =
@@ -28,7 +37,7 @@ export type HitStyle = {
   color?: string;
 };
 
-/** Each attack's (and combo's) effect on the page, keyed by effect id. */
+/** Each attack's (and combo's) effect on the page when calm, keyed by effect id. */
 export const PAGE_HITS: Readonly<Record<string, HitStyle>> = {
   vanish: { kind: 'blur', amount: 6 },
   heavy: { kind: 'push', amount: 18, direction: 'down' },
@@ -59,6 +68,56 @@ export const PAGE_HITS: Readonly<Record<string, HitStyle>> = {
   'static-fog': { kind: 'blur', amount: 5 },
 };
 
+/** How far an attack reaches on the page. */
+export type HitReach = {
+  /** Elements this near the pointer, px, and at most this many of them. */
+  radius: number;
+  max: number;
+  /** As many again, picked anywhere on screen. */
+  anywhere: number;
+  /** Whole panels (`data-xenocat-frame`) can be hit too. */
+  frames: boolean;
+};
+
+/** What each cat intensity does to the page. */
+export type HitLevel = {
+  reach: HitReach;
+  /**
+   * Null: the calm CSS effects (PAGE_HITS). Otherwise every hit element is
+   * attacked as the cursor is (puppets.ts), its displacement multiplied by
+   * `fling` (by `frameFling` for a whole panel), and its size kept within `scale`.
+   */
+  puppets: {
+    fling: number;
+    frameFling: number;
+    scale: readonly [number, number];
+    /** The chance an element also gets a weird twist (puppets.ts `twistFor`). */
+    weird: number;
+    /** Wild twists (upside down, mirrored, squashed) instead of slight ones. */
+    wild: boolean;
+  } | null;
+};
+
+export const HIT_LEVELS: Readonly<Record<Intensity, HitLevel>> = {
+  calm: {
+    reach: {
+      radius: CAT_CONFIG.pageHitRadius,
+      max: CAT_CONFIG.maxPageTargets,
+      anywhere: 0,
+      frames: false,
+    },
+    puppets: null,
+  },
+  normal: {
+    reach: { radius: 220, max: 8, anywhere: 4, frames: true },
+    puppets: { fling: 1, frameFling: 0.5, scale: [0.25, 2], weird: 0.15, wild: false },
+  },
+  chaos: {
+    reach: { radius: 400, max: 14, anywhere: 12, frames: true },
+    puppets: { fling: 2.5, frameFling: 1.5, scale: [0.1, 4], weird: 0.6, wild: true },
+  },
+};
+
 /** What a page element can be hit as: the ones that look like controls, text or cards. */
 export const HIT_SELECTOR = [
   'a[href]',
@@ -78,6 +137,9 @@ export const HIT_SELECTOR = [
   'tr',
   '[data-xenocat-card]',
 ].join(',');
+
+/** A whole panel (a chart, a table, a form, the side bar): hit only above calm. */
+export const FRAME_SELECTOR = '[data-xenocat-frame]';
 
 /** Never hit: the cats, the cursor, the game overlay and anything hidden from AT. */
 export const IGNORE_SELECTOR = '[aria-hidden="true"], [data-xenocat-ignore]';
@@ -122,6 +184,40 @@ export function selectTargets<T>(
     picked.push(c.item);
   }
   return picked;
+}
+
+/**
+ * `count` more elements from anywhere in the viewport, at random: none already
+ * `picked`, and none inside one picked or around it.
+ */
+export function pickAnywhere<T>(
+  candidates: readonly Candidate<T>[],
+  picked: readonly T[],
+  count: number,
+  viewport: { width: number; height: number },
+  contains: (a: T, b: T) => boolean,
+  random: Random
+): T[] {
+  const pool = candidates
+    .filter(
+      ({ rect }) =>
+        rect.right - rect.left >= 2 &&
+        rect.bottom - rect.top >= 2 &&
+        rect.right > 0 &&
+        rect.bottom > 0 &&
+        rect.left < viewport.width &&
+        rect.top < viewport.height
+    )
+    .map((c) => c.item);
+  const taken = [...picked];
+  const extra: T[] = [];
+  while (extra.length < count && pool.length > 0) {
+    const [item] = pool.splice(random.int(0, pool.length - 1), 1);
+    if (taken.some((p) => p === item || contains(p, item) || contains(item, p))) continue;
+    taken.push(item);
+    extra.push(item);
+  }
+  return extra;
 }
 
 /**
@@ -267,8 +363,43 @@ function containsFocusedField(element: Element): boolean {
 }
 
 /**
- * Hits the page around `pointer` for an attack whose effect is `effectId`, by a
- * cat centred at `cat`. Returns the restore function, or null if nothing was hit.
+ * The page elements an attack at `pointer` hits, as far as `reach` goes: the ones
+ * near the pointer, then (if it reaches anywhere) others picked at random on screen.
+ */
+export function pickTargets(
+  root: ParentNode,
+  pointer: Vec,
+  reach: HitReach,
+  random: Random
+): HTMLElement[] {
+  const selector = reach.frames ? `${HIT_SELECTOR},${FRAME_SELECTOR}` : HIT_SELECTOR;
+  const candidates = Array.from(root.querySelectorAll<HTMLElement>(selector))
+    .filter((element) => !element.closest(IGNORE_SELECTOR))
+    // The field being typed in is left alone altogether, not just its text.
+    .filter((element) => !containsFocusedField(element))
+    .map((element) => ({ item: element, rect: element.getBoundingClientRect() }));
+  const contains = (a: HTMLElement, b: HTMLElement) => a !== b && a.contains(b);
+  const near = selectTargets(candidates, pointer, reach.radius, reach.max, contains);
+  if (reach.anywhere === 0) return near;
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  return [...near, ...pickAnywhere(candidates, near, reach.anywhere, viewport, contains, random)];
+}
+
+/** Text effects (scrambled or swapped text) for the attacks that have one. */
+export function hitText(
+  targets: readonly HTMLElement[],
+  effectId: string,
+  random: Random
+): (() => void) | null {
+  const style = PAGE_HITS[effectId];
+  if (!style || (style.kind !== 'scramble' && style.kind !== 'swap')) return null;
+  return targets.length > 0 ? applyHits(targets, style, { x: 0, y: 0 }, random) : null;
+}
+
+/**
+ * Hits the page around `pointer` with the calm CSS effects for an attack whose
+ * effect is `effectId`, by a cat centred at `cat`. Returns the restore function,
+ * or null if nothing was hit.
  */
 export function hitPage(
   root: ParentNode,
@@ -280,17 +411,12 @@ export function hitPage(
 ): (() => void) | null {
   const style = PAGE_HITS[effectId];
   if (!style) return null;
-  const candidates = Array.from(root.querySelectorAll<HTMLElement>(HIT_SELECTOR))
-    .filter((element) => !element.closest(IGNORE_SELECTOR))
-    // The field being typed in is left alone altogether, not just its text.
-    .filter((element) => !containsFocusedField(element))
-    .map((element) => ({ item: element, rect: element.getBoundingClientRect() }));
-  const targets = selectTargets(
-    candidates,
+  const calm = HIT_LEVELS.calm.reach;
+  const targets = pickTargets(
+    root,
     pointer,
-    options.radius ?? CAT_CONFIG.pageHitRadius,
-    options.max ?? CAT_CONFIG.maxPageTargets,
-    (a, b) => a !== b && a.contains(b)
+    { ...calm, radius: options.radius ?? calm.radius, max: options.max ?? calm.max },
+    random
   );
   return targets.length > 0 ? applyHits(targets, style, cat, random) : null;
 }
