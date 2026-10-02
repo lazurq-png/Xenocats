@@ -279,8 +279,8 @@ clean exit does not mean an empty report. Read the output; do not report "lint
 passed" as though it found nothing.
 
 Formatting is per file. `npm run format` rewrites the whole repository, and not
-every file matches `.prettierrc` (`app/query/route.ts` is indented with tabs),
-so it produces a drive-by diff. Run `prettier --check` / `--write` on the files
+every file matches `.prettierrc` (e.g. `tsconfig.json`, `global.d.ts` and
+`app/dashboard/(overview)/loading.tsx` do not), so it produces a drive-by diff. Run `prettier --check` / `--write` on the files
 the task changed.
 
 The running app, and possibly `npm run build` where a page prerenders, need

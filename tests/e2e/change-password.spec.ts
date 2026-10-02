@@ -26,6 +26,9 @@ async function createUser() {
 
 async function logIn(page: Page, email: string, password: string) {
   await page.goto('/login');
+  // Filled before hydration, the form would be reset under the test's hands, and
+  // the message the test waits for would never come.
+  await page.waitForLoadState('networkidle');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: /log in/i }).click();

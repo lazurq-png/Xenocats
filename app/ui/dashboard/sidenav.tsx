@@ -34,6 +34,9 @@ export default function SideNav() {
         alt=""
         width={228}
         height={305}
+        // In view on every dashboard page from the start, and often its largest image
+        // (Next flags it as the LCP): load it at once rather than lazily.
+        loading="eager"
         className="pointer-events-none absolute bottom-0 left-0 hidden w-full md:block"
       />
     </div>

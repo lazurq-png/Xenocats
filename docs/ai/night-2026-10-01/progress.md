@@ -1242,3 +1242,51 @@ The re-review approved. Its Low (D26 out of date) is fixed.
 
 **UI**: tested in a browser, not seen. A human should look at the Settings
 page and the new navigation link at phone and desktop width.
+
+## T20 — Last run's leftovers (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24).
+
+- Branch `night-2026-10-01-t20-leftovers`, base `65303ce`. Started
+  2026-10-02 05:54 (budget 13.57M); completed 2026-10-02 06:09 (budget 13.55M).
+- **T19 CI: failed, fight group only** (inherited, Q1). The change-password
+  tests passed on both servers. Runs 36962202410 / 36962202192.
+
+**What the code does**
+
+- **`next-env.d.ts` untracked** (`git rm --cached`; the plan lifts the
+  delete rule for this file only). It was already in `.gitignore`. The file
+  stays on disk, and `next typegen`, which CI's type check runs first, writes
+  it again: I checked by moving it away, running typegen and type-checking.
+  Effect on the run's routine: the "put back `next-env.d.ts`" step after
+  each check is now a no-op, since the file is no longer tracked.
+- `app/ui/dashboard/sidenav.tsx`: the rail's cat image loads
+  `loading="eager"`, as Next's LCP warning asks. The dev server log had 42
+  warnings in T19's browser run and **0** in this task's.
+- `CLAUDE.md` §9: the stale example `app/query/route.ts` (the file no longer
+  exists) is replaced by files that actually fail `.prettierrc`
+  (`tsconfig.json`, `global.d.ts`, `app/dashboard/(overview)/loading.tsx`,
+  found by checking every tracked source file).
+- **Test fix (the gate found it):** `login-limit.spec.ts` and
+  `change-password.spec.ts` (T17, T19) filled the login form without waiting
+  for hydration, which every other spec avoids. Under `next start`, the
+  lockout test then waited in vain for "Invalid credentials." It failed 1 in
+  16 repeats before the fix and passed 24/24 after. The production job's
+  first browser group in T17's CI ran this test, so this is the likeliest
+  cause of that unidentified failure (T18's entry).
+
+**Why**: plan task 20, items as written. The test fix keeps the gate honest.
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 418 passed and 16 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e`: 83 passed, with 0 LCP warnings.
+- `E2E_SERVER=start`: 82 passed and 1 failed (the flake above). After the
+  fix it passed 83/83, the two specs passed 24/24 on start, and 4/4 on dev.
+- prettier clean (D1).
+
+**Review**: not dispatched for this task (three small mechanical edits and a
+test wait). Checkpoint 4, next, has the reviewer cover the whole range,
+these edits included.
