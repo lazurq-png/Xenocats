@@ -20,6 +20,7 @@ import type { CatConfig } from './config';
 import { strengthen } from './effects';
 import { useXenocatCursor } from './fake-cursor';
 import { recordStat } from './field-guide';
+import { INTENSITY_CONFIG, getIntensity, subscribeIntensity } from './intensity';
 import {
   type CatSounds,
   sharedSoundPlayer,
@@ -78,6 +79,20 @@ export function XenocatCatsProvider({
     })
   );
   const [cats, setCats] = useState<Cat[]>([]);
+  // How often cats come and how many at once: the visitor's setting, where cats
+  // come on their own (not where they only come when summoned). Normal is this
+  // provider's own configuration, as it was created.
+  const intensity = useSyncExternalStore(subscribeIntensity, getIntensity, () => 'normal' as const);
+  const [normal] = useState(() => ({
+    maxCats: engine.config.maxCats,
+    firstSpawnMs: engine.config.firstSpawnMs,
+    spawnEveryMs: engine.config.spawnEveryMs,
+  }));
+  useEffect(() => {
+    if (!autoSpawn) return;
+    if (intensity === 'normal' && engine.config.spawnEveryMs === normal.spawnEveryMs) return;
+    engine.configure(intensity === 'normal' ? normal : INTENSITY_CONFIG[intensity]);
+  }, [autoSpawn, engine, intensity, normal]);
   const [player] = useState(() => sharedSoundPlayer());
   // Read by the loop and the API, which should not restart when a caller passes a
   // new (equal) list.
@@ -236,7 +251,11 @@ export function XenocatCatsProvider({
 
   return (
     <CatsContext.Provider value={api}>
-      <div ref={pageRef} data-testid="xenocat-page">
+      <div
+        ref={pageRef}
+        data-testid="xenocat-page"
+        data-cat-intensity={autoSpawn ? intensity : undefined}
+      >
         {children}
       </div>
       <div

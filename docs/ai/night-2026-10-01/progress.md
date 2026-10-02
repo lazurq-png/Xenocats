@@ -1472,3 +1472,51 @@ tested there). Re-review: Approve.
 **UI**: tested in a browser, not seen. A human should look at the skip link
 (Tab once on any dashboard page), the lime focus ring on the navigation and
 links, and the phone-width navigation.
+
+## T24 — Cat intensity setting (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24, Q6).
+
+- Branch `night-2026-10-01-t24-cat-intensity`, base `39ba2d8`. Started
+  2026-10-02 06:56 (budget 13.44M); completed 2026-10-02 07:08 (budget 13.40M).
+- **T23 CI: failed, fight group only** (inherited, Q1). The keyboard spec
+  passed. Runs 36966753140 / 36966753130.
+
+**What the code does**
+
+- `app/ui/xenocats/intensity.ts` (new): calm (at most 2 cats, slow), normal
+  (exactly as before), chaos (at most 5, fast). Stored in `localStorage`
+  (`xenocats:intensity`); unknown values read as normal. No zero level.
+- `app/ui/xenocats/cat-engine.ts`: `configure()` changes how often and how
+  many at run time, never above five or below one.
+- `app/ui/xenocats/cat-layer.tsx`: on the dashboard (where cats come by
+  themselves) the engine follows the stored level, live and across tabs;
+  `/cats` is unaffected.
+- `app/dashboard/settings/page.tsx`, `app/ui/settings/cat-intensity.tsx`
+  (new): a "Cat intensity" radio group on the Settings page.
+- Tests:
+  - unit (`intensity.test.ts`): the levels; the engine holds 2, 5 and 5 cats
+    at the three levels; the clamp; first-cat timing per level; storage.
+  - browser (`intensity.spec.ts`): choose chaos, which is stored,
+    remembered, and gives two cats within 9.5 s (only chaos can); calm by
+    arrow keys, and back.
+  - Both are in CI.
+
+**Why**: plan task 24. Design: D32.
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 426 passed and 17 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e` and `E2E_SERVER=start`: 91 passed each.
+- After the review fix, the spec passed 6/6 on dev and 6/6 on start.
+- actionlint and prettier clean.
+
+**Review**: `reviewer` approved, with two Lows:
+- the chaos check could pass under normal: now a check only chaos can meet,
+  which also covers the cat layer's wiring;
+- a level change restarts the first-spawn delay: accepted (D32).
+
+**UI**: tested in a browser, not seen. A human should look at the Settings
+page's Cat intensity cards, and try chaos on the dashboard.

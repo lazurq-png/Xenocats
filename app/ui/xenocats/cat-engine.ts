@@ -174,6 +174,17 @@ export function createCatEngine(options: {
       viewport = size;
     },
 
+    /**
+     * Changes how often cats come and how many at once (the intensity setting).
+     * Never more than five, never none. The next spawn is scheduled afresh from the
+     * new timings; cats already on screen stay until they leave.
+     */
+    configure(changes: Partial<Pick<CatConfig, 'maxCats' | 'firstSpawnMs' | 'spawnEveryMs'>>) {
+      Object.assign(config, changes);
+      config.maxCats = Math.min(Math.max(1, config.maxCats), CAT_CONFIG.maxCats);
+      nextSpawnAt = null;
+    },
+
     cats(): readonly Cat[] {
       return cats;
     },

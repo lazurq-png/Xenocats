@@ -38,7 +38,7 @@ jobs:
         run: >-
           npx vitest run tests/unit/xenocats/random tests/unit/xenocats/effects
           tests/unit/xenocats/cursor-controller tests/unit/xenocats/cat-engine
-          tests/unit/xenocats/cat-types
+          tests/unit/xenocats/cat-types tests/unit/xenocats/intensity
       - name: Unit tests (cats, jsdom)
         if: ${{ !cancelled() }}
         run: >-
@@ -107,12 +107,13 @@ jobs:
       # so a failure is identifiable from the job's step names alone (but not when
       # the build or the browser install failed). Each keeps its own report and
       # traces: a Playwright run clears the previous run's.
-      - name: Browser tests against next start (smoke, branding, dashboard, login, settings, headers, states, keyboard)
+      - name: Browser tests against next start (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
           tests/e2e/change-password
           tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
+          tests/e2e/intensity
           --output test-results/smoke
         env:
           E2E_SERVER: start
@@ -199,12 +200,13 @@ jobs:
         run: npx playwright install --with-deps chromium
       # Needs no db:migrate: the tests rebuild their own xenocats_test schema. Named
       # groups, each with its own report and traces, as in the build job.
-      - name: Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard)
+      - name: Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
           tests/e2e/change-password
           tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
+          tests/e2e/intensity
           --output test-results/smoke
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke

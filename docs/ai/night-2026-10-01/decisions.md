@@ -843,3 +843,34 @@ tests that walk the dashboard and `/cats` by keyboard only.
 - **Not done**: a full audit (contrast, screen-reader announcements of every
   live region) — no tool for it without a dependency; focus rings checked by
   computed style, not seen.
+
+## D32 — T24: cat intensity setting
+
+Plan task 24: calm / normal / chaos — how often cats come and how many at once
+(chaos still at most 5); no zero level; remembered in `localStorage`.
+
+- **Levels** (`app/ui/xenocats/intensity.ts`): **normal is the cats exactly
+  as before** (at most 5; first after 3–7 s, then every 7–16 s) — the
+  smallest reading, so nobody's dashboard changes until they choose;
+  **calm** at most 2, first after 10–20 s, then every 25–45 s; **chaos** at
+  most 5, first after 1–3 s, then every 2.5–6 s. No zero: the cats stay.
+- **Engine** (`cat-engine.ts`): `configure()` changes those three settings
+  at run time, clamps `maxCats` to 1–5 whatever it is given (the five-cat
+  rule cannot be broken by a setting), and schedules the next spawn afresh;
+  cats already on screen stay until they leave.
+- **Where it applies**: only where cats come on their own (the dashboard);
+  `/cats`, where cats only come when summoned, is unaffected. "Normal"
+  restores the provider's own configuration (tests pass their own).
+- **The control**: a "Cat intensity" radio group on the Settings page (T19's
+  page), each level with a one-line description; saved in `localStorage`
+  (`xenocats:intensity`) on change, read with `useSyncExternalStore` (also
+  across tabs), like the sound toggle. Unknown stored values read as normal.
+- **Tests**: unit — the levels (normal = before, none zero, chaos 5), the
+  engine holds 2 / 5 / 5 cats over ten simulated minutes, the clamp, chaos's
+  first cat within 3 s and calm's after 10 s, storage and subscribers;
+  browser — choose chaos (stored, remembered across pages and reloads, and
+  two cats within 9.5 s on the dashboard, which only chaos can do: this is
+  what proves the cat layer applies the setting), calm by arrow keys and back.
+- **Accepted (reviewer, Low)**: a change of level schedules the next cat
+  from the new level's first-spawn delay, so switching can bring a cat a
+  little sooner than the level's steady pace.
