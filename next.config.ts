@@ -4,8 +4,8 @@ import type { NextConfig } from 'next';
 // rather than built per request, so it cannot carry a nonce: Next's own inline
 // scripts (the page's flight data) need 'unsafe-inline' for scripts, and the
 // cats' and charts' inline styles need it for styles. Everything else the app
-// loads is its own: fonts self-hosted by next/font, images from /public and
-// /_next/image (and data: URIs, e.g. the form plugin's SVG icons), sounds
+// loads is its own: fonts self-hosted by next/font, images from /public (and
+// data: URIs, e.g. the form plugin's SVG icons), sounds
 // synthesised with Web Audio (which CSP does not govern).
 // `next dev` also needs eval (React's dev tooling) and a WebSocket (hot reload).
 const isDev = process.env.NODE_ENV === 'development';
@@ -37,6 +37,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // The images in /public are already small WebPs, served as they are. Next's
+  // optimizer (/_next/image, as of 16.3.6) hangs for good on an image whose first
+  // request is aborted mid-encode — a navigation away at the wrong moment — and
+  // every later request for it then waits until the server restarts.
+  images: { unoptimized: true },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
