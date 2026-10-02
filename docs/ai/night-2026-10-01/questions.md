@@ -146,3 +146,11 @@ opt-in (skip unless `DATABASE_TESTS=1`, set on CI's "Database tests" step) —
 safest, but no longer "part of `npm test`" as the plan wrote; or (b) change
 the skill's baseline and gate to `E2E_NO_DATABASE=1 npm test`, or name
 `npm test` in §3 beside `npm run test:e2e`.
+
+## Q10 — Drop the `revenue` table (proposed by T21, not done)
+
+Nothing in the app reads `revenue` since `c495f87`; the chart and cards are
+computed from invoices (D29). Proposed for a next plan: a migration
+`DROP TABLE revenue` (after any deployed app version that reads it is gone),
+and remove `revenue` from `app/lib/placeholder-data.ts` and the seed in
+`scripts/db.mjs`. The task said not to drop it tonight.

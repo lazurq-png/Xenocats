@@ -751,3 +751,21 @@ test on a user of its own.
   both options.
 - **Findings 3 and 4 (Low)**: already recorded as Q9 (sessions survive a
   password change) and Q7 (`login_failures` grows with made-up emails).
+
+## D29 — T21: revenue from invoices (already true; proven, and the table's fate proposed)
+
+Plan task 21: "The revenue chart reads the static `revenue` table. Compute it
+from the invoices instead, so new invoices show in the chart. Do not drop the
+table; propose that in `questions.md`."
+
+- **Already done before this run.** The human's commit `c495f87` ("vibe a la
+  vibe", 2026-10-01 09:41) removed `SELECT * FROM revenue`; the chart
+  (`revenue-chart.tsx`) and the cards read `fetchMonthlyTotals` /
+  `fetchCardData`, which sum the invoices. Nothing in `app/` reads the
+  `revenue` table any more; only the seed fills it. The plan's description
+  predates that commit.
+- **What the task still needed**: evidence that new invoices show in the chart
+  — a database test (CI) in `data.test.ts`: the block's own invoices appear in
+  this month's and an earlier month's totals and in the 12-month cards, with
+  exact sums (the seed is outside the window) — and the proposal (Q10). No
+  application code changed.

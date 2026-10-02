@@ -1335,3 +1335,37 @@ round.
 - `npm run build`: exit 0.
 - `npm run test:e2e` and `E2E_SERVER=start`: 83 passed each.
 - The database tests run in this commit's CI.
+
+## T21 — Revenue from invoices (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24, Q6).
+
+- Branch `night-2026-10-01-t21-revenue-from-invoices`, base `2090c46`.
+  Started 2026-10-02 06:18 (budget 13.53M); completed 2026-10-02 06:27
+  (budget 13.51M).
+- **Checkpoint 4 CI: failed, fight group only** (inherited, Q1). The
+  `Database tests` step passed. Runs 36963973356 / 36963973396.
+
+**What the code does**
+
+- **No application change was needed.** The task says the chart reads the
+  static `revenue` table, but the human's commit `c495f87` (2026-10-01,
+  before this run) already moved the chart and the cards to totals computed
+  from the invoices. Nothing in `app/` reads `revenue` any more (D29).
+- `tests/unit/data.test.ts`: a database test (runs in CI) gives the evidence
+  for "new invoices show in the chart". The block's own new invoices appear,
+  with exact amounts, in this month's and an earlier month's chart totals and
+  in the 12-month cards.
+- The table is kept, as the task says. Dropping it is proposed in Q10.
+
+**Why**: plan task 21. D29 explains why there was no code change.
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 419 passed and 17 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e` and `E2E_SERVER=start`: 83 passed each.
+- The new database test first runs in this commit's CI.
+
+**Review**: not dispatched (a test and records only, no code change).

@@ -302,6 +302,19 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
       ]);
       expect(await data.fetchInvoicesPages(tag, 'overdue')).toBe(1);
     });
+
+    it('new invoices show in the revenue chart and the cards, computed from the invoices', async () => {
+      // The seed is all from 2022–2023: in the last 12 months only these two count.
+      const months = await data.fetchMonthlyTotals('12m');
+      const month = (date: string) => months.find((m) => m.month === date.slice(0, 7))!;
+      expect(month(today)).toEqual({ month: today.slice(0, 7), paid: 0, pending: 1111 });
+      expect(month(addDays(today, -40)).pending).toBe(2222);
+      expect(months.reduce((total, m) => total + m.paid + m.pending, 0)).toBe(3333);
+
+      const cards = await data.fetchCardData('12m');
+      expect(cards.pending.value).toBe(3333);
+      expect(cards.invoices.value).toBe(2);
+    });
   });
 });
 
