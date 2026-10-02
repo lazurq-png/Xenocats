@@ -346,13 +346,38 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
   await expect(page.getByTestId('fight-player').locator('svg').first()).toBeVisible();
   await expect(page.getByTestId('fight-crosshair').locator('svg')).toBeVisible();
 
-  // The crosshair moves by the mouse's movement (before any cat can scramble it).
-  const before = await placed(page, 'fight-crosshair');
-  mouse = { x: mouse.x + 60, y: mouse.y - 40 };
-  await page.mouse.move(mouse.x, mouse.y, { steps: 4 });
+  // The crosshair moves by the mouse's movement. A cat pounces on it from 2.5 s into
+  // the game, and its effect moves the crosshair too (Axis lock holds one axis,
+  // Drift pushes it, ...): so the movement is measured only while no effect runs on
+  // the crosshair, before and after, and measured again if one began meanwhile.
+  const crosshair = page.getByTestId('fight-crosshair');
+  const calm = async () => ((await crosshair.getAttribute('data-effect')) ?? '') === '';
+  let way = 1;
   await expect
-    .poll(() => placed(page, 'fight-crosshair'))
-    .toEqual({ x: before.x + 60, y: before.y - 40 });
+    .poll(
+      async () => {
+        if (!(await calm())) return false;
+        const before = await placed(page, 'fight-crosshair');
+        // Back and forth, so the crosshair stays clear of the edges however often.
+        const step = { x: 60 * way, y: -40 * way };
+        way = -way;
+        mouse = { x: mouse.x + step.x, y: mouse.y + step.y };
+        await page.mouse.move(mouse.x, mouse.y, { steps: 4 });
+        // Let the game draw the move.
+        await page.evaluate(
+          () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+        );
+        const after = await placed(page, 'fight-crosshair');
+        if (!(await calm())) return false;
+        // Within half a pixel: the positions are read back from decimal strings.
+        return (
+          Math.abs(after.x - (before.x + step.x)) < 0.5 &&
+          Math.abs(after.y - (before.y + step.y)) < 0.5
+        );
+      },
+      { timeout: 20_000, intervals: [100] }
+    )
+    .toBe(true);
 
   // Losing the lock ends the game if the page still has focus (that is Esc) and
   // pauses it if not (another window took it). Some headless browsers never give a

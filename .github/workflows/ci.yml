@@ -50,6 +50,7 @@ jobs:
           npx vitest run tests/unit/xenocats/survival tests/unit/xenocats/locked-pointer
           tests/unit/xenocats/taming tests/unit/xenocats/page-hits tests/unit/xenocats/sounds
           tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat tests/unit/xenocats/combos
+          tests/unit/xenocats/gun tests/unit/xenocats/puppets
       # A test file in no group would never run: each unit test must be named in a
       # group above, each browser test in a group of both browser jobs below.
       - name: Every test file is in a group
@@ -113,7 +114,7 @@ jobs:
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
           tests/e2e/change-password
           tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
-          tests/e2e/intensity
+          tests/e2e/intensity tests/e2e/dashboard-range
           --output test-results/smoke
         env:
           E2E_SERVER: start
@@ -137,7 +138,7 @@ jobs:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/invoices
       - name: Browser tests against next start (cats, petting, touch)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
+        run: npx playwright test tests/e2e/cats tests/e2e/cats-link tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
@@ -206,7 +207,7 @@ jobs:
           npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
           tests/e2e/change-password
           tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
-          tests/e2e/intensity
+          tests/e2e/intensity tests/e2e/dashboard-range
           --output test-results/smoke
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
@@ -227,7 +228,7 @@ jobs:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/invoices
       - name: Browser tests (cats, petting, touch)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
+        run: npx playwright test tests/e2e/cats tests/e2e/cats-link tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
       - name: Browser tests (fight)
