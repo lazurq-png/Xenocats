@@ -1,6 +1,11 @@
 'use client';
 
-import { Cog6ToothIcon, DocumentTextIcon, HomeIcon } from '@heroicons/react/24/outline';
+import {
+  Cog6ToothIcon,
+  DocumentTextIcon,
+  HomeIcon,
+  SparklesIcon,
+} from '@heroicons/react/24/outline';
 import { UserGroupIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -12,6 +17,8 @@ const links = [
   { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
+  // Outside the dashboard's layout: its cats stop there, and start again on return.
+  { name: 'Meet the cats', href: '/cats', icon: SparklesIcon },
 ];
 
 export default function NavLinks() {
