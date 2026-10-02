@@ -18,6 +18,7 @@ export function CatSprite({
   pose,
   size = 72,
   art,
+  still = false,
 }: {
   palette: CatPalette;
   look?: CatLook;
@@ -25,6 +26,11 @@ export function CatSprite({
   size?: number;
   /** Rendered artwork for this pose (cat-art.ts), drawn instead of the SVG. */
   art?: string;
+  /**
+   * The glow held steady instead of pulsing: for a page of many sprites at once
+   * (the /cats roster), where every pulse would be redrawn on every frame.
+   */
+  still?: boolean;
 }) {
   if (art) {
     // `.xenocat-body` keeps the breathing and staged-entrance hooks; awake, the
@@ -38,14 +44,21 @@ export function CatSprite({
           width={size}
           height={size}
           draggable={false}
-          className={pose === 'awake' ? 'xenocat-art-glow' : undefined}
+          className={
+            pose === 'awake' ? (still ? 'xenocat-art-glow-still' : 'xenocat-art-glow') : undefined
+          }
           style={{ '--xenocat-glow': palette.glow } as React.CSSProperties}
         />
       </span>
     );
   }
   return (
-    <svg width={size} height={size} viewBox="0 0 72 72" className="overflow-visible">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 72 72"
+      className={still ? 'xenocat-still overflow-visible' : 'overflow-visible'}
+    >
       {pose === 'asleep' ? (
         <Asleep palette={palette} look={look} />
       ) : (

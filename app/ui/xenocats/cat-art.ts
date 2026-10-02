@@ -46,6 +46,10 @@ export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = 
     awake: '/xenocats/cats/magneto-bengal-awake.webp',
     asleep: '/xenocats/cats/magneto-bengal-asleep.webp',
   },
+  // Asleep still to come: until then the on-screen cat keeps its SVG (wholeSet).
+  'orbit-abyssinian': {
+    awake: '/xenocats/cats/orbit-abyssinian-awake.webp',
+  },
 };
 
 /**

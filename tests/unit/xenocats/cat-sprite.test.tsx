@@ -49,6 +49,17 @@ describe('CatSprite', () => {
     }
   });
 
+  it('still, marks the drawing so its glowing parts do not pulse', () => {
+    const type = CAT_TYPES[0];
+    const { container } = render(
+      <CatSprite palette={type.palette} look={type.look} pose="awake" still />
+    );
+    const svg = container.querySelector('svg')!;
+    expect(svg.classList.contains('xenocat-still')).toBe(true);
+    // The glowing parts are still drawn; only their animation stops (global.css).
+    expect(svg.querySelectorAll('.xenocat-glow').length).toBeGreaterThan(0);
+  });
+
   it('sleeping looks different from awake', () => {
     const type = CAT_TYPES[0];
     const awake = renderToStaticMarkup(

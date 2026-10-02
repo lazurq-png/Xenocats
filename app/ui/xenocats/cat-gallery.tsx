@@ -119,6 +119,7 @@ const CatCard = memo(function CatCard({
             pose="awake"
             size={64}
             art={catArt(type.id, 'awake')}
+            still
           />
         </div>
         <div>

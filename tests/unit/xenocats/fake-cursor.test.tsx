@@ -2,11 +2,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { jitter, vanish } from '@/app/ui/xenocats/effects';
+import { jitter, restingLook, vanish } from '@/app/ui/xenocats/effects';
 import {
   HIDE_CURSOR_CLASS,
   type XenocatCursor,
   XenocatCursorProvider,
+  hideCursor,
+  placeCursor,
   useXenocatCursor,
 } from '@/app/ui/xenocats/fake-cursor';
 
@@ -382,5 +384,61 @@ describe('on a touch screen', () => {
     expect(save.hasAttribute('data-xenocat-hit')).toBe(true);
     cleanup();
     expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
+  });
+});
+
+describe('drawing only what changes', () => {
+  const frames = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it('a cursor at rest asks for no frames; a move or an attack wakes it until the effect ends', async () => {
+    mockPointer(true);
+    renderPage();
+    const raf = vi.spyOn(window, 'requestAnimationFrame');
+    const fake = screen.getByTestId('fake-cursor');
+
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 20 });
+    await waitFor(() => expect(fake.style.transform).toContain('10px, 20px'));
+    await frames(60);
+    const resting = raf.mock.calls.length;
+    await frames(100);
+    expect(raf.mock.calls.length).toBe(resting);
+
+    // An effect keeps it drawing, on its own, to its end; then it sleeps again.
+    act(() => {
+      expect(cursor.attack(vanish, { x: 300, y: 300 })).toBe(true);
+    });
+    await waitFor(() => expect(fake.dataset.effect).toBe('vanish'));
+    await frames(60);
+    expect(raf.mock.calls.length).toBeGreaterThan(resting + 2);
+    clock = vanish.durationMs;
+    await waitFor(() => expect(fake.dataset.effect).toBe(''));
+    expect(fake.style.opacity).toBe('1');
+    await frames(60);
+    const after = raf.mock.calls.length;
+    await frames(100);
+    expect(raf.mock.calls.length).toBe(after);
+    raf.mockRestore();
+  });
+
+  it('writes no style when the cursor would be drawn the same again, and hiding does not go stale', async () => {
+    const element = document.createElement('div');
+    let writes = 0;
+    const observer = new MutationObserver((records) => (writes += records.length));
+    observer.observe(element, { attributes: true, attributeFilter: ['style'] });
+    const look = restingLook({ x: 5, y: 6 });
+
+    placeCursor(element, look, look);
+    await Promise.resolve();
+    expect(writes).toBeGreaterThan(0);
+    const first = writes;
+    placeCursor(element, look, look);
+    await Promise.resolve();
+    expect(writes).toBe(first);
+
+    hideCursor(element);
+    expect(element.style.opacity).toBe('0');
+    placeCursor(element, look, look);
+    expect(element.style.opacity).toBe('1');
+    observer.disconnect();
   });
 });

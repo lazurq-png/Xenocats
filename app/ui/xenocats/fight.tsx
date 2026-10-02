@@ -9,7 +9,7 @@ import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, catTypeById } from './cat-types';
 import { CAT_CONFIG } from './config';
 import { MAX_DECOYS, type Vec } from './effects';
-import { CursorShape, placeCursor, useXenocatCursor } from './fake-cursor';
+import { CursorShape, hideCursor, placeCursor, useXenocatCursor } from './fake-cursor';
 import { type LockedPointer, createLockedPointer } from './locked-pointer';
 import {
   SURVIVAL_BEST_KEY,
@@ -294,7 +294,7 @@ export default function Fight({
           decoyRefs.current.forEach((decoy, i) => {
             if (!decoy) return;
             if (i < decoys.length) placeCursor(decoy, decoys[i], look);
-            else decoy.style.opacity = '0';
+            else hideCursor(decoy);
           });
         } else {
           const viewport = viewportSize();

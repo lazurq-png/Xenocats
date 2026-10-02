@@ -103,6 +103,8 @@ export function XenocatCatsProvider({
   // What a stomp shakes: the page content only. The cat layer (below) and the fake
   // cursor sit outside it, so a transform here can never move them.
   const pageRef = useRef<HTMLDivElement>(null);
+  // Asks the loop below for a frame; it sleeps where no cat is due (see tick).
+  const wakeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const onResize = () => engine.resize({ width: window.innerWidth, height: window.innerHeight });
@@ -177,12 +179,19 @@ export function XenocatCatsProvider({
       for (const id of phases.keys()) if (!seen.has(id)) phases.delete(id);
     };
 
-    const tick = () => {
+    const purr = (cat: Cat) => {
+      const type = typesRef.current.find((t) => t.id === cat.typeId);
+      if (type) player.play(soundsFor(type).purr);
+    };
+
+    const wake = () => {
+      if (!frameId) frameId = requestAnimationFrame(tick);
+    };
+    wakeRef.current = wake;
+
+    function tick() {
+      frameId = 0;
       playPhases();
-      const purr = (cat: Cat) => {
-        const type = typesRef.current.find((t) => t.id === cat.typeId);
-        if (type) player.play(soundsFor(type).purr);
-      };
       // Petting needs the pointer on the page: one that has left it pets nothing.
       const pointer = cursor.isPresent() ? cursor.position() : null;
       const changed = engine.tick(
@@ -218,12 +227,16 @@ export function XenocatCatsProvider({
         purr
       );
       if (changed) setCats(snapshot(engine));
-      frameId = requestAnimationFrame(tick);
-    };
-    frameId = requestAnimationFrame(tick);
+      // Where cats only come when summoned and none is here, there is nothing to do
+      // each frame: sleep until a summon wakes the loop.
+      if (autoSpawn || engine.cats().length > 0) wake();
+    }
+    wake();
 
     return () => {
       cancelAnimationFrame(frameId);
+      frameId = 0;
+      wakeRef.current = () => {};
       window.removeEventListener('resize', onResize);
       for (const type of gestures) window.removeEventListener(type, unlock, { capture: true });
       window.removeEventListener('pointerdown', onPoke, { capture: true });
@@ -231,13 +244,16 @@ export function XenocatCatsProvider({
         window.removeEventListener(type, onPressRest, { capture: true });
       window.removeEventListener('pointercancel', endPress, { capture: true });
     };
-  }, [engine, cursor, player]);
+  }, [engine, cursor, player, autoSpawn]);
 
   const api = useMemo<Xenocats>(
     () => ({
       summon: (typeId, options) => {
         const cat = engine.summon(typeId, cursor.now(), cursor.position(), options);
-        if (cat) setCats(snapshot(engine));
+        if (cat) {
+          setCats(snapshot(engine));
+          wakeRef.current();
+        }
         return cat !== null;
       },
       count: () => engine.cats().length,

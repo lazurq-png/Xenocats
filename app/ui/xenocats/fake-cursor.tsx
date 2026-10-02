@@ -70,6 +70,10 @@ export const HIDE_CURSOR_CLASS = 'xenocat-cursor-hidden';
 // cat's attack hits the page. Nothing that starts a scroll is.
 const TOUCH_BLOCKED = ['mousedown', 'click', 'dblclick', 'contextmenu'] as const;
 
+// What each cursor element was last drawn as: a frame that would draw the same again
+// writes nothing, so a cursor at rest costs no style work and no repaint.
+const lastDrawn = new WeakMap<HTMLElement, string>();
+
 /** Draws a cursor element (or one of its decoys) at `at`, looking as `look` says. */
 export function placeCursor(element: HTMLElement, at: Vec, look: CursorLook) {
   const filter = [
@@ -78,9 +82,21 @@ export function placeCursor(element: HTMLElement, at: Vec, look: CursorLook) {
   ]
     .filter(Boolean)
     .join(' ');
-  element.style.transform = `translate3d(${at.x}px, ${at.y}px, 0) scale(${look.scale})`;
-  element.style.opacity = String(look.visible ? look.opacity : 0);
+  const transform = `translate3d(${at.x}px, ${at.y}px, 0) scale(${look.scale})`;
+  const opacity = String(look.visible ? look.opacity : 0);
+  const drawn = `${transform}|${opacity}|${filter}`;
+  if (lastDrawn.get(element) === drawn) return;
+  lastDrawn.set(element, drawn);
+  element.style.transform = transform;
+  element.style.opacity = opacity;
   element.style.filter = filter;
+}
+
+/** Hides a cursor element (an unused decoy), through the same record as placeCursor. */
+export function hideCursor(element: HTMLElement) {
+  if (lastDrawn.get(element) === 'hidden') return;
+  lastDrawn.set(element, 'hidden');
+  element.style.opacity = '0';
 }
 
 /**
@@ -109,6 +125,8 @@ export function XenocatCursorProvider({
   const decoyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const nowRef = useRef(now);
   const hiddenRef = useRef(false);
+  // Asks for a frame of the draw loop, which sleeps while there is nothing to draw.
+  const wakeRef = useRef<() => void>(() => {});
   // Puts back the page elements the running attack hit (page-hits.ts).
   const restoreHitsRef = useRef<(() => void) | null>(null);
   // Touch screens: the last touch, and until when a touch attack runs.
@@ -133,19 +151,41 @@ export function XenocatCursorProvider({
     if (!enabled) return;
     const root = document.documentElement;
 
+    // The draw loop runs only while there is something to draw: the pointer moved,
+    // left, or an effect is playing. A cursor at rest asks for no frames at all.
+    let frameId = 0;
+    const wake = () => {
+      if (!frameId) frameId = requestAnimationFrame(draw);
+    };
+    wakeRef.current = wake;
+
+    // A pointer moving over the same element needs no new cursor shape: the lookup
+    // (three selector matches up the tree) runs only when the target changes.
+    let lastTarget: EventTarget | null = null;
     const onMove = (event: PointerEvent) => {
       // Hide the system cursor only once the fake one knows where to draw: until the
       // first move after load there would otherwise be no cursor on screen at all.
-      root.classList.add(HIDE_CURSOR_CLASS);
+      if (lastTarget === null) root.classList.add(HIDE_CURSOR_CLASS);
       controller.pointerMove({ x: event.clientX, y: event.clientY });
-      setKind(cursorKindFor(event.target));
+      if (event.target !== lastTarget) {
+        lastTarget = event.target;
+        setKind(cursorKindFor(event.target));
+      }
+      wake();
     };
     const onOut = (event: PointerEvent) => {
-      if (event.relatedTarget === null) controller.pointerLeave();
+      if (event.relatedTarget !== null) return;
+      controller.pointerLeave();
+      wake();
     };
-    const onBlur = () => controller.pointerLeave();
-    const onResize = () =>
+    const onBlur = () => {
+      controller.pointerLeave();
+      wake();
+    };
+    const onResize = () => {
       controller.resize({ width: window.innerWidth, height: window.innerHeight });
+      wake();
+    };
 
     let swallowPress = false;
     const onPointerAction = (event: Event) => {
@@ -181,8 +221,8 @@ export function XenocatCursorProvider({
     // Capture phase on window runs before anything on the page sees the event.
     for (const type of BLOCKED_EVENTS) window.addEventListener(type, onPointerAction, true);
 
-    let frameId = 0;
-    const draw = () => {
+    function draw() {
+      frameId = 0;
       const time = nowRef.current();
       // The page is put back on the first frame the clicks are no longer blocked, so
       // an element is never displaced while it can be clicked.
@@ -197,20 +237,25 @@ export function XenocatCursorProvider({
       const cursor = cursorRef.current;
       if (cursor) {
         place(cursor, look);
-        cursor.dataset.effect = controller.activeEffectId(time) ?? '';
+        const effect = controller.activeEffectId(time) ?? '';
+        if (cursor.dataset.effect !== effect) cursor.dataset.effect = effect;
       }
       const decoys = look.decoys ?? [];
       decoyRefs.current.forEach((decoy, i) => {
         if (!decoy) return;
         if (i < decoys.length) place(decoy, decoys[i]);
-        else decoy.style.opacity = '0';
+        else hideCursor(decoy);
       });
-      frameId = requestAnimationFrame(draw);
-    };
-    frameId = requestAnimationFrame(draw);
+      // An effect animates on its own, and its end must still be drawn (and the page
+      // put back): keep going while one plays. Otherwise sleep until woken.
+      if (controller.isBlocking(time)) wake();
+    }
+    wake();
 
     return () => {
       cancelAnimationFrame(frameId);
+      frameId = 0;
+      wakeRef.current = () => {};
       root.classList.remove(HIDE_CURSOR_CLASS);
       restoreHitsRef.current?.();
       restoreHitsRef.current = null;
@@ -284,6 +329,7 @@ export function XenocatCursorProvider({
         restoreHitsRef.current = pointer
           ? hitPage(document.body, effect.id, pointer, cat, random)
           : null;
+        wakeRef.current();
         return true;
       },
       isBusy: () =>
@@ -297,6 +343,7 @@ export function XenocatCursorProvider({
       random,
       hide: (hidden) => {
         hiddenRef.current = hidden;
+        wakeRef.current();
       },
       isHidden: () => hiddenRef.current,
     }),
