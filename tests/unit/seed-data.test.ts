@@ -50,4 +50,12 @@ describe('the migrations', () => {
     expect(body).toMatch(/CHECK \(due_date >= date\)/);
     expect(body).not.toMatch(/\bDROP\b/i);
   });
+
+  it('add the login lockout table, keyed by email, touching nothing else', () => {
+    const body = readFileSync(new URL('0004_login_failures.sql', dir), 'utf8');
+    expect(body).toMatch(/CREATE TABLE login_failures \(\s*email TEXT PRIMARY KEY/);
+    expect(body).toMatch(/failures INT NOT NULL CHECK \(failures >= 0\)/);
+    expect(body).toMatch(/locked_until TIMESTAMPTZ/);
+    expect(body).not.toMatch(/\b(DROP|ALTER|UPDATE|DELETE)\b/i);
+  });
 });

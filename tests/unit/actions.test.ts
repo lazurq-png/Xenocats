@@ -363,6 +363,8 @@ describe('changePassword', () => {
       done: true,
       message: 'Your password has been changed.',
     });
+    // Counted apart from logins, so failed logins cannot block a change.
+    expect(sql.mock.calls[0][1]).toBe('change-password:user@example.com');
     // Looked up by the session's email, never by anything the form sends.
     expect(sql.mock.calls[1].slice(1)).toEqual(['user@example.com']);
     const update = sql.mock.calls.find((call) =>

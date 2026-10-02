@@ -299,8 +299,9 @@ export type PasswordState = {
 /**
  * The logged-in user changes their password: the current one must be right, the
  * new one valid (ChangePasswordForm); it is stored as a bcrypt hash. Checking the
- * current password is a guess at it like a login, so it counts towards the same
- * lockout (app/lib/login-limit.ts).
+ * current password is a guess at it, so it is limited like a login
+ * (app/lib/login-limit.ts), but counted apart: failed logins by someone else
+ * cannot stop the user changing their password, nor the reverse.
  */
 export async function changePassword(
   prevState: PasswordState,
@@ -323,7 +324,7 @@ export async function changePassword(
   }
 
   const { currentPassword, newPassword } = validatedFields.data;
-  const key = loginKey(email);
+  const key = `change-password:${loginKey(email)}`;
   try {
     if (!(await claimAttempt(sql, key, loginLimits()))) {
       return { message: 'Too many failed attempts for this account. Try again later.' };

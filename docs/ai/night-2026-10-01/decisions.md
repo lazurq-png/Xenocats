@@ -725,10 +725,29 @@ test on a user of its own.
   alike, and different from the current one. Then compares the current
   password with bcrypt and stores `bcryptjs.hash(new, 10)` — the cost the
   seed uses.
-- **Counts towards the lockout** (T17): checking the current password is a
-  guess at it, so a session holder could otherwise try passwords here without
-  limit. It claims an attempt for the user's email first and clears on
-  success; a locked account is refused before comparing.
+- **Limited like a login** (T17's `claimAttempt`): checking the current
+  password is a guess at it, so a session holder could otherwise try passwords
+  here without limit. Counted under its own key (`change-password:<email>`)
+  since checkpoint 4: a shared count let an outsider's failed logins block a
+  logged-in user's password change (and the reverse).
 - **Not done**: other sessions of the user stay valid (JWT sessions cannot be
   revoked without a session store or a password-change timestamp checked on
   every request), and no email notice is sent. Q9.
+
+## D28 — Checkpoint 4 (T16–T20)
+
+- **Tests added**: the shape of migration 0004 (a new table keyed by email,
+  nothing else touched), beside the checks for 0002 and 0003. Nothing
+  removed: no test of removed behaviour, no duplicate found.
+- **Reviewer finding 2 (Low), fixed**: change-password attempts are counted
+  under their own key (D27); unit test asserts the key.
+- **Finding 5 (Low), fixed**: `data.test.ts` rebuilds its schema in a
+  file-level `beforeAll`, so each block also runs on its own.
+- **Finding 1 (Medium), not changed in code — escalated in Q6.** The
+  reviewer suggests making the database tests opt-in (`DATABASE_TESTS=1`, set
+  only in CI). That would contradict the plan's words for T16 ("part of
+  `npm test`, skipping without a database like the e2e ones"); the other fix
+  is the skill's gate and §3, which are the human's to change. Q6 now gives
+  both options.
+- **Findings 3 and 4 (Low)**: already recorded as Q9 (sessions survive a
+  password change) and Q7 (`login_failures` grows with made-up emails).

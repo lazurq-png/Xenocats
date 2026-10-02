@@ -47,15 +47,21 @@ const today = new Date().toISOString().slice(0, 10);
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
+// The schema is rebuilt once for the whole file, so any block below also runs on
+// its own (e.g. with -t).
+beforeAll(() => {
+  if (!url) return;
+  execFileSync(
+    process.execPath,
+    ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', 'scripts/db.mjs', 'reset'],
+    { env: { ...process.env, POSTGRES_URL: url }, stdio: 'pipe' }
+  );
+}, 60_000);
+
 describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
   let data: typeof import('@/app/lib/data');
 
   beforeAll(async () => {
-    execFileSync(
-      process.execPath,
-      ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', 'scripts/db.mjs', 'reset'],
-      { env: { ...process.env, POSTGRES_URL: url! }, stdio: 'pipe' }
-    );
     // data.ts connects to POSTGRES_URL when it is first imported.
     process.env.POSTGRES_URL = url!;
     data = await import('@/app/lib/data');
@@ -300,7 +306,7 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
 });
 
 // The login lockout's statements (app/lib/login-limit.ts) against the same schema,
-// which the suite above has just rebuilt; each test on an email of its own.
+// which the file-level beforeAll rebuilds; each test on an email of its own.
 describe.skipIf(!url)('the login lockout in the database', () => {
   let sql: postgres.Sql;
   let lockout: typeof import('@/app/lib/login-limit');

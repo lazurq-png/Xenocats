@@ -137,3 +137,12 @@ the user's other sessions. Ending them needs either a session store or a
 `password_changed_at` column compared with the token's issue time on every
 request. Proposed for a next plan, with an email notice of the change if mail
 is ever set up.
+
+**Q6, added by checkpoint 4:** the reviewer rated this Medium — a new run
+following the skill as written would run plain `npm test` and so rebuild
+`xenocats_vitest` on the development server, which the skill's §3 forbids.
+Two ways out, either a human's call: (a) make `tests/unit/data.test.ts`
+opt-in (skip unless `DATABASE_TESTS=1`, set on CI's "Database tests" step) —
+safest, but no longer "part of `npm test`" as the plan wrote; or (b) change
+the skill's baseline and gate to `E2E_NO_DATABASE=1 npm test`, or name
+`npm test` in §3 beside `npm run test:e2e`.

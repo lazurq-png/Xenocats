@@ -1290,3 +1290,48 @@ page and the new navigation link at phone and desktop width.
 **Review**: not dispatched for this task (three small mechanical edits and a
 test wait). Checkpoint 4, next, has the reviewer cover the whole range,
 these edits included.
+
+## Checkpoint 4 (after T20; range `792ffe1..41f00b4`, tasks 16–20) (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24, Q6).
+
+- Branch `night-2026-10-01-c4-checkpoint`, base `41f00b4`. Started
+  2026-10-02 06:09 (budget 13.55M); completed 2026-10-02 06:18 (budget 13.53M).
+- **T20 CI: failed, fight group only** (inherited, Q1). The type check passed
+  on CI's fresh checkout without a tracked `next-env.d.ts`. Runs 36963281413
+  / 36963280721.
+- **For whoever pulls this branch:** the commit that untracks
+  `next-env.d.ts` deletes the local copy on checkout. `npm run dev`, `next
+  build` or `npx next typegen` writes it again (here: `next typegen`).
+
+**1. Tests.** Gap filled: migration 0004 now has a shape test (a new table
+keyed by email, nothing else touched), like 0002 and 0003. No test removed:
+none found testing removed behaviour, duplicating another, or unable to fail.
+The database block for the lockout now also runs on its own (below).
+
+**2. Quality and security.** The `reviewer` covered the range with the
+security rules and approved. The cross-task checks came out clean: no test
+fails the demo user's login; the lock message reaches the user; the counter's
+SQL; `changePassword`; the CSP; the CI wiring. Findings:
+- **(Medium) Escalated, not changed (Q6).** Plain `npm test` now writes a
+  schema on the development server, but the skill still tells runs to use it.
+  The two fixes are making the tests opt-in, which contradicts T16's wording,
+  or changing the skill; both are a human's call.
+- **(Low) Fixed.** Login and change-password shared one lockout count, so an
+  outsider's failed logins could block a password change. Change-password
+  attempts are now counted under their own key, and a unit test asserts it.
+- **(Low) Already recorded.** Other sessions survive a password change (Q9);
+  `login_failures` grows with made-up emails (Q7).
+- **(Low) Fixed.** The lockout database block depended on the block before
+  it; the schema reset is now file-level.
+
+The fixes are what the reviewer recommended, so there was no second review
+round.
+
+**3. Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 419 passed and 16 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e` and `E2E_SERVER=start`: 83 passed each.
+- The database tests run in this commit's CI.
