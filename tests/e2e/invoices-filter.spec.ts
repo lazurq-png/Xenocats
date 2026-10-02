@@ -155,3 +155,15 @@ test('a new unpaid invoice is due in 30 days: pending, not overdue', async ({ pa
   await expect(page.getByText('Due', { exact: true })).toBeVisible();
   await expect(page.getByText(shown)).toHaveCount(1);
 });
+
+test('a page number that makes no sense shows the first page, not an error', async ({ page }) => {
+  await logIn(page);
+  for (const value of ['-1', '0', '2.5', 'abc']) {
+    await page.goto(`/dashboard/invoices?page=${value}`);
+    // Real rows (they show amounts; the loading skeleton does not), then no error:
+    // the list streams in after the page, and so would an error.
+    await expect(rows(page).filter({ hasText: '$' }).first()).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: 'Something went wrong!' })).toHaveCount(0);
+  }
+});

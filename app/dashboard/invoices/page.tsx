@@ -5,6 +5,7 @@ import { CreateInvoice } from '@/app/ui/invoices/buttons';
 import { InvoicesTableSkeleton } from '@/app/ui/skeletons';
 import { Suspense } from 'react';
 import { fetchInvoicesPages } from '@/app/lib/data';
+import { parsePage } from '@/app/lib/utils';
 import { Metadata } from 'next';
 import { parseStatusFilter } from '@/app/lib/schemas';
 import StatusFilter from '@/app/ui/invoices/status-filter';
@@ -23,7 +24,7 @@ export default async function Page(props: {
 }) {
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
-  const currentPage = Number(searchParams?.page) || 1;
+  const currentPage = parsePage(searchParams?.page);
   // Anything but a known status shows them all.
   const status = parseStatusFilter(searchParams?.status);
   const totalPages = await fetchInvoicesPages(query, status);

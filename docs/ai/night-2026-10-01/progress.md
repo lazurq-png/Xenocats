@@ -1520,3 +1520,56 @@ links, and the phone-width navigation.
 
 **UI**: tested in a browser, not seen. A human should look at the Settings
 page's Cat intensity cards, and try chaos on the dashboard.
+
+## T25-1 — starting: a nonsense `?page=` no longer crashes the invoice list
+
+- **Kind**: security and quality.
+- **What**: `?page=-1` (or `0.5`, `1e9`) on `/dashboard/invoices` reaches the
+  SQL as a negative or fractional `OFFSET`, which PostgreSQL rejects, so the
+  page falls into the error state (found by T22, Q11). Clamp the page to a
+  whole number of at least 1, in a pure, unit-tested parser, as the status
+  filter already ignores unknown values.
+- **Why it is worth doing**: any visitor can break the list with a hand-edited
+  link or a stale bookmark; the fix is small and testable.
+
+## T25-1 — A nonsense `?page=` no longer crashes the invoice list (completed)
+
+> Still in force: run `npm test` as `E2E_NO_DATABASE=1 npm test` (T16, D24, Q6).
+
+- Branch `night-2026-10-01-t25-1-page-param`, base `0df5ef6`. Started
+  2026-10-02 07:09 (budget 13.39M); completed 2026-10-02 07:18 (budget 13.37M).
+- **T24 CI: failed, fight group only** (inherited, Q1). The intensity specs
+  passed. Runs 36967650995 / 36967650922.
+
+**What the code does**
+
+- `app/lib/utils.ts`, `parsePage` (new): a page from the URL is a whole
+  number from 1 up; anything else is page 1.
+- `app/dashboard/invoices/page.tsx` (server) and
+  `app/ui/invoices/pagination.tsx` (client) both use it. Before,
+  `Number(page) || 1` let `-1` reach the query as a negative offset, which
+  PostgreSQL rejects (the page showed the error state). It also let `2.5`
+  through as a fractional page.
+- Tests:
+  - unit: `parsePage` for whole, missing, zero, negative, fractional and
+    non-numeric values;
+  - browser (`invoices-filter.spec.ts`): `?page=-1`, `0`, `2.5` and `abc`
+    show real rows and no error.
+
+**Why**: plan task 25 (exploration), kind "security and quality". This is
+the bug T22 found (Q11, now resolved).
+
+**Verification**
+- `npm run lint`: exit 0, 0 warnings.
+- `next typegen && tsc`: exit 0.
+- `E2E_NO_DATABASE=1 npm test`: exit 0, 428 passed and 17 skipped.
+- `npm run build`: exit 0.
+- `npm run test:e2e` and `E2E_SERVER=start`: 92 passed each.
+- The browser test **failed with the old parsing restored temporarily** and
+  passes with the fix. Its first version passed even on the old code (the
+  loading skeleton has rows, and the error streams in later); it now waits
+  for real rows.
+
+**Review**: `reviewer` approved, with no findings. Of the four values the
+browser test tries, only `-1` reproduced the crash (`2.5` gives a whole
+offset); the unit test covers fractional input.
