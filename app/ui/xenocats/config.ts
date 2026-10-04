@@ -21,6 +21,20 @@ export type CatConfig = {
   wakeMs: number;
   /** The pounce animation once the attack has started. */
   attackMs: number;
+  /** An attack also hits page elements this close to the pointer, px. */
+  pageHitRadius: number;
+  /** At most this many page elements per attack. */
+  maxPageTargets: number;
+  /** Resting the pointer on a sleeping cat this long pets it: it purrs. */
+  petMs: number;
+  /** A petted cat sleeps on at least this long after the last purr. */
+  petSleepMs: number;
+  /** A cat clicked awake is angry: its attack is this many times stronger. */
+  angryFactor: number;
+  /** Two cats starting to wake at most this far apart (centre to centre, px)… */
+  comboDistance: number;
+  /** …and at most this long apart (ms) fuse their attacks into a combo. */
+  comboWindowMs: number;
 };
 
 export const CAT_CONFIG: CatConfig = {
@@ -33,4 +47,11 @@ export const CAT_CONFIG: CatConfig = {
   sleepMs: [8000, 22000],
   wakeMs: 900,
   attackMs: 600,
+  pageHitRadius: 120,
+  maxPageTargets: 6,
+  petMs: 1000,
+  petSleepMs: 4000,
+  angryFactor: 1.5,
+  comboDistance: 220,
+  comboWindowMs: 1500,
 };

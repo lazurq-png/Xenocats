@@ -84,8 +84,9 @@ async function seed(sql, schema) {
     if (count === 0) {
       for (const invoice of invoices) {
         await tx`
-          INSERT INTO invoices (customer_id, amount, status, date)
-          VALUES (${invoice.customer_id}, ${invoice.amount}, ${invoice.status}, ${invoice.date})`;
+          INSERT INTO invoices (customer_id, amount, status, date, due_date)
+          VALUES (${invoice.customer_id}, ${invoice.amount}, ${invoice.status}, ${invoice.date},
+                  ${invoice.due_date})`;
       }
     }
     for (const row of revenue) {

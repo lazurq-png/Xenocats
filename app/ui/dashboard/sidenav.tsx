@@ -8,7 +8,10 @@ import { signOut } from '@/auth';
 
 export default function SideNav() {
   return (
-    <div className="relative flex h-full flex-col overflow-hidden border-line/80 bg-panel px-3 py-4 md:rounded-r-[28px] md:border md:border-l-0 md:px-4 md:pt-12">
+    <div
+      data-xenocat-frame
+      className="relative flex h-full flex-col overflow-hidden border-line/80 bg-panel px-3 py-4 md:rounded-r-[28px] md:border md:border-l-0 md:px-4 md:pt-12"
+    >
       <Link className="mb-4 flex justify-center rounded-xl p-2 md:mb-12" href="/">
         <XenocatLogo variant="dashboard" />
       </Link>
@@ -24,7 +27,7 @@ export default function SideNav() {
         >
           <button className={navLinkClass}>
             <ArrowRightStartOnRectangleIcon className="w-7" />
-            <div className="hidden md:block">Sign out</div>
+            <div className="sr-only md:not-sr-only">Sign out</div>
           </button>
         </form>
       </div>
@@ -34,6 +37,9 @@ export default function SideNav() {
         alt=""
         width={228}
         height={305}
+        // In view on every dashboard page from the start, and often its largest image
+        // (Next flags it as the LCP): load it at once rather than lazily.
+        loading="eager"
         className="pointer-events-none absolute bottom-0 left-0 hidden w-full md:block"
       />
     </div>

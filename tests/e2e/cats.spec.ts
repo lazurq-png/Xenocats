@@ -4,7 +4,13 @@ import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 // The /cats page needs no login and no database. Each test summons a cat and
 // watches what its attack does to the fake cursor.
 
-async function openCats(page: Page) {
+async function openCats(page: Page, { intensity }: { intensity?: string } = {}) {
+  if (intensity) {
+    await page.addInitScript(
+      (level) => window.localStorage.setItem('xenocats:intensity', level),
+      intensity
+    );
+  }
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/cats');
   await expect(page.getByRole('heading', { name: 'The cats' })).toBeVisible();
@@ -33,7 +39,9 @@ async function summon(page: Page, id: string) {
   const button = page.getByTestId(`summon-${id}`);
   // Scroll first: measuring a button below the fold and then clicking it (which
   // scrolls) would record a pointer position the page has since moved away from.
-  await button.scrollIntoViewIfNeeded();
+  // Centred, so a test can move the pointer some way in any direction and stay on
+  // the page.
+  await button.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const box = (await button.boundingBox())!;
   const pointer = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.mouse.move(pointer.x, pointer.y);
@@ -64,7 +72,7 @@ test('a cat summoned asleep naps in its asleep artwork, then wakes into its awak
   test.setTimeout(60_000); // the nap alone can last 22 s
   await openCats(page);
   await page.getByTestId('summon-asleep-void-tabby').click();
-  await expect(page.getByRole('status')).toHaveText(
+  await expect(page.getByTestId('summon-status')).toHaveText(
     'Void Tabby is on its way, and will nap before it pounces.'
   );
   const cat = page.getByTestId('xenocat');
@@ -85,24 +93,22 @@ test('the page swaps the system cursor for the fake one, which follows the point
   await expect.poll(() => cursorAt(page)).toEqual({ x: 400, y: 300 });
 });
 
-test('Void Tabby makes the cursor vanish, and clicks are blocked meanwhile', async ({ page }) => {
+test('Void Tabby makes the cursor vanish, and clicks still go through meanwhile', async ({
+  page,
+}) => {
   await openCats(page);
   await summon(page, 'void-tabby');
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'vanish');
   await expect(fakeCursor(page)).toHaveCSS('opacity', '0');
 
-  // A click during the effect does nothing: the status line does not change.
-  const status = page.getByRole('status');
-  const before = await status.textContent();
+  // A click during the effect is never blocked: it lands where the real pointer is.
+  const status = page.getByTestId('summon-status');
   await page.getByTestId('summon-gravi-coon').click({ force: true });
-  await expect(status).toHaveText(before ?? '');
-  await expect(page.locator('[data-cat-type="gravi-coon"]')).toHaveCount(0);
-
-  // After 3 s the cursor is back and clicks work again.
-  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
-  await expect(fakeCursor(page)).toHaveCSS('opacity', '1');
-  await page.getByTestId('summon-gravi-coon').click();
   await expect(status).toHaveText('Gravi Coon is on its way.');
+
+  // After 3 s the cursor is back (the Gravi Coon it summoned may be attacking it by then).
+  await expect(fakeCursor(page)).not.toHaveAttribute('data-effect', /vanish/, { timeout: 5000 });
+  await expect(fakeCursor(page)).toHaveCSS('opacity', '1');
 });
 
 test('Gravi Coon makes the cursor heavy', async ({ page }) => {
@@ -325,17 +331,26 @@ test('the stomp shake never moves the cats or the cursor, even on a scrolled pag
   // Sample while the shake class is on: the cat and the cursor must stay put.
   const samples = await page.evaluate(
     () =>
-      new Promise<{ catY: number; cursor: string }[]>((resolve) => {
+      new Promise<{ cat: string; layer: string; cursor: string }[]>((resolve) => {
         const target = document.querySelector('[data-testid="xenocat-page"]')!;
         // The last frame before the shake is the baseline; then five frames during it.
-        const out: { catY: number; cursor: string }[] = [];
-        let before: { catY: number; cursor: string } | null = null;
+        // The cat's own arrival animation moves its drawn box, so what is compared
+        // is what a scroll jump would move: the cat layer's box and the cat's place
+        // in it (offsetTop/offsetLeft ignore its animation), and the cursor.
+        const out: { cat: string; layer: string; cursor: string }[] = [];
+        let before: { cat: string; layer: string; cursor: string } | null = null;
         const sample = () => {
-          const cat = document.querySelector('[data-testid="xenocat"]');
+          const cat = document.querySelector('[data-testid="xenocat"]') as HTMLElement | null;
+          const layer = document.querySelector('[data-testid="xenocat-layer"]')!;
           const cursor = document.querySelector('[data-testid="fake-cursor"]') as HTMLElement;
           if (cat) {
             const box = cursor.getBoundingClientRect();
-            const now = { catY: cat.getBoundingClientRect().top, cursor: `${box.left},${box.top}` };
+            const layerBox = layer.getBoundingClientRect();
+            const now = {
+              cat: `${cat.offsetLeft},${cat.offsetTop}`,
+              layer: `${layerBox.left},${layerBox.top}`,
+              cursor: `${box.left},${box.top}`,
+            };
             if (!target.classList.contains('xenocat-shake')) before = now;
             else {
               if (out.length === 0 && before) out.push(before);
@@ -352,7 +367,8 @@ test('the stomp shake never moves the cats or the cursor, even on a scrolled pag
   expect(samples.length).toBeGreaterThan(0);
   const before = samples[0];
   for (const s of samples) {
-    expect(Math.abs(s.catY - before.catY)).toBeLessThan(40); // the stomp's own squash, not a scroll jump
+    expect(s.cat).toBe(before.cat);
+    expect(s.layer).toBe(before.layer);
     expect(s.cursor).toBe(before.cursor);
   }
   // The cursor is still drawn at the pointer.
@@ -425,6 +441,34 @@ test('Pinball Devon sends the cursor bouncing around the screen', async ({ page 
   expect(furthest).toBeGreaterThan(200);
 });
 
+/** Page elements an attack is moving as it moves the cursor (puppets.ts), with their centres. */
+const puppets = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .filter((element) => element.style.translate !== '')
+      .map((element) => {
+        const r = element.getBoundingClientRect();
+        const frame = element.matches('[data-xenocat-frame], [data-xenocat-card]');
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, frame };
+      })
+  );
+
+test('Pinball Devon bounces page elements about as it does the cursor: near the pointer, whole cards and others far off', async ({
+  page,
+}) => {
+  await openCats(page);
+  const pointer = await summon(page, 'pinball-devon');
+  await expect.poll(async () => (await puppets(page)).length).toBeGreaterThanOrEqual(6);
+  // Some beyond the 220 px reach round the pointer: picked anywhere on screen.
+  // They bounce about, so where they are says little; where they started does.
+  const moving = await puppets(page);
+  expect(moving.some((box) => box.frame)).toBe(true);
+  expect(moving.some((box) => distance(box, pointer) > 400)).toBe(true);
+  // Pinball runs 4 s; everything is put back when it ends, and the page unmarked.
+  await expect.poll(async () => (await puppets(page)).length, { timeout: 8000 }).toBe(0);
+  await expect(page.locator('html')).not.toHaveAttribute('data-xenocat-puppets');
+});
+
 test('Laser Ocicat locks the cursor to one axis', async ({ page }) => {
   await openCats(page);
   const pointer = await summon(page, 'laser-ocicat');
@@ -448,9 +492,9 @@ test('all 20 cats are on /cats, and a sixth summon is refused while five are on 
   await openCats(page);
   await expect(page.locator('[data-testid^="cat-card-"]')).toHaveCount(20);
   // Summon with the keyboard: it is never blocked, even once the first cats attack.
-  // Lag Ragamuffin first: the first cat is the only one that attacks and leaves while
-  // the rest wait their turn, and its slow arrival and departure keep it on screen
-  // for about 4 s, so all five are still there when the sixth is summoned.
+  // All five attack at once (their effects stack), and each stays on screen through
+  // its arrival, its pounce and its departure, so all five are still there when
+  // the sixth is summoned a moment later.
   const ids = ['lag-ragamuffin', 'gravi-coon', 'munchkin-mite', 'smoke-bombay', 'laser-ocicat'];
   for (const id of ids) {
     await page.getByTestId(`summon-${id}`).focus();
@@ -459,9 +503,90 @@ test('all 20 cats are on /cats, and a sixth summon is refused while five are on 
   await expect(page.getByTestId('xenocat')).toHaveCount(5);
   await page.getByTestId('summon-hypno-rex').focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('status')).toHaveText(
+  await expect(page.getByTestId('summon-status')).toHaveText(
     'No room for another cat right now. Wait for one to leave.'
   );
   await expect(page.getByTestId('xenocat')).toHaveCount(5);
   await expect(page.locator('[data-cat-type="hypno-rex"]')).toHaveCount(0);
+});
+
+test('calm: an attack nudges the page elements near the pointer, and puts them back exactly', async ({
+  page,
+}) => {
+  await openCats(page, { intensity: 'calm' });
+  const button = page.getByTestId('summon-pulsar-siamese');
+  await summon(page, 'pulsar-siamese');
+  const before = await button.evaluate((el) => el.outerHTML);
+  // Pulsar Siamese's knockback pushes the button under the pointer away from it.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
+  await expect(button).toHaveAttribute('data-xenocat-hit', 'push');
+  await expect.poll(() => button.evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  // When the effect ends (1.5 s) the button is exactly as it was.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
+  await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
+});
+
+test('normal: an attack flings the element under the pointer as it does the cursor, then puts it back exactly', async ({
+  page,
+}) => {
+  await openCats(page);
+  const button = page.getByTestId('summon-pulsar-siamese');
+  await button.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const before = await button.evaluate((el) => el.outerHTML);
+  await summon(page, 'pulsar-siamese');
+  // Knockback flings the cursor 300 px from the cat; the button goes with it.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
+  await expect
+    .poll(() =>
+      button.evaluate((el) => {
+        const [x, y] = (el as HTMLElement).style.translate.split(' ').map(parseFloat);
+        return Math.hypot(x || 0, y || 0);
+      })
+    )
+    .toBeGreaterThan(100);
+  // When the effect ends (1.5 s) the button is exactly as it was.
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
+  await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
+});
+
+test('an attack scrambles the text near the pointer for the eye only, then restores it', async ({
+  page,
+}) => {
+  await openCats(page);
+  const card = page.getByTestId('cat-card-decoy-burmese');
+  // The card minus its field-guide counts, which rightly change as the cat is met
+  // and attacks (field-guide.spec.ts).
+  const textsOf = () =>
+    card.evaluate((el) => {
+      const copy = el.cloneNode(true) as Element;
+      copy.querySelector('[data-testid="guide-entry"]')?.remove();
+      return Array.from(copy.querySelectorAll('*'), (child) => child.textContent);
+    });
+  const htmlOf = () =>
+    card.evaluate((el) => {
+      const copy = el.cloneNode(true) as Element;
+      copy.querySelector('[data-testid="guide-entry"]')?.remove();
+      return copy.outerHTML;
+    });
+  const texts = await textsOf();
+  const before = await htmlOf();
+  await summon(page, 'decoy-burmese');
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'decoys');
+  const scrambled = card.locator('[data-xenocat-hit="text"]').first();
+  await expect(scrambled).toBeAttached();
+  const shown = await scrambled.getAttribute('data-xenocat-hit-text');
+  expect(shown).not.toBe(await scrambled.textContent());
+  // The real text, which assistive technology reads, never changes.
+  await expect(card.getByRole('heading', { name: 'Decoy Burmese' })).toBeVisible();
+  expect(await textsOf()).toEqual(texts);
+  // After the effect (5 s) nothing is left of it.
+  await expect(card.locator('[data-xenocat-hit]')).toHaveCount(0, { timeout: 8000 });
+  // The card is exactly as it was before the cat came, and its guide entry carries
+  // nothing of the effect either.
+  expect(await htmlOf()).toBe(before);
+  await expect(
+    card
+      .getByTestId('guide-entry')
+      .locator('xpath=descendant-or-self::*[@style or @data-xenocat-hit-text]')
+  ).toHaveCount(0);
 });

@@ -1,22 +1,39 @@
 import postgres from 'postgres';
 import {
   CardStat,
+  CustomerEdit,
   CustomerField,
   CustomersTableType,
+  InvoiceDetail,
   InvoiceForm,
   InvoicesTable,
   LatestInvoiceRaw,
   MonthTotals,
 } from './definitions';
+import type { InvoiceStatusFilter } from './schemas';
 import { formatCurrency } from './utils';
 import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
+/** Unpaid and past its due date: worked out when read, never stored. */
+const isOverdue = () => sql`(invoices.status = 'pending' AND invoices.due_date < CURRENT_DATE)`;
+
+/**
+ * The invoice list's status filter. Each invoice is in exactly one of paid,
+ * pending (unpaid, not yet due) and overdue; null matches every invoice.
+ */
+const matchesStatus = (status: InvoiceStatusFilter | null) => {
+  if (status === 'overdue') return isOverdue();
+  if (status === 'pending') return sql`(invoices.status = 'pending' AND NOT ${isOverdue()})`;
+  if (status === 'paid') return sql`invoices.status = 'paid'`;
+  return sql`TRUE`;
+};
+
 export async function fetchLatestInvoices() {
   try {
     const data = await sql<LatestInvoiceRaw[]>`
-      SELECT invoices.amount, invoices.date, invoices.status, customers.name, customers.image_url, customers.email, invoices.id
+      SELECT invoices.amount, invoices.date, invoices.status, ${isOverdue()} AS overdue, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       ORDER BY invoices.date DESC
@@ -128,7 +145,15 @@ export async function fetchMonthlyTotals(range: Range, now = new Date()): Promis
 }
 
 const ITEMS_PER_PAGE = 6;
-export async function fetchFilteredInvoices(query: string, currentPage: number) {
+/**
+ * A page of invoices matching the search `query` and, if given, the `status`.
+ * The search and the status combine (both must match).
+ */
+export async function fetchFilteredInvoices(
+  query: string,
+  currentPage: number,
+  status: InvoiceStatusFilter | null = null
+) {
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
@@ -138,17 +163,20 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
         invoices.amount,
         invoices.date,
         invoices.status,
+        ${isOverdue()} AS overdue,
         customers.name,
         customers.email,
         customers.image_url
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE
+      WHERE (
         customers.name ILIKE ${`%${query}%`} OR
         customers.email ILIKE ${`%${query}%`} OR
         invoices.amount::text ILIKE ${`%${query}%`} OR
         invoices.date::text ILIKE ${`%${query}%`} OR
         invoices.status ILIKE ${`%${query}%`}
+      )
+      AND ${matchesStatus(status)}
       ORDER BY invoices.date DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
@@ -160,17 +188,69 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
   }
 }
 
-export async function fetchInvoicesPages(query: string) {
+/** The most rows one CSV export holds. */
+export const EXPORT_LIMIT = 10_000;
+
+/**
+ * Every invoice matching the list's search and status, newest first: at most
+ * EXPORT_LIMIT + 1 rows, so a caller can tell there were more than it may export.
+ */
+export async function fetchInvoicesForExport(
+  query: string,
+  status: InvoiceStatusFilter | null = null
+) {
+  try {
+    return await sql<
+      {
+        date: string;
+        due_date: string;
+        name: string;
+        email: string;
+        amount: number;
+        status: string;
+        overdue: boolean;
+      }[]
+    >`
+      SELECT
+        to_char(invoices.date, 'YYYY-MM-DD') AS date,
+        to_char(invoices.due_date, 'YYYY-MM-DD') AS due_date,
+        customers.name,
+        customers.email,
+        invoices.amount,
+        invoices.status,
+        ${isOverdue()} AS overdue
+      FROM invoices
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE (
+        customers.name ILIKE ${`%${query}%`} OR
+        customers.email ILIKE ${`%${query}%`} OR
+        invoices.amount::text ILIKE ${`%${query}%`} OR
+        invoices.date::text ILIKE ${`%${query}%`} OR
+        invoices.status ILIKE ${`%${query}%`}
+      )
+      AND ${matchesStatus(status)}
+      ORDER BY invoices.date DESC
+      LIMIT ${EXPORT_LIMIT + 1}
+    `;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to export invoices.');
+  }
+}
+
+export async function fetchInvoicesPages(query: string, status: InvoiceStatusFilter | null = null) {
   try {
     const data = await sql`SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
-    WHERE
+    WHERE (
       customers.name ILIKE ${`%${query}%`} OR
       customers.email ILIKE ${`%${query}%`} OR
       invoices.amount::text ILIKE ${`%${query}%`} OR
       invoices.date::text ILIKE ${`%${query}%`} OR
       invoices.status ILIKE ${`%${query}%`}
+    )
+    AND ${matchesStatus(status)}
   `;
 
     const totalPages = Math.ceil(Number(data[0].count) / ITEMS_PER_PAGE);
@@ -208,6 +288,31 @@ export async function fetchInvoiceById(id: string) {
   }
 }
 
+/** One invoice with its customer, for the detail page; undefined if there is none. */
+export async function fetchInvoiceDetail(id: string) {
+  try {
+    const data = await sql<InvoiceDetail[]>`
+      SELECT
+        invoices.id,
+        invoices.amount,
+        invoices.status,
+        invoices.date,
+        invoices.due_date,
+        ${isOverdue()} AS overdue,
+        customers.id AS customer_id,
+        customers.name,
+        customers.email
+      FROM invoices
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE invoices.id = ${id}
+    `;
+    return data[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch invoice.');
+  }
+}
+
 export async function fetchCustomers() {
   try {
     const customers = await sql<CustomerField[]>`
@@ -222,6 +327,19 @@ export async function fetchCustomers() {
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch all customers.');
+  }
+}
+
+/** A customer for the edit form, or undefined if there is none with that id. */
+export async function fetchCustomerById(id: string) {
+  try {
+    const data = await sql<CustomerEdit[]>`
+      SELECT id, name, email FROM customers WHERE id = ${id}
+    `;
+    return data[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch customer.');
   }
 }
 

@@ -14,7 +14,7 @@ export default async function RevenueChart({ range }: { range: Range }) {
   const periodLabel = RANGES.find((r) => r.value === range)!.label;
 
   return (
-    <div className="relative rounded-2xl border border-line bg-panel p-5">
+    <div data-xenocat-frame className="relative rounded-2xl border border-line bg-panel p-5">
       {/* a cat peering over the panel's top edge */}
       <Image
         src="/xenocats/cat-peek.webp"

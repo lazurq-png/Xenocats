@@ -20,6 +20,25 @@ Record:
 
 If reproduction is impossible, identify what evidence is available instead.
 
+### Reproducing a CI failure
+
+CI always starts cold: a fresh checkout, a fresh `npm run build`, an empty
+`.next/cache` (including the image optimizer's `.next/cache/images`), a new
+database and a new browser profile. A local machine is warm, and warm state can
+hide the failure — a cached image, a reused build or leftover data turns a
+deterministic CI failure into a local pass.
+
+So before reproducing a CI failure, match its starting state:
+
+- delete `.next/cache` (or the whole `.next`) and rebuild, as the job does
+- run the job's exact command and environment (`CI=1`, `E2E_SERVER=start` for
+  the *build* job, the same test files together, the same worker count)
+- let the browser tests' global setup rebuild their schema, as it does in CI
+
+A local pass from a warm machine is not evidence that CI's failure is flaky or
+fixed. If the failure still does not reproduce cold, ask for the job's
+Playwright traces (`trace.zip` from the retry) rather than guessing.
+
 ---
 
 ## 2. Trace

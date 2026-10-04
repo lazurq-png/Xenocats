@@ -40,3 +40,13 @@ export const generatePagination = (currentPage: number, totalPages: number) => {
   // another ellipsis, and the last page.
   return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
 };
+
+/**
+ * The list page in the URL (`?page=`): a whole number from 1 up. Anything else —
+ * missing, negative, zero, fractional, not a number — is page 1, so a hand-edited
+ * or stale link can never reach the query as a negative or fractional offset.
+ */
+export const parsePage = (value: string | null | undefined): number => {
+  const page = Number(value);
+  return Number.isSafeInteger(page) && page >= 1 ? page : 1;
+};
