@@ -34,7 +34,7 @@ describe('catArt', () => {
   });
 
   it('with wholeSet, holds the artwork back until the cat has both poses', () => {
-    // No real cat is half done, so lend the map one for this test.
+    // A made-up half-done cat, so the test outlives the real ones being finished.
     const art = CAT_ART as Record<string, Partial<Record<'awake' | 'asleep', string>>>;
     art['half-done'] = { awake: '/half-done-awake.webp' };
     try {
