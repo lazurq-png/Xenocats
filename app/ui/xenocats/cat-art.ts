@@ -1,8 +1,9 @@
-// Rendered artwork for the cats, generated with Canva in the style of the site's
+// Rendered artwork for the cats, generated with Canva (cats 1–9) and the
+// Superdesign project "Xenocat cats" (from 10 on) in the style of the site's
 // mockup (public/xenocats/cats/<id>-<pose>.webp, 512×512, transparent). A cat
 // without artwork for a pose is drawn by the SVG sprite in cat-sprite.tsx.
 //
-// The generation plan, prompts and keying script live outside the repo, in the
+// The Canva plan, prompts and keying script live outside the repo, in the
 // Canva reference folder (cats/plan.json, cats/key.js); add a pose here once its
 // file is in public/xenocats/cats/. Hypno Rex's eyes-first entrance fades in
 // `.xenocat-eyes` before the body, so its artwork will need an eyes overlay.
@@ -46,9 +47,42 @@ export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = 
     awake: '/xenocats/cats/magneto-bengal-awake.webp',
     asleep: '/xenocats/cats/magneto-bengal-asleep.webp',
   },
-  // Asleep still to come: until then the on-screen cat keeps its SVG (wholeSet).
   'orbit-abyssinian': {
     awake: '/xenocats/cats/orbit-abyssinian-awake.webp',
+    asleep: '/xenocats/cats/orbit-abyssinian-asleep.webp',
+  },
+  'decoy-burmese': {
+    awake: '/xenocats/cats/decoy-burmese-awake.webp',
+    asleep: '/xenocats/cats/decoy-burmese-asleep.webp',
+  },
+  'wobble-fold': {
+    awake: '/xenocats/cats/wobble-fold-awake.webp',
+    asleep: '/xenocats/cats/wobble-fold-asleep.webp',
+  },
+  'munchkin-mite': {
+    awake: '/xenocats/cats/munchkin-mite-awake.webp',
+    asleep: '/xenocats/cats/munchkin-mite-asleep.webp',
+  },
+  'titan-forest-cat': {
+    awake: '/xenocats/cats/titan-forest-cat-awake.webp',
+    asleep: '/xenocats/cats/titan-forest-cat-asleep.webp',
+  },
+  'lag-ragamuffin': {
+    awake: '/xenocats/cats/lag-ragamuffin-awake.webp',
+    asleep: '/xenocats/cats/lag-ragamuffin-asleep.webp',
+  },
+  'gravity-manx': {
+    awake: '/xenocats/cats/gravity-manx-awake.webp',
+    asleep: '/xenocats/cats/gravity-manx-asleep.webp',
+  },
+  'smoke-bombay': {
+    awake: '/xenocats/cats/smoke-bombay-awake.webp',
+    asleep: '/xenocats/cats/smoke-bombay-asleep.webp',
+  },
+  // Asleep still to come (and the eyes overlay above): until then the on-screen
+  // cat keeps its SVG (wholeSet); the gallery and the fight show this.
+  'hypno-rex': {
+    awake: '/xenocats/cats/hypno-rex-awake.webp',
   },
 };
 
