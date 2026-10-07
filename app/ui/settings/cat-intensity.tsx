@@ -12,9 +12,9 @@ import {
 } from '@/app/ui/xenocats/intensity';
 
 const DESCRIPTIONS: Record<Intensity, string> = {
-  calm: 'Now and then, at most two at once. They only nudge what is near your pointer.',
+  calm: 'Now and then, at most two at once. They only hit what is near your pointer.',
   normal: 'The cats as they have always been: they knock the page about, panels and all.',
-  chaos: 'Often, up to five at once, and the page goes wild: things fly right off it.',
+  chaos: 'Often, up to five at once, and the page goes wild: things fly across it.',
 };
 
 /** Calm, normal or chaos: how hard the cats haunt the dashboard. Saved in this browser. */

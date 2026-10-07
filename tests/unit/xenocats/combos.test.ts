@@ -12,7 +12,6 @@ import {
   knockback,
   restingLook,
 } from '@/app/ui/xenocats/effects';
-import { PAGE_HITS } from '@/app/ui/xenocats/page-hits';
 import { createRandom } from '@/app/ui/xenocats/random';
 
 const viewport = { width: 1200, height: 800 };
@@ -64,10 +63,6 @@ describe('the combos', () => {
       expect(effect.name).not.toBe('');
       expect(effect.description).not.toBe('');
     }
-  });
-
-  it('each hits the page too, like every attack', () => {
-    for (const { effect } of COMBOS) expect(PAGE_HITS[effect.id], effect.id).toBeDefined();
   });
 
   it('an angry combo throws the cursor further only where its parts do', () => {

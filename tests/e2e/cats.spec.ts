@@ -526,17 +526,25 @@ test('all 20 cats are on /cats, and a sixth summon is refused while five are on 
   await expect(page.locator('[data-cat-type="hypno-rex"]')).toHaveCount(0);
 });
 
-test('calm: an attack nudges the page elements near the pointer, and puts them back exactly', async ({
+/** How far an element has been moved, px (its inline `translate`). */
+const translated = (element: ReturnType<Page['getByTestId']>) =>
+  element.evaluate((el) => {
+    const [x, y] = (el as HTMLElement).style.translate.split(' ').map(parseFloat);
+    return Math.hypot(x || 0, y || 0);
+  });
+
+test('calm: an attack flings the elements near the pointer as it does the cursor, half as far, and puts them back exactly', async ({
   page,
 }) => {
   await openCats(page, { intensity: 'calm' });
   const button = page.getByTestId('summon-pulsar-siamese');
-  await summon(page, 'pulsar-siamese');
+  await button.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const before = await button.evaluate((el) => el.outerHTML);
-  // Pulsar Siamese's knockback pushes the button under the pointer away from it.
+  await summon(page, 'pulsar-siamese');
+  // Knockback flings the cursor 300 px from the cat; the button goes half as far.
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
-  await expect(button).toHaveAttribute('data-xenocat-hit', 'push');
-  await expect.poll(() => button.evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  await expect.poll(() => translated(button)).toBeGreaterThan(60);
+  expect(await translated(button)).toBeLessThanOrEqual(151);
   // When the effect ends (1.5 s) the button is exactly as it was.
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
   await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
@@ -565,44 +573,114 @@ test('normal: an attack flings the element under the pointer as it does the curs
   await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
 });
 
-test('an attack scrambles the text near the pointer for the eye only, then restores it', async ({
-  page,
-}) => {
-  await openCats(page);
-  const card = page.getByTestId('cat-card-decoy-burmese');
-  // The card minus its field-guide counts, which rightly change as the cat is met
-  // and attacks (field-guide.spec.ts).
-  const textsOf = () =>
-    card.evaluate((el) => {
-      const copy = el.cloneNode(true) as Element;
-      copy.querySelector('[data-testid="guide-entry"]')?.remove();
-      return Array.from(copy.querySelectorAll('*'), (child) => child.textContent);
+/**
+ * Marks every page element an attack could reach with the inline style it has now
+ * (attribute absent and attribute empty told apart), to be compared with later.
+ */
+const markStyles = (page: Page) =>
+  page.evaluate(() => {
+    for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+      if (el.closest('[aria-hidden="true"], [data-xenocat-ignore]')) continue;
+      el.dataset.e2eStyle = el.hasAttribute('style') ? `=${el.getAttribute('style')}` : 'none';
+    }
+  });
+
+/** The marked elements whose inline style is not what it was when marked. */
+const restyled = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>('[data-e2e-style]'))
+      .filter((el) => {
+        const now = el.hasAttribute('style') ? `=${el.getAttribute('style')}` : 'none';
+        return now !== el.dataset.e2eStyle;
+      })
+      .map((el) => el.outerHTML.slice(0, 120))
+  );
+
+/** The elements an attack is acting on right now, with their boxes and displacement. */
+const hit = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .filter((el) => el.style.translate !== '')
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        // "0px 0px" reads back as "0px": a missing y is 0.
+        const [dx = 0, dy = 0] = el.style.translate.split(' ').map((v) => parseFloat(v) || 0);
+        el.dataset.e2eHit = '';
+        return {
+          box: [r.left, r.top, r.right, r.bottom].map(Math.round),
+          dx,
+          dy,
+          filter: el.style.filter,
+          scale: el.style.scale,
+        };
+      })
+  );
+
+// Each cat in turn. Every element its attack hits does what the attack does to the
+// pointer (decisions.md D4); here, two of them closely, and for all twenty: every
+// element is back exactly as it was when the attack ends.
+for (const type of CAT_TYPES) {
+  test(`${type.name}: the page elements it hits are back exactly when its attack ends`, async ({
+    page,
+  }) => {
+    test.setTimeout(30_000);
+    await openCats(page);
+    const button = page.getByTestId(`summon-${type.id}`);
+    await button.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await markStyles(page);
+    await summon(page, type.id);
+    await expect(fakeCursor(page)).toHaveAttribute('data-effect', type.effect.id);
+    await expect.poll(async () => (await hit(page)).length).toBeGreaterThan(0);
+
+    if (type.id === 'smoke-bombay') {
+      // Hidden behind smoke where they stand: smoked, and not moved at all.
+      const smoked = await hit(page);
+      for (const element of smoked) {
+        expect(element.filter).toMatch(/blur\(.+\) grayscale\(1\)/);
+        expect([element.dx, element.dy]).toEqual([0, 0]);
+        expect(element.scale).toBe('1');
+      }
+      // Each box where it was: the same as once the smoke has gone.
+      const during = await page.evaluate(() =>
+        Array.from(document.querySelectorAll<HTMLElement>('[data-e2e-hit]'), (el) => {
+          const r = el.getBoundingClientRect();
+          return [r.left, r.top, r.right, r.bottom].map(Math.round);
+        })
+      );
+      await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 10_000 });
+      await expect.poll(() => restyled(page)).toEqual([]);
+      const after = await page.evaluate(() =>
+        Array.from(document.querySelectorAll<HTMLElement>('[data-e2e-hit]'), (el) => {
+          const r = el.getBoundingClientRect();
+          return [r.left, r.top, r.right, r.bottom].map(Math.round);
+        })
+      );
+      expect(during).toEqual(after);
+    }
+
+    if (type.id === 'pinball-devon') {
+      // Flung off, bouncing about, and never off the screen (nor further off than
+      // an element already was: its box less its displacement).
+      const size = page.viewportSize()!;
+      let furthest = 0;
+      for (let i = 0; i < 10; i++) {
+        for (const { box, dx, dy } of await hit(page)) {
+          const [left, top, right, bottom] = box;
+          furthest = Math.max(furthest, Math.hypot(dx, dy));
+          expect(left).toBeGreaterThanOrEqual(Math.min(0, left - dx) - 1);
+          expect(top).toBeGreaterThanOrEqual(Math.min(0, top - dy) - 1);
+          expect(right).toBeLessThanOrEqual(Math.max(size.width, right - dx) + 1);
+          expect(bottom).toBeLessThanOrEqual(Math.max(size.height, bottom - dy) + 1);
+        }
+        await page.waitForTimeout(150);
+      }
+      expect(furthest).toBeGreaterThan(100);
+    }
+
+    await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', {
+      timeout: type.effect.durationMs + 5000,
     });
-  const htmlOf = () =>
-    card.evaluate((el) => {
-      const copy = el.cloneNode(true) as Element;
-      copy.querySelector('[data-testid="guide-entry"]')?.remove();
-      return copy.outerHTML;
-    });
-  const texts = await textsOf();
-  const before = await htmlOf();
-  await summon(page, 'decoy-burmese');
-  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'decoys');
-  const scrambled = card.locator('[data-xenocat-hit="text"]').first();
-  await expect(scrambled).toBeAttached();
-  const shown = await scrambled.getAttribute('data-xenocat-hit-text');
-  expect(shown).not.toBe(await scrambled.textContent());
-  // The real text, which assistive technology reads, never changes.
-  await expect(card.getByRole('heading', { name: 'Decoy Burmese' })).toBeVisible();
-  expect(await textsOf()).toEqual(texts);
-  // After the effect (5 s) nothing is left of it.
-  await expect(card.locator('[data-xenocat-hit]')).toHaveCount(0, { timeout: 8000 });
-  // The card is exactly as it was before the cat came, and its guide entry carries
-  // nothing of the effect either.
-  expect(await htmlOf()).toBe(before);
-  await expect(
-    card
-      .getByTestId('guide-entry')
-      .locator('xpath=descendant-or-self::*[@style or @data-xenocat-hit-text]')
-  ).toHaveCount(0);
-});
+    await expect.poll(() => restyled(page)).toEqual([]);
+    await expect(page.locator('html')).not.toHaveAttribute('data-xenocat-puppets');
+  });
+}

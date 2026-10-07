@@ -5,7 +5,7 @@ import { type CursorController, createCursorController } from './cursor-controll
 import { type CursorKind, cursorKindFor } from './cursor-kind';
 import { type CursorLook, type Effect, MAX_DECOYS, type Vec } from './effects';
 import { getIntensity } from './intensity';
-import { HIT_LEVELS, hitPage, hitText, pickTargets } from './page-hits';
+import { HIT_LEVELS, pickTargets } from './page-hits';
 import { createPuppetTheatre } from './puppets';
 import { type Random, createRandom, freshSeed } from './random';
 
@@ -113,6 +113,8 @@ export function XenocatCursorProvider({
   const touchRef = useRef<Vec | null>(null);
   const touchUntilRef = useRef(0);
   const touchTimerRef = useRef(0);
+  // There is no draw loop on a touch screen: the frames that move the hit elements.
+  const touchFrameRef = useRef(0);
 
   useEffect(() => {
     nowRef.current = now;
@@ -228,6 +230,8 @@ export function XenocatCursorProvider({
     if (enabled) return;
     const endTouchHit = () => {
       window.clearTimeout(touchTimerRef.current);
+      cancelAnimationFrame(touchFrameRef.current);
+      touchFrameRef.current = 0;
       touchUntilRef.current = 0;
       restoreHitsRef.current?.();
       restoreHitsRef.current = null;
@@ -251,10 +255,23 @@ export function XenocatCursorProvider({
           const time = nowRef.current();
           if (!touch || time < touchUntilRef.current) return false;
           restoreHitsRef.current?.();
-          restoreHitsRef.current = hitPage(document.body, effect.id, touch, cat, random);
+          restoreHitsRef.current = null;
+          // The calm reach at every intensity: only the elements near the touch.
+          const { reach, puppets } = HIT_LEVELS.calm;
+          const targets = pickTargets(document.body, touch, reach, random);
           // Nothing near the touch: the cat pounces at nothing.
-          if (!restoreHitsRef.current) return true;
+          if (targets.length === 0) return true;
+          theatre.add(targets, effect, cat, time, puppets);
+          restoreHitsRef.current = () => theatre.clear();
           touchUntilRef.current = time + effect.durationMs;
+          cancelAnimationFrame(touchFrameRef.current);
+          const step = () => {
+            touchFrameRef.current = 0;
+            const at = nowRef.current();
+            theatre.frame(at, { width: window.innerWidth, height: window.innerHeight });
+            if (theatre.isActive(at)) touchFrameRef.current = requestAnimationFrame(step);
+          };
+          step();
           window.clearTimeout(touchTimerRef.current);
           touchTimerRef.current = window.setTimeout(() => {
             touchUntilRef.current = 0;
@@ -265,24 +282,18 @@ export function XenocatCursorProvider({
         }
         const time = nowRef.current();
         if (!controller.attack(effect, cat, time)) return false;
-        // Every attack also hits the page around the pointer, until no effect runs:
-        // calm, with a nudge; above it, attacking the elements as it does the cursor
-        // (page-hits.ts, puppets.ts). Stacked attacks pile their hits up; they are
-        // put back newest first, so each element ends as it was before the first.
+        // Every attack also hits the page elements around the pointer, as far as
+        // the intensity reaches, attacking them as it does the cursor (page-hits.ts,
+        // puppets.ts). Stacked attacks pile their hits up; they are put back newest
+        // first, so each element ends as it was before the first.
         const pointer = controller.position();
         const earlier = restoreHitsRef.current;
-        const level = HIT_LEVELS[getIntensity()];
         let hits: (() => void) | null = null;
-        if (pointer && level.puppets) {
+        if (pointer) {
+          const level = HIT_LEVELS[getIntensity()];
           const targets = pickTargets(document.body, pointer, level.reach, random);
           theatre.add(targets, effect, cat, time, level.puppets);
-          const text = hitText(targets, effect.id, random);
-          hits = () => {
-            text?.();
-            theatre.clear();
-          };
-        } else if (pointer) {
-          hits = hitPage(document.body, effect.id, pointer, cat, random);
+          hits = () => theatre.clear();
         }
         restoreHitsRef.current =
           earlier && hits

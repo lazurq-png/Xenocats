@@ -1,18 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import {
   HIT_LEVELS,
-  HIT_ATTRIBUTE,
-  PAGE_HITS,
-  TEXT_ATTRIBUTE,
-  applyHits,
   distanceToRect,
-  hitPage,
-  hitText,
   pickAnywhere,
   pickTargets,
-  scrambleText,
   selectTargets,
 } from '@/app/ui/xenocats/page-hits';
 import { createRandom } from '@/app/ui/xenocats/random';
@@ -34,11 +26,9 @@ function place(element: Element, left: number, top: number, width: number, heigh
     ({ ...rect(left, top, width, height), x: left, y: top, width, height }) as DOMRect;
 }
 
-describe('every attack hits the page', () => {
-  it('each cat type has a page effect', () => {
-    for (const type of CAT_TYPES) expect(PAGE_HITS[type.effect.id], type.id).toBeDefined();
-  });
-});
+/** The ids of the elements a calm attack at `pointer` hits. */
+const calmTargets = (pointer: { x: number; y: number }) =>
+  pickTargets(document.body, pointer, HIT_LEVELS.calm.reach, createRandom(1)).map((el) => el.id);
 
 describe('target selection', () => {
   const none = () => false;
@@ -79,26 +69,16 @@ describe('target selection', () => {
     ).toEqual([]);
   });
 
-  it('hitPage skips the cats, the cursor and anything hidden from assistive technology', () => {
+  it('skips the cats, the cursor and anything hidden from assistive technology', () => {
     document.body.innerHTML = `
       <button id="ok">Pay</button>
       <div aria-hidden="true"><button id="cat">cat</button></div>
       <div data-xenocat-ignore><p id="game">game</p></div>`;
     for (const id of ['ok', 'cat', 'game']) place(document.getElementById(id)!, 10, 10, 50, 20);
-    const restore = hitPage(
-      document.body,
-      'jitter',
-      { x: 20, y: 20 },
-      { x: 0, y: 0 },
-      createRandom(1)
-    );
-    expect(document.getElementById('ok')!.getAttribute(HIT_ATTRIBUTE)).toBe('shake');
-    expect(document.getElementById('cat')!.hasAttribute(HIT_ATTRIBUTE)).toBe(false);
-    expect(document.getElementById('game')!.hasAttribute(HIT_ATTRIBUTE)).toBe(false);
-    restore!();
+    expect(calmTargets({ x: 20, y: 20 })).toEqual(['ok']);
   });
 
-  it('hitPage leaves a field being typed in alone, and skips hidden 1 px labels', () => {
+  it('leaves a field being typed in alone, and skips hidden 1 px labels', () => {
     document.body.innerHTML = `
       <label id="sr" class="sr-only" for="q">Search</label>
       <div data-xenocat-card id="box"><input id="q" /></div>
@@ -108,18 +88,7 @@ describe('target selection', () => {
     place(document.getElementById('q')!, 10, 10, 150, 20);
     place(document.getElementById('ok')!, 10, 50, 50, 20);
     (document.getElementById('q') as HTMLInputElement).focus();
-    const restore = hitPage(
-      document.body,
-      'reverse',
-      { x: 20, y: 20 },
-      { x: 0, y: 0 },
-      createRandom(1)
-    );
-    for (const id of ['sr', 'q', 'box']) {
-      expect(document.getElementById(id)!.hasAttribute(HIT_ATTRIBUTE), id).toBe(false);
-    }
-    expect(document.getElementById('ok')!.getAttribute(HIT_ATTRIBUTE)).toBe('flip');
-    restore!();
+    expect(calmTargets({ x: 20, y: 20 })).toEqual(['ok']);
   });
 
   it('hits a table row as a whole', () => {
@@ -128,25 +97,14 @@ describe('target selection', () => {
     place(document.getElementById('row')!, 0, 0, 300, 30);
     place(document.getElementById('a')!, 0, 0, 150, 30);
     place(document.getElementById('b')!, 150, 0, 150, 30);
-    const restore = hitPage(
-      document.body,
-      'jitter',
-      { x: 20, y: 10 },
-      { x: 0, y: 0 },
-      createRandom(1)
-    );
-    expect(document.getElementById('row')!.getAttribute(HIT_ATTRIBUTE)).toBe('shake');
-    expect(document.getElementById('a')!.hasAttribute(HIT_ATTRIBUTE)).toBe(false);
-    restore!();
+    expect(calmTargets({ x: 20, y: 10 })).toEqual(['row']);
   });
 
-  it('hitPage hits nothing, and returns null, with nothing near or on screen', () => {
+  it('hits nothing with nothing near or on screen', () => {
     document.body.innerHTML = '<button id="far">Far</button>';
     // Off screen (jsdom's window is 1024 × 768).
     place(document.getElementById('far')!, 900, 900, 50, 20);
-    expect(
-      hitPage(document.body, 'jitter', { x: 0, y: 0 }, { x: 0, y: 0 }, createRandom(1))
-    ).toBeNull();
+    expect(calmTargets({ x: 0, y: 0 })).toEqual([]);
   });
 });
 
@@ -178,12 +136,11 @@ describe('attacks that move elements reach further', () => {
     expect(one).toHaveLength(1);
   });
 
-  it('calm reaches only what is near the pointer; normal and chaos reach panels and far off', () => {
+  it('calm reaches only what is near the pointer, moved less; normal and chaos reach panels and far off', () => {
     const { calm, normal, chaos } = HIT_LEVELS;
-    expect(calm.puppets).toBeNull();
     expect(calm.reach).toMatchObject({ anywhere: 0, frames: false });
+    expect(calm.puppets.fling).toBeLessThan(normal.puppets.fling);
     for (const level of [normal, chaos]) {
-      expect(level.puppets).not.toBeNull();
       expect(level.reach.frames).toBe(true);
       expect(level.reach.anywhere).toBeGreaterThan(0);
     }
@@ -191,8 +148,7 @@ describe('attacks that move elements reach further', () => {
     expect(chaos.reach.max + chaos.reach.anywhere).toBeGreaterThan(
       normal.reach.max + normal.reach.anywhere
     );
-    expect(chaos.puppets!.fling).toBeGreaterThan(normal.puppets!.fling);
-    expect(chaos.puppets!.weird).toBeGreaterThan(normal.puppets!.weird);
+    expect(chaos.puppets.fling).toBeGreaterThan(normal.puppets.fling);
   });
 
   it('pickTargets takes panels and elements anywhere on screen, but never a field being typed in', () => {
@@ -215,103 +171,5 @@ describe('attacks that move elements reach further', () => {
     expect(ids(HIT_LEVELS.normal.reach)).toEqual(['far', 'near', 'panel']);
     // Calm: no panels and nothing far off; the text inside the panel instead.
     expect(ids(HIT_LEVELS.calm.reach)).toEqual(['text']);
-  });
-
-  it('hitText scrambles or swaps text for the attacks that do, and nothing else', () => {
-    document.body.innerHTML = '<p id="a">Paid</p><p id="b">Pending</p>';
-    const targets = ['a', 'b'].map((id) => document.getElementById(id)!);
-    expect(hitText(targets, 'bounce', createRandom(1))).toBeNull();
-    const restore = hitText(targets, 'teleport', createRandom(1))!;
-    expect(targets[0].getAttribute(TEXT_ATTRIBUTE)).toBe('Pending');
-    restore();
-    expect(targets[0].hasAttribute(TEXT_ATTRIBUTE)).toBe(false);
-  });
-});
-
-describe('scrambled text', () => {
-  it('shuffles letters within words and keeps spaces and punctuation', () => {
-    const text = 'Create invoice, now!';
-    const out = scrambleText(text, createRandom(3));
-    expect(out).not.toBe(text);
-    expect(out).toHaveLength(text.length);
-    expect(out.replace(/[\p{L}]/gu, '_')).toBe(text.replace(/[\p{L}]/gu, '_'));
-    const sorted = (s: string) => [...s.replace(/[^\p{L}]/gu, '')].sort().join('');
-    expect(sorted(out)).toBe(sorted(text));
-  });
-});
-
-describe('every effect reverts exactly', () => {
-  const page = `
-    <div data-xenocat-card class="card" id="card">
-      <h2 id="title">Total paid</h2>
-      <p id="sum" style="color: red">$1,200.00</p>
-      <a href="/x" id="link" class="link">Details</a>
-      <button id="btn" style="transform: translateX(2px); margin: 0px">Pay now</button>
-    </div>
-    <input id="field" value="typing" />`;
-
-  for (const [effectId, style] of Object.entries(PAGE_HITS)) {
-    it(`${effectId} (${style.kind})`, () => {
-      document.body.innerHTML = page;
-      const field = document.getElementById('field') as HTMLInputElement;
-      field.focus();
-      const before = document.body.innerHTML;
-      const texts = Array.from(document.querySelectorAll('*'), (el) => el.textContent);
-      const targets = ['title', 'sum', 'link', 'btn', 'field'].map((id) =>
-        document.getElementById(id)!
-      );
-      targets.forEach((el, i) => place(el, 10 + i * 60, 10, 50, 20));
-
-      const restore = applyHits(targets, style, { x: 0, y: 0 }, createRandom(7));
-      // Something happened to every target...
-      for (const el of targets) expect(el.hasAttribute(HIT_ATTRIBUTE), el.id).toBe(true);
-      // ...but the real text (what assistive technology reads) never changed,
-      // focus stayed put, and the focused field got no text.
-      expect(Array.from(document.querySelectorAll('*'), (el) => el.textContent)).toEqual(texts);
-      expect(document.activeElement).toBe(field);
-      expect(field.hasAttribute(TEXT_ATTRIBUTE)).toBe(false);
-      expect(field.value).toBe('typing');
-
-      restore();
-      expect(document.body.innerHTML).toBe(before);
-      expect(document.activeElement).toBe(field);
-    });
-  }
-
-  it('scrambling draws other text over the real text', () => {
-    document.body.innerHTML = '<p id="p">Latest invoices</p>';
-    const p = document.getElementById('p')!;
-    const restore = applyHits([p], PAGE_HITS.decoys, { x: 0, y: 0 }, createRandom(2));
-    expect(p.getAttribute(HIT_ATTRIBUTE)).toBe('text');
-    const shown = p.getAttribute(TEXT_ATTRIBUTE)!;
-    expect(shown).not.toBe('Latest invoices');
-    expect(shown).toHaveLength('Latest invoices'.length);
-    expect(p.textContent).toBe('Latest invoices');
-    restore();
-    expect(p.outerHTML).toBe('<p id="p">Latest invoices</p>');
-  });
-
-  it('swapping trades the text of two elements', () => {
-    document.body.innerHTML = '<p id="a">Paid</p><p id="b">Pending</p>';
-    const [a, b] = [document.getElementById('a')!, document.getElementById('b')!];
-    const restore = applyHits([a, b], PAGE_HITS.teleport, { x: 0, y: 0 }, createRandom(2));
-    expect(a.getAttribute(TEXT_ATTRIBUTE)).toBe('Pending');
-    expect(b.getAttribute(TEXT_ATTRIBUTE)).toBe('Paid');
-    restore();
-    expect(document.body.innerHTML).toBe('<p id="a">Paid</p><p id="b">Pending</p>');
-  });
-
-  it('a push moves away from the cat, or towards it for the magnet', () => {
-    document.body.innerHTML = '<button id="b">Go</button>';
-    const button = document.getElementById('b')!;
-    place(button, 100, 100, 20, 20);
-    const cat = { x: 0, y: 110 };
-    let restore = applyHits([button], PAGE_HITS.knockback, cat, createRandom(1));
-    expect(parseFloat(button.style.getPropertyValue('--xenocat-hit-dx'))).toBeGreaterThan(0);
-    restore();
-    restore = applyHits([button], PAGE_HITS.magnet, cat, createRandom(1));
-    expect(parseFloat(button.style.getPropertyValue('--xenocat-hit-dx'))).toBeLessThan(0);
-    restore();
-    expect(button.outerHTML).toBe('<button id="b">Go</button>');
   });
 });
