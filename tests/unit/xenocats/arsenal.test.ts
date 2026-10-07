@@ -29,7 +29,18 @@ function arena(config: Partial<ArenaConfig> = {}, seed = 1) {
 }
 
 /** A hero nothing wears down, and gems worth nothing (no level-up interrupts). */
+/** Only the twenty xenocat types, as before the varieties: no swarms, no bosses. */
+const xenocatsOnly: Partial<ArenaConfig> = {
+  schedule: {
+    arrivals: [{ from: 0, who: 'xenocat', weight: 1 }],
+    swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+    bosses: [],
+  },
+};
+
 const steady: Partial<ArenaConfig> = {
+  ...xenocatsOnly,
+  chestReach: -1,
   hero: { ...ARENA_CONFIG.hero, resolve: 1e12 },
   gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
 };
@@ -273,8 +284,11 @@ describe('every weapon, at level 1 and at its top level', () => {
         const before = where.get(cat.id)!;
         if (Math.hypot(cat.x - before.x, cat.y - before.y) < 1e-9) continue;
         pulled++;
-        // From within its reach, towards him.
-        expect(Math.hypot(before.x - hero.x, before.y - hero.y)).toBeLessThan(area + 10);
+        // From within its reach (counted from the cat's edge), towards him.
+        expect(Math.hypot(before.x - hero.x, before.y - hero.y)).toBeLessThanOrEqual(
+          // (he walks a step before the pull, up to 4 px)
+          area + cat.radius + 5
+        );
         expect(Math.hypot(cat.x - hero.x, cat.y - hero.y)).toBeLessThan(
           Math.hypot(before.x - hero.x, before.y - hero.y)
         );
@@ -410,9 +424,12 @@ describe('levels in a run', () => {
     while (a.state().time < 300_000) {
       const offer = a.choices();
       if (offer) {
-        // Weapons first, new or better, as a player bent on attacks would.
-        const weapon = offer.findIndex((c) => c.kind === 'weapon');
-        a.choose(weapon >= 0 ? weapon : 0);
+        // As a player bent on attacks would: weapons first, the one that throws the
+        // most at its best (the build, not luck, decides how full the screen gets).
+        const throws = (c: (typeof offer)[number]) =>
+          c.kind === 'weapon' ? WEAPONS[c.id].levels[MAX_WEAPON_LEVEL - 1].count : -1;
+        const best = offer.reduce((b, c, i) => (throws(c) > throws(offer[b]) ? i : b), 0);
+        a.choose(best);
         continue;
       }
       // He walks a wide circle, gathering what falls.

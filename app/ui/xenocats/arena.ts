@@ -24,6 +24,7 @@ import {
   type PassiveId,
   WEAPONS,
   type WeaponId,
+  type WeaponKind,
   type WeaponStats,
   modifiers,
   offerChoices,
@@ -33,6 +34,7 @@ import {
 import type { CatType } from './cat-types';
 import { type Vec } from './effects';
 import { createArenaGrid } from './arena-grid';
+import { SCHEDULE, type Schedule, VARIETIES, type VarietyId, arrivalsAt } from './varieties';
 import type { Random } from './random';
 
 export type ArenaConfig = {
@@ -101,6 +103,18 @@ export type ArenaConfig = {
     speed: number;
     reach: number;
   };
+  /** Which cats come when (varieties.ts). */
+  schedule: Schedule;
+  laserCat: {
+    /** It stops this far from him, px, and fires from there. */
+    range: number;
+    everyMs: number;
+    /** Its shots: px/s, and their size, px. */
+    shotSpeed: number;
+    shotRadius: number;
+  };
+  /** He picks a chest up within this, px. */
+  chestReach: number;
   /** The spatial grid's cell, px. */
   cellSize: number;
 };
@@ -136,6 +150,9 @@ export const ARENA_CONFIG: ArenaConfig = {
   startingLevel: 1,
   gems: { pickup: 100, speed: 520, value: 1, eliteValue: 6, cap: 1500 },
   matriarch: { speed: 330, reach: 70 },
+  schedule: SCHEDULE,
+  laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
+  chestReach: 36,
   cellSize: 64,
 };
 
@@ -189,8 +206,18 @@ export const HERO_EFFECTS: Readonly<Record<string, HeroEffect>> = {
 
 export type ArenaCat = {
   id: number;
-  /** Index into the run's types. */
+  /** A variety (varieties.ts), or null for one of the twenty xenocat types. */
+  variety: VarietyId | null;
+  /** For a xenocat, its index into the run's types; -1 for a variety. */
   type: number;
+  /** Touched within this of its centre, px. */
+  radius: number;
+  /** A zooming cat's way, and when it turns next; a sniper's next shot. */
+  heading: number;
+  turnAt: number;
+  shotAt: number;
+  /** The kitten swarm it came with, or 0. */
+  swarm: number;
   x: number;
   y: number;
   speed: number;
@@ -222,8 +249,10 @@ export type Projectile = {
 export type Gem = { x: number; y: number; value: number };
 
 export type ArenaEvent =
-  | { kind: 'sent-home'; x: number; y: number; type: number }
-  | { kind: 'hero-hit'; type: number; elite: boolean }
+  | { kind: 'sent-home'; x: number; y: number; type: number; variety: VarietyId | null }
+  | { kind: 'hero-hit'; type: number; variety: VarietyId | null; elite: boolean }
+  | { kind: 'boss'; x: number; y: number }
+  | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
   | { kind: 'fired'; weapon: WeaponId }
@@ -267,6 +296,16 @@ export function createArena(options: {
   let arrivals = 0;
   let matriarch: Vec | null = null;
   let events: ArenaEvent[] = [];
+  // Kitten swarms (how many of each are left), bosses come, chests lie about.
+  let nextSwarm = config.schedule.swarms.from;
+  let swarmId = 0;
+  const swarms = new Map<number, number>();
+  let bossesCome = 0;
+  const chests: Vec[] = [];
+  // The Laser Cats' shots.
+  type Shot = { x: number; y: number; vx: number; vy: number; until: number; drain: number };
+  const shots: Shot[] = [];
+  const spareShots: Shot[] = [];
 
   // The arsenal.
   const weapons = new Map<WeaponId, { level: number; readyAt: number }>();
@@ -293,22 +332,132 @@ export function createArena(options: {
     return low + (high - low) * share;
   };
 
-  function spawnCat() {
-    // Just off screen, all round.
-    const angle = random.next() * 2 * Math.PI;
-    const reach = Math.hypot(viewport.width, viewport.height) / 2 + config.cats.spawnMargin;
-    const type = random.int(0, types.length - 1);
+  /** A point just off screen, at `angle` from him. */
+  function offScreen(angle: number, extra = 0): Vec {
+    const reach = Math.hypot(viewport.width, viewport.height) / 2 + config.cats.spawnMargin + extra;
+    return { x: hero.x + Math.cos(angle) * reach, y: hero.y + Math.sin(angle) * reach };
+  }
+
+  /** A new cat (pooled), at `at`. */
+  function newCat(at: Vec): ArenaCat {
     const cat = spare.pop() ?? ({} as ArenaCat);
     cat.id = nextId++;
-    cat.type = type;
-    cat.x = hero.x + Math.cos(angle) * reach;
-    cat.y = hero.y + Math.sin(angle) * reach;
-    cat.speed = byType(type, config.cats.speed, 7);
+    cat.x = at.x;
+    cat.y = at.y;
     cat.homesickness = 0;
+    cat.heading = 0;
+    cat.turnAt = 0;
+    cat.shotAt = time + config.laserCat.everyMs;
+    cat.swarm = 0;
+    cats.push(cat);
+    return cat;
+  }
+
+  function spawnXenocat(at: Vec) {
+    const type = random.int(0, types.length - 1);
+    const cat = newCat(at);
+    cat.variety = null;
+    cat.type = type;
+    cat.radius = config.cats.radius;
+    cat.speed = byType(type, config.cats.speed, 7);
     cat.limit = byType(type, config.cats.homesickness, 3);
     cat.drain = Math.round(byType(type, config.cats.drain, 5));
     cat.elite = random.next() < config.cats.eliteShare;
-    cats.push(cat);
+  }
+
+  function spawnVariety(id: VarietyId, at: Vec): ArenaCat {
+    const variety = VARIETIES[id];
+    const cat = newCat(at);
+    cat.variety = id;
+    cat.type = -1;
+    cat.radius = variety.radius;
+    cat.speed = variety.speed;
+    cat.limit = variety.homesickness;
+    cat.drain = variety.drain;
+    cat.elite = false;
+    return cat;
+  }
+
+  /** A spot on the screen, at least `away` from him: where a cat that sits is found. */
+  function onScreen(away: number): Vec {
+    const angle = random.next() * 2 * Math.PI;
+    const cos = Math.abs(Math.cos(angle));
+    const sin = Math.abs(Math.sin(angle));
+    // How far the screen reaches that way (40 px in from its edge), so a narrow
+    // screen keeps the cat on it: nearer than `away` only if the screen is that small.
+    const edge = Math.min(
+      cos > 1e-6 ? (viewport.width / 2 - 40) / cos : Infinity,
+      sin > 1e-6 ? (viewport.height / 2 - 40) / sin : Infinity
+    );
+    const near = Math.min(away, edge / 2);
+    const reach = random.range(near, Math.max(edge, near));
+    return { x: hero.x + Math.cos(angle) * reach, y: hero.y + Math.sin(angle) * reach };
+  }
+
+  /** One arrival: who comes is drawn from what the schedule allows now, by weight. */
+  function spawnCat() {
+    const at = offScreen(random.next() * 2 * Math.PI);
+    const open = arrivalsAt(time, config.schedule);
+    let pick = random.next() * open.reduce((sum, a) => sum + a.weight, 0);
+    let who: VarietyId | 'xenocat' = 'xenocat';
+    for (const a of open) {
+      pick -= a.weight;
+      if (pick < 0) {
+        who = a.who;
+        break;
+      }
+    }
+    if (who === 'xenocat') spawnXenocat(at);
+    // A cat that sits is found on the screen, sitting calmly: off it, nobody would
+    // ever meet it.
+    else spawnVariety(who, VARIETIES[who].gait === 'sit' ? onScreen(200) : at);
+  }
+
+  /**
+   * A cat left far behind him (he walked on; it sits, or it is slow) comes round
+   * again: just off the screen if it walks, on it if it sits. So the horde stays
+   * where he is, and none counts for nothing.
+   */
+  function bringBack(cat: ArenaCat) {
+    const far = (Math.hypot(viewport.width, viewport.height) / 2 + config.cats.spawnMargin) * 2;
+    if (Math.hypot(cat.x - hero.x, cat.y - hero.y) <= far + cat.radius) return;
+    const sits = cat.variety !== null && VARIETIES[cat.variety].gait === 'sit';
+    const at = sits ? onScreen(200) : offScreen(random.next() * 2 * Math.PI, cat.radius);
+    cat.x = at.x;
+    cat.y = at.y;
+  }
+
+  /** The swarms and the bosses the schedule has come to. */
+  function spawnEvents(spawn: boolean) {
+    const { swarms: plan, bosses } = config.schedule;
+    if (time >= nextSwarm) {
+      nextSwarm = time + plan.everyMs;
+      if (spawn && cats.length < config.cats.hardCap) {
+        const size = Math.min(
+          random.int(plan.size[0], plan.size[1]),
+          config.cats.hardCap - cats.length
+        );
+        const id = ++swarmId;
+        const angle = random.next() * 2 * Math.PI;
+        const centre = offScreen(angle);
+        for (let k = 0; k < size; k++) {
+          const kitten = spawnVariety('kitten', {
+            x: centre.x + random.range(-40, 40),
+            y: centre.y + random.range(-40, 40),
+          });
+          kitten.swarm = id;
+          // A swarm counts as an elite: its last kitten home leaves a chest.
+          kitten.elite = true;
+        }
+        swarms.set(id, size);
+      }
+    }
+    while (bossesCome < bosses.length && time >= bosses[bossesCome]) {
+      bossesCome++;
+      const at = offScreen(random.next() * 2 * Math.PI, VARIETIES.mega.radius);
+      spawnVariety('mega', at);
+      events.push({ kind: 'boss', x: at.x, y: at.y });
+    }
   }
 
   /** Every cat homesick enough goes home, leaving a gem; the objects are kept for reuse. */
@@ -316,9 +465,25 @@ export function createArena(options: {
     for (let i = cats.length - 1; i >= 0; i--) {
       const cat = cats[i];
       if (cat.homesickness < cat.limit) continue;
-      events.push({ kind: 'sent-home', x: cat.x, y: cat.y, type: cat.type });
+      events.push({
+        kind: 'sent-home',
+        x: cat.x,
+        y: cat.y,
+        type: cat.type,
+        variety: cat.variety,
+      });
       sentHome++;
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
+      // A boss, an elite, or the last kitten of a swarm leaves a chest.
+      let chest = cat.variety === 'mega' || (cat.elite && cat.swarm === 0);
+      if (cat.swarm !== 0) {
+        const left = (swarms.get(cat.swarm) ?? 1) - 1;
+        if (left <= 0) {
+          swarms.delete(cat.swarm);
+          chest = true;
+        } else swarms.set(cat.swarm, left);
+      }
+      if (chest) chests.push({ x: cat.x, y: cat.y });
       cats[i] = cats[cats.length - 1];
       cats.pop();
       spare.push(cat);
@@ -342,6 +507,7 @@ export function createArena(options: {
   /** Lays an elite's effect on the hero, if none is on him. */
   function afflict(cat: ArenaCat) {
     if (effect && time < effect.until) return;
+    if (cat.variety !== null) return;
     const type = types[cat.type];
     const kind = HERO_EFFECTS[type.effect.id];
     if (!kind) return;
@@ -386,53 +552,140 @@ export function createArena(options: {
     if (x !== 0) hero.facing = Math.sign(x);
   }
 
+  /** A cat's step, its own way. */
+  function moveCat(cat: ArenaCat, dt: number) {
+    const dx = hero.x - cat.x;
+    const dy = hero.y - cat.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
+    if (gait === 'sit') return;
+    if (gait === 'zoom') {
+      // A new way now and then: roughly at him, give or take a right angle.
+      if (time >= cat.turnAt) {
+        cat.heading = Math.atan2(dy, dx) + random.range(-Math.PI / 2, Math.PI / 2);
+        cat.turnAt = time + random.range(350, 900);
+      }
+      cat.x += Math.cos(cat.heading) * cat.speed * dt;
+      cat.y += Math.sin(cat.heading) * cat.speed * dt;
+      return;
+    }
+    let speed = cat.speed;
+    if (gait === 'charge' && d < 250) speed *= 1.9;
+    if (gait === 'snipe') {
+      if (time >= cat.shotAt && d < config.laserCat.range + 120) {
+        cat.shotAt = time + config.laserCat.everyMs;
+        const shot = spareShots.pop() ?? ({} as Shot);
+        shot.x = cat.x;
+        shot.y = cat.y;
+        shot.vx = (dx / d) * config.laserCat.shotSpeed;
+        shot.vy = (dy / d) * config.laserCat.shotSpeed;
+        shot.until = time + 2500;
+        shot.drain = cat.drain;
+        shots.push(shot);
+      }
+      if (d <= config.laserCat.range) return;
+    }
+    const stepLength = Math.min(speed * dt, d);
+    cat.x += (dx / d) * stepLength;
+    cat.y += (dy / d) * stepLength;
+  }
+
+  /** The Laser Cats' shots fly; one that reaches him drains his Resolve. */
+  function moveShots(dt: number) {
+    for (let i = shots.length - 1; i >= 0; i--) {
+      const shot = shots[i];
+      shot.x += shot.vx * dt;
+      shot.y += shot.vy * dt;
+      const hit =
+        Math.hypot(shot.x - hero.x, shot.y - hero.y) <=
+        config.hero.reach / 2 + config.laserCat.shotRadius;
+      if (hit && time >= hero.untouchableUntil) {
+        hero.resolve = Math.max(hero.resolve - shot.drain, 0);
+        hero.untouchableUntil = time + config.hero.untouchableMs;
+        events.push({ kind: 'hero-hit', type: -1, variety: 'laser', elite: false });
+      }
+      if (hit || time >= shot.until) {
+        shots[i] = shots[shots.length - 1];
+        shots.pop();
+        spareShots.push(shot);
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ the weapons
+
+  /** Homesickness from a weapon of `kind`: nothing, to a cat it passes through. */
+  function hurt(cat: ArenaCat, amount: number, kind: WeaponKind) {
+    if (cat.variety && VARIETIES[cat.variety].immuneTo?.includes(kind)) return;
+    cat.homesickness += amount;
+  }
+
+  /** Indices of this step's cats bigger than the cats' size (not in the grid). */
+  const bigCats: number[] = [];
+
+  /** The cats that may be within `range` of a point: the grid's, and the big ones. */
+  function gather(x: number, y: number, range: number) {
+    grid.query(x, y, range + config.cats.radius, near);
+    for (const i of bigCats) near.push(i);
+  }
 
   const inRange: number[] = [];
   /**
-   * Every cat within `range` of a point (indices), in no order, into a list reused
-   * from call to call: read it before the next call.
+   * Every cat within `range` of a point, counting from its edge (indices), in no
+   * order, into a list reused from call to call: read it before the next call.
    */
   function within(at: Vec, range: number): number[] {
-    grid.query(at.x, at.y, range, near);
+    gather(at.x, at.y, range);
     inRange.length = 0;
     for (const i of near) {
       const cat = cats[i];
-      if ((cat.x - at.x) ** 2 + (cat.y - at.y) ** 2 <= range * range) inRange.push(i);
+      const reach = range + cat.radius;
+      if ((cat.x - at.x) ** 2 + (cat.y - at.y) ** 2 <= reach * reach) inRange.push(i);
     }
     return inRange;
   }
 
   /** The `count` nearest cats within `range` of a point, nearest first (indices). */
   function nearest(at: Vec, range: number, count: number, skip?: Set<number>): number[] {
-    grid.query(at.x, at.y, range, near);
+    gather(at.x, at.y, range);
     const found: { i: number; d: number }[] = [];
     for (const i of near) {
       const cat = cats[i];
       if (skip?.has(cat.id)) continue;
       const d = (cat.x - at.x) ** 2 + (cat.y - at.y) ** 2;
-      if (d <= range * range) found.push({ i, d });
+      if (d <= (range + cat.radius) ** 2) found.push({ i, d });
     }
     found.sort((a, b) => a.d - b.d || a.i - b.i);
     return found.slice(0, count).map((f) => f.i);
   }
 
   /** A beam from `from` along (ux, uy): every cat in front, near its line, grows homesick. */
-  function beam(from: Vec, ux: number, uy: number, length: number, width: number, damage: number) {
+  function beam(
+    from: Vec,
+    ux: number,
+    uy: number,
+    length: number,
+    width: number,
+    damage: number,
+    kind: WeaponKind = 'beam'
+  ) {
     const to = { x: from.x + ux * length, y: from.y + uy * length };
     beams.push({ from: { ...from }, to, until: time + 180 });
     events.push({ kind: 'laser', from: { ...from }, to });
-    grid.query(from.x + (ux * length) / 2, from.y + (uy * length) / 2, length / 2 + width, near);
+    gather(from.x + (ux * length) / 2, from.y + (uy * length) / 2, length / 2 + width);
     for (const i of near) {
       const cat = cats[i];
       const along = (cat.x - from.x) * ux + (cat.y - from.y) * uy;
       // (A cat right on him counts as in front: up to the same half pixel.)
       if (along < -0.5 || along > length) continue;
       const across = Math.abs((cat.x - from.x) * uy - (cat.y - from.y) * ux);
-      if (across > width + config.cats.radius) continue;
-      cat.homesickness += damage;
+      if (across > width + cat.radius) continue;
+      hurt(cat, damage, kind);
     }
   }
+
+  /** How near a cat comes before it reaches him: its size counts. */
+  const reachOf = (cat: ArenaCat) => config.hero.reach + cat.radius - config.cats.radius;
 
   /** The way from the hero to a cat; the way he faces if it stands on him. */
   function aim(cat: ArenaCat): Vec {
@@ -469,7 +722,7 @@ export function createArena(options: {
         if (i === undefined) break;
         const cat = cats[i];
         hit.add(cat.id);
-        cat.homesickness += s.damage;
+        hurt(cat, s.damage, 'chain');
         const to = { x: cat.x, y: cat.y };
         beams.push({ from, to, until: time + s.durationMs });
         events.push({ kind: 'laser', from, to });
@@ -484,12 +737,12 @@ export function createArena(options: {
         const cat = cats[i];
         // Drawn in, a share of the way, but not onto him.
         const d = Math.hypot(cat.x - hero.x, cat.y - hero.y);
-        const keep = Math.max(d * (1 - s.speed), config.hero.reach + 6);
+        const keep = Math.max(d * (1 - s.speed), reachOf(cat) + 6);
         if (d > keep) {
           cat.x = hero.x + ((cat.x - hero.x) * keep) / d;
           cat.y = hero.y + ((cat.y - hero.y) * keep) / d;
         }
-        cat.homesickness += s.damage;
+        hurt(cat, s.damage, 'pull');
       }
       return true;
     }
@@ -560,12 +813,10 @@ export function createArena(options: {
       if (kind === 'orbit') {
         // Each blade, all the time, to every cat it passes through.
         for (const blade of bladesOf(s)) {
-          for (const i of within(blade, BLADE_RADIUS + config.cats.radius)) {
-            cats[i].homesickness += s.damage * dt;
-          }
+          for (const i of within(blade, BLADE_RADIUS)) hurt(cats[i], s.damage * dt, 'orbit');
         }
       } else if (kind === 'zone') {
-        for (const i of within(hero, s.area)) cats[i].homesickness += s.damage * dt;
+        for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
       } else if (time >= held.readyAt && fire(id, s)) {
         held.readyAt = time + s.cooldownMs;
         events.push({ kind: 'fired', weapon: id });
@@ -587,11 +838,11 @@ export function createArena(options: {
         if (p.y < top || p.y > top + viewport.height)
           p.vy = Math.sign(hero.y - p.y) * Math.abs(p.vy);
       }
-      for (const i of within(p, p.radius + config.cats.radius)) {
+      for (const i of within(p, p.radius)) {
         const cat = cats[i];
         if (p.pierce <= 0 || p.touched.includes(cat.id)) continue;
         p.touched.push(cat.id);
-        cat.homesickness += p.damage;
+        hurt(cat, p.damage, WEAPONS[p.weapon].kind);
         p.pierce--;
       }
       if (p.pierce <= 0 || time >= p.until) {
@@ -646,6 +897,13 @@ export function createArena(options: {
       pending++;
       events.push({ kind: 'level-up', level });
     }
+    for (let i = chests.length - 1; i >= 0; i--) {
+      const chest = chests[i];
+      if (Math.hypot(chest.x - hero.x, chest.y - hero.y) > config.chestReach) continue;
+      chests.splice(i, 1);
+      events.push({ kind: 'chest', x: chest.x, y: chest.y });
+      pending++;
+    }
     if (pending > 0 && !choosing) offer();
   }
 
@@ -680,6 +938,7 @@ export function createArena(options: {
         config.cats.hardCap,
         spawn ? Infinity : config.cats.guardFree
       );
+      spawnEvents(spawn);
       if (cats.length < wanted) {
         arrivals += Math.max(wanted - cats.length, 1) * config.arrivalShare * dt + dt;
         while (arrivals >= 1 && cats.length < wanted) {
@@ -692,33 +951,34 @@ export function createArena(options: {
 
       // The cats walk at him; the grid is rebuilt from where they now stand.
       grid.clear();
+      // The few big cats (bigger than the cats' size) are kept apart, so every
+      // search looks a cat's size further, not the biggest one's.
+      bigCats.length = 0;
       for (let i = 0; i < cats.length; i++) {
         const cat = cats[i];
-        const dx = hero.x - cat.x;
-        const dy = hero.y - cat.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const stepLength = Math.min(cat.speed * dt, d);
-        cat.x += (dx / d) * stepLength;
-        cat.y += (dy / d) * stepLength;
-        grid.insert(i, cat.x, cat.y);
+        moveCat(cat, dt);
+        bringBack(cat);
+        if (cat.radius > config.cats.radius) bigCats.push(i);
+        else grid.insert(i, cat.x, cat.y);
       }
+      moveShots(dt);
 
       // Reached: one drain per moment, an elite's effect on top.
       if (time >= hero.untouchableUntil) {
-        grid.query(hero.x, hero.y, config.hero.reach, near);
+        gather(hero.x, hero.y, config.hero.reach);
         for (const i of near) {
           const cat = cats[i];
-          if ((cat.x - hero.x) ** 2 + (cat.y - hero.y) ** 2 > config.hero.reach ** 2) continue;
+          if ((cat.x - hero.x) ** 2 + (cat.y - hero.y) ** 2 > reachOf(cat) ** 2) continue;
           hero.resolve = Math.max(hero.resolve - cat.drain, 0);
           hero.untouchableUntil = time + config.hero.untouchableMs;
-          events.push({ kind: 'hero-hit', type: cat.type, elite: cat.elite });
+          events.push({ kind: 'hero-hit', type: cat.type, variety: cat.variety, elite: cat.elite });
           if (cat.elite) afflict(cat);
           break;
         }
-        if (hero.resolve <= 0) {
-          end('spent');
-          return;
-        }
+      }
+      if (hero.resolve <= 0) {
+        end('spent');
+        return;
       }
 
       // His weapons; what flies; then every cat homesick enough goes home.
@@ -799,6 +1059,8 @@ export function createArena(options: {
       return held ? weaponStats('thunderous-vacuum', held.level, mods).area : null;
     },
     matriarch: (): Vec | null => matriarch,
+    chests: (): readonly Vec[] => chests,
+    shots: (): readonly { x: number; y: number }[] => shots,
 
     state() {
       const active = effect && time < effect.until ? effect.effect.kind : null;
@@ -824,6 +1086,15 @@ export function createArena(options: {
         passives: [...passives].map(([id, l]) => ({ id, level: l })),
         projectiles: projectiles.length,
         gems: gems.length,
+        chests: chests.length,
+        /** The oldest Mega Cat on the field (by id): its Homesickness, for its bar. */
+        boss: (() => {
+          let boss: ArenaCat | null = null;
+          for (const cat of cats) {
+            if (cat.variety === 'mega' && (!boss || cat.id < boss.id)) boss = cat;
+          }
+          return boss ? { homesickness: boss.homesickness, limit: boss.limit } : null;
+        })(),
       };
     },
   };

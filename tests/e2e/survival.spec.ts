@@ -152,17 +152,50 @@ test.describe('on a computer', () => {
     const chosen = await buttons.nth(pick).getAttribute('data-choice');
     const chosenLevel = await buttons.nth(pick).getAttribute('data-level');
     await page.keyboard.press(String(pick + 1));
-    await expect(dialog).toHaveCount(0);
-    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
-    await expect(area(page)).toBeFocused();
+    // Held at the level chosen (a further choice may raise it).
     if (kinds[pick] === 'weapon') {
-      await expect(area(page)).toHaveAttribute(
-        'data-weapons',
-        new RegExp(`${chosen}:${chosenLevel}`)
-      );
+      await expect
+        .poll(async () => {
+          const held = (await area(page).getAttribute('data-weapons')) ?? '';
+          const level = new RegExp(`${chosen}:(\\d)`).exec(held)?.[1];
+          return Number(level ?? 0);
+        })
+        .toBeGreaterThanOrEqual(Number(chosenLevel));
     }
+    // Another level (or a chest) may be waiting already: take those, and play on.
+    await expect
+      .poll(async () => {
+        await playOn(page);
+        return area(page).getAttribute('data-screen');
+      })
+      .toBe('playing');
+    await expect(dialog).toHaveCount(0);
+    await expect(area(page)).toBeFocused();
     await expect.poll(() => num(page, 'data-time')).toBeGreaterThan(Number(waited));
     expect(await num(page, 'data-level')).toBeGreaterThanOrEqual(2);
+  });
+
+  test('a Mega Cat arrives, its Homesickness shown in a bar of its own', async ({ page }) => {
+    test.setTimeout(60_000);
+    // `?boss=3`: a Mega Cat at three seconds, besides the schedule's.
+    await openArena(page, '?seed=7&speed=2&boss=3');
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-boss', '');
+    const bar = page.getByTestId('survival-boss');
+    await expect
+      .poll(
+        async () => {
+          await playOn(page);
+          return bar.count();
+        },
+        { timeout: 30_000 }
+      )
+      .toBe(1);
+    await expect(bar).toContainText('Mega Cat');
+    const meter = bar.getByRole('meter', { name: 'Mega Cat' });
+    await expect(meter).toHaveAttribute('aria-valuemax', '4500');
+    await expect(meter).toHaveAttribute('aria-valuetext', /^Homesickness \d+%$/);
+    expect(await area(page).getAttribute('data-boss')).not.toBe('');
   });
 
   test('losing focus pauses the run', async ({ page }) => {

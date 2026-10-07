@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/app/ui/button';
 import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
-import { HERO_SVG } from './arena-art';
+import { HERO_SVG, VARIETY_SVG } from './arena-art';
 import { type Choice, describeChoice } from './arsenal';
 import { SURVIVAL_BEST_KEY, bestOf, clockText, readBest, writeBest } from './arena-storage';
 import { catArt } from './cat-art';
@@ -13,6 +13,7 @@ import { createFrameGuard } from './frame-guard';
 import { MovementPad } from './movement-pad-view';
 import { createRandom, freshSeed } from './random';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
+import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { isWalkKey, walkDirection } from './walking';
 import type { Vec } from './effects';
 
@@ -27,7 +28,8 @@ import type { Vec } from './effects';
 // picked with 1–4, the arrow keys and Enter, or a tap; focus moves into it and back.
 //
 // Test hooks, read from the page's address when a run starts: `?seed=` fixes the
-// random source, `?speed=` (up to 50) makes time pass that much faster.
+// random source, `?speed=` (up to 50) makes time pass that much faster, `?boss=`
+// (seconds) brings a Mega Cat that early, besides the schedule's.
 
 type Screen = 'start' | 'playing' | 'choosing' | 'paused' | 'results';
 
@@ -63,6 +65,8 @@ type Hud = {
   heroX: number;
   heroY: number;
   effect: string | null;
+  /** The Mega Cat on the field, if one is: how homesick, of how much. */
+  boss: { homesickness: number; limit: number } | null;
   level: number;
   xp: number;
   xpToNext: number;
@@ -75,15 +79,20 @@ const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
   goal: 'Five minutes, and the night is survived. The cats remain.',
 };
 
-function testHooks(): { seed: number; speed: number } {
+function testHooks(): { seed: number; speed: number; boss: number | null } {
   const params = new URLSearchParams(window.location.search);
   const seed = Number(params.get('seed'));
   const speed = Number(params.get('speed'));
+  const boss = params.has('boss') ? Number(params.get('boss')) : NaN;
   return {
     seed: Number.isInteger(seed) && seed > 0 ? seed : freshSeed(),
     speed: Number.isFinite(speed) && speed >= 1 ? Math.min(speed, 50) : 1,
+    boss: Number.isFinite(boss) && boss >= 0 ? boss * 1000 : null,
   };
 }
+
+/** A sound for a cat of any kind: a variety sounds like the first xenocat type. */
+const typeOf = (type: number) => CAT_TYPES[type] ?? CAT_TYPES[0];
 
 /** A bitmap of `src`, `size` px square, drawn once; null until it has loaded. */
 function bitmapOf(src: string, size: number, onReady: () => void): () => HTMLCanvasElement | null {
@@ -150,7 +159,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   );
 
   const start = () => {
-    const { seed, speed } = testHooks();
+    const { seed, speed, boss } = testHooks();
     speedRef.current = speed;
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
@@ -159,6 +168,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       random: createRandom(seed),
       types: CAT_TYPES,
       viewport: { width: window.innerWidth, height: window.innerHeight },
+      config:
+        boss === null
+          ? {}
+          : { schedule: { ...SCHEDULE, bosses: [boss, ...SCHEDULE.bosses].sort((a, b) => a - b) } },
     });
     setOutcome(null);
     setHud(null);
@@ -247,6 +260,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       redraw
     );
     const titan = CAT_TYPES.findIndex((type) => type.id === 'titan-forest-cat');
+    const varietySprites = Object.fromEntries(
+      (Object.keys(VARIETIES) as VarietyId[]).map((id) => [
+        id,
+        bitmapOf(
+          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(VARIETY_SVG[id])}`,
+          id === 'mega' ? 256 : 128,
+          redraw
+        ),
+      ])
+    ) as Record<VarietyId, () => HTMLCanvasElement | null>;
 
     const guard = createFrameGuard(FRAME_GUARD);
     const held = new Set<string>();
@@ -332,23 +355,34 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       }
       context.shadowBlur = 0;
 
+      // The chests lying about.
+      for (const chest of arena.chests()) {
+        const x = chest.x - camX;
+        const y = chest.y - camY;
+        if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+        context.fillStyle = '#b8874f';
+        context.fillRect(x - 12, y - 8, 24, 16);
+        context.fillStyle = '#c1e838';
+        context.fillRect(x - 3, y - 3, 6, 6);
+      }
+
       // The cats; an elite ringed, a homesick one with its bar.
-      const half = CAT_SIZE / 2;
       for (const cat of arena.cats()) {
         const x = cat.x - camX;
         const y = cat.y - camY;
-        if (x < -CAT_SIZE || y < -CAT_SIZE || x > width + CAT_SIZE || y > height + CAT_SIZE) {
-          continue;
-        }
-        const bitmap = sprites[cat.type]();
-        if (bitmap) context.drawImage(bitmap, x - half, y - half, CAT_SIZE, CAT_SIZE);
+        // A variety is drawn at its own size; a xenocat at the cats' size.
+        const size = cat.variety ? cat.radius * 2.8 : CAT_SIZE;
+        const half = size / 2;
+        if (x < -size || y < -size || x > width + size || y > height + size) continue;
+        const bitmap = cat.variety ? varietySprites[cat.variety]() : sprites[cat.type]();
+        if (bitmap) context.drawImage(bitmap, x - half, y - half, size, size);
         else {
-          context.fillStyle = CAT_TYPES[cat.type].palette.body;
+          context.fillStyle = cat.variety ? '#8a8aa0' : CAT_TYPES[cat.type].palette.body;
           context.beginPath();
           context.arc(x, y, half * 0.7, 0, 2 * Math.PI);
           context.fill();
         }
-        if (cat.elite) {
+        if (cat.elite && !cat.variety) {
           context.strokeStyle = '#9d86ff';
           context.lineWidth = 2;
           context.beginPath();
@@ -357,10 +391,23 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         }
         if (cat.homesickness > 0) {
           context.fillStyle = 'rgba(7, 11, 20, 0.8)';
-          context.fillRect(x - half, y - half - 6, CAT_SIZE, 4);
+          context.fillRect(x - half, y - half - 6, size, 4);
           context.fillStyle = '#9d86ff';
-          context.fillRect(x - half, y - half - 6, (CAT_SIZE * cat.homesickness) / cat.limit, 4);
+          context.fillRect(
+            x - half,
+            y - half - 6,
+            (size * Math.min(cat.homesickness, cat.limit)) / cat.limit,
+            4
+          );
         }
+      }
+
+      // The Laser Cats' shots.
+      context.fillStyle = '#ef4444';
+      for (const shot of arena.shots()) {
+        context.beginPath();
+        context.arc(shot.x - camX, shot.y - camY, 5, 0, 2 * Math.PI);
+        context.fill();
       }
 
       // What his weapons fired, and the Can Opener's blades.
@@ -460,10 +507,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       for (const event of arena.drainEvents()) {
         if (event.kind === 'sent-home') {
           flashes.push({ x: event.x, y: event.y, until: now + 300 });
-          if (player) sound(() => player.play(soundsFor(CAT_TYPES[event.type]).purr));
+          if (player) sound(() => player.play(soundsFor(typeOf(event.type)).purr));
         } else if (event.kind === 'hero-hit') {
-          hits.push(event.type);
-          if (player) sound(() => player.play(soundsFor(CAT_TYPES[event.type]).attack));
+          if (event.type >= 0) hits.push(event.type);
+          if (player) sound(() => player.play(soundsFor(typeOf(event.type)).attack));
+        } else if (event.kind === 'boss' && titan >= 0) {
+          if (player) player.play(soundsFor(CAT_TYPES[titan]).wake);
+        } else if (event.kind === 'chest') {
+          if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'level-up') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'matriarch' && titan >= 0 && player) {
@@ -476,7 +527,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       if (!over) for (const type of hits) recordStat(CAT_TYPES[type].id, 'survived');
       // Each type in the field guide, once a run, as it is first met.
       for (const cat of arena.cats()) {
-        if (met.has(cat.type)) continue;
+        if (cat.type < 0 || met.has(cat.type)) continue;
         met.add(cat.type);
         recordStat(CAT_TYPES[cat.type].id, 'met');
       }
@@ -495,6 +546,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           heroX: Math.round(state.hero.x),
           heroY: Math.round(state.hero.y),
           effect: state.hero.effect,
+          boss: state.boss,
           level: state.level,
           xp: state.xp,
           xpToNext: state.xpToNext,
@@ -639,11 +691,36 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-hero-y={hud?.heroY ?? 0}
           data-effect={hud?.effect ?? ''}
           data-level={hud?.level ?? 1}
+          data-boss={hud?.boss ? Math.round(hud.boss.homesickness) : ''}
           data-weapons={hud?.weapons ?? 'laser-pointer:1'}
           data-best-key={SURVIVAL_BEST_KEY}
           className="fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none"
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
+          {hud?.boss && (
+            <div
+              data-testid="survival-boss"
+              className="pointer-events-none absolute inset-x-0 top-24 mx-auto flex w-full max-w-md flex-col items-center gap-1 px-4 text-sm font-semibold text-cream"
+            >
+              <span id="boss-label">{VARIETIES.mega.name}</span>
+              <div
+                role="meter"
+                aria-labelledby="boss-label"
+                aria-valuemin={0}
+                aria-valuemax={Math.round(hud.boss.limit)}
+                aria-valuenow={Math.round(hud.boss.homesickness)}
+                aria-valuetext={`Homesickness ${Math.round((100 * hud.boss.homesickness) / hud.boss.limit)}%`}
+                className="h-3 w-full overflow-hidden rounded-full border border-line bg-panel"
+              >
+                <div
+                  className="h-full bg-aura"
+                  style={{
+                    width: `${(100 * Math.min(hud.boss.homesickness, hud.boss.limit)) / hud.boss.limit}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
             <p data-testid="survival-time">
               Time {clockText(hud?.time ?? 0)} / {clockText(ARENA_CONFIG.timeGoalMs)}

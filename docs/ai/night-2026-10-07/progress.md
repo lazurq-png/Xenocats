@@ -158,3 +158,59 @@ Database reachable (the e2e global setup rebuilt `xenocats_test`).
 - **Drawn by the run, not seen**: gems, shots (treats, droplets, yarn, hairballs), the blades, the zone (D41).
 - Reviewer: approve with four Low findings (pierce off by one; behaviour tested mostly at level 1; allocation in the hot loop; the dialog's level with several pending), all fixed; re-review approve (D42).
 - **Gate** (final code, FULL because `ci.yml` changed): prettier on 7 files, lint 0 warnings, type check, group check, `npm test` 37 files / 530 passed (17 skipped), build — all exit 0. `E2E_SERVER=start npm run test:e2e`: 122 passed. `npm run test:e2e` (next dev), run twice on the same code: each time 121 passed and 1 failed, a different test unrelated to this task each time (`customers.spec.ts:36` `toHaveValue`; then `keyboard.spec.ts:97` `toHaveURL`); each passed 5 of 5 run alone (Q7). Before the review fixes, the same gate passed in full on both servers (122 each). Committed on that evidence: the protocol reruns a flake alone rather than the suite until it passes, and says so here instead of calling the gate clean.
+
+## T8 — The cats escalate: varieties and a boss (completed)
+
+- Branch `night-2026-10-07-t8-varieties`, base `eda85d0`. Start 20:17 (budget ~14,124,000); completed 21:01 (budget ~13,911,000).
+- **CI of T7** (`eda85d0`): **task-branch run passed** ([run](https://github.com/lazurq-png/Xenocats/actions/runs/37665677397)). The run-branch run of the same commit was **cancelled** ([run](https://github.com/lazurq-png/Xenocats/actions/runs/37665681753)), so its result was not observed. The tree is the same one that passed.
+- **What the code does**
+  - `app/ui/xenocats/varieties.ts` (new): nine varieties, each with its own pace, Homesickness, drain, size, gait and immunities:
+    - Basic.
+    - Zoomies: zigzags.
+    - Hissing: charges.
+    - Fat.
+    - Kitten: comes in swarms.
+    - Box Cat: sits.
+    - Laser Cat: fires from range.
+    - Possessed: immune to the two laser weapons.
+    - Mega Cat: the boss.
+    
+    It also holds the schedule that brings them in over five minutes, with kitten swarms from 0:45 and Mega Cats at 2:00 and 4:00.
+  - `app/ui/xenocats/arena.ts`:
+    - Arrivals are drawn from the schedule by weight. The 20 xenocat types stay in the mix and still supply the elites.
+    - Each cat moves by its gait, and a cat's size counts for every weapon and for touch.
+    - Possessed immunity applies through one `hurt()`. Laser Cat shots drain his Resolve.
+    - Mega Cat, a xenocat elite or a swarm's last kitten drops a chest, and walking over one gives a level-up.
+    - `state().boss` exposes the oldest Mega Cat on the field.
+    - Sitting cats appear on the screen, and cats left far behind are brought round again.
+    - Big cats are searched from their own short list, and the Laser Cat shots are pooled.
+  - `app/ui/xenocats/arena-view.tsx`:
+    - Each variety is drawn at its size, along with chests and the red shots.
+    - A labelled Mega Cat meter appears at the top ("Homesickness N%"). It does not block touches.
+    - The boss and chests have sounds.
+    - A `?boss=` test hook (D46).
+  - `app/ui/xenocats/arena-art.ts`: one sitting-cat drawing dressed nine ways.
+  - Tests:
+    - `tests/unit/xenocats/varieties.test.ts` (new, 17): each variety's speed, durability and behaviour; Possessed immunity; Laser Cat shots; swarm size and the hard cap; each variety first appearing in its window in a seeded run; the boss's arrival, chest and bar; Box Cats on screen (desktop and a 390×844 phone); no pile-up and no straggler at 4:30.
+    - `arena.test.ts` and `arsenal.test.ts`: presets keep them on xenocats only (D47).
+    - `survival.spec.ts`: a Mega Cat arrives (`?boss=3`) and its meter shows. The level-up tests tolerate queued level-ups.
+    - CI's games group names the new unit test.
+- **Why it was added**: plan task 8 (D43–D50).
+- **Acceptance criteria**
+  - Covered by the unit tests and the browser test above: all of the task's list.
+  - Checked by reading only: how the drawings look, and the balance (first guesses).
+  - **Tested in a browser, not seen.**
+- **Drawn by the run, not seen**: the nine variety cats, chests and the Laser Cats' shots (D48). For a human to look at on a phone: whether the HUD wraps over the Mega Cat's bar (D50).
+- **Reviewer**: request changes with five findings (Box Cats piling up off screen, Med; the bar over the movement pad; grid searches widened by the boss's size; the bar jumping between two bosses; swarm cap and shot pooling). All were fixed and tested (D49). Re-review: approve with two Low findings (a sitting cat off a narrow phone screen; an unused constant), both fixed (D50).
+- **Gate**
+  - Full gate, after the D49 fixes (`GATE_FULL=1`), all exit 0:
+    - Prettier on 10 files, lint 0 warnings, type check, group check, actionlint 0.
+    - `npm test`: 38 files, 546 passed (17 skipped).
+    - Build.
+    - `npm run test:e2e`: 123 passed.
+    - `E2E_SERVER=start npm run test:e2e`: 123 passed.
+  - Final code, after the D50 fixes, all exit 0:
+    - Prettier, lint 0 warnings, type check, group check, build.
+    - Affected unit tests (`vitest related`): 3 files, 69 passed.
+    - Affected browser specs (12, survival included): 92 passed.
+  - An earlier gate run stopped at prettier on `decisions.md`. That state file was not prettier-formatted at base, and earlier gates never included it, so it was left out of the rerun.

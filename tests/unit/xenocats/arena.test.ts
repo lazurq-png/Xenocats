@@ -16,8 +16,21 @@ import { createRandom } from '@/app/ui/xenocats/random';
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
 
-/** Gems worth nothing: no level-up interrupts a test of something else. */
-const noLevels = { gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 } };
+/** Only the twenty xenocat types, as before the varieties: no swarms, no bosses. */
+const xenocatsOnly: Partial<ArenaConfig> = {
+  schedule: {
+    arrivals: [{ from: 0, who: 'xenocat', weight: 1 }],
+    swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+    bosses: [],
+  },
+};
+
+/** Gems worth nothing and chests out of reach: no level-up interrupts. */
+const noLevels = {
+  ...xenocatsOnly,
+  gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+  chestReach: -1,
+};
 
 function arena(config: Partial<ArenaConfig> = {}, seed = 1, types = CAT_TYPES) {
   return createArena({
