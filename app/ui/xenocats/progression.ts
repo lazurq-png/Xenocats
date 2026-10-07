@@ -285,23 +285,41 @@ export function codexEntries(progress: Progress): { id: string; name: string; fo
   });
 }
 
-/** What a run starts with: his character, what the Tailor sold him, what is unlocked. */
-export function runConfig(progress: Progress, base: ArenaConfig): Partial<ArenaConfig> {
-  const character = CHARACTERS[progress.character];
-  const level = (id: UpgradeId) => progress.upgrades[id] ?? 0;
+/** A Keeper going out as `id`, with the Tailor's work: his weapon, Resolve and pace. */
+function keeperFor(progress: Progress, id: CharacterId, base: ArenaConfig) {
+  const character = CHARACTERS[id];
+  const level = (u: UpgradeId) => progress.upgrades[u] ?? 0;
   return {
     startingWeapons: [character.weapon],
+    resolve: Math.max(base.hero.resolve + character.resolve + 10 * level('stubbornness'), 1),
+    speed: base.hero.speed * character.speed * (1 + 0.04 * level('brisk-step')),
+  };
+}
+
+/**
+ * What a run starts with: his character, what the Tailor sold him, what is
+ * unlocked; and in co-op, player 2 going out as `second` (a character player 1 has).
+ */
+export function runConfig(
+  progress: Progress,
+  base: ArenaConfig,
+  second: CharacterId | null = null
+): Partial<ArenaConfig> {
+  const level = (id: UpgradeId) => progress.upgrades[id] ?? 0;
+  const one = keeperFor(progress, progress.character, base);
+  return {
+    startingWeapons: one.startingWeapons,
     availableWeapons: availableWeapons(progress),
-    hero: {
-      ...base.hero,
-      resolve: Math.max(base.hero.resolve + character.resolve + 10 * level('stubbornness'), 1),
-      speed: base.hero.speed * character.speed * (1 + 0.04 * level('brisk-step')),
-    },
+    hero: { ...base.hero, resolve: one.resolve, speed: one.speed },
     boost: {
       might: 1 + 0.05 * level('sternness'),
       pickup: 1 + 0.1 * level('long-arms'),
       revivals: level('second-wind'),
     },
+    secondPlayer:
+      second === null
+        ? null
+        : keeperFor(progress, hasCharacter(progress, second) ? second : 'keeper', base),
   };
 }
 

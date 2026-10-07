@@ -18,15 +18,16 @@ import {
   type MilestoneId,
   WEAPON_UNLOCKS,
   applyRun,
+  hasCharacter,
   readProgress,
   runConfig,
   writeProgress,
 } from './progression';
-import { ProgressionPanel } from './progression-view';
+import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
-import { isWalkKey, walkDirection } from './walking';
+import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
 import type { Vec } from './effects';
 
 // Survival, the arena (arena.ts), drawn on a canvas that fills the page while a run
@@ -87,6 +88,15 @@ type Hud = {
   xp: number;
   xpToNext: number;
   weapons: string;
+  /** Each Keeper's Resolve, and whether he is down (co-op: two). */
+  heroes: {
+    resolve: number;
+    maxResolve: number;
+    down: boolean;
+    backIn: number;
+    x: number;
+    y: number;
+  }[];
 };
 
 const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
@@ -157,11 +167,20 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     sentHome: number;
     earned: number;
     reached: MilestoneId[];
+    /** In co-op: each Keeper, who he went out as, what he carried, how he ended. */
+    keepers: { name: string; weapons: string; down: boolean }[];
   } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
   // The level the waiting choice is for (several can wait after one gem).
   const [choiceLevel, setChoiceLevel] = useState(2);
+  // One Keeper, or two at one keyboard; player 2's character; whose choice it is.
+  const [players, setPlayers] = useState<1 | 2>(1);
+  const [secondCharacter, setSecondCharacter] = useState<CharacterId>('keeper');
+  const [chooser, setChooser] = useState(0);
+  // How many Keepers the run in progress has (the refs are for the loop).
+  const [runPlayers, setRunPlayers] = useState<1 | 2>(1);
+  const progress = useProgress();
   // An evolution's announcement, for a few seconds.
   const [notice, setNotice] = useState<string | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
@@ -176,6 +195,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const speedRef = useRef(1);
   // Who went out, and what the run found for the codex.
   const characterRef = useRef<CharacterId>('keeper');
+  const secondRef = useRef<CharacterId | null>(null);
   const foundRef = useRef(new Set<string>());
   const playerRef = useRef<SoundPlayer | null>(null);
   const onPad = useCallback((direction: Vec) => {
@@ -201,7 +221,18 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         found: [...foundRef.current],
       });
       writeProgress(after.progress);
-      setResult({ time, sentHome, earned: after.earned, reached: after.reached });
+      const characters = [characterRef.current, secondRef.current ?? 'keeper'];
+      setResult({
+        time,
+        sentHome,
+        earned: after.earned,
+        reached: after.reached,
+        keepers: arena.state().heroes.map((h, i) => ({
+          name: CHARACTERS[characters[i]].name,
+          weapons: h.weapons.map((w) => `${WEAPONS[w.id].name} ${w.level}`).join(', '),
+          down: h.down,
+        })),
+      });
       setOutcome(how);
       show('results');
     },
@@ -214,8 +245,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
     playerRef.current.unlock();
-    const progress = readProgress();
-    characterRef.current = progress.character;
+    const stored = readProgress();
+    characterRef.current = stored.character;
+    // Co-op is keyboard only: on a touch screen, one Keeper.
+    secondRef.current =
+      !touch && players === 2
+        ? hasCharacter(stored, secondCharacter)
+          ? secondCharacter
+          : 'keeper'
+        : null;
     foundRef.current = new Set();
     arenaRef.current = createArena({
       random: createRandom(seed),
@@ -223,7 +261,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       config: {
         // His character, what the Tailor sold him, the weapons unlocked.
-        ...runConfig(progress, ARENA_CONFIG),
+        ...runConfig(stored, ARENA_CONFIG, secondRef.current),
         ...(boss === null
           ? {}
           : {
@@ -233,6 +271,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     });
     setOutcome(null);
     setNotice(null);
+    setChooser(0);
+    setRunPlayers(secondRef.current ? 2 : 1);
     setHud(null);
     show('playing');
   };
@@ -258,6 +298,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       if (next) {
         setChoices([...next]);
         setChoiceLevel(arena.choiceLevel());
+        setChooser(arena.chooser());
       } else {
         setChoices(null);
         show('playing');
@@ -319,11 +360,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       const art = catArt(type.id, 'awake');
       return art ? bitmapOf(art, CAT_SIZE * 2, redraw) : () => null;
     });
-    const hero = bitmapOf(
-      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVGS[characterRef.current])}`,
-      HERO_SIZE * 2,
-      redraw
+    const heroSprites = [characterRef.current, secondRef.current ?? 'keeper'].map((id) =>
+      bitmapOf(
+        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVGS[id])}`,
+        HERO_SIZE * 2,
+        redraw
+      )
     );
+    const twoPlayers = secondRef.current !== null;
     const titan = CAT_TYPES.findIndex((type) => type.id === 'titan-forest-cat');
     const varietySprites = Object.fromEntries(
       (Object.keys(VARIETIES) as VarietyId[]).map((id) => [
@@ -365,11 +409,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     resize();
 
     const draw = (time: number) => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
       const state = arena.state();
-      const camX = state.hero.x - width / 2;
-      const camY = state.hero.y - height / 2;
+      // The shared camera: the screen shows the viewport times its zoom (1 alone).
+      const cam = arena.camera();
+      const width = window.innerWidth * cam.zoom;
+      const height = window.innerHeight * cam.zoom;
+      const camX = cam.x - width / 2;
+      const camY = cam.y - height / 2;
+      context.save();
+      context.scale(1 / cam.zoom, 1 / cam.zoom);
       context.fillStyle = '#070b14';
       context.fillRect(0, 0, width, height);
       // The floor: faint tiles that slide as he walks.
@@ -387,11 +435,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       context.stroke();
 
       // The Thunderous Vacuum's reach, and the gems lying about.
-      const zone = arena.zone();
-      if (zone) {
+      for (const zone of arena.zones()) {
         context.fillStyle = `rgba(157, 134, 255, ${0.1 + 0.04 * Math.sin(time / 180)})`;
         context.beginPath();
-        context.arc(width / 2, height / 2, zone, 0, 2 * Math.PI);
+        context.arc(zone.x - camX, zone.y - camY, zone.radius, 0, 2 * Math.PI);
         context.fill();
       }
       for (const gem of arena.gems()) {
@@ -525,20 +572,33 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         context.shadowBlur = 0;
       }
 
-      // The Keeper, flickering while untouchable, faint under a veil.
-      const keeper = hero();
-      if (keeper && !(state.hero.untouchable && Math.floor(time / 90) % 2 === 0)) {
-        context.save();
-        context.globalAlpha = state.hero.effect === 'veil' ? 0.35 : 1;
-        context.translate(width / 2, height / 2);
-        if (state.hero.facing < 0) context.scale(-1, 1);
-        if (state.hero.effect === 'freeze') {
-          context.shadowColor = '#7dd3fc';
-          context.shadowBlur = 16;
+      // The Keepers, flickering while untouchable, faint under a veil; a downed one
+      // lies on his side, pale. In co-op each is marked with his number.
+      state.heroes.forEach((h, i) => {
+        const keeper = heroSprites[i]();
+        const x = h.x - camX;
+        const y = h.y - camY;
+        if (keeper && !(h.untouchable && !h.down && Math.floor(time / 90) % 2 === 0)) {
+          context.save();
+          context.globalAlpha = h.down ? 0.35 : h.effect === 'veil' ? 0.35 : 1;
+          context.translate(x, y);
+          if (h.down) context.rotate(Math.PI / 2);
+          if (h.facing < 0) context.scale(-1, 1);
+          if (h.effect === 'freeze' && !h.down) {
+            context.shadowColor = '#7dd3fc';
+            context.shadowBlur = 16;
+          }
+          context.drawImage(keeper, -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
+          context.restore();
         }
-        context.drawImage(keeper, -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
-        context.restore();
-      }
+        if (twoPlayers) {
+          context.fillStyle = i === 0 ? '#c1e838' : '#9d86ff';
+          context.font = '600 14px sans-serif';
+          context.textAlign = 'center';
+          context.fillText(`P${i + 1}`, x, y - HERO_SIZE / 2 - 6);
+        }
+      });
+      context.restore();
     };
 
     const frame = () => {
@@ -556,11 +616,13 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       }
       guard.record(real);
       carry += real * speedRef.current;
-      const keys = walkDirection(held);
+      // Alone, WASD and the arrow keys both walk him; in co-op, each player his own.
+      const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
       const input = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
+      const input2 = twoPlayers ? walkDirection(held, PLAYER_KEYS[1]) : { x: 0, y: 0 };
       let steps = 0;
       while (carry >= arena.config.stepMs && steps < MAX_STEPS_PER_FRAME) {
-        arena.step(input, guard.allowsSpawning());
+        arena.step(input, guard.allowsSpawning(), input2);
         carry -= arena.config.stepMs;
         steps++;
       }
@@ -587,8 +649,19 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         } else if (event.kind === 'secret') {
           // Nothing is said: it is simply there. The codex remembers.
           foundRef.current.add(event.id);
+        } else if (event.kind === 'downed') {
+          setNotice(
+            `Player ${event.player + 1} is down. If the other lasts ${Math.round(arena.config.coop.reviveMs / 1000)} seconds, he will stand again.`
+          );
+          if (player) player.play(soundsFor(CAT_TYPES[0]).attack);
         } else if (event.kind === 'revived') {
-          setNotice('Second Wind. He is not finished.');
+          setNotice(
+            event.by === 'ally'
+              ? `Player ${event.player + 1} stands again.`
+              : twoPlayers
+                ? `Second Wind. Player ${event.player + 1} is not finished.`
+                : 'Second Wind. He is not finished.'
+          );
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'level-up') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
@@ -626,6 +699,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           xp: state.xp,
           xpToNext: state.xpToNext,
           weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
+          heroes: state.heroes.map((h) => ({
+            resolve: h.resolve,
+            maxResolve: h.maxResolve,
+            down: h.down,
+            backIn: h.backIn,
+            x: Math.round(h.x),
+            y: Math.round(h.y),
+          })),
         });
       }
       if (over) finish(over);
@@ -645,6 +726,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         );
         setChoices([...arena.choices()!]);
         setChoiceLevel(arena.choiceLevel());
+        setChooser(arena.chooser());
         show('choosing');
       }
     };
@@ -715,6 +797,54 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           ? 'Walk with the pad. Tap Pause to stop for a moment.'
           : 'Walk with WASD or the arrow keys. Esc pauses.'}
       </p>
+      {!touch && (
+        <fieldset className="mt-4 text-sm text-aura">
+          <legend className="font-semibold text-cream">Keepers</legend>
+          <div className="mt-1 flex flex-wrap gap-4">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="survival-players"
+                data-testid="survival-players-1"
+                checked={players === 1}
+                onChange={() => setPlayers(1)}
+                className="border-line bg-void text-aura focus:ring-aura"
+              />
+              One
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="survival-players"
+                data-testid="survival-players-2"
+                checked={players === 2}
+                onChange={() => setPlayers(2)}
+                className="border-line bg-void text-aura focus:ring-aura"
+              />
+              Two, at one keyboard: player 1 walks with WASD, player 2 with the arrow keys
+            </label>
+          </div>
+          {players === 2 && (
+            <label className="mt-2 flex flex-wrap items-center gap-2">
+              Player 2 goes out as
+              <select
+                data-testid="survival-player2-character"
+                value={secondCharacter}
+                onChange={(event) => setSecondCharacter(event.target.value as CharacterId)}
+                className="rounded-lg border-line bg-void py-1 text-sm text-cream focus:ring-aura"
+              >
+                {(Object.keys(CHARACTERS) as CharacterId[])
+                  .filter((id) => hasCharacter(progress, id))
+                  .map((id) => (
+                    <option key={id} value={id}>
+                      {CHARACTERS[id].name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+        </fieldset>
+      )}
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button data-testid="survival-start" onClick={start} disabled={running}>
           {screen === 'results' ? 'Play again' : 'Start Survival'}
@@ -748,6 +878,18 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             <dt className="text-aura">Tufts of fur gathered</dt>
             <dd data-testid="survival-result-tufts">{result.earned}</dd>
           </dl>
+          {result.keepers.length > 1 && (
+            <ul data-testid="survival-result-keepers" className="mt-3 space-y-1 text-sm text-white">
+              {result.keepers.map((k, i) => (
+                <li key={i}>
+                  <span className="font-semibold text-cream">
+                    Player {i + 1}, {k.name}
+                  </span>
+                  {k.down ? ' (down at the end)' : ''}: {k.weapons || 'nothing'}.
+                </li>
+              ))}
+            </ul>
+          )}
           {result.reached.length > 0 && (
             <ul data-testid="survival-result-milestones" className="mt-3 text-sm text-plasma">
               {result.reached.map((id) => (
@@ -781,6 +923,11 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-level={hud?.level ?? 1}
           data-boss={hud?.boss ? Math.round(hud.boss.homesickness) : ''}
           data-weapons={hud?.weapons ?? 'laser-pointer:1'}
+          data-players={runPlayers}
+          data-chooser={chooser}
+          data-hero2-x={hud?.heroes[1]?.x ?? ''}
+          data-hero2-y={hud?.heroes[1]?.y ?? ''}
+          data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
           data-best-key={SURVIVAL_BEST_KEY}
           className="fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none"
         >
@@ -821,7 +968,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               Time {clockText(hud?.time ?? 0)} / {clockText(ARENA_CONFIG.timeGoalMs)}
             </p>
             <div className="flex items-center gap-2">
-              <span id="resolve-label">Resolve</span>
+              <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>
               <div
                 role="meter"
                 aria-labelledby="resolve-label"
@@ -837,8 +984,37 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                   }}
                 />
               </div>
-              <span data-testid="survival-resolve">{Math.ceil(hud?.resolve ?? 100)}</span>
+              <span data-testid="survival-resolve">
+                {hud?.heroes[0]?.down
+                  ? `Down, back in ${Math.ceil(hud.heroes[0].backIn / 1000)} s`
+                  : Math.ceil(hud?.resolve ?? 100)}
+              </span>
             </div>
+            {hud && hud.heroes.length > 1 && (
+              <div className="flex items-center gap-2">
+                <span id="resolve2-label">Player 2 Resolve</span>
+                <div
+                  role="meter"
+                  aria-labelledby="resolve2-label"
+                  aria-valuemin={0}
+                  aria-valuemax={hud.heroes[1].maxResolve}
+                  aria-valuenow={hud.heroes[1].resolve}
+                  className="h-2 w-32 overflow-hidden rounded-full bg-panel"
+                >
+                  <div
+                    className="h-full bg-aura"
+                    style={{
+                      width: `${(100 * hud.heroes[1].resolve) / hud.heroes[1].maxResolve}%`,
+                    }}
+                  />
+                </div>
+                <span data-testid="survival-resolve2">
+                  {hud.heroes[1].down
+                    ? `Down, back in ${Math.ceil(hud.heroes[1].backIn / 1000)} s`
+                    : Math.ceil(hud.heroes[1].resolve)}
+                </span>
+              </div>
+            )}
             <p data-testid="survival-sent-home">Cats sent home: {hud?.sentHome ?? 0}</p>
             <div className="flex items-center gap-2">
               <span data-testid="survival-level">Level {hud?.level ?? 1}</span>
@@ -865,6 +1041,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
 
           {screen === 'choosing' && choices && (
             <div
+              key={chooser}
               ref={choiceRef}
               role="dialog"
               aria-modal="true"
@@ -875,7 +1052,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             >
               <div className="w-full max-w-lg rounded-2xl border border-line bg-panel p-6">
                 <h2 id="level-up-heading" className="font-display text-xl text-cream">
-                  Level {choiceLevel}. Choose one.
+                  Level {choiceLevel}.{' '}
+                  {runPlayers === 2 ? `Player ${chooser + 1}, choose one.` : 'Choose one.'}
                 </h2>
                 <p id="level-up-help" className="mt-1 text-sm text-aura">
                   {touch

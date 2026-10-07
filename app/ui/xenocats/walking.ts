@@ -18,17 +18,24 @@ const WALK_KEYS: Readonly<Record<string, Vec>> = {
 
 export const isWalkKey = (code: string) => code in WALK_KEYS;
 
+/** In local co-op: player 1 walks with WASD, player 2 with the arrow keys. */
+export const PLAYER_KEYS: readonly ReadonlySet<string>[] = [
+  new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']),
+  new Set(['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']),
+];
+
 /**
  * The way the held keys walk the character: a unit vector, or zero when none (or
- * only opposite ones) are held. A diagonal is no faster than a straight line.
+ * only opposite ones) are held. A diagonal is no faster than a straight line. With
+ * `only`, just those keys count (one player's, in co-op).
  */
-export function walkDirection(held: Iterable<string>): Vec {
+export function walkDirection(held: Iterable<string>, only?: ReadonlySet<string>): Vec {
   const keys = new Set(held);
   let x = 0;
   let y = 0;
   for (const code of keys) {
     const way = WALK_KEYS[code];
-    if (!way) continue;
+    if (!way || (only && !only.has(code))) continue;
     x += way.x;
     y += way.y;
   }

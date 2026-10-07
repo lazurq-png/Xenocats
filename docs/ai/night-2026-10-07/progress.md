@@ -313,3 +313,60 @@ Database reachable (the e2e global setup rebuilt `xenocats_test`).
     - Prettier, lint, type check, group check, build.
     - Unit: 4 files, 115 passed.
     - Browser: 94 passed.
+
+## T11 — Local co-op for two (completed)
+
+- Branch `night-2026-10-07-t11-coop`, base `07e46e4`. Start 00:38 (budget ~13,727,000); completed 01:03 (budget ~13,617,000).
+- **CI of T10** (`07e46e4`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37697284595), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37697284251)).
+- **What the code does**
+  - `app/ui/xenocats/arena.ts`:
+    - One `Keeper` record per player: position, the character's pace and Resolve, effect, weapons, passives, modifiers, revivals, and when he went down. The code runs per Keeper through a `hero` binding, so one player plays exactly as before. Every existing unit test, seeded runs included, passed unchanged after the restructure.
+    - New: `config.secondPlayer`, `config.coop` (start gap, `maxZoomOut` 1.6, margin, `reviveMs` 30 s) and `step(input, spawn, input2)`.
+    - A shared `camera()` between the two, zooming out to the limit. A tether keeps them within the widest view; it only holds back a step's added distance and never makes a Keeper jump.
+    - Cats, Laser Cat shots and the Matriarch go for the nearest standing Keeper. Arrivals, sitting cats and the Yarn's bounces work from the camera's screen.
+    - **Downed** Keepers lie still. They stand again after 30 s if the other lasts. The run ends when none stands.
+    - Level-ups and chests ask player 1, then player 2 (`chooser()`), each from his own arsenal. Gems are shared, flying to the nearest Keeper.
+    - Events: `downed`; `revived` says whose and how; `hero-hit` says whose.
+    - `zones()` replaces `zone()`.
+  - `app/ui/xenocats/walking.ts`: `PLAYER_KEYS` (WASD, arrows) and `walkDirection(held, only)`.
+  - `app/ui/xenocats/progression.ts`: `runConfig(progress, base, second)` builds player 2 from a character player 1 has, with the Tailor's work.
+  - `app/ui/xenocats/arena-view.tsx`:
+    - The start screen's "Keepers" choice (One / Two, at one keyboard) and "Player 2 goes out as", keyboard only. On touch, one Keeper.
+    - Each player's keys; drawing through the zoomed camera; both Keepers, marked P1/P2, a downed one lying pale.
+    - "Player 2 Resolve" with "Down, back in N s".
+    - The level-up dialog says whose turn it is and is remounted for each turn, so it is announced.
+    - Notices for downed and revived.
+    - The results list both Keepers (character, weapons, down at the end).
+    - Test attributes: `data-players`, `data-chooser`, `data-hero2-x`, `data-hero2-y`, `data-down`.
+  - Tests:
+    - `tests/unit/xenocats/coop.test.ts` (new, 12):
+      - The keys, and each input walking its own Keeper.
+      - Own weapons; alone, one Keeper.
+      - The camera between them and zooming to its limit; the tether; no jump when the window shrinks.
+      - The turn order at a level-up, each choice his own; one experience bar.
+      - Downed and revived at 30 s; a downed Keeper still; both down ends the run.
+    - `progression.test.ts`: player 2's config.
+    - `survival.spec.ts`: two Keepers start, D walks only player 1 and the left arrow only player 2, and a level-up asks player 1 then player 2 for the same level (the dialog named for player 2, focus in it).
+    - CI's games group names `coop`.
+- **Why it was added**: plan task 11 (D65–D71).
+- **Acceptance criteria**
+  - Covered by tests: all of the task's list.
+  - Built, not seen or browser-tested: the camera's zoom on screen, the downed/revived notices and the co-op results.
+  - **Tested in a browser, not seen.**
+  - Known trade (reviewer's note): after a window shrink or an elite's teleport at full span, a Keeper may stay partly off the screen until they walk closer. They are not pulled together, only kept from parting further.
+- **Drawn by the run**: nothing new. The "P1"/"P2" labels are text on the canvas.
+- **Reviewer**:
+  - First review: request changes. Medium: player 2's turn not announced. Low: the downed notice's hard-coded seconds; a jump when the window shrank; player 2's config untested; a dead accessor. All were fixed (D71), and the jump's test failed with the fix removed.
+  - Re-review: approve, two notes (above, and an exact float comparison that passes).
+- **Gate**
+  - Full gate before the review fixes (`GATE_FULL=1`, as `ci.yml` changed), all exit 0:
+    - Actionlint 0, prettier on 7 files, lint 0 warnings, type check, group check.
+    - `npm test`: 40 files, 604 passed (17 skipped).
+    - Build.
+    - `npm run test:e2e`: 126 passed.
+    - `E2E_SERVER=start npm run test:e2e`: 126 passed.
+  - Final code, after the review fixes (the affected selection), all exit 0:
+    - Prettier on 8 files, lint, type check, group check, build.
+    - Unit: 9 files, 162 passed.
+    - Browser: 95 passed.
+  - One run of `survival.spec.ts` alone, on a cold dev server during development, failed the Mega Cat test's first assertion (no boss yet). The run had reached 13 s before the first read, past the boss at 3 s. The next run, and every gate since, passed it. Recorded, not changed.

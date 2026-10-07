@@ -129,6 +129,18 @@ export type ArenaConfig = {
    * stood still for `stillMs`, it comes and sits by him.
    */
   secretCat: { afterMs: number; stillMs: number };
+  /** A second Keeper (local co-op), with his own weapons, pace and Resolve; or null. */
+  secondPlayer: { startingWeapons: readonly WeaponId[]; speed: number; resolve: number } | null;
+  coop: {
+    /** The two start this far apart, px. */
+    startGap: number;
+    /** The shared camera zooms out to keep both in view, up to this (2 = twice as much). */
+    maxZoomOut: number;
+    /** Kept this far inside the screen's edges at the widest, px; beyond, one cannot walk on. */
+    margin: number;
+    /** A downed Keeper stands again if the other lasts this long, ms. */
+    reviveMs: number;
+  };
   /** The spatial grid's cell, px. */
   cellSize: number;
 };
@@ -171,6 +183,8 @@ export const ARENA_CONFIG: ArenaConfig = {
   availableWeapons: BASE_WEAPONS,
   boost: { might: 1, pickup: 1, revivals: 0 },
   secretCat: { afterMs: 60_000, stillMs: 20_000 },
+  secondPlayer: null,
+  coop: { startGap: 80, maxZoomOut: 1.6, margin: 80, reviveMs: 30_000 },
   cellSize: 64,
 };
 
@@ -264,6 +278,8 @@ export type Projectile = {
   touched: number[];
   /** How many more times it splits when it bounces (the Yarn Apocalypse's). */
   splits: number;
+  /** Whose weapon fired it (the Keeper's index). */
+  owner: number;
 };
 
 /** The Yarn Apocalypse's balls stop splitting at this many at once. */
@@ -274,9 +290,40 @@ export const GULP_BURST_RADIUS = 170;
 
 export type Gem = { x: number; y: number; value: number };
 
+/** One player's hero: where he is, his Resolve, his own weapons and passives. */
+type Keeper = {
+  /** 0 for player 1, 1 for player 2. */
+  index: number;
+  x: number;
+  y: number;
+  /** His character's pace and Resolve, before the passives. */
+  speed: number;
+  baseResolve: number;
+  resolve: number;
+  untouchableUntil: number;
+  facing: number;
+  /** An elite's effect on him, while it lasts. */
+  effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null;
+  weapons: Map<WeaponId, { level: number; readyAt: number }>;
+  passives: Map<PassiveId, number>;
+  mods: Modifiers;
+  revivals: number;
+  /** When his Resolve ran out while the other went on (co-op); null while he stands. */
+  downedAt: number | null;
+  /** The Forbidden Catnip Vacuum's burst, when it comes (after its pull). */
+  gulpAt: number;
+};
+
 export type ArenaEvent =
   | { kind: 'sent-home'; x: number; y: number; type: number; variety: VarietyId | null }
-  | { kind: 'hero-hit'; type: number; variety: VarietyId | null; elite: boolean }
+  | {
+      kind: 'hero-hit';
+      type: number;
+      variety: VarietyId | null;
+      elite: boolean;
+      /** Which Keeper (0 for player 1, 1 for player 2). */
+      player: number;
+    }
   | { kind: 'boss'; x: number; y: number }
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
@@ -284,8 +331,10 @@ export type ArenaEvent =
   | { kind: 'evolution'; from: WeaponId; to: WeaponId }
   /** The secret cat has come. */
   | { kind: 'secret'; id: 'neighbour' }
-  /** His Resolve was spent, and half of it returned (Second Wind). */
-  | { kind: 'revived' }
+  /** His Resolve was spent, and half of it returned (Second Wind, or the other lasted). */
+  | { kind: 'revived'; player: number; by: 'second-wind' | 'ally' }
+  /** In co-op, a Keeper's Resolve is spent while the other goes on: he is down. */
+  | { kind: 'downed'; player: number }
   | { kind: 'fired'; weapon: WeaponId }
   | { kind: 'matriarch' }
   | { kind: 'over'; outcome: ArenaOutcome };
@@ -317,14 +366,62 @@ export function createArena(options: {
   let time = 0;
   let status: 'playing' | 'over' = 'playing';
   let outcome: ArenaOutcome | null = null;
-  const hero = { x: 0, y: 0, resolve: config.hero.resolve, untouchableUntil: 0, facing: 1 };
-  let effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null = null;
+  /** The passives held, and what the run brought from before (the boost). */
+  const boosted = (m: Modifiers): Modifiers => ({
+    ...m,
+    might: m.might * config.boost.might,
+    pickup: m.pickup * config.boost.pickup,
+  });
+
+  function newKeeper(
+    index: number,
+    at: Vec,
+    own: { startingWeapons: readonly WeaponId[]; speed: number; resolve: number },
+    startingPassives: readonly PassiveId[]
+  ): Keeper {
+    const weapons = new Map<WeaponId, { level: number; readyAt: number }>();
+    for (const id of own.startingWeapons) {
+      weapons.set(id, { level: config.startingLevel, readyAt: config.firstShotMs });
+    }
+    const passives = new Map<PassiveId, number>(startingPassives.map((id) => [id, 1]));
+    return {
+      index,
+      x: at.x,
+      y: at.y,
+      speed: own.speed,
+      baseResolve: own.resolve,
+      resolve: own.resolve,
+      untouchableUntil: 0,
+      facing: 1,
+      effect: null,
+      weapons,
+      passives,
+      mods: boosted(modifiers(passives)),
+      revivals: config.boost.revivals,
+      downedAt: null,
+      gulpAt: Infinity,
+    };
+  }
+
+  // The Keepers: one, or two side by side in co-op (config.secondPlayer).
+  const first = {
+    startingWeapons: config.startingWeapons,
+    speed: config.hero.speed,
+    resolve: config.hero.resolve,
+  };
+  const keepers: Keeper[] = config.secondPlayer
+    ? [
+        newKeeper(0, { x: -config.coop.startGap / 2, y: 0 }, first, config.startingPassives),
+        newKeeper(1, { x: config.coop.startGap / 2, y: 0 }, config.secondPlayer, []),
+      ]
+    : [newKeeper(0, { x: 0, y: 0 }, first, config.startingPassives)];
+  /** The Keeper being dealt with now: whose walk, weapons and touch. */
+  let hero = keepers[0];
   let sentHome = 0;
   let nextId = 1;
-  // How long he has stood still; whether the secret cat has come; revivals left.
+  // How long he has stood still; whether the secret cat has come.
   let stillFor = 0;
   let secretCame = false;
-  let revivals = config.boost.revivals;
   // The cats: live ones in `cats`, sent-home ones kept in `spare` to be reused.
   const cats: ArenaCat[] = [];
   const spare: ArenaCat[] = [];
@@ -342,32 +439,78 @@ export function createArena(options: {
   const shots: Shot[] = [];
   const spareShots: Shot[] = [];
 
-  // The arsenal.
-  const weapons = new Map<WeaponId, { level: number; readyAt: number }>();
-  for (const id of config.startingWeapons) {
-    weapons.set(id, { level: config.startingLevel, readyAt: config.firstShotMs });
-  }
-  const passives = new Map<PassiveId, number>(config.startingPassives.map((id) => [id, 1]));
-  /** The passives held, and what the run brought from before (the boost). */
-  const boosted = (m: Modifiers): Modifiers => ({
-    ...m,
-    might: m.might * config.boost.might,
-    pickup: m.pickup * config.boost.pickup,
-  });
-  let mods: Modifiers = boosted(modifiers(passives));
+  // What the weapons fired.
   const projectiles: Projectile[] = [];
   const spareProjectiles: Projectile[] = [];
   const beams: { from: Vec; to: Vec; until: number }[] = [];
-  // The Forbidden Catnip Vacuum's burst, when it comes (after its pull).
-  let gulpAt = Infinity;
   // Experience.
   const gems: Gem[] = [];
   let xp = 0;
   let level = 1;
   let pending = 0;
   let choosing: Choice[] | null = null;
+  /** Whose turn it is to choose (co-op: player 1, then player 2, each level). */
+  let chooser = 0;
 
-  const maxResolve = () => config.hero.resolve + mods.maxResolve;
+  const maxResolveOf = (k: Keeper) => k.baseResolve + k.mods.maxResolve;
+  const maxResolve = () => maxResolveOf(hero);
+  const standing = (k: Keeper) => k.downedAt === null;
+
+  /**
+   * The shared camera: on the one Keeper, or between the two, zoomed out (up to
+   * config.coop.maxZoomOut) to keep both in view. The screen then shows the
+   * viewport times `zoom` of the arena.
+   */
+  function camera(): { x: number; y: number; zoom: number } {
+    if (keepers.length === 1) return { x: keepers[0].x, y: keepers[0].y, zoom: 1 };
+    const [a, b] = keepers;
+    const m = config.coop.margin;
+    const zoom = Math.min(
+      config.coop.maxZoomOut,
+      Math.max(
+        1,
+        (Math.abs(a.x - b.x) + 2 * m) / viewport.width,
+        (Math.abs(a.y - b.y) + 2 * m) / viewport.height
+      )
+    );
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, zoom };
+  }
+
+  /**
+   * The tether: at the camera's widest, neither can walk further from the other.
+   * Only this step's walk is held back (`from` is where he stood): if they are
+   * already further apart (the window shrank), he is not moved, only kept from
+   * going further.
+   */
+  function tether(k: Keeper, from: Vec) {
+    if (keepers.length < 2) return;
+    const other = keepers[1 - k.index];
+    const spanX = Math.max(
+      viewport.width * config.coop.maxZoomOut - 2 * config.coop.margin,
+      Math.abs(from.x - other.x)
+    );
+    const spanY = Math.max(
+      viewport.height * config.coop.maxZoomOut - 2 * config.coop.margin,
+      Math.abs(from.y - other.y)
+    );
+    k.x = Math.min(Math.max(k.x, other.x - spanX), other.x + spanX);
+    k.y = Math.min(Math.max(k.y, other.y - spanY), other.y + spanY);
+  }
+
+  /** The standing Keeper nearest a point (the first, if none stands). */
+  function nearestKeeper(x: number, y: number): Keeper {
+    let best = keepers[0];
+    let bestD = Infinity;
+    for (const k of keepers) {
+      if (!standing(k)) continue;
+      const d = (k.x - x) ** 2 + (k.y - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
+    }
+    return best;
+  }
 
   /** A type's own numbers, the same every time: spread between the config's bounds. */
   const byType = (type: number, [low, high]: readonly [number, number], salt: number) => {
@@ -375,10 +518,14 @@ export function createArena(options: {
     return low + (high - low) * share;
   };
 
-  /** A point just off screen, at `angle` from him. */
+  /** A point just off screen, at `angle` from its centre. */
   function offScreen(angle: number, extra = 0): Vec {
-    const reach = Math.hypot(viewport.width, viewport.height) / 2 + config.cats.spawnMargin + extra;
-    return { x: hero.x + Math.cos(angle) * reach, y: hero.y + Math.sin(angle) * reach };
+    const cam = camera();
+    const reach =
+      (Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom +
+      config.cats.spawnMargin +
+      extra;
+    return { x: cam.x + Math.cos(angle) * reach, y: cam.y + Math.sin(angle) * reach };
   }
 
   /** A new cat (pooled), at `at`. */
@@ -423,18 +570,19 @@ export function createArena(options: {
 
   /** A spot on the screen, at least `away` from him: where a cat that sits is found. */
   function onScreen(away: number): Vec {
+    const cam = camera();
     const angle = random.next() * 2 * Math.PI;
     const cos = Math.abs(Math.cos(angle));
     const sin = Math.abs(Math.sin(angle));
     // How far the screen reaches that way (40 px in from its edge), so a narrow
     // screen keeps the cat on it: nearer than `away` only if the screen is that small.
     const edge = Math.min(
-      cos > 1e-6 ? (viewport.width / 2 - 40) / cos : Infinity,
-      sin > 1e-6 ? (viewport.height / 2 - 40) / sin : Infinity
+      cos > 1e-6 ? ((viewport.width * cam.zoom) / 2 - 40) / cos : Infinity,
+      sin > 1e-6 ? ((viewport.height * cam.zoom) / 2 - 40) / sin : Infinity
     );
     const near = Math.min(away, edge / 2);
     const reach = random.range(near, Math.max(edge, near));
-    return { x: hero.x + Math.cos(angle) * reach, y: hero.y + Math.sin(angle) * reach };
+    return { x: cam.x + Math.cos(angle) * reach, y: cam.y + Math.sin(angle) * reach };
   }
 
   /** One arrival: who comes is drawn from what the schedule allows now, by weight. */
@@ -462,8 +610,10 @@ export function createArena(options: {
    * where he is, and none counts for nothing.
    */
   function bringBack(cat: ArenaCat) {
-    const far = (Math.hypot(viewport.width, viewport.height) / 2 + config.cats.spawnMargin) * 2;
-    if (Math.hypot(cat.x - hero.x, cat.y - hero.y) <= far + cat.radius) return;
+    const cam = camera();
+    const far =
+      ((Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin) * 2;
+    if (Math.hypot(cat.x - cam.x, cat.y - cam.y) <= far + cat.radius) return;
     const sits = cat.variety !== null && VARIETIES[cat.variety].gait === 'sit';
     const at = sits ? onScreen(200) : offScreen(random.next() * 2 * Math.PI, cat.radius);
     cat.x = at.x;
@@ -549,7 +699,7 @@ export function createArena(options: {
 
   /** Lays an elite's effect on the hero, if none is on him. */
   function afflict(cat: ArenaCat) {
-    if (effect && time < effect.until) return;
+    if (hero.effect && time < hero.effect.until) return;
     if (cat.variety !== null) return;
     const type = types[cat.type];
     const kind = HERO_EFFECTS[type.effect.id];
@@ -568,14 +718,14 @@ export function createArena(options: {
       hero.x += Math.cos(angle) * kind.distance;
       hero.y += Math.sin(angle) * kind.distance;
     }
-    effect = { effect: kind, until, from: { x: cat.x, y: cat.y }, way };
+    hero.effect = { effect: kind, until, from: { x: cat.x, y: cat.y }, way };
   }
 
   /** The hero's walk this step, after any effect on him. */
   function heroStep(input: Vec, dt: number) {
-    const active = effect && time < effect.until ? effect : null;
+    const active = hero.effect && time < hero.effect.until ? hero.effect : null;
     let { x, y } = input;
-    let speed = config.hero.speed * mods.speed;
+    let speed = hero.speed * hero.mods.speed;
     if (active) {
       const e = active.effect;
       if (e.kind === 'freeze') speed = 0;
@@ -597,8 +747,9 @@ export function createArena(options: {
 
   /** A cat's step, its own way. */
   function moveCat(cat: ArenaCat, dt: number) {
-    const dx = hero.x - cat.x;
-    const dy = hero.y - cat.y;
+    const target = nearestKeeper(cat.x, cat.y);
+    const dx = target.x - cat.x;
+    const dy = target.y - cat.y;
     const d = Math.hypot(dx, dy) || 1;
     const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
     if (gait === 'sit') return;
@@ -639,13 +790,28 @@ export function createArena(options: {
       const shot = shots[i];
       shot.x += shot.vx * dt;
       shot.y += shot.vy * dt;
-      const hit =
-        Math.hypot(shot.x - hero.x, shot.y - hero.y) <=
-        config.hero.reach / 2 + config.laserCat.shotRadius;
-      if (hit && time >= hero.untouchableUntil) {
-        hero.resolve = Math.max(hero.resolve - shot.drain, 0);
-        hero.untouchableUntil = time + config.hero.untouchableMs;
-        events.push({ kind: 'hero-hit', type: -1, variety: 'laser', elite: false });
+      let hit = false;
+      for (const k of keepers) {
+        if (!standing(k)) continue;
+        if (
+          Math.hypot(shot.x - k.x, shot.y - k.y) >
+          config.hero.reach / 2 + config.laserCat.shotRadius
+        ) {
+          continue;
+        }
+        hit = true;
+        if (time >= k.untouchableUntil) {
+          k.resolve = Math.max(k.resolve - shot.drain, 0);
+          k.untouchableUntil = time + config.hero.untouchableMs;
+          events.push({
+            kind: 'hero-hit',
+            type: -1,
+            variety: 'laser',
+            elite: false,
+            player: k.index,
+          });
+        }
+        break;
       }
       if (hit || time >= shot.until) {
         shots[i] = shots[shots.length - 1];
@@ -738,10 +904,13 @@ export function createArena(options: {
     return length < 0.5 ? { x: hero.facing, y: 0 } : { x: dx / length, y: dy / length };
   }
 
-  function launch(p: Omit<Projectile, 'touched' | 'splits'> & { splits?: number }) {
+  function launch(
+    p: Omit<Projectile, 'touched' | 'splits' | 'owner'> & { splits?: number; owner?: number }
+  ) {
     const projectile = spareProjectiles.pop() ?? ({ touched: [] } as unknown as Projectile);
     Object.assign(projectile, p);
     projectile.splits = p.splits ?? 0;
+    projectile.owner = p.owner ?? hero.index;
     projectile.touched.length = 0;
     projectiles.push(projectile);
   }
@@ -802,7 +971,7 @@ export function createArena(options: {
           cat.y = hero.y + ((cat.y - hero.y) * keep) / d;
         }
       }
-      gulpAt = time + s.durationMs;
+      hero.gulpAt = time + s.durationMs;
       return true;
     }
     if (kind === 'pull') {
@@ -884,17 +1053,17 @@ export function createArena(options: {
   }
 
   function swingWeapons(dt: number) {
-    if (time >= gulpAt) {
-      gulpAt = Infinity;
-      const gulp = weapons.get('forbidden-catnip-vacuum');
+    if (time >= hero.gulpAt) {
+      hero.gulpAt = Infinity;
+      const gulp = hero.weapons.get('forbidden-catnip-vacuum');
       if (gulp) {
-        const s = weaponStats('forbidden-catnip-vacuum', gulp.level, mods);
-        for (const i of within(hero, GULP_BURST_RADIUS * mods.area))
+        const s = weaponStats('forbidden-catnip-vacuum', gulp.level, hero.mods);
+        for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area))
           hurt(cats[i], s.damage, 'gulp');
       }
     }
-    for (const [id, held] of weapons) {
-      const s = weaponStats(id, held.level, mods);
+    for (const [id, held] of hero.weapons) {
+      const s = weaponStats(id, held.level, hero.mods);
       const kind = WEAPONS[id].kind;
       if (kind === 'orbit') {
         // Each blade, all the time, to every cat it passes through.
@@ -917,8 +1086,11 @@ export function createArena(options: {
   }
 
   function moveProjectiles(dt: number) {
-    const left = hero.x - viewport.width / 2;
-    const top = hero.y - viewport.height / 2;
+    const cam = camera();
+    const w = viewport.width * cam.zoom;
+    const h = viewport.height * cam.zoom;
+    const left = cam.x - w / 2;
+    const top = cam.y - h / 2;
     for (let n = projectiles.length - 1; n >= 0; n--) {
       const p = projectiles[n];
       p.x += p.vx * dt;
@@ -926,12 +1098,12 @@ export function createArena(options: {
       if (p.weapon === 'yarn-ball' || p.weapon === 'yarn-apocalypse') {
         // Off the edges of the screen, as he walks.
         let bounced = false;
-        if (p.x < left || p.x > left + viewport.width) {
-          p.vx = Math.sign(hero.x - p.x) * Math.abs(p.vx);
+        if (p.x < left || p.x > left + w) {
+          p.vx = Math.sign(cam.x - p.x) * Math.abs(p.vx);
           bounced = true;
         }
-        if (p.y < top || p.y > top + viewport.height) {
-          p.vy = Math.sign(hero.y - p.y) * Math.abs(p.vy);
+        if (p.y < top || p.y > top + h) {
+          p.vy = Math.sign(cam.y - p.y) * Math.abs(p.vy);
           bounced = true;
         }
         // The Apocalypse's balls split in two where they bounce, up to a limit.
@@ -940,9 +1112,8 @@ export function createArena(options: {
           // The other half goes off at a right angle, but back onto the screen.
           let vx = -p.vy;
           let vy = p.vx;
-          if (p.x < left || p.x > left + viewport.width)
-            vx = Math.sign(hero.x - p.x) * Math.abs(vx);
-          if (p.y < top || p.y > top + viewport.height) vy = Math.sign(hero.y - p.y) * Math.abs(vy);
+          if (p.x < left || p.x > left + w) vx = Math.sign(cam.x - p.x) * Math.abs(vx);
+          if (p.y < top || p.y > top + h) vy = Math.sign(cam.y - p.y) * Math.abs(vy);
           launch({
             weapon: p.weapon,
             bit: false,
@@ -955,6 +1126,7 @@ export function createArena(options: {
             pierce: Infinity,
             until: p.until,
             splits: p.splits,
+            owner: p.owner,
           });
         }
       }
@@ -968,11 +1140,13 @@ export function createArena(options: {
       if (p.pierce <= 0 || time >= p.until) {
         // A hairball bursts into smaller ones where it ends.
         if (p.weapon === 'hairball' && !p.bit) {
-          const s = weaponStats('hairball', weapons.get('hairball')?.level ?? 1, mods);
+          const owner = keepers[p.owner];
+          const s = weaponStats('hairball', owner.weapons.get('hairball')?.level ?? 1, owner.mods);
           for (let k = 0; k < s.count; k++) {
             const turn = (k * 2 * Math.PI) / s.count;
             launch({
               weapon: 'hairball',
+              owner: p.owner,
               bit: true,
               x: p.x,
               y: p.y,
@@ -995,11 +1169,12 @@ export function createArena(options: {
   // --------------------------------------------------------------- experience
 
   function gatherGems(dt: number) {
-    const reach = config.gems.pickup * mods.pickup;
     for (let i = gems.length - 1; i >= 0; i--) {
       const gem = gems[i];
-      const dx = hero.x - gem.x;
-      const dy = hero.y - gem.y;
+      const k = nearestKeeper(gem.x, gem.y);
+      const reach = config.gems.pickup * k.mods.pickup;
+      const dx = k.x - gem.x;
+      const dy = k.y - gem.y;
       const d = Math.hypot(dx, dy);
       if (d <= 14) {
         xp += gem.value;
@@ -1019,26 +1194,34 @@ export function createArena(options: {
     }
     for (let i = chests.length - 1; i >= 0; i--) {
       const chest = chests[i];
-      if (Math.hypot(chest.x - hero.x, chest.y - hero.y) > config.chestReach) continue;
+      const opener = keepers.find(
+        (k) => standing(k) && Math.hypot(chest.x - k.x, chest.y - k.y) <= config.chestReach
+      );
+      if (!opener) continue;
+      // Whoever opens it: his weapon may evolve.
+      hero = opener;
       chests.splice(i, 1);
       events.push({ kind: 'chest', x: chest.x, y: chest.y });
       // A weapon ready to evolve does, in its place; otherwise a level-up.
       const evolution = evolutionFor(
-        new Map([...weapons].map(([id, w]) => [id, w.level] as const)),
-        passives
+        new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const)),
+        hero.passives
       );
       if (evolution) {
-        weapons.delete(evolution.from);
-        weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
+        hero.weapons.delete(evolution.from);
+        hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
         events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
       } else pending++;
     }
+    hero = keepers[0];
     if (pending > 0 && !choosing) offer();
   }
 
+  /** The waiting level-up's choices, for the Keeper whose turn it is. */
   function offer() {
-    const held = new Map([...weapons].map(([id, w]) => [id, w.level] as const));
-    choosing = offerChoices(held, passives, mods.choices, random, config.availableWeapons);
+    const k = keepers[chooser];
+    const held = new Map([...k.weapons].map(([id, w]) => [id, w.level] as const));
+    choosing = offerChoices(held, k.passives, k.mods.choices, random, config.availableWeapons);
   }
 
   return {
@@ -1053,12 +1236,19 @@ export function createArena(options: {
      * vector, or zero), cats come (while `spawn` allows), walk, reach him or are
      * sent home. Nothing moves while a level-up's choice waits.
      */
-    step(input: Vec, spawn = true) {
+    step(input: Vec, spawn = true, input2: Vec = { x: 0, y: 0 }) {
       if (status === 'over' || choosing) return;
       const dt = config.stepMs / 1000;
       time += config.stepMs;
-      heroStep(input, dt);
-      hero.resolve = Math.min(hero.resolve + mods.recovery * dt, maxResolve());
+      for (const k of keepers) {
+        if (!standing(k)) continue;
+        hero = k;
+        const from = { x: k.x, y: k.y };
+        heroStep(k.index === 0 ? input : input2, dt);
+        tether(k, from);
+        k.resolve = Math.min(k.resolve + k.mods.recovery * dt, maxResolve());
+      }
+      hero = keepers[0];
 
       // Arrivals: towards how many the arena wants now, a share a second at most.
       // While the frame-rate guard says no, only up to `guardFree`.
@@ -1068,8 +1258,12 @@ export function createArena(options: {
         spawn ? Infinity : config.cats.guardFree
       );
       spawnEvents(spawn);
-      // The secret cat, once, to a Keeper who has stood still long enough.
-      stillFor = input.x === 0 && input.y === 0 ? stillFor + config.stepMs : 0;
+      // The secret cat, once, to Keepers who have stood still long enough.
+      const still =
+        input.x === 0 &&
+        input.y === 0 &&
+        (keepers.length === 1 || (input2.x === 0 && input2.y === 0));
+      stillFor = still ? stillFor + config.stepMs : 0;
       if (!secretCame && time >= config.secretCat.afterMs && stillFor >= config.secretCat.stillMs) {
         secretCame = true;
         spawnVariety('neighbour', onScreen(120));
@@ -1085,7 +1279,7 @@ export function createArena(options: {
         arrivals = 0;
       }
 
-      // The cats walk at him; the grid is rebuilt from where they now stand.
+      // The cats walk at the nearest Keeper; the grid is rebuilt from where they stand.
       grid.clear();
       // The few big cats (bigger than the cats' size) are kept apart, so every
       // search looks a cat's size further, not the biggest one's.
@@ -1099,47 +1293,84 @@ export function createArena(options: {
       }
       moveShots(dt);
 
-      // Reached: one drain per moment, an elite's effect on top.
-      if (time >= hero.untouchableUntil) {
-        gather(hero.x, hero.y, config.hero.reach);
+      // Reached: one drain per moment for each Keeper, an elite's effect on top.
+      for (const k of keepers) {
+        if (!standing(k) || time < k.untouchableUntil) continue;
+        hero = k;
+        gather(k.x, k.y, config.hero.reach);
         for (const i of near) {
           const cat = cats[i];
           // (The Neighbour's Cat drains nothing: it only sits there.)
           if (cat.drain === 0) continue;
-          if ((cat.x - hero.x) ** 2 + (cat.y - hero.y) ** 2 > reachOf(cat) ** 2) continue;
-          hero.resolve = Math.max(hero.resolve - cat.drain, 0);
-          hero.untouchableUntil = time + config.hero.untouchableMs;
-          events.push({ kind: 'hero-hit', type: cat.type, variety: cat.variety, elite: cat.elite });
+          if ((cat.x - k.x) ** 2 + (cat.y - k.y) ** 2 > reachOf(cat) ** 2) continue;
+          k.resolve = Math.max(k.resolve - cat.drain, 0);
+          k.untouchableUntil = time + config.hero.untouchableMs;
+          events.push({
+            kind: 'hero-hit',
+            type: cat.type,
+            variety: cat.variety,
+            elite: cat.elite,
+            player: k.index,
+          });
           if (cat.elite) afflict(cat);
           break;
         }
       }
-      if (hero.resolve <= 0 && revivals > 0) {
-        revivals--;
-        hero.resolve = maxResolve() / 2;
-        events.push({ kind: 'revived' });
+
+      // Spent: Second Wind if he has it; in co-op he is down until the other has
+      // lasted long enough; the run ends when no Keeper stands.
+      for (const k of keepers) {
+        hero = k;
+        if (!standing(k)) {
+          if (time - (k.downedAt ?? time) >= config.coop.reviveMs) {
+            k.downedAt = null;
+            k.resolve = maxResolve() / 2;
+            k.untouchableUntil = time + config.hero.untouchableMs;
+            events.push({ kind: 'revived', player: k.index, by: 'ally' });
+          }
+          continue;
+        }
+        if (k.resolve <= 0 && k.revivals > 0) {
+          k.revivals--;
+          k.resolve = maxResolve() / 2;
+          events.push({ kind: 'revived', player: k.index, by: 'second-wind' });
+        }
+        if (k.resolve <= 0) {
+          k.downedAt = time;
+          k.effect = null;
+          if (keepers.length > 1) events.push({ kind: 'downed', player: k.index });
+        }
       }
-      if (hero.resolve <= 0) {
+      hero = keepers[0];
+      if (!keepers.some(standing)) {
         end('spent');
         return;
       }
 
-      // His weapons; what flies; then every cat homesick enough goes home.
-      swingWeapons(dt);
+      // Their weapons; what flies; then every cat homesick enough goes home.
+      for (const k of keepers) {
+        if (!standing(k)) continue;
+        hero = k;
+        swingWeapons(dt);
+      }
+      hero = keepers[0];
       moveProjectiles(dt);
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
       gatherGems(dt);
 
-      // The time goal: the Matriarch comes, and ends the run when she reaches him.
+      // The time goal: the Matriarch comes, and ends the run when she reaches one.
       if (time >= config.timeGoalMs) {
         if (!matriarch) {
-          const reach = Math.hypot(viewport.width, viewport.height) / 2 + config.cats.spawnMargin;
-          matriarch = { x: hero.x - reach, y: hero.y };
+          const cam = camera();
+          const reach =
+            (Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin;
+          matriarch = { x: cam.x - reach, y: cam.y };
           events.push({ kind: 'matriarch' });
         }
-        const dx = hero.x - matriarch.x;
-        const dy = hero.y - matriarch.y;
+        const target = nearestKeeper(matriarch.x, matriarch.y);
+        const dx = target.x - matriarch.x;
+        const dy = target.y - matriarch.y;
         const d = Math.hypot(dx, dy) || 1;
         const move = Math.min(config.matriarch.speed * dt, d);
         matriarch.x += (dx / d) * move;
@@ -1156,24 +1387,36 @@ export function createArena(options: {
     /** Takes the level-up's choice `index`; the run goes on (or the next level's choice comes). */
     choose(index: number) {
       if (!choosing) return;
+      hero = keepers[chooser];
       const choice = choosing[Math.min(Math.max(index, 0), choosing.length - 1)];
       if (choice.kind === 'weapon') {
-        const held = weapons.get(choice.id);
+        const held = hero.weapons.get(choice.id);
         if (held) held.level = choice.level;
-        else weapons.set(choice.id, { level: 1, readyAt: time + 200 });
+        else hero.weapons.set(choice.id, { level: 1, readyAt: time + 200 });
       } else if (choice.kind === 'passive') {
         const before = maxResolve();
-        passives.set(choice.id, choice.level);
-        mods = boosted(modifiers(passives));
+        hero.passives.set(choice.id, choice.level);
+        hero.mods = boosted(modifiers(hero.passives));
         // More Resolve to hold: he gains what was added.
         hero.resolve += maxResolve() - before;
       } else {
         hero.resolve = Math.min(hero.resolve + 30, maxResolve());
       }
-      pending--;
+      hero = keepers[0];
       choosing = null;
-      if (pending > 0) offer();
+      // In co-op the next player chooses for the same level; then the next level.
+      if (chooser + 1 < keepers.length) {
+        chooser++;
+        offer();
+      } else {
+        chooser = 0;
+        pending--;
+        if (pending > 0) offer();
+      }
     },
+
+    /** Whose choice the waiting level-up is: 0 for player 1, 1 for player 2. */
+    chooser: (): number => chooser,
 
     /** The hero gives up: the run ends where it stands. */
     giveUp() {
@@ -1195,41 +1438,71 @@ export function createArena(options: {
     /** Where the Can Opener's blades are, and the Thunderous Vacuum's reach (or null). */
     blades: (): Vec[] => {
       const all: Vec[] = [];
-      for (const [id, held] of weapons) {
-        if (WEAPONS[id].kind === 'orbit') all.push(...bladesOf(weaponStats(id, held.level, mods)));
+      for (const k of keepers) {
+        if (!standing(k)) continue;
+        hero = k;
+        for (const [id, held] of k.weapons) {
+          if (WEAPONS[id].kind === 'orbit')
+            all.push(...bladesOf(weaponStats(id, held.level, k.mods)));
+        }
       }
+      hero = keepers[0];
       return all;
     },
-    zone: (): number | null => {
-      const held = weapons.get('thunderous-vacuum');
-      return held ? weaponStats('thunderous-vacuum', held.level, mods).area : null;
-    },
+    /** Each standing Keeper's Thunderous Vacuum: where, and how far it reaches. */
+    zones: (): { x: number; y: number; radius: number }[] =>
+      keepers.flatMap((k) => {
+        const held = k.weapons.get('thunderous-vacuum');
+        if (!held || !standing(k)) return [];
+        return [
+          { x: k.x, y: k.y, radius: weaponStats('thunderous-vacuum', held.level, k.mods).area },
+        ];
+      }),
+    /** The shared camera (one Keeper: on him, unzoomed). */
+    camera,
     matriarch: (): Vec | null => matriarch,
     chests: (): readonly Vec[] => chests,
     shots: (): readonly { x: number; y: number }[] => shots,
 
     state() {
-      const active = effect && time < effect.until ? effect.effect.kind : null;
+      const first = keepers[0];
+      const active = first.effect && time < first.effect.until ? first.effect.effect.kind : null;
       return {
         time,
         status,
         outcome,
+        /** Player 1's Keeper (the only one, alone). */
         hero: {
-          x: hero.x,
-          y: hero.y,
-          resolve: hero.resolve,
-          maxResolve: maxResolve(),
-          facing: hero.facing,
-          untouchable: time < hero.untouchableUntil,
+          x: first.x,
+          y: first.y,
+          resolve: first.resolve,
+          maxResolve: maxResolveOf(first),
+          facing: first.facing,
+          untouchable: time < first.untouchableUntil,
           effect: active,
         },
+        /** Every Keeper: one, or two in co-op. */
+        heroes: keepers.map((k) => ({
+          x: k.x,
+          y: k.y,
+          resolve: k.resolve,
+          maxResolve: maxResolveOf(k),
+          facing: k.facing,
+          untouchable: time < k.untouchableUntil,
+          effect: k.effect && time < k.effect.until ? k.effect.effect.kind : null,
+          down: !standing(k),
+          /** How long until a downed Keeper stands again, ms (0 while he stands). */
+          backIn: k.downedAt === null ? 0 : Math.max(k.downedAt + config.coop.reviveMs - time, 0),
+          weapons: [...k.weapons].map(([id, held]) => ({ id, level: held.level })),
+        })),
+        chooser,
         cats: cats.length,
         sentHome,
         level,
         xp,
         xpToNext: xpToNext(level),
-        weapons: [...weapons].map(([id, held]) => ({ id, level: held.level })),
-        passives: [...passives].map(([id, l]) => ({ id, level: l })),
+        weapons: [...first.weapons].map(([id, held]) => ({ id, level: held.level })),
+        passives: [...first.passives].map(([id, l]) => ({ id, level: l })),
         projectiles: projectiles.length,
         gems: gems.length,
         chests: chests.length,

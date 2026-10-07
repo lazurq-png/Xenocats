@@ -48,7 +48,7 @@ jobs:
       - name: Unit tests (cats, games, page, sound)
         if: ${{ !cancelled() }}
         run: >-
-          npx vitest run tests/unit/xenocats/arena tests/unit/xenocats/arsenal tests/unit/xenocats/varieties tests/unit/xenocats/progression
+          npx vitest run tests/unit/xenocats/arena tests/unit/xenocats/arsenal tests/unit/xenocats/varieties tests/unit/xenocats/progression tests/unit/xenocats/coop
           tests/unit/xenocats/walking
           tests/unit/xenocats/locked-pointer
           tests/unit/xenocats/taming tests/unit/xenocats/page-hits tests/unit/xenocats/sounds

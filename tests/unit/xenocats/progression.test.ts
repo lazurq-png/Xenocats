@@ -158,6 +158,24 @@ describe('characters', () => {
     expect(buyCharacter(rich(1000), 'night-porter')).toBeNull();
   });
 
+  it('in co-op, player 2 goes out as a character player 1 has, with the Tailor’s work', () => {
+    const progress: Progress = {
+      ...freshProgress(),
+      milestones: ['survive-2'],
+      upgrades: { stubbornness: 1, 'brisk-step': 2 },
+    };
+    expect(runConfig(progress, ARENA_CONFIG).secondPlayer).toBeNull();
+    expect(runConfig(progress, ARENA_CONFIG, 'night-porter').secondPlayer).toEqual({
+      startingWeapons: ['spray-bottle'],
+      resolve: ARENA_CONFIG.hero.resolve - 15 + 10,
+      speed: ARENA_CONFIG.hero.speed * 1.12 * 1.08,
+    });
+    // One player 1 does not have: the Keeper instead.
+    expect(runConfig(progress, ARENA_CONFIG, 'housekeeper').secondPlayer!.startingWeapons).toEqual([
+      'laser-pointer',
+    ]);
+  });
+
   it('only one he has can be chosen, and he starts with that one’s weapon and bias', () => {
     expect(chooseCharacter(freshProgress(), 'night-porter').character).toBe('keeper');
     const porter = chooseCharacter(

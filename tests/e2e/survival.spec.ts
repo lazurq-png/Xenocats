@@ -36,6 +36,23 @@ async function pauseRun(page: Page) {
   return paused;
 }
 
+/** A data- number once it has stopped changing (the HUD trails the run a little). */
+async function settled(page: Page, name: string) {
+  let last = NaN;
+  await expect
+    .poll(
+      async () => {
+        const now = await num(page, name);
+        const same = now === last;
+        last = now;
+        return same;
+      },
+      { intervals: [300] }
+    )
+    .toBe(true);
+  return last;
+}
+
 async function openArena(page: Page, query = '?seed=7') {
   await page.goto('/cats/survival' + query);
   await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
@@ -205,6 +222,67 @@ test.describe('on a computer', () => {
     await page.evaluate(() => window.dispatchEvent(new Event('blur')));
     await expect(area(page)).toHaveAttribute('data-screen', 'paused');
     await expect(page.getByRole('dialog', { name: 'Paused' })).toBeVisible();
+  });
+
+  test('two Keepers at one keyboard: each walks with his own keys, and a level-up asks both in turn', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    // A click before hydration is lost: choose two until two are chosen.
+    const two = page.getByTestId('survival-players-2');
+    await expect
+      .poll(async () => {
+        await two.check();
+        return page.getByTestId('survival-player2-character').count();
+      })
+      .toBe(1);
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-players', '2');
+    await expect(page.getByRole('meter', { name: 'Player 2 Resolve' })).toBeVisible();
+    await expect.poll(() => area(page).getAttribute('data-hero2-x')).not.toBe('');
+
+    // Player 1 walks right with D; player 2 stays where he is.
+    const x1 = await settled(page, 'data-hero-x');
+    const x2 = await settled(page, 'data-hero2-x');
+    await page.keyboard.down('d');
+    await expect.poll(() => num(page, 'data-hero-x')).toBeGreaterThan(x1 + 40);
+    await page.keyboard.up('d');
+    expect(Math.abs((await settled(page, 'data-hero2-x')) - x2)).toBeLessThan(10);
+    // Player 2 walks left with the left arrow; player 1 stays.
+    const y1 = await settled(page, 'data-hero-x');
+    await page.keyboard.down('ArrowLeft');
+    await expect.poll(() => num(page, 'data-hero2-x')).toBeLessThan(x2 - 40);
+    await page.keyboard.up('ArrowLeft');
+    await settled(page, 'data-hero2-x');
+    expect(Math.abs((await settled(page, 'data-hero-x')) - y1)).toBeLessThan(10);
+
+    // A level-up: player 1 chooses, then player 2, for the same level.
+    const dialog = levelUp(page);
+    await page.keyboard.down('s');
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await page.keyboard.up('s');
+    await expect(
+      dialog.getByRole('heading', { name: /Level \d+\. Player 1, choose one\./ })
+    ).toBeVisible();
+    const level = (await dialog.getByRole('heading').textContent())?.match(/Level (\d+)/)?.[1];
+    await expect(area(page)).toHaveAttribute('data-chooser', '0');
+    await page.keyboard.press('1');
+    await expect(
+      dialog.getByRole('heading', { name: new RegExp(`Level ${level}\\. Player 2, choose one\\.`) })
+    ).toBeVisible();
+    await expect(area(page)).toHaveAttribute('data-chooser', '1');
+    // A new dialog for the new turn: its name says whose, and focus is in it.
+    await expect(page.getByRole('dialog', { name: /Player 2, choose one/ })).toBeVisible();
+    await expect(dialog.getByRole('button').first()).toBeFocused();
+    await page.keyboard.press('1');
+    // Then the run goes on (taking any further level's choices, each in turn).
+    await expect
+      .poll(async () => {
+        await playOn(page);
+        return area(page).getAttribute('data-screen');
+      })
+      .toBe('playing');
   });
 
   test('a run gathers tufts of fur, kept after a reload', async ({ page }) => {
