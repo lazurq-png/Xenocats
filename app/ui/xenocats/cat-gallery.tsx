@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { memo, useCallback, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/app/ui/button';
 import { XenocatCatsProvider, useXenocats } from './cat-layer';
@@ -7,28 +8,56 @@ import { catArt } from './cat-art';
 import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import { XenocatCursorProvider } from './fake-cursor';
-import Fight from './fight';
 import { entryFor, getGuide, getServerGuide, isEmptyGuide, subscribeGuide } from './field-guide';
 
 /**
  * Every cat type with two Summon buttons: awake, to pounce as soon as it arrives,
  * or asleep, to nap and wake first as the dashboard's cats do (and show both poses'
  * artwork). Cats only come when summoned here, so the page is calm to browse and
- * predictable to test. Above them, Fight a cat; no cat can be summoned during a game.
+ * predictable to test. Above them, Fight a cat: links to the two games' own pages.
  */
 export default function CatGallery() {
-  const [fighting, setFighting] = useState(false);
   return (
     <XenocatCursorProvider>
       <XenocatCatsProvider autoSpawn={false}>
-        <Fight onPlayingChange={setFighting} />
-        <Roster disabled={fighting} />
+        <FightLinks />
+        <Roster />
       </XenocatCatsProvider>
     </XenocatCursorProvider>
   );
 }
 
-function Roster({ disabled }: { disabled: boolean }) {
+const GAME_LINK =
+  'flex h-10 items-center rounded-xl bg-plasma px-4 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma active:bg-plasma-dim';
+
+/** The two fight games, each on a page of its own. */
+function FightLinks() {
+  return (
+    <section
+      aria-labelledby="fight-heading"
+      className="mb-10 rounded-2xl border border-line bg-panel p-6"
+    >
+      <h2 id="fight-heading" className="font-display text-2xl font-semibold text-cream">
+        Fight a cat
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm text-aura">
+        <span className="font-semibold text-white">Survival:</span> walk your ranger, aim, and send
+        the cats home before they get you. <span className="font-semibold text-white">Taming:</span>{' '}
+        win a cat over, one at a time.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-4">
+        <Link href="/cats/survival" className={GAME_LINK} data-testid="fight-link-survival">
+          Play Survival
+        </Link>
+        <Link href="/cats/taming" className={GAME_LINK} data-testid="fight-link-taming">
+          Play Taming
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function Roster() {
   const cats = useXenocats();
   const [status, setStatus] = useState('');
 
@@ -76,13 +105,7 @@ function Roster({ disabled }: { disabled: boolean }) {
       </p>
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {CAT_TYPES.map((type) => (
-          <CatCard
-            key={type.id}
-            type={type}
-            {...entryFor(guide, type.id)}
-            disabled={disabled}
-            onSummon={summon}
-          />
+          <CatCard key={type.id} type={type} {...entryFor(guide, type.id)} onSummon={summon} />
         ))}
       </ul>
     </>
@@ -95,14 +118,12 @@ const CatCard = memo(function CatCard({
   met,
   survived,
   tamed,
-  disabled,
   onSummon,
 }: {
   type: CatType;
   met: number;
   survived: number;
   tamed: number;
-  disabled: boolean;
   onSummon: (type: CatType, asleep: boolean) => void;
 }) {
   return (
@@ -135,7 +156,6 @@ const CatCard = memo(function CatCard({
           className="justify-center whitespace-nowrap px-1 text-[13px]"
           data-testid={`summon-${type.id}`}
           aria-label={`Summon ${type.name} awake`}
-          disabled={disabled}
           onClick={() => onSummon(type, false)}
         >
           Summon awake
@@ -144,7 +164,6 @@ const CatCard = memo(function CatCard({
           className="justify-center whitespace-nowrap px-1 text-[13px]"
           data-testid={`summon-asleep-${type.id}`}
           aria-label={`Summon ${type.name} asleep`}
-          disabled={disabled}
           onClick={() => onSummon(type, true)}
         >
           Summon asleep

@@ -17,3 +17,17 @@ Heavy (Gravi Coon), Reverse (Mirror Sphynx), Decoys (Decoy Burmese), Delay (Lag 
 ## Q4 — CI: the dev-server browser tests failed once on an unchanged tree (T1)
 
 Commit `60801d2` ran twice on GitHub. On `night-2026-10-07` every job passed (run 37622699500). On `night-2026-10-07-t1-db-tests-opt-in` the job "Browser tests (dev server)" failed in its step "Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)" (run 37622695999). The failing test is not visible without logs (they need auth). Locally, `keyboard.spec.ts:129` timed out once, under load (the overlapped baseline, progress.md). A human with access can read that run's `playwright-report` artifact. No repair was attempted: the identical tree passed.
+
+## Q5 — Task 3 (real cat recordings) needs a human: the harness refused to let the run integrate downloaded files (T3, abandoned)
+
+What was needed: adding four MP3 files downloaded from Wikimedia Commons to `public/xenocats/sounds/` and playing them from `app/ui/xenocats/sounds.ts` (an `AudioBufferSource` per take, with the current synthesised sound as the fallback). The plan lifted §3's "contacting any external service" for this, and the searching and downloading stayed within its limits. But Claude Code's auto-mode classifier denied the code edit as "Untrusted Code Integration", and a denied call is a boundary the run may not work around.
+
+To do it, a human (or a run with a permission rule allowing it) would:
+1. Download the MP3 transcodes, check them and add them with credits:
+   - `meow-pleading.mp3` ← https://upload.wikimedia.org/wikipedia/commons/transcoded/6/6b/Meow_of_a_pleading_cat.oga/Meow_of_a_pleading_cat.oga.mp3 ([page](https://commons.wikimedia.org/wiki/File:Meow_of_a_pleading_cat.oga), Heismark, public domain)
+   - `meow-siamese.mp3` ← https://upload.wikimedia.org/wikipedia/commons/transcoded/8/81/Meow_of_a_Siamese_cat_-_freemaster2.wav/Meow_of_a_Siamese_cat_-_freemaster2.wav.mp3 ([page](https://commons.wikimedia.org/wiki/File:Meow_of_a_Siamese_cat_-_freemaster2.wav), freemaster2, CC0)
+   - `meow-niaou.mp3` ← the MP3 transcode of [File:2015-11-24.νιαούρισμα.Νιάου.noise reduced.flac](https://commons.wikimedia.org/wiki/File:2015-11-24.%CE%BD%CE%B9%CE%B1%CE%BF%CF%8D%CF%81%CE%B9%CF%83%CE%BC%CE%B1.%CE%9D%CE%B9%CE%AC%CE%BF%CF%85.noise_reduced.flac) (Tsester, CC0)
+   - `hiss.mp3` ← https://upload.wikimedia.org/wikipedia/commons/transcoded/5/56/Cat_hissing_-_Zabuhailo.wav/Cat_hissing_-_Zabuhailo.wav.mp3 ([page](https://commons.wikimedia.org/wiki/File:Cat_hissing_-_Zabuhailo.wav), Zabuhailo, CC0)
+2. Or allow the run to do it: a permission rule for this kind of edit, then put task 3 in a later plan.
+
+The run's measurements of the calls in each file are in progress.md (T3). Nothing changed meanwhile: the synthesised sounds play as before.

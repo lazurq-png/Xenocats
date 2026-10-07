@@ -62,3 +62,32 @@ Database reachable (the e2e global setup rebuilt `xenocats_test`).
   - Acceptance criteria: 1–5 and 7 checked by command (the unit table, the per-cat e2e tests); 3 (the table in decisions.md) by reading too; 6, exact revert, by command (unit and per-cat e2e, which found D8); focused fields by the existing `pickTargets` unit test; clicks not changed (Q2). **Tested in a browser, not seen**: nobody has looked at how the smoke, frost or bouncing look on the dashboard pages.
   - Reviewer: request changes (fling for fixed-point effects at calm/chaos/panels; stale intensity descriptions; clicks), the first two fixed, re-review approve (D11).
 - **CI of T1** (`60801d2`): the run branch passed every job, including "Database tests" ([run](https://github.com/lazurq-png/Xenocats/actions/runs/37622699500)); the task branch's run of the same commit failed in "Browser tests (dev server)" ([run](https://github.com/lazurq-png/Xenocats/actions/runs/37622695999)), step "Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)". Identical tree, so no repair; Q4.
+
+## T3 — Cats sound like cats (abandoned)
+
+- Branch `night-2026-10-07-t3-cat-sounds` (local only, no commits), base `a094fbf`. Start 15:21 (budget ~14,651,000); abandoned 15:31 (budget ~14,599,000).
+- **Why it was abandoned:** the harness's auto-mode classifier denied, as "Untrusted Code Integration", the edit that wired the downloaded recordings into `app/ui/xenocats/sounds.ts`. Under the skill (Read this first: a denied call is a §3 boundary), it was not retried in another form, and the task was abandoned. Right after that, a plain read of the T2 CI poll's output together with `git status` was denied the same way (see T2's CI below).
+- **What had been done, all undone** (`git restore -- app/ui/xenocats/sounds.ts`, the added `public/xenocats/sounds/` removed; nothing committed):
+  - Searched Commons (API search, `filetype:audio`) for cat meows, hisses, purrs, growls, kittens and chirps; 64 candidates, licences read from each file's `extmetadata` (`License`). Public domain or CC0, and real cat calls: "Meow of a pleading cat.oga" (PD, Heismark), "Meow of a Siamese cat - freemaster2.wav" (CC0, freemaster2), "2015-11-24.νιαούρισμα.Νιάου.noise reduced.flac" (CC0, Tsester), "Cat hissing - Zabuhailo.wav" (CC0, Zabuhailo), plus PD purrs (not needed: the task leaves the purr out). No PD/CC0 growl or chirp was found; those were to be made by varying the meows and the hiss.
+  - Fetched their MP3 transcodes from `upload.wikimedia.org` (only that host and `commons.wikimedia.org`), into a new scratch directory. All four kept files start with an MP3 header and are at most 105 KB; 185 KB together. Two purrs over 200 KB were rejected.
+  - Measured the calls in each (decoded in Playwright's Chromium): pleading meow 0.3–0.6, 3.8–4.6, 6.8–7.4, 9.5–9.9, 10.3–11.1 s; Siamese 0.3–1.0 s; Greek meow 0.2–0.9 s; hiss 0.9–2.1 s.
+- **What a human must approve to do it** (questions.md Q5).
+- **CI of T2** (`a094fbf`): the poll ran to its end, but reading its output was denied by the harness (as above), so the result is **not observed**. It must not be re-read another way (the denial forbids it); the next push polls its own commit.
+
+## T4 — The fight games get pages of their own; a movement pad (completed)
+
+- Branch `night-2026-10-07-t4-game-pages`, base `a094fbf`. Start 15:30 (budget ~14,596,000); completed 15:48 (budget ~14,512,000).
+- **What the code does**
+  - `app/cats/survival/page.tsx`, `app/cats/taming/page.tsx`: two new public pages, each with the `/cats` header ("Back to the cats") and one game.
+  - `app/ui/xenocats/fight-page.tsx`: gives a game page the cat and cursor providers (no cat comes on its own), or, on a device without a precise pointer, a notice that the game needs a keyboard and mouse.
+  - `app/ui/xenocats/fight.tsx`: takes its game as a prop (`kind`). It is no longer a portal or a modal dialog: its play area is a full-page layer of the game's own page, with the HUD along its top, and while a game runs everything else on the page is `inert`, so Tab never lands behind it. The game itself is unchanged.
+  - `app/ui/xenocats/cat-gallery.tsx`: the "Fight a cat" section is two links, Play Survival and Play Taming. Summon is no longer disabled during a game, since none runs there.
+  - `app/ui/xenocats/movement-pad.ts` (pure) and `movement-pad-view.tsx` (component): the touch movement pad, not yet placed in a game. A thumb on it walks the character in the WASD way nearest to it (`walkDirection` of the same keys), with a dead zone in the middle and nothing when released. It is 144 px across with a knob that follows the thumb, hidden from assistive technology, and stops the page scrolling or zooming while held.
+- **Why it was added**: plan task 4 (D12–D16).
+- **Verification** (gate run alone, 15:41–15:47; the selector printed FULL because the pad reaches no route yet)
+  - prettier (LF-normalised) on the 9 changed files: clean. lint exit 0, 0 warnings (= baseline). typegen + tsc exit 0.
+  - `npm test`: 35 files passed, 1 skipped; 500 passed, 17 skipped (database tests, opt-in). Includes the pad's 7 unit tests.
+  - `npm run build` exit 0. `npm run test:e2e` (next dev): 124 passed. `E2E_SERVER=start npm run test:e2e`: 124 passed.
+  - Acceptance criteria checked by command (e2e): `/cats` links to both pages; each page starts its game (fallback path) and the existing fight tests pass there (Esc, pause and resume, pointer lock, best score, tamed collection); leaving mid-game releases the lock and leaves nothing inert; no `role="dialog"`; Tab stays in the play area (fails without the fix); the touch profile shows the notice on both pages. The pad's mapping is checked by unit tests (centre, four ways, diagonals, snapping, dead zone, release, knob). Checked by reading only: the pad's scroll and zoom blocking (its browser test comes with task 5, as the plan says). **Tested in a browser, not seen**: nobody has looked at the two pages or the pad.
+  - Reviewer: request changes (focus behind the play area; a test that demanded pointer lock; duplicated page shells, optional). The first two fixed, re-review approve (D16).
+- **CI of T2**: not observed (see T3's entry).

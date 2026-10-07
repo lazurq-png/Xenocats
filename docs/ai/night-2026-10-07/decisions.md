@@ -79,3 +79,27 @@ Pinball's direction: the plan says "a random direction"; the effect launches the
 3. *Low, no code change.* Clicks are not blocked (D9): kept as an open question (Q2), to be reported as a requirement not met, not as decided.
 Observations not acted on: a field focused *during* an attack keeps moving (as before this task); an element's home is measured once per attack, so scrolling mid-attack clamps from the old position (as before).
 Re-review (read only): approve, no remaining findings. Its observation: the Slingshot and Hangover combos carry no `amplify` marker, so their knockback / wobble parts are not halved at calm (as an angry cat's `strengthen()` treats them too); if wanted, the fix belongs in `combos.ts`. Not changed: the task names no distance for combos.
+
+## T4 — The fight games get pages of their own; a movement pad
+
+Acceptance criteria (from the task's words):
+1. Survival on `/cats/survival`, Taming on `/cats/taming`, each the whole game: a heading, the HUD, Start, the play area filling the page; no modal, no overlay, no `role="dialog"`.
+2. `/cats`'s "Fight a cat" section is two links to them.
+3. Everything else about the games unchanged: pointer lock and its fallback, Esc ends, losing focus or the lock pauses, best score and tamed collection, field-guide stats, sounds, at most 5 cats. Leaving the page ends the game and releases the lock. Both pages public.
+4. Touch devices (no precise pointer, as the fake cursor detects it): both pages say the game needs a keyboard and mouse.
+5. A movement pad: a component plus a pure module mapping touch to a walk direction, the same WASD gives; thumb-sized; hidden from assistive technology; no scroll or zoom while held. Not yet placed in a game.
+6. Tests: unit tests for the pad's mapping (centre, each direction, diagonals, dead zone, release); e2e: `/cats` links to both pages, each page starts its game (fallback), the fight tests moved onto the new pages, a touch profile shows the notice.
+
+**D12 — One `Fight` component, two pages.** `fight.tsx` keeps both games (they share the loop, pointer lock and HUD) and takes the game as a prop; the portal, `role="dialog"`, `aria-modal` and the Tab trap are gone. While a game runs, its play area is a full-page layer of the game's own page (`data-testid="fight-area"`, was `fight-overlay`) with the HUD along its top, as before but opaque. `fight-page.tsx` gives each page the cat and cursor providers (`autoSpawn={false}`: no cat comes on its own there, as on `/cats`) and the touch notice. The pages are server components with the `/cats` header, "Back to the cats" instead of "Back to the dashboard". `/cats/*` was already public in `auth.config.ts`.
+
+**D13 — `/cats` no longer disables Summon during a game**: no game runs there any more, so the `disabled` plumbing in `cat-gallery.tsx` is removed; the tests that checked it went with it.
+
+**D14 — Leaving the page.** Unmounting `Fight` (client navigation, or a reload) already released the lock and the fake cursor, and stopped the loop; it does not record a game-over (the best score is written only when a game ends in play), as before. A new e2e test leaves mid-game under pointer lock and checks the lock is released.
+
+**D15 — The pad.** Eight ways only, the ones WASD can give: the pad builds the same held-key set and calls `walkDirection`, so a diagonal is exactly WASD's. 144 px across (a thumb needs about 45 px; room to aim it), a 56 px knob that follows the thumb within the pad, a dead zone of a quarter of the radius. `touch-action: none` on the pad, and while it is held a non-passive `touchmove` listener stops a second finger from pinching or scrolling the page. Pointer capture keeps a thumb that slides off the pad walking. Its browser test comes with its first use (task 5), as the plan says.
+
+**D16 — T4 review (request changes), and what was done.**
+1. *Medium, fixed.* With the dialog and its Tab trap gone, Tab from the play area reached what it covers (the header's links, Start) with no visible focus: Enter on a hidden "Back to the cats" would have left the game. While a game runs, everything outside the play area is now `inert` (the siblings along its path up to `<body>`; only what was marked is unmarked again). The pause test now presses Tab and Shift+Tab from Resume and checks focus never lands outside the play area; with the marking switched off it fails (checked).
+2. *Low, fixed.* The new leave-the-page test demanded pointer lock; like its sibling it now accepts the fallback, checks the release only when locked, and checks nothing is left inert.
+3. *Low, not done (optional).* The two game pages repeat the `/cats` page shell (skip link, header). A shared `app/cats/layout.tsx` would remove three copies; left for a task that touches those pages, as the reviewer allowed.
+Re-review (read only): approve, no remaining findings.

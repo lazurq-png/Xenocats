@@ -1,7 +1,6 @@
 'use client';
 
 import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { createPortal } from 'react-dom';
 import { Button } from '@/app/ui/button';
 import { useXenocats } from './cat-layer';
 import { catArt } from './cat-art';
@@ -29,16 +28,18 @@ import {
 import { type Taming, type TamingSnapshot, createTaming } from './taming';
 import { getGuide, getServerGuide, recordStat, recordTamed, subscribeGuide } from './field-guide';
 
-// Fight a cat, on the /cats page. Start asks for pointer lock: the browser hides the
-// system pointer and the game owns the pointer's position, so the cats attack that
-// pointer itself (locked-pointer.ts). Esc releases the lock and ends the game;
-// losing it any other way (another tab, another window) pauses it. Where pointer
-// lock is refused or missing, the game runs on the page's own pointer instead.
+// Fight a cat, each game on a page of its own (fight-page.tsx): the page is the
+// game, its play area filling the page while a game runs. Start asks for pointer
+// lock: the browser hides the system pointer and the game owns the pointer's
+// position, so the cats attack that pointer itself (locked-pointer.ts). Esc releases
+// the lock and ends the game; losing it any other way (another tab, another window)
+// pauses it, and leaving the page ends it. Where pointer lock is refused or missing,
+// the game runs on the page's own pointer instead.
 //
-// Two games: Survival (survival.ts), where a ranger walked with WASD beams cats home
-// at the crosshair, and Taming (taming.ts), where one cat at a time dodges the
-// pointer and holding still on it for 2 s tames it, into a collection kept in
-// localStorage.
+// Two games: Survival (/cats/survival, survival.ts), where a ranger walked with
+// WASD beams cats home at the crosshair, and Taming (/cats/taming, taming.ts), where
+// one cat at a time dodges the pointer and holding still on it for 2 s tames it,
+// into a collection kept in localStorage.
 //
 // In Survival the ranger and the crosshair are both positions a cat's attack can
 // move (locked-pointer.ts, one each): WASD walks the one, the mouse moves the other,
@@ -46,7 +47,7 @@ import { getGuide, getServerGuide, recordStat, recordTamed, subscribeGuide } fro
 
 type Mode = 'locked' | 'fallback';
 type Phase = 'idle' | 'playing' | 'paused' | 'over';
-type Kind = 'survival' | 'taming';
+export type Kind = 'survival' | 'taming';
 
 type Game = {
   clock: ReturnType<typeof createGameClock>;
@@ -153,17 +154,11 @@ const beamTransform = (beam: Beam) =>
 
 const viewportSize = () => ({ width: window.innerWidth, height: window.innerHeight });
 
-export default function Fight({
-  onPlayingChange,
-}: {
-  /** True from Start until the game is over, paused included. */
-  onPlayingChange?: (playing: boolean) => void;
-}) {
+export default function Fight({ kind }: { kind: Kind }) {
   const cursor = useXenocatCursor();
   const cats = useXenocats();
   const [phase, setPhase] = useState<Phase>('idle');
   const [mode, setMode] = useState<Mode>('fallback');
-  const [kind, setKind] = useState<Kind>('survival');
   const [snap, setSnap] = useState<SurvivalSnapshot | null>(null);
   const [tameSnap, setTameSnap] = useState<TamingSnapshot | null>(null);
   const [pose, setPose] = useState<{ facing: Facing; walking: boolean }>({
@@ -186,7 +181,7 @@ export default function Fight({
   const crosshairRef = useRef<HTMLDivElement>(null);
   const crosshairDecoyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const startRef = useRef<HTMLDivElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
   // False once the section has gone: a lock request still pending then gives up.
   const mountedRef = useRef(true);
   // Cats move every frame, so the loop moves their elements itself; React renders
@@ -195,14 +190,10 @@ export default function Fight({
   // Set from Start until the game begins: asking for the lock can take a second.
   const startingRef = useRef(false);
 
-  const changePhase = useCallback(
-    (next: Phase) => {
-      phaseRef.current = next;
-      setPhase(next);
-      onPlayingChange?.(next === 'playing' || next === 'paused');
-    },
-    [onPlayingChange]
-  );
+  const changePhase = useCallback((next: Phase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  }, []);
 
   const finish = useCallback(() => {
     const game = gameRef.current;
@@ -240,7 +231,6 @@ export default function Fight({
     gameRef.current = game;
     shownRef.current = '';
     setMode(game.mode);
-    setKind(game.kind);
     setDepartures([]);
     if (game.kind === 'survival') setSnap(game.survival.snapshot());
     else setTameSnap(game.taming.snapshot(0));
@@ -254,7 +244,7 @@ export default function Fight({
     changePhase('playing');
   };
 
-  const start = async (kind: Kind) => {
+  const start = async () => {
     if (startingRef.current || phaseRef.current === 'playing' || phaseRef.current === 'paused') {
       return;
     }
@@ -316,12 +306,33 @@ export default function Fight({
 
   // Move focus into the game when it starts and back to Start when it is over.
   useEffect(() => {
-    if (phase === 'playing' || phase === 'paused') dialogRef.current?.focus();
+    if (phase === 'playing' || phase === 'paused') areaRef.current?.focus();
     if (phase === 'over') startRef.current?.querySelector('button')?.focus();
   }, [phase]);
 
   // The game loop, and everything that can pause or end the game.
   const running = phase === 'playing' || phase === 'paused';
+
+  // While a game runs its play area covers the page, so everything else is made
+  // inert: keyboard focus cannot wander behind it (onto the header's links, or
+  // Start). Only what this marked is unmarked again.
+  useEffect(() => {
+    if (!running) return;
+    const area = areaRef.current;
+    if (!area) return;
+    const marked: Element[] = [];
+    for (let node: Element = area; node.parentElement; node = node.parentElement) {
+      for (const sibling of Array.from(node.parentElement.children)) {
+        if (sibling === node || sibling.hasAttribute('inert')) continue;
+        sibling.setAttribute('inert', '');
+        marked.push(sibling);
+      }
+      if (node.parentElement === document.body) break;
+    }
+    return () => {
+      for (const element of marked) element.removeAttribute('inert');
+    };
+  }, [running]);
   useEffect(() => {
     if (!running) return;
     const game = gameRef.current;
@@ -339,7 +350,7 @@ export default function Fight({
     };
 
     const moveCats = (list: readonly { id: number; x: number; y: number }[]) => {
-      const elements = dialogRef.current?.querySelectorAll<HTMLElement>('[data-cat-id]') ?? [];
+      const elements = areaRef.current?.querySelectorAll<HTMLElement>('[data-cat-id]') ?? [];
       for (const element of elements) {
         const cat = list.find((c) => String(c.id) === element.dataset.catId);
         if (cat) placeCat(element, cat);
@@ -347,7 +358,7 @@ export default function Fight({
     };
 
     const moveBeams = (list: readonly Beam[]) => {
-      const elements = dialogRef.current?.querySelectorAll<HTMLElement>('[data-beam-id]') ?? [];
+      const elements = areaRef.current?.querySelectorAll<HTMLElement>('[data-beam-id]') ?? [];
       for (const element of elements) {
         const beam = list.find((b) => String(b.id) === element.dataset.beamId);
         // A falling or bouncing beam turns as it flies.
@@ -577,324 +588,296 @@ export default function Fight({
     };
   }, [cursor]);
 
-  // The game is a modal dialog: Tab and Shift+Tab stay inside it (on its buttons,
-  // or on the dialog itself when it has none, as under pointer lock).
-  const onDialogKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key !== 'Tab') return;
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const buttons = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled])'));
-    if (buttons.length === 0) {
-      event.preventDefault();
-      dialog.focus();
-      return;
-    }
-    const first = buttons[0];
-    const last = buttons[buttons.length - 1];
-    const active = document.activeElement;
-    if (event.shiftKey && (active === first || active === dialog)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
   const size = CAT_CONFIG.catSize;
   const half = PLAYER_SIZE / 2;
 
   return (
-    <section
-      aria-labelledby="fight-heading"
-      className="mb-10 rounded-2xl border border-line bg-panel p-6"
-    >
-      <h2 id="fight-heading" className="font-display text-2xl font-semibold text-cream">
-        Fight a cat
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm text-aura">
-        <span className="font-semibold text-white">Survival.</span> Walk your ranger with WASD (or
-        the arrow keys), aim with the mouse: the homing beam fires by itself, and a cat it hits is
-        sent home. Cats come in waves, faster and more often each time, and chase you. Each one
-        pounces a moment after it arrives, scrambling you, your aim and your gun; every cat that
-        touches you costs one of 3 lives.
-      </p>
-      <p className="mt-2 max-w-2xl text-sm text-aura">
-        <span className="font-semibold text-white">Taming.</span> One cat at a time, and it dodges
-        your pointer, each kind in its own way. Keep still and it gets curious; hold your pointer
-        still on it for 2 seconds to tame it.
-      </p>
+    <div>
+      <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">
+        {kind === 'survival' ? 'Survival' : 'Taming'}
+      </h1>
+      {kind === 'survival' ? (
+        <p className="mt-4 max-w-2xl text-sm text-aura">
+          Walk your ranger with WASD (or the arrow keys), aim with the mouse: the homing beam fires
+          by itself, and a cat it hits is sent home. Cats come in waves, faster and more often each
+          time, and chase you. Each one pounces a moment after it arrives, scrambling you, your aim
+          and your gun; every cat that touches you costs one of 3 lives.
+        </p>
+      ) : (
+        <p className="mt-4 max-w-2xl text-sm text-aura">
+          One cat at a time, and it dodges your pointer, each kind in its own way. Keep still and it
+          gets curious; hold your pointer still on it for 2 seconds to tame it.
+        </p>
+      )}
       <p className="mt-2 max-w-2xl text-sm text-aura">
         Your pointer is locked to the game until you press Esc.
       </p>
       <div ref={startRef} className="mt-4 flex flex-wrap items-center gap-4">
-        <Button data-testid="fight-start" onClick={() => start('survival')} disabled={running}>
-          {phase === 'over' && kind === 'survival' ? 'Play again' : 'Start Survival'}
-        </Button>
-        <Button data-testid="fight-start-taming" onClick={() => start('taming')} disabled={running}>
-          {phase === 'over' && kind === 'taming' ? 'Tame again' : 'Start Taming'}
-        </Button>
-        <p data-testid="fight-best" className="text-sm text-aura">
-          Best:{' '}
-          {best === null ? 'no waves survived yet' : `${best} ${best === 1 ? 'wave' : 'waves'}`}
-        </p>
-        <p data-testid="fight-tamed" className="text-sm text-aura">
-          Tamed: {plural(tamedTotal, 'cat', 'cats')}
-        </p>
+        {kind === 'survival' ? (
+          <>
+            <Button data-testid="fight-start" onClick={() => start()} disabled={running}>
+              {phase === 'over' ? 'Play again' : 'Start Survival'}
+            </Button>
+            <p data-testid="fight-best" className="text-sm text-aura">
+              Best:{' '}
+              {best === null ? 'no waves survived yet' : `${best} ${best === 1 ? 'wave' : 'waves'}`}
+            </p>
+          </>
+        ) : (
+          <>
+            <Button data-testid="fight-start-taming" onClick={() => start()} disabled={running}>
+              {phase === 'over' ? 'Tame again' : 'Start Taming'}
+            </Button>
+            <p data-testid="fight-tamed" className="text-sm text-aura">
+              Tamed: {plural(tamedTotal, 'cat', 'cats')}
+            </p>
+          </>
+        )}
       </div>
       <p role="status" aria-live="polite" className="mt-3 min-h-5 text-sm text-plasma">
         {phase === 'over' ? message : ''}
       </p>
 
-      {running &&
-        (kind === 'survival' ? snap : tameSnap) &&
-        createPortal(
-          <div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={kind === 'survival' ? 'Fight a cat: Survival' : 'Fight a cat: Taming'}
-            tabIndex={-1}
-            data-testid="fight-overlay"
-            data-xenocat-ignore
-            data-mode={mode}
-            data-kind={kind}
-            data-phase={phase}
-            onKeyDown={onDialogKeyDown}
-            className="fixed inset-0 z-[9998] select-none bg-void/85 outline-none"
-          >
-            <div className="flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
-              {kind === 'survival' && snap && (
-                <>
-                  <p data-testid="fight-lives" data-lives={snap.lives}>
-                    Lives: {snap.lives}
-                  </p>
-                  <p data-testid="fight-wave" data-wave={snap.wave}>
-                    Wave {snap.wave}
-                  </p>
-                  <p data-testid="fight-score">Survived: {snap.score}</p>
-                </>
-              )}
-              {kind === 'taming' && tameSnap && (
-                <>
-                  <p data-testid="fight-tamed-now">Tamed this game: {tameSnap.tamed.length}</p>
-                  <div
-                    role="progressbar"
-                    aria-label="Taming"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(tameSnap.hold * 100)}
-                    className="h-2 w-32 overflow-hidden rounded-full bg-void"
-                  >
-                    <div
-                      className="h-full bg-plasma"
-                      style={{ width: `${tameSnap.hold * 100}%` }}
-                    />
-                  </div>
-                </>
-              )}
-              <p role="status" className="text-plasma">
-                {message}
-              </p>
-              {mode === 'fallback' && phase === 'playing' && (
-                <Button className="ml-auto" onClick={finish}>
-                  End game
-                </Button>
-              )}
-            </div>
-
-            <div aria-hidden="true">
-              {kind === 'taming' && tameSnap?.cat && (
+      {running && (kind === 'survival' ? snap : tameSnap) && (
+        // The play area: the whole page while a game runs, the HUD along its top.
+        <div
+          ref={areaRef}
+          tabIndex={-1}
+          data-testid="fight-area"
+          data-xenocat-ignore
+          data-mode={mode}
+          data-kind={kind}
+          data-phase={phase}
+          className="fixed inset-0 z-[9998] select-none bg-void outline-none"
+        >
+          <div className="flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
+            {kind === 'survival' && snap && (
+              <>
+                <p data-testid="fight-lives" data-lives={snap.lives}>
+                  Lives: {snap.lives}
+                </p>
+                <p data-testid="fight-wave" data-wave={snap.wave}>
+                  Wave {snap.wave}
+                </p>
+                <p data-testid="fight-score">Survived: {snap.score}</p>
+              </>
+            )}
+            {kind === 'taming' && tameSnap && (
+              <>
+                <p data-testid="fight-tamed-now">Tamed this game: {tameSnap.tamed.length}</p>
                 <div
-                  key={tameSnap.cat.id}
-                  data-cat-id={tameSnap.cat.id}
+                  role="progressbar"
+                  aria-label="Taming"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(tameSnap.hold * 100)}
+                  className="h-2 w-32 overflow-hidden rounded-full bg-void"
+                >
+                  <div className="h-full bg-plasma" style={{ width: `${tameSnap.hold * 100}%` }} />
+                </div>
+              </>
+            )}
+            <p role="status" className="text-plasma">
+              {message}
+            </p>
+            {mode === 'fallback' && phase === 'playing' && (
+              <Button className="ml-auto" onClick={finish}>
+                End game
+              </Button>
+            )}
+          </div>
+
+          <div aria-hidden="true">
+            {kind === 'taming' && tameSnap?.cat && (
+              <div
+                key={tameSnap.cat.id}
+                data-cat-id={tameSnap.cat.id}
+                data-testid="fight-cat"
+                data-cat-type={tameSnap.cat.typeId}
+                data-doing={tameSnap.cat.doing}
+                className="absolute rounded-full"
+                style={{
+                  // Where the cat was when React last drew it; the loop moves it on.
+                  left: tameSnap.cat.x - size / 2,
+                  top: tameSnap.cat.y - size / 2,
+                  width: size,
+                  height: size,
+                  // A blinking cat is gone for a moment; a held one glows as it calms.
+                  opacity: tameSnap.cat.doing === 'blink' ? 0.15 : 1,
+                  boxShadow:
+                    tameSnap.hold > 0
+                      ? `0 0 0 3px rgba(255, 255, 255, ${0.2 + tameSnap.hold * 0.6})`
+                      : undefined,
+                }}
+              >
+                <FightCatSprite typeId={tameSnap.cat.typeId} size={size} />
+              </div>
+            )}
+            {kind === 'survival' &&
+              snap?.cats.map((cat) => (
+                <div
+                  key={cat.id}
+                  data-cat-id={cat.id}
                   data-testid="fight-cat"
-                  data-cat-type={tameSnap.cat.typeId}
-                  data-doing={tameSnap.cat.doing}
-                  className="absolute rounded-full"
+                  data-cat-type={cat.typeId}
+                  data-pounced={cat.attackAt === null}
+                  className={cat.attackAt === null ? 'xenocat-attacking absolute' : 'absolute'}
                   style={{
-                    // Where the cat was when React last drew it; the loop moves it on.
-                    left: tameSnap.cat.x - size / 2,
-                    top: tameSnap.cat.y - size / 2,
+                    left: cat.x - size / 2,
+                    top: cat.y - size / 2,
                     width: size,
                     height: size,
-                    // A blinking cat is gone for a moment; a held one glows as it calms.
-                    opacity: tameSnap.cat.doing === 'blink' ? 0.15 : 1,
-                    boxShadow:
-                      tameSnap.hold > 0
-                        ? `0 0 0 3px rgba(255, 255, 255, ${0.2 + tameSnap.hold * 0.6})`
-                        : undefined,
                   }}
                 >
-                  <FightCatSprite typeId={tameSnap.cat.typeId} size={size} />
+                  <FightCatSprite typeId={cat.typeId} size={size} />
                 </div>
-              )}
-              {kind === 'survival' &&
-                snap?.cats.map((cat) => (
+              ))}
+            {kind === 'survival' &&
+              departures.map((cat) => (
+                <div
+                  key={cat.id}
+                  data-testid="fight-departure"
+                  className="pointer-events-none absolute"
+                  style={{
+                    left: cat.x - size / 2,
+                    top: cat.y - size,
+                    width: size,
+                    height: size * 1.5,
+                  }}
+                  onAnimationEnd={(event) => {
+                    if (event.target !== event.currentTarget.lastElementChild) return;
+                    setDepartures((list) => list.filter((d) => d.id !== cat.id));
+                  }}
+                >
+                  <div className="xenocat-beam-column absolute inset-x-2 bottom-0 top-0 rounded-full" />
                   <div
-                    key={cat.id}
-                    data-cat-id={cat.id}
-                    data-testid="fight-cat"
-                    data-cat-type={cat.typeId}
-                    data-pounced={cat.attackAt === null}
-                    className={cat.attackAt === null ? 'xenocat-attacking absolute' : 'absolute'}
-                    style={{
-                      left: cat.x - size / 2,
-                      top: cat.y - size / 2,
-                      width: size,
-                      height: size,
-                    }}
+                    className="xenocat-beam-home absolute bottom-0 left-0"
+                    style={{ width: size, height: size }}
                   >
                     <FightCatSprite typeId={cat.typeId} size={size} />
                   </div>
-                ))}
-              {kind === 'survival' &&
-                departures.map((cat) => (
-                  <div
-                    key={cat.id}
-                    data-testid="fight-departure"
-                    className="pointer-events-none absolute"
-                    style={{
-                      left: cat.x - size / 2,
-                      top: cat.y - size,
-                      width: size,
-                      height: size * 1.5,
-                    }}
-                    onAnimationEnd={(event) => {
-                      if (event.target !== event.currentTarget.lastElementChild) return;
-                      setDepartures((list) => list.filter((d) => d.id !== cat.id));
-                    }}
-                  >
-                    <div className="xenocat-beam-column absolute inset-x-2 bottom-0 top-0 rounded-full" />
-                    <div
-                      className="xenocat-beam-home absolute bottom-0 left-0"
-                      style={{ width: size, height: size }}
-                    >
-                      <FightCatSprite typeId={cat.typeId} size={size} />
-                    </div>
-                  </div>
-                ))}
-              {kind === 'survival' &&
-                snap?.beams.map((beam) => (
-                  <div
-                    key={beam.id}
-                    data-beam-id={beam.id}
-                    data-testid="fight-beam"
-                    className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
-                    style={{
-                      transform: beamTransform(beam),
-                      opacity: beam.opacity,
-                      filter:
-                        [
-                          beam.blur > 0 ? `blur(${beam.blur}px)` : '',
-                          beam.tint ? `drop-shadow(0 0 4px ${beam.tint})` : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ') || undefined,
-                    }}
-                  >
-                    <div className="xenocat-beam absolute -left-6 -top-0.5 h-1 w-6 rounded-full" />
-                  </div>
-                ))}
-            </div>
-
-            {kind === 'survival' && (
-              <div aria-hidden="true">
-                {Array.from({ length: MAX_DECOYS }, (_, i) => (
-                  <div
-                    key={i}
-                    ref={(element) => {
-                      playerDecoyRefs.current[i] = element;
-                    }}
-                    className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
-                    style={{ opacity: 0 }}
-                  >
-                    <div className="absolute" style={{ left: -half, top: -half }}>
-                      <PlayerSprite facing={pose.facing} walking={pose.walking} />
-                    </div>
-                  </div>
-                ))}
+                </div>
+              ))}
+            {kind === 'survival' &&
+              snap?.beams.map((beam) => (
                 <div
-                  ref={playerRef}
-                  data-testid="fight-player"
-                  data-facing={pose.facing}
-                  data-walking={pose.walking}
+                  key={beam.id}
+                  data-beam-id={beam.id}
+                  data-testid="fight-beam"
+                  className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
+                  style={{
+                    transform: beamTransform(beam),
+                    opacity: beam.opacity,
+                    filter:
+                      [
+                        beam.blur > 0 ? `blur(${beam.blur}px)` : '',
+                        beam.tint ? `drop-shadow(0 0 4px ${beam.tint})` : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || undefined,
+                  }}
+                >
+                  <div className="xenocat-beam absolute -left-6 -top-0.5 h-1 w-6 rounded-full" />
+                </div>
+              ))}
+          </div>
+
+          {kind === 'survival' && (
+            <div aria-hidden="true">
+              {Array.from({ length: MAX_DECOYS }, (_, i) => (
+                <div
+                  key={i}
+                  ref={(element) => {
+                    playerDecoyRefs.current[i] = element;
+                  }}
                   className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
                   style={{ opacity: 0 }}
                 >
                   <div className="absolute" style={{ left: -half, top: -half }}>
-                    <PlayerSprite facing={pose.facing} walking={pose.walking} gunRef={gunRef} />
+                    <PlayerSprite facing={pose.facing} walking={pose.walking} />
                   </div>
                 </div>
+              ))}
+              <div
+                ref={playerRef}
+                data-testid="fight-player"
+                data-facing={pose.facing}
+                data-walking={pose.walking}
+                className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
+                style={{ opacity: 0 }}
+              >
+                <div className="absolute" style={{ left: -half, top: -half }}>
+                  <PlayerSprite facing={pose.facing} walking={pose.walking} gunRef={gunRef} />
+                </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {kind === 'survival' && phase === 'playing' && (
-              <div aria-hidden="true">
-                {Array.from({ length: MAX_DECOYS }, (_, i) => (
-                  <div
-                    key={i}
-                    ref={(element) => {
-                      crosshairDecoyRefs.current[i] = element;
-                    }}
-                    className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
-                    style={{ opacity: 0 }}
-                  >
-                    <Crosshair />
-                  </div>
-                ))}
+          {kind === 'survival' && phase === 'playing' && (
+            <div aria-hidden="true">
+              {Array.from({ length: MAX_DECOYS }, (_, i) => (
                 <div
-                  ref={crosshairRef}
-                  data-testid="fight-crosshair"
+                  key={i}
+                  ref={(element) => {
+                    crosshairDecoyRefs.current[i] = element;
+                  }}
                   className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
                   style={{ opacity: 0 }}
                 >
                   <Crosshair />
                 </div>
+              ))}
+              <div
+                ref={crosshairRef}
+                data-testid="fight-crosshair"
+                className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
+                style={{ opacity: 0 }}
+              >
+                <Crosshair />
               </div>
-            )}
+            </div>
+          )}
 
-            {phase === 'paused' && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center">
-                <div className="rounded-2xl border border-line bg-panel p-6 text-center">
-                  <p className="font-display text-xl text-cream">Paused</p>
-                  <p className="mt-2 text-sm text-aura">The cats wait for you.</p>
-                  <div className="mt-4 flex justify-center gap-3">
-                    <Button onClick={resume}>Resume</Button>
-                    <Button onClick={finish}>End game</Button>
-                  </div>
+          {phase === 'paused' && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center">
+              <div className="rounded-2xl border border-line bg-panel p-6 text-center">
+                <p className="font-display text-xl text-cream">Paused</p>
+                <p className="mt-2 text-sm text-aura">The cats wait for you.</p>
+                <div className="mt-4 flex justify-center gap-3">
+                  <Button onClick={resume}>Resume</Button>
+                  <Button onClick={finish}>End game</Button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {kind === 'taming' && mode === 'locked' && phase === 'playing' && (
-              <div aria-hidden="true">
-                {Array.from({ length: MAX_DECOYS }, (_, i) => (
-                  <div
-                    key={i}
-                    ref={(element) => {
-                      decoyRefs.current[i] = element;
-                    }}
-                    className="pointer-events-none fixed left-0 top-0 origin-top-left"
-                    style={{ opacity: 0 }}
-                  >
-                    <CursorShape kind="arrow" />
-                  </div>
-                ))}
+          {kind === 'taming' && mode === 'locked' && phase === 'playing' && (
+            <div aria-hidden="true">
+              {Array.from({ length: MAX_DECOYS }, (_, i) => (
                 <div
-                  ref={pointerRef}
-                  data-testid="fight-pointer"
+                  key={i}
+                  ref={(element) => {
+                    decoyRefs.current[i] = element;
+                  }}
                   className="pointer-events-none fixed left-0 top-0 origin-top-left"
                   style={{ opacity: 0 }}
                 >
                   <CursorShape kind="arrow" />
                 </div>
+              ))}
+              <div
+                ref={pointerRef}
+                data-testid="fight-pointer"
+                className="pointer-events-none fixed left-0 top-0 origin-top-left"
+                style={{ opacity: 0 }}
+              >
+                <CursorShape kind="arrow" />
               </div>
-            )}
-          </div>,
-          document.body
-        )}
-    </section>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

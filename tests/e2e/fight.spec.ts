@@ -1,13 +1,18 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, devices, expect, test } from '@playwright/test';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/survival';
 import { TAMED_KEY } from '@/app/ui/xenocats/taming';
 
-// Fight a cat on /cats (no login, no database). Most tests take the fallback path:
+// The fight games on their own pages, /cats/survival and /cats/taming (no login, no
+// database). Most tests take the fallback path:
 // pointer lock is removed before the page loads, so the game runs with the fake
 // cursor. The "under pointer lock" tests keep it: headless Chromium grants the lock
 // and reports mouse movement, so the locked path can be played too.
 
-async function openFight(page: Page, best?: number, { lock = false } = {}) {
+async function openFight(
+  page: Page,
+  best?: number,
+  { lock = false, game = 'survival' }: { lock?: boolean; game?: 'survival' | 'taming' } = {}
+) {
   await page.addInitScript(
     ({ key, best, lock }) => {
       if (!lock) {
@@ -21,8 +26,10 @@ async function openFight(page: Page, best?: number, { lock = false } = {}) {
     { key: SURVIVAL_BEST_KEY, best, lock }
   );
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/cats');
-  await expect(page.getByRole('heading', { name: 'Fight a cat' })).toBeVisible();
+  await page.goto(`/cats/${game}`);
+  await expect(
+    page.getByRole('heading', { level: 1, name: game === 'survival' ? 'Survival' : 'Taming' })
+  ).toBeVisible();
   // The fake cursor takes over on the first pointer move after hydration.
   let nudge = 0;
   await expect
@@ -35,7 +42,7 @@ async function openFight(page: Page, best?: number, { lock = false } = {}) {
 
 async function start(page: Page) {
   await page.getByTestId('fight-start').click();
-  const overlay = page.getByTestId('fight-overlay');
+  const overlay = page.getByTestId('fight-area');
   await expect(overlay).toBeVisible();
   await expect(overlay).toHaveAttribute('data-mode', 'fallback');
   return overlay;
@@ -92,8 +99,6 @@ test('Survival: the self-firing beam sends every cat of a wave home; Esc ends th
   await expect(page.getByTestId('fight-lives')).toHaveText('Lives: 3');
   await expect(page.getByTestId('fight-wave')).toHaveText('Wave 1');
   await expect(page.getByTestId('fight-player').locator('svg').first()).toBeVisible();
-  // No cat can be summoned during a game.
-  await expect(page.getByTestId('summon-void-tabby')).toBeDisabled();
 
   // Keep the crosshair on the nearest cat until wave 1 is over: the gun fires by
   // itself. It is a real-time game: cats scramble the ranger, its aim and its gun,
@@ -103,7 +108,7 @@ test('Survival: the self-firing beam sends every cat of a wave home; Esc ends th
   await expect
     .poll(
       async () => {
-        if ((await page.getByTestId('fight-overlay').count()) === 0) {
+        if ((await page.getByTestId('fight-area').count()) === 0) {
           await start(page);
           mouse = { x: 640, y: 400 };
         }
@@ -120,13 +125,12 @@ test('Survival: the self-firing beam sends every cat of a wave home; Esc ends th
   await expect(page.getByTestId('fight-score')).toHaveText('Survived: 1');
 
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('fight-overlay')).toHaveCount(0);
+  await expect(page.getByTestId('fight-area')).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'Game over' })).toHaveText(
     'Game over. You survived 1 wave. Best: 1.'
   );
   await expect(page.getByTestId('fight-best')).toHaveText('Best: 1 wave');
   expect(await page.evaluate((key) => localStorage.getItem(key), SURVIVAL_BEST_KEY)).toBe('1');
-  await expect(page.getByTestId('summon-void-tabby')).toBeEnabled();
   await expect(page.getByTestId('fight-start')).toHaveText('Play again');
 });
 
@@ -217,10 +221,10 @@ test('Taming: a still pointer draws the cat over, holding still on it tames it i
   page,
 }) => {
   test.setTimeout(60_000);
-  await openFight(page);
+  await openFight(page, undefined, { game: 'taming' });
   await expect(page.getByTestId('fight-tamed')).toHaveText('Tamed: 0 cats');
   await page.getByTestId('fight-start-taming').click();
-  const overlay = page.getByTestId('fight-overlay');
+  const overlay = page.getByTestId('fight-area');
   await expect(overlay).toHaveAttribute('data-kind', 'taming');
   await expect(overlay).toHaveAttribute('data-mode', 'fallback');
   // Keep still: the cat appears, gets curious after 1 s and walks over at 110 px/s.
@@ -244,7 +248,7 @@ test('Taming: a still pointer draws the cat over, holding still on it tames it i
 
 test('Taming: a pointer moving at the cat makes it dodge', async ({ page }) => {
   test.setTimeout(60_000);
-  await openFight(page);
+  await openFight(page, undefined, { game: 'taming' });
   await page.getByTestId('fight-start-taming').click();
   await page.mouse.move(100, 100);
   const cat = page.getByTestId('fight-cat');
@@ -307,16 +311,21 @@ test('Survival: losing focus pauses the game, and the cats wait; Resume carries 
   const at = await cat.boundingBox();
   await page.waitForTimeout(600);
   expect(await cat.boundingBox()).toEqual(at);
-  // The paused game is a modal dialog: Tab cycles through its own buttons only.
-  const resume = overlay.getByRole('button', { name: 'Resume' });
-  const end = overlay.getByRole('button', { name: 'End game' });
-  await resume.focus();
-  await page.keyboard.press('Tab');
-  await expect(end).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(resume).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
-  await expect(end).toBeFocused();
+  // The game is the page, not a dialog. What the play area covers (the header's
+  // links, Start) is inert while it runs: Tab never lands on anything hidden.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(overlay.getByRole('button', { name: 'End game' })).toBeVisible();
+  const focusIsVisible = () =>
+    page.evaluate(() => {
+      const active = document.activeElement;
+      const area = document.querySelector('[data-testid="fight-area"]');
+      return active === document.body || active === null || !!area?.contains(active);
+    });
+  await overlay.getByRole('button', { name: 'Resume' }).focus();
+  for (const key of ['Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+    await page.keyboard.press(key);
+    expect(await focusIsVisible(), key).toBe(true);
+  }
   await overlay.getByRole('button', { name: 'Resume' }).click();
   await expect(overlay).toHaveAttribute('data-phase', 'playing');
   await expect.poll(() => cat.boundingBox()).not.toEqual(at);
@@ -332,7 +341,7 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
   const mouse = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.mouse.move(mouse.x, mouse.y);
   await startButton.click();
-  const overlay = page.getByTestId('fight-overlay');
+  const overlay = page.getByTestId('fight-area');
   await expect(overlay).toHaveAttribute('data-mode', /locked|fallback/);
   // Some headless browsers refuse pointer lock (the game then takes the fallback
   // path, tested above); there is nothing to test here then.
@@ -395,12 +404,73 @@ test('Survival under pointer lock: the mouse moves the crosshair, and losing the
   await page.evaluate(() => document.exitPointerLock());
   expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
   if (focused) {
-    await expect(page.getByTestId('fight-overlay')).toHaveCount(0);
+    await expect(page.getByTestId('fight-area')).toHaveCount(0);
     await expect(page.getByRole('status').filter({ hasText: 'Game over' })).toContainText(
       'Game over. You survived'
     );
   } else {
     await expect(overlay).toHaveAttribute('data-phase', 'paused');
     await expect(overlay.getByRole('button', { name: 'Resume' })).toBeVisible();
+  }
+});
+
+test('/cats links to both games, each on a page of its own', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/cats');
+  await expect(page.getByRole('heading', { name: 'Fight a cat' })).toBeVisible();
+  await page.getByRole('link', { name: 'Play Survival' }).click();
+  await expect(page).toHaveURL(/\/cats\/survival$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
+  await expect(page.getByTestId('fight-start')).toBeVisible();
+  await page.goto('/cats');
+  await page.getByRole('link', { name: 'Play Taming' }).click();
+  await expect(page).toHaveURL(/\/cats\/taming$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Taming' })).toBeVisible();
+  await expect(page.getByTestId('fight-start-taming')).toBeVisible();
+});
+
+test('Survival: leaving the page mid-game ends the game and releases the pointer lock', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/cats');
+  await page.getByRole('link', { name: 'Play Survival' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
+  let nudge = 0;
+  await expect
+    .poll(async () => {
+      await page.mouse.move(640 + (nudge++ % 2), 400);
+      return page.locator('html').getAttribute('class');
+    })
+    .toContain('xenocat-cursor-hidden');
+  await page.getByTestId('fight-start').click();
+  const area = page.getByTestId('fight-area');
+  // Some headless browsers refuse pointer lock; then the game runs on the fallback.
+  await expect(area).toHaveAttribute('data-mode', /locked|fallback/);
+  const locked = (await area.getAttribute('data-mode')) === 'locked';
+  // Back to /cats inside the app: the game's page goes away.
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Fight a cat' })).toBeVisible();
+  await expect(area).toHaveCount(0);
+  if (locked) expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+  // Nothing is left inert on the page it came back to.
+  await expect(page.locator('[inert]')).toHaveCount(0);
+});
+
+test.describe('on a touch screen', () => {
+  // A phone's screen and touch input (its browser type cannot change inside a group).
+  const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
+  test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  for (const game of ['survival', 'taming'] as const) {
+    test(`/cats/${game} says the game needs a keyboard and mouse`, async ({ page }) => {
+      await page.goto(`/cats/${game}`);
+      await expect(page.getByTestId('fight-needs-keyboard')).toHaveText(
+        'This game needs a keyboard and mouse, for now. Come back on a computer to play it.'
+      );
+      await expect(page.getByTestId('fight-start')).toHaveCount(0);
+      await expect(page.getByTestId('fight-start-taming')).toHaveCount(0);
+    });
   }
 });
