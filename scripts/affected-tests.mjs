@@ -154,14 +154,17 @@ function areasOfRouteFile(routeFile, allAreas) {
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// The areas a spec visits: each area's path, as a string or a URL regex, anywhere in it.
+// The areas a spec visits: each area's path, as a string or a URL regex, anywhere in
+// it. A longer path counts for the area it belongs to (/cats/survival for /cats), but
+// not for another area's (/dashboard/invoices is not /dashboard).
 export function specAreas(specText, allAreas) {
   const text = specText.replaceAll('\\/', '/');
-  return allAreas.filter((area) =>
-    area === '/'
-      ? /['"`]\/['"`?#]/.test(text)
-      : new RegExp(`(^|[^\\w-])${escapeRegExp(area)}(?![\\w-]|/[a-z])`).test(text)
-  );
+  return allAreas.filter((area) => {
+    if (area === '/') return /['"`]\/['"`?#]/.test(text);
+    const path = new RegExp(`(^|[^\\w-])(${escapeRegExp(area)}(?:/[\\w-]+)*)(?![\\w-])`, 'g');
+    for (const match of text.matchAll(path)) if (areaOf(match[2]) === area) return true;
+    return false;
+  });
 }
 
 // The selection for a list of changed paths (relative, `/`-separated).

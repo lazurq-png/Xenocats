@@ -5,10 +5,10 @@
 // The pad is a circle. A touch in its middle (the dead zone) walks nowhere; one
 // further out walks in whichever of the eight WASD ways points nearest to it, as a
 // unit vector, a diagonal no faster than a straight line — the very vector
-// `walkDirection` (survival.ts) gives for those keys held.
+// `walkDirection` (walking.ts) gives for those keys held.
 
 import type { Vec } from './effects';
-import { walkDirection } from './survival';
+import { walkDirection } from './walking';
 
 /** The pad's diameter, px: room for a thumb, and to aim it. */
 export const PAD_SIZE = 144;

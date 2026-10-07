@@ -1,9 +1,12 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import ArenaGame from './arena-view';
 import { XenocatCatsProvider } from './cat-layer';
 import { XenocatCursorProvider } from './fake-cursor';
-import Fight, { type Kind } from './fight';
+import Fight from './fight';
+
+export type Kind = 'survival' | 'taming';
 
 const FINE_POINTER = '(pointer: fine)';
 
@@ -19,28 +22,19 @@ const hasFinePointer = () =>
   typeof window.matchMedia !== 'function' || window.matchMedia(FINE_POINTER).matches;
 
 /**
- * A fight game's page (/cats/survival, /cats/taming): the game itself, with the
- * cats and the fake cursor it plays with. No cat comes on its own here. On a touch
- * screen (no precise pointer) Taming is walked with the movement pad, and Survival
- * says it needs a keyboard and mouse.
+ * A fight game's page. Survival (/cats/survival) is the arena (arena-view.tsx): it
+ * needs neither the page's cats nor its fake cursor, so neither runs there. Taming
+ * (/cats/taming) plays with both, with no cat coming on its own. On a touch screen
+ * (no precise pointer) either game is walked with the movement pad.
  */
 export default function FightPage({ kind }: { kind: Kind }) {
   // The server cannot know: it renders the desktop game, and a touch screen swaps it.
   const fine = useSyncExternalStore(subscribePointer, hasFinePointer, () => true);
-  if (!fine && kind === 'survival') {
-    return (
-      <div>
-        <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">Survival</h1>
-        <p data-testid="fight-needs-keyboard" className="mt-4 max-w-2xl text-lg text-white">
-          This game needs a keyboard and mouse, for now. Come back on a computer to play it.
-        </p>
-      </div>
-    );
-  }
+  if (kind === 'survival') return <ArenaGame touch={!fine} />;
   return (
     <XenocatCursorProvider>
       <XenocatCatsProvider autoSpawn={false}>
-        <Fight kind={kind} touch={!fine} />
+        <Fight touch={!fine} />
       </XenocatCatsProvider>
     </XenocatCursorProvider>
   );

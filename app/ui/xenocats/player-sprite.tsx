@@ -1,4 +1,4 @@
-import type { Facing } from './survival';
+import type { Facing } from './walking';
 
 // The cat ranger of Fight a cat, Survival: a 64×64 astronaut seen from above and a
 // little in front, in eight facings. The east side is drawn; the west side mirrors

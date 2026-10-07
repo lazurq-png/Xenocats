@@ -21,6 +21,8 @@ describe('affected-tests', () => {
       '/dashboard',
     ]);
     expect(specAreas(`page.goto('/')`, areas)).toEqual(['/']);
+    // A page under an area counts for it (the games are pages of /cats).
+    expect(specAreas(`await page.goto('/cats/survival' + query);`, areas)).toEqual(['/cats']);
     // An asset path is not a route.
     expect(specAreas(`'/xenocats/cats/tabby.png'`, areas)).toEqual([]);
   });

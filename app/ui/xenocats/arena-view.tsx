@@ -1,0 +1,584 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Button } from '@/app/ui/button';
+import { type Arena, ARENA_CONFIG, type ArenaOutcome, createArena } from './arena';
+import { HERO_SVG } from './arena-art';
+import { SURVIVAL_BEST_KEY, bestOf, clockText, readBest, writeBest } from './arena-storage';
+import { catArt } from './cat-art';
+import { CAT_TYPES } from './cat-types';
+import { recordStat } from './field-guide';
+import { createFrameGuard } from './frame-guard';
+import { MovementPad } from './movement-pad-view';
+import { createRandom, freshSeed } from './random';
+import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
+import { isWalkKey, walkDirection } from './walking';
+import type { Vec } from './effects';
+
+// Survival, the arena (arena.ts), drawn on a canvas that fills the page while a run
+// lasts. The simulation runs in fixed steps, as many each frame as the time that
+// passed asks for; the canvas is drawn once a frame, the cats from bitmaps made
+// once from their artwork. The HUD is text, and the run's state is also on the
+// play area as data- attributes for the browser tests. The canvas and everything
+// drawn on it are hidden from assistive technology.
+//
+// Test hooks, read from the page's address when a run starts: `?seed=` fixes the
+// random source, `?speed=` (up to 50) makes time pass that much faster.
+
+type Screen = 'start' | 'playing' | 'paused' | 'results';
+
+/** Cats drawn this size, px. */
+const CAT_SIZE = 44;
+const HERO_SIZE = 56;
+/** The floor's tiles, px. */
+const TILE = 96;
+/** A game step more than this behind is dropped: the game slows rather than freezing. */
+const MAX_STEPS_PER_FRAME = 240;
+/** Never more than this many sounds start within `SOUND_WINDOW_MS`. */
+const MAX_SOUNDS = 3;
+const SOUND_WINDOW_MS = 300;
+
+const FRAME_GUARD = { floorFps: 40, resumeFps: 50, smoothing: 0.1 };
+
+type Flash = { x: number; y: number; until: number };
+
+type Hud = {
+  time: number;
+  resolve: number;
+  maxResolve: number;
+  sentHome: number;
+  cats: number;
+  heroX: number;
+  heroY: number;
+  effect: string | null;
+};
+
+const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
+  spent: 'His Resolve is spent. The cats remain.',
+  'gave-up': 'He has given up. The cats remain.',
+  goal: 'Five minutes, and the night is survived. The cats remain.',
+};
+
+function testHooks(): { seed: number; speed: number } {
+  const params = new URLSearchParams(window.location.search);
+  const seed = Number(params.get('seed'));
+  const speed = Number(params.get('speed'));
+  return {
+    seed: Number.isInteger(seed) && seed > 0 ? seed : freshSeed(),
+    speed: Number.isFinite(speed) && speed >= 1 ? Math.min(speed, 50) : 1,
+  };
+}
+
+/** A bitmap of `src`, `size` px square, drawn once; null until it has loaded. */
+function bitmapOf(src: string, size: number, onReady: () => void): () => HTMLCanvasElement | null {
+  let ready: HTMLCanvasElement | null = null;
+  const image = new Image();
+  image.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    canvas.getContext('2d')?.drawImage(image, 0, 0, size, size);
+    ready = canvas;
+    onReady();
+  };
+  image.src = src;
+  return () => ready;
+}
+
+function subscribeBest(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  return () => window.removeEventListener('storage', onChange);
+}
+
+export default function ArenaGame({ touch = false }: { touch?: boolean }) {
+  const [screen, setScreen] = useState<Screen>('start');
+  const [hud, setHud] = useState<Hud | null>(null);
+  const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
+  // The finished run's numbers, kept for the results screen.
+  const [result, setResult] = useState<{ time: number; sentHome: number } | null>(null);
+  const best = useSyncExternalStore(subscribeBest, readBest, () => null);
+  const arenaRef = useRef<Arena | null>(null);
+  const screenRef = useRef<Screen>('start');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const pauseRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLElement>(null);
+  const padRef = useRef<Vec>({ x: 0, y: 0 });
+  const speedRef = useRef(1);
+  const playerRef = useRef<SoundPlayer | null>(null);
+  const onPad = useCallback((direction: Vec) => {
+    padRef.current = direction;
+  }, []);
+
+  const show = useCallback((next: Screen) => {
+    screenRef.current = next;
+    setScreen(next);
+  }, []);
+
+  const finish = useCallback(
+    (how: ArenaOutcome) => {
+      const arena = arenaRef.current;
+      if (!arena) return;
+      const time = Math.min(arena.state().time, arena.config.timeGoalMs);
+      writeBest(bestOf(readBest(), time));
+      setResult({ time, sentHome: arena.state().sentHome });
+      setOutcome(how);
+      show('results');
+    },
+    [show]
+  );
+
+  const start = () => {
+    const { seed, speed } = testHooks();
+    speedRef.current = speed;
+    playerRef.current ??= sharedSoundPlayer();
+    // The click that started the run is the gesture sound needs.
+    playerRef.current.unlock();
+    arenaRef.current = createArena({
+      random: createRandom(seed),
+      types: CAT_TYPES,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    });
+    setOutcome(null);
+    setHud(null);
+    show('playing');
+  };
+
+  const pause = useCallback(() => {
+    if (screenRef.current === 'playing') show('paused');
+  }, [show]);
+  const resume = () => {
+    if (screenRef.current === 'paused') show('playing');
+  };
+  const giveUp = () => {
+    arenaRef.current?.giveUp();
+    finish('gave-up');
+  };
+
+  const running = screen === 'playing' || screen === 'paused';
+
+  // Focus: into the play area when a run starts, onto Resume when paused, onto
+  // Play again when it is over.
+  useEffect(() => {
+    if (screen === 'playing') areaRef.current?.focus();
+    if (screen === 'paused') pauseRef.current?.querySelector('button')?.focus();
+    if (screen === 'results') resultsRef.current?.querySelector('button')?.focus();
+  }, [screen]);
+
+  // While a run lasts its play area covers the page: everything else is inert, so
+  // focus cannot wander behind it. Only what this marked is unmarked again.
+  useEffect(() => {
+    if (!running) return;
+    const area = areaRef.current;
+    if (!area) return;
+    const marked: Element[] = [];
+    for (let node: Element = area; node.parentElement; node = node.parentElement) {
+      for (const sibling of Array.from(node.parentElement.children)) {
+        if (sibling === node || sibling.hasAttribute('inert')) continue;
+        sibling.setAttribute('inert', '');
+        marked.push(sibling);
+      }
+      if (node.parentElement === document.body) break;
+    }
+    return () => {
+      for (const element of marked) element.removeAttribute('inert');
+    };
+  }, [running]);
+
+  // The run: input, the fixed-step loop, drawing, sounds.
+  useEffect(() => {
+    if (!running) return;
+    const arena = arenaRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!arena || !canvas || !context) return;
+
+    let dirty = true;
+    const redraw = () => {
+      dirty = true;
+    };
+    const sprites = CAT_TYPES.map((type) => {
+      const art = catArt(type.id, 'awake');
+      return art ? bitmapOf(art, CAT_SIZE * 2, redraw) : () => null;
+    });
+    const hero = bitmapOf(
+      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVG)}`,
+      HERO_SIZE * 2,
+      redraw
+    );
+    const titan = CAT_TYPES.findIndex((type) => type.id === 'titan-forest-cat');
+
+    const guard = createFrameGuard(FRAME_GUARD);
+    const held = new Set<string>();
+    const flashes: Flash[] = [];
+    const met = new Set<number>();
+    const sounds: number[] = [];
+    let carry = 0;
+    let last = performance.now();
+    let lastHud = 0;
+    let frameId = 0;
+
+    const sound = (play: () => void) => {
+      const now = performance.now();
+      while (sounds.length > 0 && now - sounds[0] > SOUND_WINDOW_MS) sounds.shift();
+      if (sounds.length >= MAX_SOUNDS) return;
+      sounds.push(now);
+      play();
+    };
+
+    const resize = () => {
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(window.innerWidth * ratio);
+      canvas.height = Math.round(window.innerHeight * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      arena.resize({ width: window.innerWidth, height: window.innerHeight });
+      dirty = true;
+    };
+    resize();
+
+    const draw = (time: number) => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const state = arena.state();
+      const camX = state.hero.x - width / 2;
+      const camY = state.hero.y - height / 2;
+      context.fillStyle = '#070b14';
+      context.fillRect(0, 0, width, height);
+      // The floor: faint tiles that slide as he walks.
+      context.strokeStyle = 'rgba(45, 47, 71, 0.55)';
+      context.lineWidth = 1;
+      context.beginPath();
+      for (let x = -(((camX % TILE) + TILE) % TILE); x < width; x += TILE) {
+        context.moveTo(x + 0.5, 0);
+        context.lineTo(x + 0.5, height);
+      }
+      for (let y = -(((camY % TILE) + TILE) % TILE); y < height; y += TILE) {
+        context.moveTo(0, y + 0.5);
+        context.lineTo(width, y + 0.5);
+      }
+      context.stroke();
+
+      // The beams.
+      context.strokeStyle = '#c1e838';
+      context.shadowColor = '#c1e838';
+      context.shadowBlur = 12;
+      context.lineWidth = 3;
+      for (const beam of arena.beams()) {
+        context.beginPath();
+        context.moveTo(beam.from.x - camX, beam.from.y - camY);
+        context.lineTo(beam.to.x - camX, beam.to.y - camY);
+        context.stroke();
+      }
+      context.shadowBlur = 0;
+
+      // The cats; an elite ringed, a homesick one with its bar.
+      const half = CAT_SIZE / 2;
+      for (const cat of arena.cats()) {
+        const x = cat.x - camX;
+        const y = cat.y - camY;
+        if (x < -CAT_SIZE || y < -CAT_SIZE || x > width + CAT_SIZE || y > height + CAT_SIZE) {
+          continue;
+        }
+        const bitmap = sprites[cat.type]();
+        if (bitmap) context.drawImage(bitmap, x - half, y - half, CAT_SIZE, CAT_SIZE);
+        else {
+          context.fillStyle = CAT_TYPES[cat.type].palette.body;
+          context.beginPath();
+          context.arc(x, y, half * 0.7, 0, 2 * Math.PI);
+          context.fill();
+        }
+        if (cat.elite) {
+          context.strokeStyle = '#9d86ff';
+          context.lineWidth = 2;
+          context.beginPath();
+          context.arc(x, y, half + 2, 0, 2 * Math.PI);
+          context.stroke();
+        }
+        if (cat.homesickness > 0) {
+          context.fillStyle = 'rgba(7, 11, 20, 0.8)';
+          context.fillRect(x - half, y - half - 6, CAT_SIZE, 4);
+          context.fillStyle = '#9d86ff';
+          context.fillRect(x - half, y - half - 6, (CAT_SIZE * cat.homesickness) / cat.limit, 4);
+        }
+      }
+
+      // Beamed home: a column of light where each one stood.
+      for (let i = flashes.length - 1; i >= 0; i--) {
+        const flash = flashes[i];
+        const left = flash.until - time;
+        if (left <= 0) {
+          flashes.splice(i, 1);
+          continue;
+        }
+        context.fillStyle = `rgba(193, 232, 56, ${(left / 300) * 0.55})`;
+        context.fillRect(flash.x - camX - 8, flash.y - camY - 60, 16, 70);
+      }
+
+      // The Matriarch.
+      const matriarch = arena.matriarch();
+      if (matriarch && titan >= 0) {
+        const size = CAT_SIZE * 4;
+        const bitmap = sprites[titan]();
+        context.shadowColor = '#9d86ff';
+        context.shadowBlur = 30;
+        if (bitmap) {
+          context.drawImage(
+            bitmap,
+            matriarch.x - camX - size / 2,
+            matriarch.y - camY - size / 2,
+            size,
+            size
+          );
+        }
+        context.shadowBlur = 0;
+      }
+
+      // The Keeper, flickering while untouchable, faint under a veil.
+      const keeper = hero();
+      if (keeper && !(state.hero.untouchable && Math.floor(time / 90) % 2 === 0)) {
+        context.save();
+        context.globalAlpha = state.hero.effect === 'veil' ? 0.35 : 1;
+        context.translate(width / 2, height / 2);
+        if (state.hero.facing < 0) context.scale(-1, 1);
+        if (state.hero.effect === 'freeze') {
+          context.shadowColor = '#7dd3fc';
+          context.shadowBlur = 16;
+        }
+        context.drawImage(keeper, -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
+        context.restore();
+      }
+    };
+
+    const frame = () => {
+      frameId = requestAnimationFrame(frame);
+      const now = performance.now();
+      const real = Math.min(now - last, 250);
+      last = now;
+      if (screenRef.current !== 'playing') {
+        held.clear();
+        if (dirty) {
+          draw(now);
+          dirty = false;
+        }
+        return;
+      }
+      guard.record(real);
+      carry += real * speedRef.current;
+      const keys = walkDirection(held);
+      const input = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
+      let steps = 0;
+      while (carry >= arena.config.stepMs && steps < MAX_STEPS_PER_FRAME) {
+        arena.step(input, guard.allowsSpawning());
+        carry -= arena.config.stepMs;
+        steps++;
+      }
+      if (steps === MAX_STEPS_PER_FRAME) carry = 0;
+
+      const player = playerRef.current;
+      let over: ArenaOutcome | null = null;
+      const hits: number[] = [];
+      for (const event of arena.drainEvents()) {
+        if (event.kind === 'sent-home') {
+          flashes.push({ x: event.x, y: event.y, until: now + 300 });
+          if (player) sound(() => player.play(soundsFor(CAT_TYPES[event.type]).purr));
+        } else if (event.kind === 'hero-hit') {
+          hits.push(event.type);
+          if (player) sound(() => player.play(soundsFor(CAT_TYPES[event.type]).attack));
+        } else if (event.kind === 'matriarch' && titan >= 0 && player) {
+          player.play(soundsFor(CAT_TYPES[titan]).wake);
+        } else if (event.kind === 'over') {
+          over = event.outcome;
+        }
+      }
+      // An attack that did not end the run was survived (the field guide counts it).
+      if (!over) for (const type of hits) recordStat(CAT_TYPES[type].id, 'survived');
+      // Each type in the field guide, once a run, as it is first met.
+      for (const cat of arena.cats()) {
+        if (met.has(cat.type)) continue;
+        met.add(cat.type);
+        recordStat(CAT_TYPES[cat.type].id, 'met');
+      }
+      draw(now);
+      dirty = false;
+
+      const state = arena.state();
+      if (over || now - lastHud > 150) {
+        lastHud = now;
+        setHud({
+          time: state.time,
+          resolve: state.hero.resolve,
+          maxResolve: state.hero.maxResolve,
+          sentHome: state.sentHome,
+          cats: state.cats,
+          heroX: Math.round(state.hero.x),
+          heroY: Math.round(state.hero.y),
+          effect: state.hero.effect,
+        });
+      }
+      if (over) finish(over);
+    };
+    frameId = requestAnimationFrame(frame);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (screenRef.current === 'playing') show('paused');
+        else if (screenRef.current === 'paused') show('playing');
+        return;
+      }
+      if (screenRef.current !== 'playing') return;
+      if (event.ctrlKey || event.metaKey || event.altKey || !isWalkKey(event.code)) return;
+      // The arrow keys would scroll the page under the game.
+      event.preventDefault();
+      held.add(event.code);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      held.delete(event.code);
+    };
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') pause();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', pause);
+    window.addEventListener('resize', resize);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', pause);
+      window.removeEventListener('resize', resize);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
+  }, [running, finish, pause, show]);
+
+  return (
+    <div>
+      <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">Survival</h1>
+      <p className="mt-4 max-w-2xl text-sm text-aura">
+        The cats come from every side, and they do not stop coming. The Keeper does not hate them;
+        he only wishes them home. His Laser Pointer finds them on its own: where you stand is
+        everything. Each touch of a cat wears down his Resolve. Last five minutes, and the Matriarch
+        herself will come for him.
+      </p>
+      <p className="mt-2 max-w-2xl text-sm text-aura">
+        {touch
+          ? 'Walk with the pad. Tap Pause to stop for a moment.'
+          : 'Walk with WASD or the arrow keys. Esc pauses.'}
+      </p>
+      <div className="mt-4 flex flex-wrap items-center gap-4">
+        <Button data-testid="survival-start" onClick={start} disabled={running}>
+          {screen === 'results' ? 'Play again' : 'Start Survival'}
+        </Button>
+        <p data-testid="survival-best" data-best={best ?? ''} className="text-sm text-aura">
+          Longest survived: {best === null ? 'none yet' : clockText(best)}
+        </p>
+      </div>
+
+      {screen === 'results' && result && outcome && (
+        <section
+          ref={resultsRef}
+          aria-labelledby="results-heading"
+          data-testid="survival-results"
+          data-outcome={outcome}
+          className="mt-6 max-w-xl rounded-2xl border border-line bg-panel p-6"
+        >
+          <h2 id="results-heading" className="font-display text-2xl font-semibold text-cream">
+            The run is over
+          </h2>
+          <p role="status" className="mt-2 text-sm text-plasma">
+            {OUTCOME_TEXT[outcome]}
+          </p>
+          <dl className="mt-4 grid grid-cols-2 gap-2 text-sm text-white">
+            <dt className="text-aura">Time survived</dt>
+            <dd data-testid="survival-result-time">{clockText(result.time)}</dd>
+            <dt className="text-aura">Cats sent home</dt>
+            <dd data-testid="survival-result-sent-home">{result.sentHome}</dd>
+          </dl>
+          <Button className="mt-4" onClick={start}>
+            Play again
+          </Button>
+        </section>
+      )}
+
+      {running && (
+        // The play area: the whole page while a run lasts.
+        <div
+          ref={areaRef}
+          tabIndex={-1}
+          data-testid="survival-area"
+          data-xenocat-ignore
+          data-screen={screen}
+          data-time={hud?.time ?? 0}
+          data-resolve={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
+          data-cats={hud?.cats ?? 0}
+          data-sent-home={hud?.sentHome ?? 0}
+          data-hero-x={hud?.heroX ?? 0}
+          data-hero-y={hud?.heroY ?? 0}
+          data-effect={hud?.effect ?? ''}
+          data-weapons="laser-pointer"
+          data-best-key={SURVIVAL_BEST_KEY}
+          className="fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none"
+        >
+          <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
+          <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
+            <p data-testid="survival-time">
+              Time {clockText(hud?.time ?? 0)} / {clockText(ARENA_CONFIG.timeGoalMs)}
+            </p>
+            <div className="flex items-center gap-2">
+              <span id="resolve-label">Resolve</span>
+              <div
+                role="meter"
+                aria-labelledby="resolve-label"
+                aria-valuemin={0}
+                aria-valuemax={hud?.maxResolve ?? ARENA_CONFIG.hero.resolve}
+                aria-valuenow={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
+                className="h-2 w-32 overflow-hidden rounded-full bg-panel"
+              >
+                <div
+                  className="h-full bg-plasma"
+                  style={{
+                    width: `${(100 * (hud?.resolve ?? 1)) / (hud?.maxResolve ?? 1)}%`,
+                  }}
+                />
+              </div>
+              <span data-testid="survival-resolve">{Math.ceil(hud?.resolve ?? 100)}</span>
+            </div>
+            <p data-testid="survival-sent-home">Cats sent home: {hud?.sentHome ?? 0}</p>
+            {screen === 'playing' && (
+              <Button className="ml-auto" onClick={pause}>
+                Pause
+              </Button>
+            )}
+          </div>
+
+          {screen === 'paused' && (
+            <div
+              ref={pauseRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pause-heading"
+              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60"
+            >
+              <div className="rounded-2xl border border-line bg-panel p-6 text-center">
+                <h2 id="pause-heading" className="font-display text-xl text-cream">
+                  Paused
+                </h2>
+                <p className="mt-2 text-sm text-aura">The cats wait. They are patient.</p>
+                <div className="mt-4 flex justify-center gap-3">
+                  <Button onClick={resume}>Resume</Button>
+                  <Button onClick={giveUp}>Give up</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {touch && screen === 'playing' && (
+            <MovementPad onDirection={onPad} className="fixed bottom-8 left-8 z-10" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

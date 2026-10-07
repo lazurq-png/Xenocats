@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEAD_ZONE, knobOffset, padDirection } from '@/app/ui/xenocats/movement-pad';
-import { walkDirection } from '@/app/ui/xenocats/survival';
+import { walkDirection } from '@/app/ui/xenocats/walking';
 
 const centre = { x: 100, y: 100 };
 const radius = 72;
