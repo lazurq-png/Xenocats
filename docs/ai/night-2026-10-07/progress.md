@@ -370,3 +370,37 @@ Database reachable (the e2e global setup rebuilt `xenocats_test`).
     - Unit: 9 files, 162 passed.
     - Browser: 95 passed.
   - One run of `survival.spec.ts` alone, on a cold dev server during development, failed the Mega Cat test's first assertion (no boss yet). The run had reached 13 s before the first read, past the boss at 3 s. The next run, and every gate since, passed it. Recorded, not changed.
+
+## Checkpoint 2 (completed)
+
+- Branch `night-2026-10-07-c2-checkpoint`, base `1f4e3ea`; covers `0153196..1f4e3ea` (T6–T11). Start 01:04 (budget ~13,613,000); completed 01:18 (budget ~13,573,000).
+- **CI of T11** (`1f4e3ea`): **CI passed** on both branches ([run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37699958601), [task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37699958188)).
+- **1. Tests.** Every behaviour changed in the range was checked against a test that would fail without it (D72).
+  - **Added:**
+    - The start-screen panel in the page: choosing a character, and the codex (`survival.spec.ts`).
+    - Every drawing is a whole SVG (`varieties.test.ts`).
+    - In co-op: a downed Keeper does not fire or get touched and the cats walk at the other; a chest evolves the opener's weapon; a teleport cannot carry a Keeper past the tether. Each failed with its guard removed.
+  - **Rewritten:** two co-op tests that could not fail for what they claimed ("one experience bar", "each choice is his own").
+  - **Removed:** nothing.
+  - **Covered by reading only, newly recorded:** the results' "Now available" line, `testHooks()`'s handling of bad values, and Laser Cat shots skipping a downed Keeper.
+- **2. Quality and security.** The reviewer read the whole range with `.claude/rules/security-review.md` in scope: the URL hooks, stored progress, markup, listeners and timers, and the per-step loop.
+  - Approve, with six Low findings, all acted on (D73):
+    1. A camera object built per cat per step since T11.
+    2. A teleport past the tether in co-op.
+    3. Tests missing for a downed Keeper and the chest opener.
+    4. The "one experience bar" test could not fail.
+    5. The "each choice is his own" assertion was weak.
+    6. Stale headers and comments (the arena's, the art's, the player sprite's), plus a dead export and an unread attribute.
+  - Re-review: approve, no findings. **No security finding.**
+- **What changed** (code):
+  - `arena.ts`: the camera once a step; the tether after a teleport; `heroes[].passives`; `secondPlayer.startingPassives` (config, for a test); the header and `step` doc.
+  - `arena-art.ts`: the header, and the unused `HERO_SVG` removed.
+  - `arena-view.tsx`: `data-best-key` and its import removed.
+  - `player-sprite.tsx`: comments only.
+  - The tests above.
+- **Verification** (a full-suite point; `GATE_FULL=1`), all exit 0:
+  - Prettier on 7 files, lint 0 warnings, type check, group check.
+  - `npm test`: 40 files, 609 passed (17 skipped).
+  - Build.
+  - `npm run test:e2e`: 127 passed.
+  - `E2E_SERVER=start npm run test:e2e`: 127 passed.

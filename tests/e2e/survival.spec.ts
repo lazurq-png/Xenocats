@@ -301,6 +301,47 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-tufts')).toHaveText(`Tufts of fur: ${earned}`);
   });
 
+  test('a character he has goes out with his own weapon; the codex shows what was found, ??? the rest', async ({
+    page,
+  }) => {
+    await openArena(page);
+    // A returning player: 2:00 survived (the Night Porter is his), one evolution found.
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'xenocats:survival:v1:progress',
+        JSON.stringify({
+          version: 1,
+          tufts: 0,
+          upgrades: {},
+          milestones: ['survive-2'],
+          bought: [],
+          character: 'keeper',
+          found: ['yarn-apocalypse'],
+        })
+      )
+    );
+    await page.reload();
+    const porter = page.getByTestId('survival-character-night-porter');
+    await expect(porter).toBeEnabled();
+    // Not had: the Housekeeper is locked until engaged.
+    await expect(page.getByTestId('survival-character-housekeeper')).toBeDisabled();
+    // A click before hydration is lost: choose until chosen.
+    await expect
+      .poll(async () => {
+        await porter.check();
+        return porter.isChecked();
+      })
+      .toBe(true);
+    const codex = page.getByTestId('survival-codex');
+    await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
+    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(4);
+    // Kept after a reload; he goes out as the Night Porter, with the Spray Bottle.
+    await page.reload();
+    await expect(porter).toBeChecked();
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-weapons', 'spray-bottle:1');
+  });
+
   test('the Tailor sells an upgrade for tufts; the next run begins with it', async ({ page }) => {
     await openArena(page);
     // Tufts from earlier nights.

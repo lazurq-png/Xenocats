@@ -1,6 +1,7 @@
 // The Survival arena's own artwork, drawn by the run as SVG in the site's palette
-// (tailwind.config.ts): the hero, the Keeper. A placeholder until a Superdesign pass.
-// The cats are the twenty xenocat types' own artwork (cat-art.ts), unchanged.
+// (tailwind.config.ts): the heroes (the Keeper and the characters re-dressed) and
+// the varieties of cat. Placeholders until a Superdesign pass. The twenty xenocat
+// types keep their own artwork (cat-art.ts), unchanged.
 
 import type { VarietyId } from './varieties';
 
@@ -47,9 +48,6 @@ export const HERO_SVGS = {
     tool: `<path d="M28 34 H36 L38 52 H26 Z" fill="${CREAM}" opacity="0.85"/><path d="M52 33 Q58 40 56 50" stroke="${AURA}" stroke-width="3" fill="none"/><rect x="51" y="49" width="10" height="5" rx="2" fill="${LINE}" stroke="${AURA}" stroke-width="1.5"/>`,
   }),
 } as const;
-
-/** The Keeper. */
-export const HERO_SVG = HERO_SVGS.keeper;
 
 /**
  * A sitting cat, front on, in a 64×64 box: body, head, ears, eyes, a tail; `extra`

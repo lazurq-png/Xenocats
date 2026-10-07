@@ -5,6 +5,7 @@ import {
   type ArenaConfig,
   createArena,
 } from '@/app/ui/xenocats/arena';
+import { HERO_SVGS, VARIETY_SVG } from '@/app/ui/xenocats/arena-art';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import {
@@ -372,4 +373,22 @@ describe('the Mega Cat', () => {
     a.choose(0);
     expect(a.state().level).toBe(level);
   }, 60_000);
+});
+
+describe('the drawings', () => {
+  it('every variety and every hero has a whole SVG, every colour filled in', () => {
+    const drawings = [
+      ...(Object.keys(VARIETIES) as VarietyId[]).map((id) => [id, VARIETY_SVG[id]] as const),
+      ...Object.entries(HERO_SVGS),
+    ];
+    expect(drawings.length).toBe(Object.keys(VARIETIES).length + 3);
+    for (const [id, svg] of drawings) {
+      expect(svg, id).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"[^>]*>/);
+      expect(svg.trimEnd(), id).toMatch(/<\/svg>$/);
+      // A colour or shape left out of a template reads "undefined".
+      expect(svg, id).not.toContain('undefined');
+      // Every attribute's quotes are closed.
+      expect((svg.match(/"/g) ?? []).length % 2, id).toBe(0);
+    }
+  });
 });

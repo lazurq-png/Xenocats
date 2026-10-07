@@ -5,7 +5,7 @@ import { Button } from '@/app/ui/button';
 import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
 import { HERO_SVGS, VARIETY_SVG } from './arena-art';
 import { type Choice, WEAPONS, type WeaponId, describeChoice, evolutionText } from './arsenal';
-import { SURVIVAL_BEST_KEY, bestOf, clockText, readBest, writeBest } from './arena-storage';
+import { bestOf, clockText, readBest, writeBest } from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
 import { recordStat } from './field-guide';
@@ -928,7 +928,6 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-hero2-x={hud?.heroes[1]?.x ?? ''}
           data-hero2-y={hud?.heroes[1]?.y ?? ''}
           data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
-          data-best-key={SURVIVAL_BEST_KEY}
           className="fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none"
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />

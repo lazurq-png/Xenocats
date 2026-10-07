@@ -4,19 +4,22 @@
 // seeded run plays out the same every time and is tested in Node. arena-view.tsx
 // draws it.
 //
-// The hero walks an endless arena; the cats of the twenty xenocat types pour in
-// from just off screen on every side and walk at him. Attacks are automatic:
-// positioning is the skill. His weapons (arsenal.ts) fire on their own, starting
-// with the Laser Pointer; every cat they touch grows homesick, and enough
-// Homesickness and a cat is beamed home. Nothing is ever killed. A cat sent home
-// leaves an experience gem; gathered gems bring levels, and each level pauses the
-// run for a choice: a new weapon, a better one, or a passive. A cat that reaches
-// him drains his Resolve (each type its own amount), and he is untouchable for a
-// moment after. A few cats are elites, and also lay their xenocat effect on him
-// (Cryo freezes him, Gravi slows him, Mirror turns his controls round...), one
-// effect at a time. Cats keep coming, more and more, until the frame rate says no
-// more (frame-guard.ts). The run ends when his Resolve is spent, when he gives up,
-// or at the time goal, when the Matriarch comes for him and nothing sends her home.
+// The hero (a Keeper; two in local co-op, each a Keeper record of his own) walks
+// an endless arena; the cats of the twenty xenocat types and the varieties
+// (varieties.ts) pour in from just off screen on every side and walk at the
+// nearest. Attacks are automatic: positioning is the skill. His weapons (arsenal.ts)
+// fire on their own, starting with his character's (progression.ts); every cat
+// they touch grows homesick, and enough Homesickness and a cat is beamed home.
+// Nothing is ever killed. A cat sent home leaves an experience gem; gathered gems
+// bring levels (shared in co-op), and each level pauses the run for a choice (each
+// player in turn): a new weapon, a better one, or a passive. A cat that reaches him
+// drains his Resolve (each type its own amount), and he is untouchable for a moment
+// after. A few cats are elites, and also lay their xenocat effect on him (Cryo
+// freezes him, Gravi slows him, Mirror turns his controls round...), one effect at
+// a time. Cats keep coming, more and more, until the frame rate says no more
+// (frame-guard.ts). The run ends when no Keeper stands (in co-op one is down until
+// the other has lasted long enough), when he gives up, or at the time goal, when
+// the Matriarch comes and nothing sends her home.
 
 import {
   BASE_WEAPONS,
@@ -130,7 +133,13 @@ export type ArenaConfig = {
    */
   secretCat: { afterMs: number; stillMs: number };
   /** A second Keeper (local co-op), with his own weapons, pace and Resolve; or null. */
-  secondPlayer: { startingWeapons: readonly WeaponId[]; speed: number; resolve: number } | null;
+  secondPlayer: {
+    startingWeapons: readonly WeaponId[];
+    speed: number;
+    resolve: number;
+    /** Passives he starts with, at level 1 (a test's way to set up an evolution). */
+    startingPassives?: readonly PassiveId[];
+  } | null;
   coop: {
     /** The two start this far apart, px. */
     startGap: number;
@@ -412,7 +421,12 @@ export function createArena(options: {
   const keepers: Keeper[] = config.secondPlayer
     ? [
         newKeeper(0, { x: -config.coop.startGap / 2, y: 0 }, first, config.startingPassives),
-        newKeeper(1, { x: config.coop.startGap / 2, y: 0 }, config.secondPlayer, []),
+        newKeeper(
+          1,
+          { x: config.coop.startGap / 2, y: 0 },
+          config.secondPlayer,
+          config.secondPlayer.startingPassives ?? []
+        ),
       ]
     : [newKeeper(0, { x: 0, y: 0 }, first, config.startingPassives)];
   /** The Keeper being dealt with now: whose walk, weapons and touch. */
@@ -609,10 +623,7 @@ export function createArena(options: {
    * again: just off the screen if it walks, on it if it sits. So the horde stays
    * where he is, and none counts for nothing.
    */
-  function bringBack(cat: ArenaCat) {
-    const cam = camera();
-    const far =
-      ((Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin) * 2;
+  function bringBack(cat: ArenaCat, cam: { x: number; y: number }, far: number) {
     if (Math.hypot(cat.x - cam.x, cat.y - cam.y) <= far + cat.radius) return;
     const sits = cat.variety !== null && VARIETIES[cat.variety].gait === 'sit';
     const at = sits ? onScreen(200) : offScreen(random.next() * 2 * Math.PI, cat.radius);
@@ -715,8 +726,11 @@ export function createArena(options: {
       else if (kind.way === 'fixed') way = { x: Math.cos(angle), y: Math.sin(angle) };
     }
     if (kind.kind === 'jump') {
+      const from = { x: hero.x, y: hero.y };
       hero.x += Math.cos(angle) * kind.distance;
       hero.y += Math.sin(angle) * kind.distance;
+      // In co-op, not out of the other's sight.
+      tether(hero, from);
     }
     hero.effect = { effect: kind, until, from: { x: cat.x, y: cat.y }, way };
   }
@@ -1233,8 +1247,9 @@ export function createArena(options: {
 
     /**
      * One step of `config.stepMs`: the hero walks the way `input` points (a unit
-     * vector, or zero), cats come (while `spawn` allows), walk, reach him or are
-     * sent home. Nothing moves while a level-up's choice waits.
+     * vector, or zero), and in co-op player 2 the way `input2` does; cats come
+     * (while `spawn` allows), walk, reach them or are sent home. Nothing moves while
+     * a level-up's choice waits.
      */
     step(input: Vec, spawn = true, input2: Vec = { x: 0, y: 0 }) {
       if (status === 'over' || choosing) return;
@@ -1284,10 +1299,15 @@ export function createArena(options: {
       // The few big cats (bigger than the cats' size) are kept apart, so every
       // search looks a cat's size further, not the biggest one's.
       bigCats.length = 0;
+      // How far is too far behind: once a step, not once a cat.
+      const cam = camera();
+      const far =
+        ((Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin) *
+        2;
       for (let i = 0; i < cats.length; i++) {
         const cat = cats[i];
         moveCat(cat, dt);
-        bringBack(cat);
+        bringBack(cat, cam, far);
         if (cat.radius > config.cats.radius) bigCats.push(i);
         else grid.insert(i, cat.x, cat.y);
       }
@@ -1494,6 +1514,7 @@ export function createArena(options: {
           /** How long until a downed Keeper stands again, ms (0 while he stands). */
           backIn: k.downedAt === null ? 0 : Math.max(k.downedAt + config.coop.reviveMs - time, 0),
           weapons: [...k.weapons].map(([id, held]) => ({ id, level: held.level })),
+          passives: [...k.passives].map(([id, l]) => ({ id, level: l })),
         })),
         chooser,
         cats: cats.length,

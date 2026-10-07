@@ -141,44 +141,87 @@ describe('shared experience, own choices', () => {
     const level = a.choiceLevel();
     expect(a.chooser()).toBe(0);
     expect(a.state().chooser).toBe(0);
-    // Player 1's offer is his: never the Laser Pointer as new (he has it).
-    const first = a.choices()!;
-    const pick1 = first.findIndex((c) => c.kind === 'weapon' || c.kind === 'passive');
-    const chosen1 = first[pick1];
-    a.choose(pick1);
+    const arsenal = (i: number) => {
+      const h = a.state().heroes[i];
+      return JSON.stringify([h.weapons, h.passives]);
+    };
+    // Player 1 chooses: his arsenal changes, player 2's does not.
+    const one = arsenal(0);
+    const two = arsenal(1);
+    a.choose(a.choices()!.findIndex((c) => c.kind !== 'restore'));
+    expect(arsenal(0)).not.toBe(one);
+    expect(arsenal(1)).toBe(two);
     // The run still waits: now player 2, for the same level.
     expect(a.choices()).not.toBeNull();
     expect(a.chooser()).toBe(1);
     expect(a.choiceLevel()).toBe(level);
-    const second = a.choices()!;
-    const pick2 = second.findIndex((c) => c.kind === 'weapon' || c.kind === 'passive');
-    const chosen2 = second[pick2];
-    a.choose(pick2);
+    const oneAfter = arsenal(0);
+    a.choose(a.choices()!.findIndex((c) => c.kind !== 'restore'));
+    expect(arsenal(1)).not.toBe(two);
+    expect(arsenal(0)).toBe(oneAfter);
     expect(a.chooser()).toBe(0);
-    // Each got his own.
-    const [h1, h2] = a.state().heroes;
-    const has = (h: typeof h1, c: typeof chosen1) =>
-      c.kind !== 'weapon' || h.weapons.some((w) => w.id === c.id && w.level === c.level);
-    expect(has(h1, chosen1)).toBe(true);
-    expect(has(h2, chosen2)).toBe(true);
-    if (chosen1.kind === 'weapon' && (chosen2.kind !== 'weapon' || chosen1.id !== chosen2.id)) {
-      expect(h2.weapons.some((w) => w.id === chosen1.id)).toBe(false);
-    }
   });
 
-  it('one experience bar: either Keeper gathering raises the same level', () => {
-    const a = levelling();
-    let levels = 0;
-    while (a.state().time < 40_000) {
+  it('one experience bar: what player 2 alone gathers raises the level they share', () => {
+    // Player 1 has no weapon and stands far off; only player 2 sends cats home,
+    // so every gem falls nearer him.
+    const a = coop({
+      escalation: [[0, 30]],
+      startingWeapons: [],
+      secondPlayer: { startingWeapons: ['laser-pointer'], speed: 210, resolve: 1e12 },
+    });
+    run(a, 10_000, left, still);
+    const sentBefore = a.state().sentHome;
+    while (a.state().time < 60_000 && a.state().level === 1 && !a.choices()) {
+      a.step(still, true, still);
+    }
+    expect(a.state().sentHome).toBeGreaterThan(sentBefore);
+    expect(a.state().level).toBeGreaterThan(1);
+    // Player 1, far off, gathered none of it himself.
+    const [p, q] = a.state().heroes;
+    expect(q.x - p.x).toBeGreaterThan(1500);
+  });
+
+  it('a chest evolves the weapon of the Keeper who opens it', () => {
+    // Player 2 is ready to evolve (Laser Pointer 8 + Battery); player 1 is not.
+    const a = coop({
+      escalation: [[0, 20]],
+      startingLevel: 8,
+      secondPlayer: {
+        startingWeapons: ['laser-pointer'],
+        speed: 210,
+        resolve: 1e12,
+        startingPassives: ['battery'],
+      },
+      chestReach: 36,
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 1 },
+      gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+    });
+    let evolved: { from: string; to: string } | null = null;
+    while (!evolved && a.state().time < 120_000) {
       if (a.choices()) {
+        // Player 1 opened one: a level-up, not an evolution. Take it and go on.
         a.choose(0);
         continue;
       }
-      a.step(still, true, still);
-      levels = a.state().level;
+      // Player 2 walks to the nearest chest; player 1 stands.
+      const me = a.state().heroes[1];
+      const [chest] = [...a.chests()].sort(
+        (u, v) => Math.hypot(u.x - me.x, u.y - me.y) - Math.hypot(v.x - me.x, v.y - me.y)
+      );
+      let input2 = still;
+      if (chest) {
+        const d = Math.hypot(chest.x - me.x, chest.y - me.y) || 1;
+        input2 = { x: (chest.x - me.x) / d, y: (chest.y - me.y) / d };
+      }
+      a.step(still, true, input2);
+      for (const e of a.drainEvents()) if (e.kind === 'evolution') evolved = e;
     }
-    expect(levels).toBeGreaterThan(1);
-    expect(a.state().heroes).toHaveLength(2);
+    expect(evolved).toEqual({ kind: 'evolution', from: 'laser-pointer', to: 'infinite-laser' });
+    const [h1, h2] = a.state().heroes;
+    expect(h2.weapons.map((w) => w.id)).toContain('infinite-laser');
+    expect(h1.weapons.map((w) => w.id)).toContain('laser-pointer');
+    expect(h1.weapons.map((w) => w.id)).not.toContain('infinite-laser');
   });
 });
 
@@ -218,13 +261,83 @@ describe('downed and revived', () => {
     expect(back.resolve).toBe(back.maxResolve / 2);
   });
 
-  it('a downed Keeper does not walk', () => {
-    const a = frailTwo();
+  it('a downed Keeper does not walk, fire or get touched; the cats walk at the other', () => {
+    // Player 1 has no weapon (every firing is player 2's); player 2 is frail.
+    const a = coop({
+      escalation: [[0, 40]],
+      startingWeapons: [],
+      secondPlayer: { startingWeapons: ['laser-pointer'], speed: 210, resolve: 5 },
+      gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+    });
+    // Player 1 walks off a way, so the two are well apart.
+    run(a, 3000, left, still);
     while (!a.state().heroes[1].down && a.state().time < 60_000) a.step(still, true, still);
     expect(a.state().heroes[1].down).toBe(true);
+    a.drainEvents();
     const at = a.state().heroes[1].x;
-    run(a, 1000, still, right);
+    let checked = 0;
+    // A while down (less than the 30 s it takes him to stand again).
+    for (let n = 0; n < 600; n++) {
+      const before = new Map(a.cats().map((c) => [c.id, { x: c.x, y: c.y }]));
+      a.step(still, true, right);
+      for (const e of a.drainEvents()) {
+        expect(e.kind, 'fired while down').not.toBe('fired');
+        if (e.kind === 'hero-hit') expect(e.player).toBe(0);
+      }
+      const [p] = a.state().heroes;
+      for (const cat of a.cats()) {
+        const was = before.get(cat.id);
+        if (!was) continue;
+        const dx = cat.x - was.x;
+        const dy = cat.y - was.y;
+        const moved = Math.hypot(dx, dy);
+        // (A cat brought round from far behind jumps: not a walk.)
+        if (moved === 0 || moved > 10) continue;
+        // It walked towards player 1, not the one lying down.
+        const tx = p.x - was.x;
+        const ty = p.y - was.y;
+        expect((dx * tx + dy * ty) / (moved * Math.hypot(tx, ty))).toBeGreaterThan(0.99);
+        checked++;
+      }
+    }
+    expect(a.state().heroes[1].down).toBe(true);
     expect(a.state().heroes[1].x).toBe(at);
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it('a teleporting elite cannot carry a Keeper beyond the tether', () => {
+    const teleporters = CAT_TYPES.filter((t) => t.effect.id === 'teleport');
+    expect(teleporters.length).toBeGreaterThan(0);
+    const a = createArena({
+      random: createRandom(3),
+      types: teleporters,
+      viewport,
+      config: {
+        hero: { ...ARENA_CONFIG.hero, resolve: 1e12 },
+        startingWeapons: [],
+        secondPlayer: { startingWeapons: [], speed: 210, resolve: 1e12 },
+        escalation: [[0, 30]],
+        cats: { ...ARENA_CONFIG.cats, eliteShare: 1 },
+        schedule: {
+          arrivals: [{ from: 0, who: 'xenocat', weight: 1 }],
+          swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+          bosses: [],
+        },
+        secretCat: { afterMs: Infinity, stillMs: 0 },
+      },
+    });
+    const span = viewport.width * ARENA_CONFIG.coop.maxZoomOut - 2 * ARENA_CONFIG.coop.margin;
+    const spanY = viewport.height * ARENA_CONFIG.coop.maxZoomOut - 2 * ARENA_CONFIG.coop.margin;
+    let jumps = 0;
+    while (a.state().time < 60_000) {
+      // They keep trying to part, as far as they may.
+      a.step(left, true, right);
+      for (const e of a.drainEvents()) if (e.kind === 'hero-hit' && e.elite) jumps++;
+      const [p, q] = a.state().heroes;
+      expect(Math.abs(q.x - p.x)).toBeLessThanOrEqual(span + 1e-6);
+      expect(Math.abs(q.y - p.y)).toBeLessThanOrEqual(spanY + 1e-6);
+    }
+    expect(jumps).toBeGreaterThan(3);
   });
 
   it('the run ends when both are down; the results know both', () => {
