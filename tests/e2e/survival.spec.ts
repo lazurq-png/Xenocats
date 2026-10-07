@@ -206,6 +206,61 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-screen', 'paused');
     await expect(page.getByRole('dialog', { name: 'Paused' })).toBeVisible();
   });
+
+  test('a run gathers tufts of fur, kept after a reload', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=10');
+    await expect(page.getByTestId('survival-tufts')).toHaveAttribute('data-tufts', '0');
+    await startRun(page);
+    // Half a minute of the run: at least six tufts for the time alone.
+    await expect.poll(() => num(page, 'data-time'), { timeout: 20_000 }).toBeGreaterThan(30_000);
+    await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
+    const earned = Number(await page.getByTestId('survival-result-tufts').textContent());
+    expect(earned).toBeGreaterThanOrEqual(6);
+    await expect(page.getByTestId('survival-tufts')).toHaveAttribute('data-tufts', String(earned));
+    await page.reload();
+    await expect(page.getByTestId('survival-tufts')).toHaveAttribute('data-tufts', String(earned));
+    await expect(page.getByTestId('survival-tufts')).toHaveText(`Tufts of fur: ${earned}`);
+  });
+
+  test('the Tailor sells an upgrade for tufts; the next run begins with it', async ({ page }) => {
+    await openArena(page);
+    // Tufts from earlier nights.
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'xenocats:survival:v1:progress',
+        JSON.stringify({ version: 1, tufts: 25, upgrades: {}, milestones: [], bought: [] })
+      )
+    );
+    await page.reload();
+    const tufts = page.getByTestId('survival-tufts');
+    await expect(tufts).toHaveAttribute('data-tufts', '25');
+    const stubbornness = page.getByTestId('survival-upgrade-stubbornness');
+    // A click before hydration is lost: buy until it is bought.
+    await expect
+      .poll(async () => {
+        if ((await stubbornness.getAttribute('data-level')) === '0') {
+          await page.getByRole('button', { name: 'Buy Stubbornness level 1 for 10 tufts' }).click();
+        }
+        return stubbornness.getAttribute('data-level');
+      })
+      .toBe('1');
+    await expect(tufts).toHaveAttribute('data-tufts', '15');
+    // The next level costs more, more than he has left; Second Wind (80) too.
+    await expect(
+      page.getByRole('button', { name: 'Buy Stubbornness level 2 for 17 tufts' })
+    ).toBeDisabled();
+    await expect(page.getByTestId('survival-buy-second-wind')).toBeDisabled();
+    await page.reload();
+    await expect(stubbornness).toHaveAttribute('data-level', '1');
+    await expect(tufts).toHaveAttribute('data-tufts', '15');
+    // He goes out with 10 more Resolve.
+    await startRun(page);
+    await expect(page.getByRole('meter', { name: 'Resolve' })).toHaveAttribute(
+      'aria-valuemax',
+      '110'
+    );
+  });
 });
 
 test.describe('on a touch screen', () => {

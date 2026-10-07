@@ -254,3 +254,62 @@ Database reachable (the e2e global setup rebuilt `xenocats_test`).
   - Affected unit tests: 3 files, 89 passed.
   - Affected browser specs (12, survival included): 92 passed.
   - The same gate also passed on the code before the review fixes (87 unit, 92 e2e).
+
+## T10 — Persistent progression and unlocks (completed)
+
+- Branch `night-2026-10-07-t10-progression`, base `82fabe3`. Start 21:18 (budget ~13,825,000); completed 00:37 (budget ~13,730,000).
+- **Gap: about 21:30 to 00:20, nothing ran.** The session hit its usage limit ("You've hit your session limit · resets 12:20am"). The first reviewer stopped with that error. The gate had finished at 21:31 (one browser test failed; see Gate), and work resumed at 00:20.
+- **CI of T9** (`82fabe3`):
+  - [Task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37673322361): **passed**.
+  - [Run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37673321921): **cancelled**. Its result was not observed; it ran the same tree.
+- **What the code does**
+  - `app/ui/xenocats/progression.ts` (new):
+    - **Tufts of fur**: one for every 5 s survived and one for every 20 cats sent home.
+    - **Milestones**: survive 2:00 and 3:00, send 1000 home in a run, reach level 20. Three of them unlock a weapon (Thunderous Vacuum, Laser Pointer Deluxe, Hairball); the first unlocks a character.
+    - **The Tailor**: five upgrades with rising costs (Stubbornness, Sternness, Brisk Step, Long Arms, Second Wind).
+    - **Three characters**:
+      - The Keeper: free.
+      - The Night Porter: Spray Bottle, faster, frailer; unlocked by surviving 2:00.
+      - The Housekeeper: Vacuum Cleaner, sturdier, slower; engaged for 150 tufts.
+    - **The codex.**
+    - `applyRun` and `runConfig`.
+    - Versioned storage: `xenocats:survival:v1:progress`. Corrupt data or another version reads as a fresh start; bad entries are dropped one by one.
+  - `app/ui/xenocats/progression-view.tsx` (new): the start screen's panel. It shows the tufts, a character radio group, the Tailor's buttons (`aria-disabled` when they cannot be used) and the codex ("???" until found).
+  - `arena.ts`:
+    - New config: `availableWeapons` (locked weapons are never offered), `boost` (might, pickup reach, revivals) and `secretCat`.
+    - Second Wind revives him once.
+    - The secret cat comes once a run to a Keeper standing still for 20 s after the first minute. It drains nothing.
+    - Every circling weapon's blades are drawn.
+  - `arsenal.ts`: the hidden evolution, Can Opener + Warm Milk → Bottomless Saucer.
+  - `varieties.ts` and `arena-art.ts`: the Neighbour's Cat, and `heroSvg` with the two re-dressed characters.
+  - `arena-view.tsx`:
+    - A run starts from the stored progress and is applied to it when it ends.
+    - The results show the tufts gathered and the milestones reached, with what they unlocked.
+    - The Second Wind notice.
+    - The intro line no longer names one weapon.
+  - Tests:
+    - `tests/unit/xenocats/progression.test.ts` (new, 22) covers earning, milestones, locked weapons in a run, the Tailor, characters, the codex, the hidden evolution by a chest, the secret cat's condition and its harmlessness, Second Wind, and storage (round trip, corrupt data, dropped entries, versions 0, 2 and none, the browser store, blocked storage).
+    - `survival.spec.ts`: a run gathers tufts, kept after a reload. The Tailor sells Stubbornness, it is kept after a reload, and the next run starts with 110 Resolve.
+    - `varieties.test.ts` turns the secret cat off.
+    - CI's games group names the new unit test.
+- **Why it was added**: plan task 10 (D56–D64). The secrets are recorded in D60 and nowhere in the UI.
+- **Acceptance criteria**
+  - Covered by tests: all of the task's list.
+  - Choosing a character and the codex in the page: unit tests of their rules only.
+  - **Tested in a browser, not seen.** A human should look at the start-screen panel at phone and desktop width.
+- **Drawn by the run, not seen**: the Night Porter and the Housekeeper (the hero re-dressed), and the Neighbour's Cat (D61).
+- **Reviewer**:
+  - First review: approve with six Low findings: the secret cat counted as a hit; "the The Bottomless Saucer"; disabled buttons that looked enabled; focus lost when a button vanished; the intro's Laser Pointer; a weak assertion. All were fixed (D63). The contact fix's test failed with the fix removed.
+  - Re-review: approve, no findings.
+- **Gate**
+  - First full gate (21:31): `npm run test:e2e` had 1 failed and 124 passed. The new Tailor test asserted that a 17-tuft upgrade was buyable with 15 tufts left, which was a test bug (repair cycle 1, D64).
+  - Full gate after the fix (`GATE_FULL=1`, as `ci.yml` changed), all exit 0:
+    - Actionlint 0, prettier on 11 files, lint 0 warnings, type check, group check.
+    - `npm test`: 39 files, 592 passed (17 skipped).
+    - Build.
+    - `npm run test:e2e`: 125 passed.
+    - `E2E_SERVER=start npm run test:e2e`: 125 passed.
+  - Final code, after the review fixes (the affected selection), all exit 0:
+    - Prettier, lint, type check, group check, build.
+    - Unit: 4 files, 115 passed.
+    - Browser: 94 passed.

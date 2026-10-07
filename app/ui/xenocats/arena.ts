@@ -19,6 +19,7 @@
 // or at the time goal, when the Matriarch comes for him and nothing sends her home.
 
 import {
+  BASE_WEAPONS,
   type Choice,
   MAX_WEAPON_LEVEL,
   type Modifiers,
@@ -119,6 +120,15 @@ export type ArenaConfig = {
   };
   /** He picks a chest up within this, px. */
   chestReach: number;
+  /** The base weapons a level-up may offer (the progression keeps some back). */
+  availableWeapons: readonly WeaponId[];
+  /** What the run brings from before (progression.ts): multipliers, and revivals. */
+  boost: { might: number; pickup: number; revivals: number };
+  /**
+   * The secret cat (decisions.md): once a run, from `afterMs` into it, when he has
+   * stood still for `stillMs`, it comes and sits by him.
+   */
+  secretCat: { afterMs: number; stillMs: number };
   /** The spatial grid's cell, px. */
   cellSize: number;
 };
@@ -158,6 +168,9 @@ export const ARENA_CONFIG: ArenaConfig = {
   schedule: SCHEDULE,
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
+  availableWeapons: BASE_WEAPONS,
+  boost: { might: 1, pickup: 1, revivals: 0 },
+  secretCat: { afterMs: 60_000, stillMs: 20_000 },
   cellSize: 64,
 };
 
@@ -269,6 +282,10 @@ export type ArenaEvent =
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
   | { kind: 'evolution'; from: WeaponId; to: WeaponId }
+  /** The secret cat has come. */
+  | { kind: 'secret'; id: 'neighbour' }
+  /** His Resolve was spent, and half of it returned (Second Wind). */
+  | { kind: 'revived' }
   | { kind: 'fired'; weapon: WeaponId }
   | { kind: 'matriarch' }
   | { kind: 'over'; outcome: ArenaOutcome };
@@ -304,6 +321,10 @@ export function createArena(options: {
   let effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null = null;
   let sentHome = 0;
   let nextId = 1;
+  // How long he has stood still; whether the secret cat has come; revivals left.
+  let stillFor = 0;
+  let secretCame = false;
+  let revivals = config.boost.revivals;
   // The cats: live ones in `cats`, sent-home ones kept in `spare` to be reused.
   const cats: ArenaCat[] = [];
   const spare: ArenaCat[] = [];
@@ -327,7 +348,13 @@ export function createArena(options: {
     weapons.set(id, { level: config.startingLevel, readyAt: config.firstShotMs });
   }
   const passives = new Map<PassiveId, number>(config.startingPassives.map((id) => [id, 1]));
-  let mods: Modifiers = modifiers(passives);
+  /** The passives held, and what the run brought from before (the boost). */
+  const boosted = (m: Modifiers): Modifiers => ({
+    ...m,
+    might: m.might * config.boost.might,
+    pickup: m.pickup * config.boost.pickup,
+  });
+  let mods: Modifiers = boosted(modifiers(passives));
   const projectiles: Projectile[] = [];
   const spareProjectiles: Projectile[] = [];
   const beams: { from: Vec; to: Vec; until: number }[] = [];
@@ -1011,7 +1038,7 @@ export function createArena(options: {
 
   function offer() {
     const held = new Map([...weapons].map(([id, w]) => [id, w.level] as const));
-    choosing = offerChoices(held, passives, mods.choices, random);
+    choosing = offerChoices(held, passives, mods.choices, random, config.availableWeapons);
   }
 
   return {
@@ -1041,6 +1068,13 @@ export function createArena(options: {
         spawn ? Infinity : config.cats.guardFree
       );
       spawnEvents(spawn);
+      // The secret cat, once, to a Keeper who has stood still long enough.
+      stillFor = input.x === 0 && input.y === 0 ? stillFor + config.stepMs : 0;
+      if (!secretCame && time >= config.secretCat.afterMs && stillFor >= config.secretCat.stillMs) {
+        secretCame = true;
+        spawnVariety('neighbour', onScreen(120));
+        events.push({ kind: 'secret', id: 'neighbour' });
+      }
       if (cats.length < wanted) {
         arrivals += Math.max(wanted - cats.length, 1) * config.arrivalShare * dt + dt;
         while (arrivals >= 1 && cats.length < wanted) {
@@ -1070,6 +1104,8 @@ export function createArena(options: {
         gather(hero.x, hero.y, config.hero.reach);
         for (const i of near) {
           const cat = cats[i];
+          // (The Neighbour's Cat drains nothing: it only sits there.)
+          if (cat.drain === 0) continue;
           if ((cat.x - hero.x) ** 2 + (cat.y - hero.y) ** 2 > reachOf(cat) ** 2) continue;
           hero.resolve = Math.max(hero.resolve - cat.drain, 0);
           hero.untouchableUntil = time + config.hero.untouchableMs;
@@ -1077,6 +1113,11 @@ export function createArena(options: {
           if (cat.elite) afflict(cat);
           break;
         }
+      }
+      if (hero.resolve <= 0 && revivals > 0) {
+        revivals--;
+        hero.resolve = maxResolve() / 2;
+        events.push({ kind: 'revived' });
       }
       if (hero.resolve <= 0) {
         end('spent');
@@ -1123,7 +1164,7 @@ export function createArena(options: {
       } else if (choice.kind === 'passive') {
         const before = maxResolve();
         passives.set(choice.id, choice.level);
-        mods = modifiers(passives);
+        mods = boosted(modifiers(passives));
         // More Resolve to hold: he gains what was added.
         hero.resolve += maxResolve() - before;
       } else {
@@ -1153,8 +1194,11 @@ export function createArena(options: {
     beams: (): readonly { from: Vec; to: Vec }[] => beams,
     /** Where the Can Opener's blades are, and the Thunderous Vacuum's reach (or null). */
     blades: (): Vec[] => {
-      const held = weapons.get('can-opener');
-      return held ? bladesOf(weaponStats('can-opener', held.level, mods)) : [];
+      const all: Vec[] = [];
+      for (const [id, held] of weapons) {
+        if (WEAPONS[id].kind === 'orbit') all.push(...bladesOf(weaponStats(id, held.level, mods)));
+      }
+      return all;
     },
     zone: (): number | null => {
       const held = weapons.get('thunderous-vacuum');

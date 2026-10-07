@@ -25,7 +25,8 @@ export type WeaponId =
   // Evolved: never offered, only reached by evolution.
   | 'infinite-laser'
   | 'forbidden-catnip-vacuum'
-  | 'yarn-apocalypse';
+  | 'yarn-apocalypse'
+  | 'bottomless-saucer';
 
 export type PassiveId =
   | 'rubber-chicken'
@@ -288,15 +289,33 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       pierce: 4,
     }),
   },
+  'bottomless-saucer': {
+    name: 'Bottomless Saucer',
+    description: 'Warm milk, circling him without end. No cat has ever refused it.',
+    kind: 'orbit',
+    levels: fixed({
+      cooldownMs: 0,
+      damage: 160,
+      area: 130,
+      count: 8,
+      speed: 4.6,
+      durationMs: 0,
+      pierce: 99,
+    }),
+  },
 };
 
-/** A weapon at its highest level and its passive, held together, become another. */
-export type Evolution = { from: WeaponId; with: PassiveId; to: WeaponId };
+/**
+ * A weapon at its highest level and its passive, held together, become another. A
+ * secret one is named nowhere in the game until it has been found (the codex).
+ */
+export type Evolution = { from: WeaponId; with: PassiveId; to: WeaponId; secret?: true };
 
 export const EVOLUTIONS: readonly Evolution[] = [
   { from: 'laser-pointer', with: 'battery', to: 'infinite-laser' },
   { from: 'vacuum-cleaner', with: 'catnip', to: 'forbidden-catnip-vacuum' },
   { from: 'yarn-ball', with: 'scissors', to: 'yarn-apocalypse' },
+  { from: 'can-opener', with: 'warm-milk', to: 'bottomless-saucer', secret: true },
 ];
 
 /** The weapons a level-up may offer: all but the evolved ones. */

@@ -24,6 +24,8 @@ const watch: Partial<ArenaConfig> = {
   startingWeapons: [],
   gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
   chestReach: -1,
+  // No secret cat (progression.test.ts): these tests are about the schedule.
+  secretCat: { afterMs: Infinity, stillMs: 0 },
 };
 
 /** Only one variety comes, steadily. */

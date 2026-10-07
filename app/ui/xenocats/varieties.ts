@@ -6,7 +6,17 @@
 import type { WeaponKind } from './arsenal';
 
 export type VarietyId =
-  'basic' | 'zoomies' | 'hissing' | 'fat' | 'kitten' | 'box' | 'laser' | 'possessed' | 'mega';
+  | 'basic'
+  | 'zoomies'
+  | 'hissing'
+  | 'fat'
+  | 'kitten'
+  | 'box'
+  | 'laser'
+  | 'possessed'
+  | 'mega'
+  // Never in the schedule: it comes only when it chooses to (arena.ts, secretCat).
+  | 'neighbour';
 
 /** How a variety moves (arena.ts reads it). */
 export type Gait =
@@ -120,6 +130,15 @@ export const VARIETIES: Readonly<Record<VarietyId, Variety>> = {
     homesickness: 4500,
     drain: 25,
     radius: 90,
+  },
+  neighbour: {
+    name: 'The Neighbour’s Cat',
+    description: 'It sits beside him, as if it had always lived here. It has not.',
+    gait: 'sit',
+    speed: 0,
+    homesickness: 900,
+    drain: 0,
+    radius: 18,
   },
 };
 

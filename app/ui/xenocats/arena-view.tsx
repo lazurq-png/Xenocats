@@ -3,14 +3,26 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/app/ui/button';
 import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
-import { HERO_SVG, VARIETY_SVG } from './arena-art';
-import { type Choice, describeChoice, evolutionText } from './arsenal';
+import { HERO_SVGS, VARIETY_SVG } from './arena-art';
+import { type Choice, WEAPONS, type WeaponId, describeChoice, evolutionText } from './arsenal';
 import { SURVIVAL_BEST_KEY, bestOf, clockText, readBest, writeBest } from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
 import { recordStat } from './field-guide';
 import { createFrameGuard } from './frame-guard';
 import { MovementPad } from './movement-pad-view';
+import {
+  CHARACTERS,
+  type CharacterId,
+  MILESTONES,
+  type MilestoneId,
+  WEAPON_UNLOCKS,
+  applyRun,
+  readProgress,
+  runConfig,
+  writeProgress,
+} from './progression';
+import { ProgressionPanel } from './progression-view';
 import { createRandom, freshSeed } from './random';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
@@ -83,6 +95,22 @@ const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
   goal: 'Five minutes, and the night is survived. The cats remain.',
 };
 
+/** What a milestone unlocks, in a sentence (or nothing). */
+function unlockedBy(id: MilestoneId): string {
+  const names = [
+    ...Object.entries(WEAPON_UNLOCKS)
+      .filter(([, milestone]) => milestone === id)
+      .map(([weapon]) => WEAPONS[weapon as WeaponId].name),
+    ...(Object.keys(CHARACTERS) as CharacterId[])
+      .filter((c) => {
+        const unlock = CHARACTERS[c].unlock;
+        return unlock.kind === 'milestone' && unlock.milestone === id;
+      })
+      .map((c) => CHARACTERS[c].name),
+  ];
+  return names.length > 0 ? `Now available: ${names.join(', ')}.` : '';
+}
+
 function testHooks(): { seed: number; speed: number; boss: number | null } {
   const params = new URLSearchParams(window.location.search);
   const seed = Number(params.get('seed'));
@@ -124,7 +152,12 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const [hud, setHud] = useState<Hud | null>(null);
   const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
   // The finished run's numbers, kept for the results screen.
-  const [result, setResult] = useState<{ time: number; sentHome: number } | null>(null);
+  const [result, setResult] = useState<{
+    time: number;
+    sentHome: number;
+    earned: number;
+    reached: MilestoneId[];
+  } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
   // The level the waiting choice is for (several can wait after one gem).
@@ -141,6 +174,9 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const resultsRef = useRef<HTMLElement>(null);
   const padRef = useRef<Vec>({ x: 0, y: 0 });
   const speedRef = useRef(1);
+  // Who went out, and what the run found for the codex.
+  const characterRef = useRef<CharacterId>('keeper');
+  const foundRef = useRef(new Set<string>());
   const playerRef = useRef<SoundPlayer | null>(null);
   const onPad = useCallback((direction: Vec) => {
     padRef.current = direction;
@@ -157,7 +193,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       if (!arena) return;
       const time = Math.min(arena.state().time, arena.config.timeGoalMs);
       writeBest(bestOf(readBest(), time));
-      setResult({ time, sentHome: arena.state().sentHome });
+      const { sentHome, level } = arena.state();
+      const after = applyRun(readProgress(), {
+        timeMs: time,
+        sentHome,
+        level,
+        found: [...foundRef.current],
+      });
+      writeProgress(after.progress);
+      setResult({ time, sentHome, earned: after.earned, reached: after.reached });
       setOutcome(how);
       show('results');
     },
@@ -170,14 +214,22 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
     playerRef.current.unlock();
+    const progress = readProgress();
+    characterRef.current = progress.character;
+    foundRef.current = new Set();
     arenaRef.current = createArena({
       random: createRandom(seed),
       types: CAT_TYPES,
       viewport: { width: window.innerWidth, height: window.innerHeight },
-      config:
-        boss === null
+      config: {
+        // His character, what the Tailor sold him, the weapons unlocked.
+        ...runConfig(progress, ARENA_CONFIG),
+        ...(boss === null
           ? {}
-          : { schedule: { ...SCHEDULE, bosses: [boss, ...SCHEDULE.bosses].sort((a, b) => a - b) } },
+          : {
+              schedule: { ...SCHEDULE, bosses: [boss, ...SCHEDULE.bosses].sort((a, b) => a - b) },
+            }),
+      },
     });
     setOutcome(null);
     setNotice(null);
@@ -268,7 +320,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       return art ? bitmapOf(art, CAT_SIZE * 2, redraw) : () => null;
     });
     const hero = bitmapOf(
-      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVG)}`,
+      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVGS[characterRef.current])}`,
       HERO_SIZE * 2,
       redraw
     );
@@ -529,7 +581,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         } else if (event.kind === 'chest') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'evolution') {
+          foundRef.current.add(event.to);
           setNotice(evolutionText(event.from, event.to));
+          if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
+        } else if (event.kind === 'secret') {
+          // Nothing is said: it is simply there. The codex remembers.
+          foundRef.current.add(event.id);
+        } else if (event.kind === 'revived') {
+          setNotice('Second Wind. He is not finished.');
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'level-up') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
@@ -647,9 +706,9 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">Survival</h1>
       <p className="mt-4 max-w-2xl text-sm text-aura">
         The cats come from every side, and they do not stop coming. The Keeper does not hate them;
-        he only wishes them home. His Laser Pointer finds them on its own: where you stand is
-        everything. Each touch of a cat wears down his Resolve. Last five minutes, and the Matriarch
-        herself will come for him.
+        he only wishes them home. His tools find them on their own: where you stand is everything.
+        Each touch of a cat wears down his Resolve. Last five minutes, and the Matriarch herself
+        will come for him.
       </p>
       <p className="mt-2 max-w-2xl text-sm text-aura">
         {touch
@@ -664,6 +723,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           Longest survived: {best === null ? 'none yet' : clockText(best)}
         </p>
       </div>
+
+      {!running && <ProgressionPanel />}
 
       {screen === 'results' && result && outcome && (
         <section
@@ -684,7 +745,18 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             <dd data-testid="survival-result-time">{clockText(result.time)}</dd>
             <dt className="text-aura">Cats sent home</dt>
             <dd data-testid="survival-result-sent-home">{result.sentHome}</dd>
+            <dt className="text-aura">Tufts of fur gathered</dt>
+            <dd data-testid="survival-result-tufts">{result.earned}</dd>
           </dl>
+          {result.reached.length > 0 && (
+            <ul data-testid="survival-result-milestones" className="mt-3 text-sm text-plasma">
+              {result.reached.map((id) => (
+                <li key={id}>
+                  {MILESTONES[id].text}: done. {unlockedBy(id)}
+                </li>
+              ))}
+            </ul>
+          )}
           <Button className="mt-4" onClick={start}>
             Play again
           </Button>
