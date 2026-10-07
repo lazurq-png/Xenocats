@@ -58,9 +58,12 @@ export function PlayerSprite({
   facing,
   walking,
   gunRef,
+  armed = true,
 }: {
   facing: Facing;
   walking: boolean;
+  /** Carrying the gun (Survival), or empty-handed (Taming). */
+  armed?: boolean;
   /** The gun the game loop turns; decoys leave it pointing the way they face. */
   gunRef?: React.Ref<HTMLDivElement>;
 }) {
@@ -88,7 +91,7 @@ export function PlayerSprite({
       className={walking ? 'xenocat-player xenocat-player-walking' : 'xenocat-player'}
       style={{ position: 'relative', width: PLAYER_SIZE, height: PLAYER_SIZE }}
     >
-      {gunBehind(facing) && gun}
+      {armed && gunBehind(facing) && gun}
       <svg
         width={PLAYER_SIZE}
         height={PLAYER_SIZE}
@@ -166,7 +169,7 @@ export function PlayerSprite({
           )}
         </g>
       </svg>
-      {!gunBehind(facing) && gun}
+      {armed && !gunBehind(facing) && gun}
     </div>
   );
 }

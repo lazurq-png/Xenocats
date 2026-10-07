@@ -103,3 +103,28 @@ Acceptance criteria (from the task's words):
 2. *Low, fixed.* The new leave-the-page test demanded pointer lock; like its sibling it now accepts the fallback, checks the release only when locked, and checks nothing is left inert.
 3. *Low, not done (optional).* The two game pages repeat the `/cats` page shell (skip link, header). A shared `app/cats/layout.tsx` would remove three copies; left for a task that touches those pages, as the reviewer allowed.
 Re-review (read only): approve, no remaining findings.
+
+## T5 — Taming with treats
+
+Acceptance criteria (from the task's words):
+1. Taming gets Survival's ranger, walked with WASD (desktop) or the movement pad (touch), with no gun; Taming is playable on touch, the pad shown only there; pointer lock and its fallback as in Survival; the pointer tames nothing.
+2. Treats (fish, catnip, yarn, …) spawn at random spots, a few at a time, each vanishing after a while; how many, how often and how long in the config. Walking over one picks it up; one carried at a time; the HUD shows which. Emoji placeholders, styled for the dark theme.
+3. One cat at a time. No treat: it flees the ranger (its `DODGES` way) and, from a configured range, attacks it with its own effect at a configured interval; the effect lands on the ranger as in Survival; no lives, nothing lost. Carrying a treat: it stops attacking and fleeing and comes; when they touch, the treat is given, the cat tamed, the treat used up, the next cat comes.
+4. Unchanged: the tamed collection, the field-guide "tamed" stat, sounds, Esc, pause on focus/lock loss, at most 5 cats, visuals hidden from assistive technology.
+5. Unit tests in `taming.ts` for spawning, expiry, pickup, one at a time, flee and ranged attack without a treat, approach with one, taming on touch, the treat used up; the 2-second-rule tests rewritten. E2E on `/cats/taming`, desktop fallback and a touch profile: walk to a treat, carry it to the cat, tamed, in the collection.
+
+**D17 — The ranger lives in `fight.tsx`, the rules in `taming.ts`.** As in Survival, the ranger is a `LockedPointer` the game moves (so a cat's effect drifts, freezes or reverses it exactly as in Survival) and `taming.tick(now, ranger)` is pure: it returns what happened (`tamed`, `attack`, `picked`) and the component plays the attack on the ranger, the sounds and the field-guide record. The ranger walks with the held keys, or the pad when no key is held, at `rangerSpeed` (280 px/s, Survival's pace; its own config entry because task 6 replaces Survival's module).
+
+**D18 — Config** (`TAMING_CONFIG`): treats every 1.8 s while fewer than 3, each lasting 9 s, picked up within 40 px; the cat flees a ranger within 160 px, attacks from within 320 px every 2.5 s (the first a moment after it arrives), comes at 170 px/s and is tamed at touching distance (half a cat plus 16 px). These are first guesses, not tuned by play: nobody has played it.
+
+**D19 — Pointer and lock.** The pointer has no part in Taming any more, so the fake cursor is hidden throughout (as Survival hides it for its crosshair). Pointer lock is still requested on desktop, as the task says, so the system pointer is out of the way; on a touch screen it is not requested at all (there is no pointer to lock).
+
+**D20 — Treats are emoji placeholders** (🐟 Fish, 🌿 Catnip, 🧶 Yarn, 🥛 Milk) in a small dark disc with a plasma ring, hidden from assistive technology with the rest of the play area; the HUD names the carried one in words ("Carrying: Fish", the emoji itself hidden from screen readers). **Waiting for a Superdesign pass**, with the ranger's empty-handed pose (`PlayerSprite` gained `armed={false}`, which only leaves the gun out).
+
+**D21 — e2e.** The tests steer by what the page shows: the ranger's position (`data-x`/`data-y` on `fight-player`) and the treats' (`data-x`/`data-y`), re-aiming every 60 ms, so a cat's attack pushing the ranger about or reversing its controls only delays them. The touch test drives the pad with real touch events (CDP `Input.dispatchTouchEvent`). Repeated three times each: 12 of 12 passed. The "keeps away" test asserts the cat dodged at least once and nothing was tamed, not a minimum distance: a slow cat may be caught up with, briefly, which is allowed.
+
+**D22 — T5 review (approve, three Low findings), and what was done.**
+1. *Fixed.* In the desktop fallback (no pointer lock) Taming hid the fake cursor while nothing on screen followed the mouse, so End game had to be clicked blind. Taming's fallback now keeps the fake cursor (the pointer still plays no part: the mouse is ignored); Survival and anything locked hide it as before. D19 is corrected by this.
+2. *Fixed.* A unit test's "comes to the ranger" checks sat inside `if (cat)` and could be skipped; they are unconditional now (still 19 of 19).
+3. *Partly fixed.* On a touch screen the HUD said "Press Esc or End game to stop"; it now says "Tap End game to stop." A treat can still spawn under the movement pad or the wrapped HUD on a narrow phone, picked up but unseen: left for the Superdesign pass of the treats (treats expire after 9 s, so play is not blocked).
+Not re-reviewed: three small changes made as the reviewer recommended; the gate ran again on them.

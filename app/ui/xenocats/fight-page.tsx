@@ -21,12 +21,13 @@ const hasFinePointer = () =>
 /**
  * A fight game's page (/cats/survival, /cats/taming): the game itself, with the
  * cats and the fake cursor it plays with. No cat comes on its own here. On a touch
- * screen (no precise pointer) the page says the game needs a keyboard and mouse.
+ * screen (no precise pointer) Taming is walked with the movement pad, and Survival
+ * says it needs a keyboard and mouse.
  */
 export default function FightPage({ kind }: { kind: Kind }) {
-  // The server cannot know: it renders the game, and a touch screen swaps it out.
+  // The server cannot know: it renders the desktop game, and a touch screen swaps it.
   const fine = useSyncExternalStore(subscribePointer, hasFinePointer, () => true);
-  if (!fine) {
+  if (!fine && kind === 'survival') {
     return (
       <div>
         <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">
@@ -41,7 +42,7 @@ export default function FightPage({ kind }: { kind: Kind }) {
   return (
     <XenocatCursorProvider>
       <XenocatCatsProvider autoSpawn={false}>
-        <Fight kind={kind} />
+        <Fight kind={kind} touch={!fine} />
       </XenocatCatsProvider>
     </XenocatCursorProvider>
   );

@@ -217,71 +217,145 @@ test('Survival: a cat that touches the ranger costs a life', async ({ page }) =>
     .toBeLessThan(3);
 });
 
-test('Taming: a still pointer draws the cat over, holding still on it tames it into the collection', async ({
-  page,
-}) => {
-  test.setTimeout(60_000);
-  await openFight(page, undefined, { game: 'taming' });
-  await expect(page.getByTestId('fight-tamed')).toHaveText('Tamed: 0 cats');
-  await page.getByTestId('fight-start-taming').click();
-  const overlay = page.getByTestId('fight-area');
-  await expect(overlay).toHaveAttribute('data-kind', 'taming');
-  await expect(overlay).toHaveAttribute('data-mode', 'fallback');
-  // Keep still: the cat appears, gets curious after 1 s and walks over at 110 px/s.
-  await page.mouse.move(400, 400);
-  const cat = page.getByTestId('fight-cat');
-  await expect(cat).toBeVisible();
-  const typeId = await cat.getAttribute('data-cat-type');
-  await expect(cat).toHaveAttribute('data-doing', 'held', { timeout: 20_000 });
-  await expect(overlay.getByTestId('fight-tamed-now')).toHaveText('Tamed this game: 1', {
-    timeout: 5_000,
+/** What the Taming game shows: the ranger, the treats, what it carries, cats tamed this game. */
+const tamingState = (page: Page) =>
+  page.evaluate(() => {
+    const ranger = document.querySelector<HTMLElement>('[data-testid="fight-player"]');
+    const treats = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="fight-treat"]'),
+      (el) => ({ x: Number(el.dataset.x), y: Number(el.dataset.y) })
+    );
+    const carrying =
+      document.querySelector<HTMLElement>('[data-testid="fight-carrying"]')?.dataset.carrying ?? '';
+    const tamed = document.querySelector('[data-testid="fight-tamed-now"]')?.textContent ?? '';
+    return {
+      ranger:
+        ranger?.dataset.x !== undefined
+          ? { x: Number(ranger.dataset.x), y: Number(ranger.dataset.y) }
+          : null,
+      treats,
+      carrying,
+      tamed,
+    };
   });
 
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('status').filter({ hasText: 'Taming over' })).toHaveText(
-    'Taming over. You tamed 1 cat.'
-  );
-  await expect(page.getByTestId('fight-tamed')).toHaveText('Tamed: 1 cat');
-  const stored = await page.evaluate((key) => localStorage.getItem(key), TAMED_KEY);
-  expect(JSON.parse(stored!)).toEqual({ [typeId!]: 1 });
-});
-
-test('Taming: a pointer moving at the cat makes it dodge', async ({ page }) => {
-  test.setTimeout(60_000);
-  await openFight(page, undefined, { game: 'taming' });
-  await page.getByTestId('fight-start-taming').click();
-  await page.mouse.move(100, 100);
-  const cat = page.getByTestId('fight-cat');
-  await expect(cat).toBeVisible();
-  // A quick dodge (a teleport takes 60 ms) shows in data-doing for a frame or two,
-  // too briefly for polling: record every value the page ever sets instead.
-  await page.evaluate(() => {
-    const seen = new Set<string>();
-    (window as unknown as { doings: Set<string> }).doings = seen;
-    new MutationObserver(() => {
-      const doing = document.querySelector('[data-testid="fight-cat"]')?.getAttribute('data-doing');
-      if (doing) seen.add(doing);
-    }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-doing'] });
-  });
-  const dodges = ['dash', 'blink', 'sidestep', 'hop', 'circle', 'mirror', 'drop', 'axis'];
-  let step = 0;
+/**
+ * Walks the ranger to the nearest treat (re-aiming as it goes: a cat's attack can
+ * push it about or turn its controls round), then stands still with the treat until
+ * the cat comes and is tamed. `steer` holds the ranger's way: -1, 0 or 1 on each axis.
+ */
+async function fetchTreatAndTame(
+  page: Page,
+  steer: (way: { x: number; y: number }) => Promise<void>
+) {
   await expect
     .poll(
       async () => {
-        const box = await cat.boundingBox();
-        if (box) {
-          // Wiggle towards the cat, inside its notice radius.
-          const x = box.x + box.width / 2 - 60 + (step++ % 2) * 20;
-          await page.mouse.move(x, box.y + box.height / 2);
+        const state = await tamingState(page);
+        if (state.tamed.endsWith(': 1')) {
+          await steer({ x: 0, y: 0 });
+          return 'tamed';
         }
-        const seen = await page.evaluate(() =>
-          Array.from((window as unknown as { doings: Set<string> }).doings)
+        if (state.carrying || !state.ranger || state.treats.length === 0) {
+          await steer({ x: 0, y: 0 });
+          return state.carrying ? 'carrying' : 'waiting';
+        }
+        const { ranger } = state;
+        const near = state.treats.reduce((a, b) =>
+          Math.hypot(a.x - ranger.x, a.y - ranger.y) <= Math.hypot(b.x - ranger.x, b.y - ranger.y)
+            ? a
+            : b
         );
-        return seen.some((doing) => dodges.includes(doing));
+        const axis = (d: number) => (Math.abs(d) < 12 ? 0 : Math.sign(d));
+        await steer({ x: axis(near.x - ranger.x), y: axis(near.y - ranger.y) });
+        return 'walking';
       },
-      { timeout: 15_000, intervals: [50] }
+      { timeout: 50_000, intervals: [60] }
     )
-    .toBe(true);
+    .toBe('tamed');
+}
+
+test('Taming: walk to a treat, carry it to the cat, and the cat is tamed into the collection', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await openFight(page, undefined, { game: 'taming' });
+  await expect(page.getByTestId('fight-tamed')).toHaveText('Tamed: 0 cats');
+  await page.getByTestId('fight-start-taming').click();
+  const area = page.getByTestId('fight-area');
+  await expect(area).toHaveAttribute('data-mode', 'fallback');
+  // Empty-handed, and unarmed.
+  await expect(page.getByTestId('fight-carrying')).toHaveText('Carrying: nothing');
+  await expect(page.getByTestId('fight-player')).toBeAttached();
+  await expect(page.getByTestId('fight-treat').first()).toBeAttached({ timeout: 5000 });
+  // No movement pad with a keyboard and mouse.
+  await expect(page.getByTestId('movement-pad')).toHaveCount(0);
+
+  // WASD, held and let go as the ranger needs.
+  const held = new Set<string>();
+  const hold = async (key: string, on: boolean) => {
+    if (on && !held.has(key)) {
+      held.add(key);
+      await page.keyboard.down(key);
+    } else if (!on && held.has(key)) {
+      held.delete(key);
+      await page.keyboard.up(key);
+    }
+  };
+  await fetchTreatAndTame(page, async ({ x, y }) => {
+    await hold('d', x > 0);
+    await hold('a', x < 0);
+    await hold('s', y > 0);
+    await hold('w', y < 0);
+  });
+
+  await expect(page.getByRole('status').filter({ hasText: 'You tamed' })).toBeVisible();
+  await area.getByRole('button', { name: 'End game' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Taming over' })).toHaveText(
+    'Taming over. You tamed 1 cat.'
+  );
+  // Into the collection, kept after a reload.
+  await expect(page.getByTestId('fight-tamed')).toHaveText('Tamed: 1 cat');
+  const stored = await page.evaluate((key) => localStorage.getItem(key), TAMED_KEY);
+  expect(Object.values(JSON.parse(stored!) as Record<string, number>)).toEqual([1]);
+});
+
+test('Taming: without a treat the cat keeps away from the ranger', async ({ page }) => {
+  test.setTimeout(60_000);
+  await openFight(page, undefined, { game: 'taming' });
+  await page.getByTestId('fight-start-taming').click();
+  const cat = page.getByTestId('fight-cat');
+  await expect(cat).toBeVisible({ timeout: 5000 });
+  // Walk straight at it, empty-handed: it never lets the ranger reach it.
+  const held = new Set<string>();
+  const doings = new Set<string>();
+  for (let i = 0; i < 60; i++) {
+    const ranger = (await tamingState(page)).ranger;
+    const box = await cat.boundingBox();
+    if (!ranger || !box) continue;
+    const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    doings.add((await cat.getAttribute('data-doing')) ?? '');
+    for (const [key, on] of [
+      ['d', c.x > ranger.x + 12],
+      ['a', c.x < ranger.x - 12],
+      ['s', c.y > ranger.y + 12],
+      ['w', c.y < ranger.y - 12],
+    ] as const) {
+      if (on && !held.has(key)) {
+        held.add(key);
+        await page.keyboard.down(key);
+      } else if (!on && held.has(key)) {
+        held.delete(key);
+        await page.keyboard.up(key);
+      }
+    }
+    await page.waitForTimeout(100);
+  }
+  for (const key of held) await page.keyboard.up(key);
+  // It dodged (in its own way) at least once, and nothing was tamed.
+  expect([...doings].some((d) => d !== '' && d !== 'wandering' && d !== 'coming')).toBe(true);
+  expect(doings.has('coming')).toBe(false);
+  await expect(page.getByTestId('fight-tamed-now')).toHaveText('Tamed this game: 0');
 });
 
 test('Survival: a lower score leaves the best score alone; End game stops it too', async ({
@@ -463,14 +537,52 @@ test.describe('on a touch screen', () => {
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
 
-  for (const game of ['survival', 'taming'] as const) {
-    test(`/cats/${game} says the game needs a keyboard and mouse`, async ({ page }) => {
-      await page.goto(`/cats/${game}`);
-      await expect(page.getByTestId('fight-needs-keyboard')).toHaveText(
-        'This game needs a keyboard and mouse, for now. Come back on a computer to play it.'
-      );
-      await expect(page.getByTestId('fight-start')).toHaveCount(0);
-      await expect(page.getByTestId('fight-start-taming')).toHaveCount(0);
+  test('/cats/survival says the game needs a keyboard and mouse', async ({ page }) => {
+    await page.goto('/cats/survival');
+    await expect(page.getByTestId('fight-needs-keyboard')).toHaveText(
+      'This game needs a keyboard and mouse, for now. Come back on a computer to play it.'
+    );
+    await expect(page.getByTestId('fight-start')).toHaveCount(0);
+  });
+
+  test('/cats/taming is played with the movement pad: a treat carried to the cat tames it', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto('/cats/taming');
+    await expect(page.getByTestId('fight-needs-keyboard')).toHaveCount(0);
+    // A tap before hydration is lost: tap until the game starts.
+    const area = page.getByTestId('fight-area');
+    await expect
+      .poll(async () => {
+        if ((await area.count()) === 0) await page.getByTestId('fight-start-taming').tap();
+        return area.count();
+      })
+      .toBe(1);
+    // Never locked on a touch screen.
+    await expect(area).toHaveAttribute('data-mode', 'fallback');
+    const pad = page.getByTestId('movement-pad');
+    await expect(pad).toBeVisible();
+    await expect(pad).toHaveAttribute('aria-hidden', 'true');
+    const box = (await pad.boundingBox())!;
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    // Real touches on the pad: a thumb put down, slid, and lifted.
+    const cdp = await page.context().newCDPSession(page);
+    let down = false;
+    await fetchTreatAndTame(page, async ({ x, y }) => {
+      if (x === 0 && y === 0) {
+        if (down) await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        down = false;
+        return;
+      }
+      const point = { x: centre.x + x * 50, y: centre.y + y * 50 };
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: down ? 'touchMove' : 'touchStart',
+        touchPoints: [point],
+      });
+      down = true;
     });
-  }
+    await area.getByRole('button', { name: 'End game' }).tap();
+    await expect(page.getByTestId('fight-tamed')).toHaveText('Tamed: 1 cat');
+  });
 });

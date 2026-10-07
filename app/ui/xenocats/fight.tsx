@@ -8,7 +8,7 @@ import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, catTypeById } from './cat-types';
 import { CAT_CONFIG } from './config';
 import { type CursorLook, MAX_DECOYS, type Vec } from './effects';
-import { CursorShape, hideCursor, placeCursor, useXenocatCursor } from './fake-cursor';
+import { hideCursor, placeCursor, useXenocatCursor } from './fake-cursor';
 import { type LockedPointer, createLockedPointer } from './locked-pointer';
 import { PLAYER_SIZE, PlayerSprite, gunTransform } from './player-sprite';
 import { shotFor } from './gun';
@@ -25,7 +25,8 @@ import {
   isWalkKey,
   walkDirection,
 } from './survival';
-import { type Taming, type TamingSnapshot, createTaming } from './taming';
+import { type Taming, type TamingSnapshot, createTaming, treatInfo } from './taming';
+import { MovementPad } from './movement-pad-view';
 import { getGuide, getServerGuide, recordStat, recordTamed, subscribeGuide } from './field-guide';
 
 // Fight a cat, each game on a page of its own (fight-page.tsx): the page is the
@@ -38,8 +39,9 @@ import { getGuide, getServerGuide, recordStat, recordTamed, subscribeGuide } fro
 //
 // Two games: Survival (/cats/survival, survival.ts), where a ranger walked with
 // WASD beams cats home at the crosshair, and Taming (/cats/taming, taming.ts), where
-// one cat at a time dodges the pointer and holding still on it for 2 s tames it,
-// into a collection kept in localStorage.
+// the same ranger, unarmed, carries treats to one cat at a time to tame it, into a
+// collection kept in localStorage. Taming is played on touch screens too, walked
+// with the movement pad (movement-pad-view.tsx); there the pointer is never locked.
 //
 // In Survival the ranger and the crosshair are both positions a cat's attack can
 // move (locked-pointer.ts, one each): WASD walks the one, the mouse moves the other,
@@ -54,7 +56,7 @@ type Game = {
   mode: Mode;
 } & (
   | { kind: 'survival'; survival: Survival; player: LockedPointer; aim: LockedPointer }
-  | { kind: 'taming'; taming: Taming; pointer: LockedPointer | null }
+  | { kind: 'taming'; taming: Taming; ranger: LockedPointer }
 );
 
 type Departure = { id: number; typeId: string; x: number; y: number };
@@ -154,7 +156,14 @@ const beamTransform = (beam: Beam) =>
 
 const viewportSize = () => ({ width: window.innerWidth, height: window.innerHeight });
 
-export default function Fight({ kind }: { kind: Kind }) {
+export default function Fight({
+  kind,
+  touch = false,
+}: {
+  kind: Kind;
+  /** A touch screen: Taming is walked with the movement pad. */
+  touch?: boolean;
+}) {
   const cursor = useXenocatCursor();
   const cats = useXenocats();
   const [phase, setPhase] = useState<Phase>('idle');
@@ -173,8 +182,11 @@ export default function Fight({ kind }: { kind: Kind }) {
   const [message, setMessage] = useState('');
   const gameRef = useRef<Game | null>(null);
   const phaseRef = useRef<Phase>('idle');
-  const pointerRef = useRef<HTMLDivElement>(null);
-  const decoyRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // The way the movement pad is held (zero when it is not).
+  const padRef = useRef<Vec>({ x: 0, y: 0 });
+  const onPad = useCallback((direction: Vec) => {
+    padRef.current = direction;
+  }, []);
   const playerRef = useRef<HTMLDivElement>(null);
   const playerDecoyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const gunRef = useRef<HTMLDivElement>(null);
@@ -207,7 +219,7 @@ export default function Fight({ kind }: { kind: Kind }) {
       setSnap(final);
       setMessage(`Game over. You survived ${plural(final.score, 'wave', 'waves')}. Best: ${kept}.`);
     } else {
-      const tamed = game.taming.snapshot(game.clock.now(performance.now())).tamed.length;
+      const tamed = game.taming.snapshot().tamed.length;
       setMessage(`Taming over. You tamed ${plural(tamed, 'cat', 'cats')}.`);
     }
     setDepartures([]);
@@ -223,8 +235,9 @@ export default function Fight({ kind }: { kind: Kind }) {
     changePhase('paused');
   }, [cursor, changePhase]);
 
-  // The fake cursor gives way to the game's own: the arrow under pointer lock, the
-  // crosshair in Survival.
+  // The fake cursor gives way to the game's own crosshair in Survival, and to the
+  // locked pointer; in Taming's fallback it stays, so End game can be found (the
+  // pointer itself plays no part in Taming).
   const hidesCursor = (game: Game) => game.kind === 'survival' || game.mode === 'locked';
 
   const begin = (game: Game) => {
@@ -233,13 +246,18 @@ export default function Fight({ kind }: { kind: Kind }) {
     setMode(game.mode);
     setDepartures([]);
     if (game.kind === 'survival') setSnap(game.survival.snapshot());
-    else setTameSnap(game.taming.snapshot(0));
+    else setTameSnap(game.taming.snapshot());
     cursor.hide(hidesCursor(game));
-    const stop = game.mode === 'locked' ? 'Press Esc to stop.' : 'Press Esc or End game to stop.';
+    const stop =
+      game.mode === 'locked'
+        ? 'Press Esc to stop.'
+        : touch
+          ? 'Tap End game to stop.'
+          : 'Press Esc or End game to stop.';
     setMessage(
       game.kind === 'survival'
         ? `The cats are coming. Walk with WASD and aim: your beam fires by itself. ${stop}`
-        : `Keep still and a cat will come. Hold still on it to tame it. ${stop}`
+        : `Walk with ${touch ? 'the pad' : 'WASD'} to a treat, then carry it to the cat. ${stop}`
     );
     changePhase('playing');
   };
@@ -249,7 +267,8 @@ export default function Fight({ kind }: { kind: Kind }) {
       return;
     }
     startingRef.current = true;
-    const locked = await requestLock();
+    // A touch screen has no pointer to lock.
+    const locked = touch ? false : await requestLock();
     startingRef.current = false;
     if (!mountedRef.current) {
       if (locked) document.exitPointerLock();
@@ -277,7 +296,7 @@ export default function Fight({ kind }: { kind: Kind }) {
             mode,
             kind,
             taming: createTaming(options),
-            pointer: locked ? position(at) : null,
+            ranger: position({ x: viewport.width / 2, y: viewport.height / 2 }),
           }
     );
   };
@@ -294,7 +313,6 @@ export default function Fight({ kind }: { kind: Kind }) {
       if (!locked) {
         // Refused this time: carry on with the page's pointer.
         game.mode = 'fallback';
-        if (game.kind === 'taming') game.pointer = null;
         setMode('fallback');
       }
     }
@@ -439,6 +457,49 @@ export default function Fight({ kind }: { kind: Kind }) {
       return snapshot;
     };
 
+    // Taming's ranger walks with the held keys, or the pad when none are held.
+    const playTaming = (now: number, game: Extract<Game, { kind: 'taming' }>): TamingSnapshot => {
+      const dt = Math.max(now - lastNow, 0) / 1000;
+      const keys = walkDirection(held);
+      const way = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
+      const speed = game.taming.config.rangerSpeed * dt;
+      if (way.x !== 0 || way.y !== 0) game.ranger.move(way.x * speed, way.y * speed);
+      const body = game.ranger.frame(now);
+      const at = { x: body.x, y: body.y };
+      const events = game.taming.tick(now, at, CAT_CONFIG.maxCats - cats.count());
+      if (events.attack) {
+        // Its attack lands on the ranger as it does in Survival.
+        const type = catTypeById(events.attack.typeId);
+        if (type && game.ranger.attack(type.effect, events.attack, now)) {
+          cats.sound(type.id, 'attack');
+        }
+      }
+      if (events.tamed) {
+        recordTamed(events.tamed);
+        cats.sound(events.tamed, 'purr');
+        setMessage(`You tamed ${catTypeById(events.tamed)?.name ?? 'a cat'}!`);
+      }
+      placeWithDecoys(playerRef.current, playerDecoyRefs.current, {
+        ...body,
+        scale: Math.min(body.scale, MAX_PLAYER_SCALE),
+      });
+      if (playerRef.current) {
+        playerRef.current.dataset.effect = game.ranger.activeEffectId(now) ?? '';
+        playerRef.current.dataset.x = String(Math.round(at.x));
+        playerRef.current.dataset.y = String(Math.round(at.y));
+      }
+      const walking = way.x !== 0 || way.y !== 0;
+      // Facing the way it walks; standing, the way it last walked.
+      const facing = walking
+        ? facingTowards(at, { x: at.x + way.x, y: at.y + way.y })
+        : (shown?.facing ?? 'e');
+      if (facing !== shown?.facing || walking !== shown.walking) {
+        shown = { facing, walking };
+        setPose(shown);
+      }
+      return game.taming.snapshot();
+    };
+
     let frameId = 0;
     const loop = () => {
       if (phaseRef.current !== 'playing') {
@@ -447,32 +508,11 @@ export default function Fight({ kind }: { kind: Kind }) {
       } else {
         const now = game.clock.now(performance.now());
         if (game.kind === 'taming') {
-          let at: Vec;
-          if (game.mode === 'locked' && game.pointer) {
-            const look = game.pointer.frame(now);
-            at = { x: look.x, y: look.y };
-            const element = pointerRef.current;
-            if (element) placeCursor(element, look, look);
-            const decoys = look.decoys ?? [];
-            decoyRefs.current.forEach((decoy, i) => {
-              if (!decoy) return;
-              if (i < decoys.length) placeCursor(decoy, decoys[i], look);
-              else hideCursor(decoy);
-            });
-          } else {
-            const viewport = viewportSize();
-            at = cursor.position() ?? { x: viewport.width / 2, y: viewport.height / 2 };
-          }
-          const tamed = game.taming.tick(now, at, CAT_CONFIG.maxCats - cats.count());
-          if (tamed) {
-            recordTamed(tamed);
-            setMessage(`You tamed ${catTypeById(tamed)?.name ?? 'a cat'}!`);
-          }
-          const snapshot = game.taming.snapshot(now);
+          const snapshot = playTaming(now, game);
           hearArrivals(snapshot.cat ? [snapshot.cat] : []);
           moveCats(snapshot.cat ? [snapshot.cat] : []);
-          const { cat, hold } = snapshot;
-          const key = `${cat?.id}|${cat?.doing}|${Math.round(hold * 50)}|${snapshot.tamed.length}`;
+          const { cat, treats, carrying, tamed } = snapshot;
+          const key = `${cat?.id}|${cat?.doing}|${treats.map((t) => t.id).join(',')}|${carrying}|${tamed.length}`;
           if (key !== shownRef.current) {
             shownRef.current = key;
             setTameSnap(snapshot);
@@ -505,10 +545,8 @@ export default function Fight({ kind }: { kind: Kind }) {
 
     const onMouseMove = (event: MouseEvent) => {
       if (phaseRef.current !== 'playing') return;
-      if (game.kind === 'taming') {
-        if (game.pointer && isLocked()) game.pointer.move(event.movementX, event.movementY);
-        return;
-      }
+      // The pointer plays no part in Taming.
+      if (game.kind === 'taming') return;
       if (isLocked()) {
         lastClient = null;
         game.aim.move(event.movementX, event.movementY);
@@ -535,7 +573,7 @@ export default function Fight({ kind }: { kind: Kind }) {
         finish();
         return;
       }
-      if (game.kind !== 'survival' || phaseRef.current !== 'playing') return;
+      if (phaseRef.current !== 'playing') return;
       if (event.ctrlKey || event.metaKey || event.altKey || !isWalkKey(event.code)) return;
       // The arrow keys would scroll the page under the game.
       event.preventDefault();
@@ -554,7 +592,7 @@ export default function Fight({ kind }: { kind: Kind }) {
         game.aim.resize(viewportSize());
       } else {
         game.taming.resize(viewportSize());
-        game.pointer?.resize(viewportSize());
+        game.ranger.resize(viewportSize());
       }
     };
 
@@ -605,13 +643,18 @@ export default function Fight({ kind }: { kind: Kind }) {
         </p>
       ) : (
         <p className="mt-4 max-w-2xl text-sm text-aura">
-          One cat at a time, and it dodges your pointer, each kind in its own way. Keep still and it
-          gets curious; hold your pointer still on it for 2 seconds to tame it.
+          Walk your ranger with {touch ? 'the pad' : 'WASD (or the arrow keys)'} and pick up a treat
+          (fish, catnip, yarn, milk); treats turn up here and there, and do not wait for long. One
+          cat at a time: while you carry nothing it keeps away, each kind in its own way, and
+          attacks you from a distance. Carry a treat and it comes to you: give it the treat, and the
+          cat is tamed.
         </p>
       )}
-      <p className="mt-2 max-w-2xl text-sm text-aura">
-        Your pointer is locked to the game until you press Esc.
-      </p>
+      {!touch && (
+        <p className="mt-2 max-w-2xl text-sm text-aura">
+          Your pointer is locked to the game until you press Esc.
+        </p>
+      )}
       <div ref={startRef} className="mt-4 flex flex-wrap items-center gap-4">
         {kind === 'survival' ? (
           <>
@@ -665,16 +708,17 @@ export default function Fight({ kind }: { kind: Kind }) {
             {kind === 'taming' && tameSnap && (
               <>
                 <p data-testid="fight-tamed-now">Tamed this game: {tameSnap.tamed.length}</p>
-                <div
-                  role="progressbar"
-                  aria-label="Taming"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round(tameSnap.hold * 100)}
-                  className="h-2 w-32 overflow-hidden rounded-full bg-void"
-                >
-                  <div className="h-full bg-plasma" style={{ width: `${tameSnap.hold * 100}%` }} />
-                </div>
+                <p data-testid="fight-carrying" data-carrying={tameSnap.carrying ?? ''}>
+                  Carrying:{' '}
+                  {tameSnap.carrying ? (
+                    <>
+                      <span aria-hidden="true">{treatInfo(tameSnap.carrying).emoji}</span>{' '}
+                      {treatInfo(tameSnap.carrying).name}
+                    </>
+                  ) : (
+                    'nothing'
+                  )}
+                </p>
               </>
             )}
             <p role="status" className="text-plasma">
@@ -702,17 +746,32 @@ export default function Fight({ kind }: { kind: Kind }) {
                   top: tameSnap.cat.y - size / 2,
                   width: size,
                   height: size,
-                  // A blinking cat is gone for a moment; a held one glows as it calms.
+                  // A blinking cat is gone for a moment; one coming for a treat glows.
                   opacity: tameSnap.cat.doing === 'blink' ? 0.15 : 1,
                   boxShadow:
-                    tameSnap.hold > 0
-                      ? `0 0 0 3px rgba(255, 255, 255, ${0.2 + tameSnap.hold * 0.6})`
+                    tameSnap.cat.doing === 'coming'
+                      ? '0 0 0 3px rgba(193, 232, 56, 0.6)'
                       : undefined,
                 }}
               >
                 <FightCatSprite typeId={tameSnap.cat.typeId} size={size} />
               </div>
             )}
+            {kind === 'taming' &&
+              tameSnap?.treats.map((treat) => (
+                // Emoji for now: placeholders until the treats get artwork of their own.
+                <div
+                  key={treat.id}
+                  data-testid="fight-treat"
+                  data-kind={treat.kind}
+                  data-x={Math.round(treat.x)}
+                  data-y={Math.round(treat.y)}
+                  className="absolute flex items-center justify-center rounded-full bg-panel/80 text-xl ring-1 ring-plasma/50"
+                  style={{ left: treat.x - 18, top: treat.y - 18, width: 36, height: 36 }}
+                >
+                  {treatInfo(treat.kind).emoji}
+                </div>
+              ))}
             {kind === 'survival' &&
               snap?.cats.map((cat) => (
                 <div
@@ -782,36 +841,44 @@ export default function Fight({ kind }: { kind: Kind }) {
               ))}
           </div>
 
-          {kind === 'survival' && (
-            <div aria-hidden="true">
-              {Array.from({ length: MAX_DECOYS }, (_, i) => (
-                <div
-                  key={i}
-                  ref={(element) => {
-                    playerDecoyRefs.current[i] = element;
-                  }}
-                  className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
-                  style={{ opacity: 0 }}
-                >
-                  <div className="absolute" style={{ left: -half, top: -half }}>
-                    <PlayerSprite facing={pose.facing} walking={pose.walking} />
-                  </div>
-                </div>
-              ))}
+          {/* The ranger: armed in Survival, empty-handed in Taming. */}
+          <div aria-hidden="true">
+            {Array.from({ length: MAX_DECOYS }, (_, i) => (
               <div
-                ref={playerRef}
-                data-testid="fight-player"
-                data-facing={pose.facing}
-                data-walking={pose.walking}
+                key={i}
+                ref={(element) => {
+                  playerDecoyRefs.current[i] = element;
+                }}
                 className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
                 style={{ opacity: 0 }}
               >
                 <div className="absolute" style={{ left: -half, top: -half }}>
-                  <PlayerSprite facing={pose.facing} walking={pose.walking} gunRef={gunRef} />
+                  <PlayerSprite
+                    facing={pose.facing}
+                    walking={pose.walking}
+                    armed={kind === 'survival'}
+                  />
                 </div>
               </div>
+            ))}
+            <div
+              ref={playerRef}
+              data-testid="fight-player"
+              data-facing={pose.facing}
+              data-walking={pose.walking}
+              className="pointer-events-none fixed left-0 top-0 h-0 w-0 origin-top-left"
+              style={{ opacity: 0 }}
+            >
+              <div className="absolute" style={{ left: -half, top: -half }}>
+                <PlayerSprite
+                  facing={pose.facing}
+                  walking={pose.walking}
+                  armed={kind === 'survival'}
+                  gunRef={gunRef}
+                />
+              </div>
             </div>
-          )}
+          </div>
 
           {kind === 'survival' && phase === 'playing' && (
             <div aria-hidden="true">
@@ -851,29 +918,8 @@ export default function Fight({ kind }: { kind: Kind }) {
             </div>
           )}
 
-          {kind === 'taming' && mode === 'locked' && phase === 'playing' && (
-            <div aria-hidden="true">
-              {Array.from({ length: MAX_DECOYS }, (_, i) => (
-                <div
-                  key={i}
-                  ref={(element) => {
-                    decoyRefs.current[i] = element;
-                  }}
-                  className="pointer-events-none fixed left-0 top-0 origin-top-left"
-                  style={{ opacity: 0 }}
-                >
-                  <CursorShape kind="arrow" />
-                </div>
-              ))}
-              <div
-                ref={pointerRef}
-                data-testid="fight-pointer"
-                className="pointer-events-none fixed left-0 top-0 origin-top-left"
-                style={{ opacity: 0 }}
-              >
-                <CursorShape kind="arrow" />
-              </div>
-            </div>
+          {touch && kind === 'taming' && phase === 'playing' && (
+            <MovementPad onDirection={onPad} className="fixed bottom-8 left-8 z-10" />
           )}
         </div>
       )}
