@@ -7,6 +7,7 @@ import {
   createArena,
 } from '@/app/ui/xenocats/arena';
 import { createArenaGrid } from '@/app/ui/xenocats/arena-grid';
+import { WEAPONS } from '@/app/ui/xenocats/arsenal';
 import { bestOf, clockText, parseBest } from '@/app/ui/xenocats/arena-storage';
 import { CAT_TYPES, catTypeById } from '@/app/ui/xenocats/cat-types';
 import { createFrameGuard } from '@/app/ui/xenocats/frame-guard';
@@ -15,8 +16,16 @@ import { createRandom } from '@/app/ui/xenocats/random';
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
 
+/** Gems worth nothing: no level-up interrupts a test of something else. */
+const noLevels = { gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 } };
+
 function arena(config: Partial<ArenaConfig> = {}, seed = 1, types = CAT_TYPES) {
-  return createArena({ random: createRandom(seed), types, viewport, config });
+  return createArena({
+    random: createRandom(seed),
+    types,
+    viewport,
+    config: { ...noLevels, ...config },
+  });
 }
 
 /** Steps until `ms` of game time, the hero walking `input`. */
@@ -63,7 +72,7 @@ describe('the hero', () => {
         {
           escalation: [[0, 1]],
           cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
-          laser: { ...ARENA_CONFIG.laser, cooldownMs: 1e12 },
+          startingWeapons: [],
         },
         1,
         [type]
@@ -106,7 +115,7 @@ describe('elites', () => {
       {
         escalation: [[0, 1]],
         cats: { ...ARENA_CONFIG.cats, eliteShare: 1, homesickness: [1e9, 1e9] },
-        laser: { ...ARENA_CONFIG.laser, cooldownMs: 1e9 },
+        startingWeapons: [],
       },
       1,
       [catTypeById(typeId)!]
@@ -138,7 +147,7 @@ describe('elites', () => {
         escalation: [[0, 30]],
         cats: { ...ARENA_CONFIG.cats, eliteShare: 1, homesickness: [1e9, 1e9] },
         hero: { ...ARENA_CONFIG.hero, resolve: 1e9, untouchableMs: 100 },
-        laser: { ...ARENA_CONFIG.laser, cooldownMs: 1e12 },
+        startingWeapons: [],
       },
       3,
       [catTypeById('cryo-persian')!, catTypeById('gravi-coon')!]
@@ -212,7 +221,7 @@ describe('the horde', () => {
     const a = arena({
       ...unbreakable,
       stepMs: 50,
-      laser: { ...ARENA_CONFIG.laser, cooldownMs: 1e12 },
+      startingWeapons: [],
     });
     const at = (ms: number) => {
       runTo(a, ms);
@@ -231,7 +240,7 @@ describe('the horde', () => {
     const a = arena({
       ...unbreakable,
       escalation: [[0, 400]],
-      laser: { ...ARENA_CONFIG.laser, cooldownMs: 1e12 },
+      startingWeapons: [],
     });
     runTo(a, 20_000, still, false);
     // Even a screen too slow from the start gets a game...
@@ -262,7 +271,7 @@ describe('the Laser Pointer', () => {
     expect(lasers).toBeGreaterThan(5);
     expect(home).toBeGreaterThan(0);
     expect(a.state().sentHome).toBe(home);
-    expect(a.state().weapons).toEqual(['laser-pointer']);
+    expect(a.state().weapons).toEqual([{ id: 'laser-pointer', level: 1 }]);
   });
 
   it('fires no more often than its cooldown, and not at a cat out of range', () => {
@@ -276,7 +285,9 @@ describe('the Laser Pointer', () => {
       for (const e of b.drainEvents()) if (e.kind === 'laser') times.push(b.state().time);
     }
     for (let i = 1; i < times.length; i++) {
-      expect(times[i] - times[i - 1]).toBeGreaterThanOrEqual(ARENA_CONFIG.laser.cooldownMs - 1);
+      expect(times[i] - times[i - 1]).toBeGreaterThanOrEqual(
+        WEAPONS['laser-pointer'].levels[0].cooldownMs - 1
+      );
     }
   });
 });
@@ -288,7 +299,7 @@ describe('the laser, with a cat right on the Keeper', () => {
       ...unbreakable,
       escalation: [[0, 30]],
       cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
-      laser: { ...ARENA_CONFIG.laser, cooldownMs: 40_000 },
+      firstShotMs: 20_000,
     });
     let beam: { from: { x: number; y: number }; to: { x: number; y: number } } | null = null;
     while (!beam && a.state().time < 30_000) {
@@ -336,7 +347,7 @@ describe('the time goal', () => {
       ],
       matriarch: { ...ARENA_CONFIG.matriarch, speed: 0 },
       hero: { ...ARENA_CONFIG.hero, resolve: 10 },
-      laser: { ...ARENA_CONFIG.laser, cooldownMs: 1e12 },
+      startingWeapons: [],
     });
     runTo(a, ARENA_CONFIG.timeGoalMs + 120_000);
     expect(a.state().status).toBe('over');

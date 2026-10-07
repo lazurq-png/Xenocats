@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/app/ui/button';
-import { type Arena, ARENA_CONFIG, type ArenaOutcome, createArena } from './arena';
+import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
 import { HERO_SVG } from './arena-art';
+import { type Choice, describeChoice } from './arsenal';
 import { SURVIVAL_BEST_KEY, bestOf, clockText, readBest, writeBest } from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
@@ -22,10 +23,21 @@ import type { Vec } from './effects';
 // play area as data- attributes for the browser tests. The canvas and everything
 // drawn on it are hidden from assistive technology.
 //
+// Each level pauses the run for a choice (arsenal.ts): a dialog of three or four,
+// picked with 1–4, the arrow keys and Enter, or a tap; focus moves into it and back.
+//
 // Test hooks, read from the page's address when a run starts: `?seed=` fixes the
 // random source, `?speed=` (up to 50) makes time pass that much faster.
 
-type Screen = 'start' | 'playing' | 'paused' | 'results';
+type Screen = 'start' | 'playing' | 'choosing' | 'paused' | 'results';
+
+/** How each weapon's shots are drawn. */
+const SHOT_COLOR: Record<string, string> = {
+  'cat-treats': '#fbbf24',
+  'spray-bottle': '#7dd3fc',
+  'yarn-ball': '#f472b6',
+  hairball: '#a8865b',
+};
 
 /** Cats drawn this size, px. */
 const CAT_SIZE = 44;
@@ -51,6 +63,10 @@ type Hud = {
   heroX: number;
   heroY: number;
   effect: string | null;
+  level: number;
+  xp: number;
+  xpToNext: number;
+  weapons: string;
 };
 
 const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
@@ -96,6 +112,11 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
   // The finished run's numbers, kept for the results screen.
   const [result, setResult] = useState<{ time: number; sentHome: number } | null>(null);
+  // A level-up's choices, while the run waits for one.
+  const [choices, setChoices] = useState<Choice[] | null>(null);
+  // The level the waiting choice is for (several can wait after one gem).
+  const [choiceLevel, setChoiceLevel] = useState(2);
+  const choiceRef = useRef<HTMLDivElement>(null);
   const best = useSyncExternalStore(subscribeBest, readBest, () => null);
   const arenaRef = useRef<Arena | null>(null);
   const screenRef = useRef<Screen>('start');
@@ -155,15 +176,34 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     finish('gave-up');
   };
 
-  const running = screen === 'playing' || screen === 'paused';
+  /** Takes a level-up's choice; the run goes on, or the next level's choice comes. */
+  const choose = useCallback(
+    (index: number) => {
+      const arena = arenaRef.current;
+      if (!arena || screenRef.current !== 'choosing') return;
+      arena.choose(index);
+      const next = arena.choices();
+      if (next) {
+        setChoices([...next]);
+        setChoiceLevel(arena.choiceLevel());
+      } else {
+        setChoices(null);
+        show('playing');
+      }
+    },
+    [show]
+  );
 
-  // Focus: into the play area when a run starts, onto Resume when paused, onto
-  // Play again when it is over.
+  const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
+
+  // Focus: into the play area when a run starts (and back after a choice), onto the
+  // first choice at a level-up, onto Resume when paused, onto Play again when over.
   useEffect(() => {
     if (screen === 'playing') areaRef.current?.focus();
+    if (screen === 'choosing') choiceRef.current?.querySelector('button')?.focus();
     if (screen === 'paused') pauseRef.current?.querySelector('button')?.focus();
     if (screen === 'results') resultsRef.current?.querySelector('button')?.focus();
-  }, [screen]);
+  }, [screen, choices]);
 
   // While a run lasts its play area covers the page: everything else is inert, so
   // focus cannot wander behind it. Only what this marked is unmarked again.
@@ -258,6 +298,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       }
       context.stroke();
 
+      // The Thunderous Vacuum's reach, and the gems lying about.
+      const zone = arena.zone();
+      if (zone) {
+        context.fillStyle = `rgba(157, 134, 255, ${0.1 + 0.04 * Math.sin(time / 180)})`;
+        context.beginPath();
+        context.arc(width / 2, height / 2, zone, 0, 2 * Math.PI);
+        context.fill();
+      }
+      for (const gem of arena.gems()) {
+        const x = gem.x - camX;
+        const y = gem.y - camY;
+        if (x < -8 || y < -8 || x > width + 8 || y > height + 8) continue;
+        context.fillStyle = gem.value > 1 ? '#c1e838' : '#9d86ff';
+        context.beginPath();
+        context.moveTo(x, y - 6);
+        context.lineTo(x + 4, y);
+        context.lineTo(x, y + 6);
+        context.lineTo(x - 4, y);
+        context.fill();
+      }
+
       // The beams.
       context.strokeStyle = '#c1e838';
       context.shadowColor = '#c1e838';
@@ -300,6 +361,25 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           context.fillStyle = '#9d86ff';
           context.fillRect(x - half, y - half - 6, (CAT_SIZE * cat.homesickness) / cat.limit, 4);
         }
+      }
+
+      // What his weapons fired, and the Can Opener's blades.
+      for (const shot of arena.projectiles()) {
+        const x = shot.x - camX;
+        const y = shot.y - camY;
+        if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+        context.fillStyle = SHOT_COLOR[shot.weapon] ?? '#e0e0b3';
+        context.beginPath();
+        context.arc(x, y, Math.max(shot.radius * 0.6, 3), 0, 2 * Math.PI);
+        context.fill();
+      }
+      context.fillStyle = '#e0e0b3';
+      for (const blade of arena.blades()) {
+        context.save();
+        context.translate(blade.x - camX, blade.y - camY);
+        context.rotate(time / 90);
+        context.fillRect(-BLADE_RADIUS, -4, BLADE_RADIUS * 2, 8);
+        context.restore();
       }
 
       // Beamed home: a column of light where each one stood.
@@ -384,6 +464,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         } else if (event.kind === 'hero-hit') {
           hits.push(event.type);
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[event.type]).attack));
+        } else if (event.kind === 'level-up') {
+          if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'matriarch' && titan >= 0 && player) {
           player.play(soundsFor(CAT_TYPES[titan]).wake);
         } else if (event.kind === 'over') {
@@ -413,13 +495,52 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           heroX: Math.round(state.hero.x),
           heroY: Math.round(state.hero.y),
           effect: state.hero.effect,
+          level: state.level,
+          xp: state.xp,
+          xpToNext: state.xpToNext,
+          weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
         });
       }
       if (over) finish(over);
+      else if (arena.choices()) {
+        // The run waits for a choice; the HUD shows the level it is for.
+        carry = 0;
+        setHud((before) =>
+          before
+            ? {
+                ...before,
+                level: state.level,
+                xp: state.xp,
+                xpToNext: state.xpToNext,
+                weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
+              }
+            : before
+        );
+        setChoices([...arena.choices()!]);
+        setChoiceLevel(arena.choiceLevel());
+        show('choosing');
+      }
     };
     frameId = requestAnimationFrame(frame);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (screenRef.current === 'choosing') {
+        // 1–4 picks; the arrow keys move between the choices (Enter or Space picks).
+        const number = Number(event.key);
+        const buttons = Array.from(
+          choiceRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? []
+        );
+        if (Number.isInteger(number) && number >= 1 && number <= buttons.length) {
+          event.preventDefault();
+          choose(number - 1);
+        } else if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)) {
+          event.preventDefault();
+          const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
+          buttons[(at + step + buttons.length) % buttons.length]?.focus();
+        }
+        return;
+      }
       if (event.key === 'Escape') {
         event.preventDefault();
         if (screenRef.current === 'playing') show('paused');
@@ -451,7 +572,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onHidden);
     };
-  }, [running, finish, pause, show]);
+  }, [running, finish, pause, show, choose]);
 
   return (
     <div>
@@ -517,7 +638,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-hero-x={hud?.heroX ?? 0}
           data-hero-y={hud?.heroY ?? 0}
           data-effect={hud?.effect ?? ''}
-          data-weapons="laser-pointer"
+          data-level={hud?.level ?? 1}
+          data-weapons={hud?.weapons ?? 'laser-pointer:1'}
           data-best-key={SURVIVAL_BEST_KEY}
           className="fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none"
         >
@@ -546,12 +668,79 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               <span data-testid="survival-resolve">{Math.ceil(hud?.resolve ?? 100)}</span>
             </div>
             <p data-testid="survival-sent-home">Cats sent home: {hud?.sentHome ?? 0}</p>
+            <div className="flex items-center gap-2">
+              <span data-testid="survival-level">Level {hud?.level ?? 1}</span>
+              <div
+                role="progressbar"
+                aria-label="Experience"
+                aria-valuemin={0}
+                aria-valuemax={hud?.xpToNext ?? 5}
+                aria-valuenow={hud?.xp ?? 0}
+                className="h-2 w-24 overflow-hidden rounded-full bg-panel"
+              >
+                <div
+                  className="h-full bg-aura"
+                  style={{ width: `${(100 * (hud?.xp ?? 0)) / (hud?.xpToNext ?? 5)}%` }}
+                />
+              </div>
+            </div>
             {screen === 'playing' && (
               <Button className="ml-auto" onClick={pause}>
                 Pause
               </Button>
             )}
           </div>
+
+          {screen === 'choosing' && choices && (
+            <div
+              ref={choiceRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="level-up-heading"
+              aria-describedby="level-up-help"
+              data-testid="survival-level-up"
+              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60 p-4"
+            >
+              <div className="w-full max-w-lg rounded-2xl border border-line bg-panel p-6">
+                <h2 id="level-up-heading" className="font-display text-xl text-cream">
+                  Level {choiceLevel}. Choose one.
+                </h2>
+                <p id="level-up-help" className="mt-1 text-sm text-aura">
+                  {touch
+                    ? 'Tap a choice.'
+                    : `Press 1 to ${choices.length}, or use the arrow keys and Enter.`}
+                </p>
+                <ol className="mt-4 grid gap-2">
+                  {choices.map((choice, i) => {
+                    const { name, description } = describeChoice(choice);
+                    const kind =
+                      choice.kind === 'weapon'
+                        ? 'Weapon'
+                        : choice.kind === 'passive'
+                          ? 'Passive'
+                          : 'Rest';
+                    return (
+                      <li key={i}>
+                        <button
+                          type="button"
+                          data-choice={choice.kind === 'restore' ? 'restore' : choice.id}
+                          data-kind={choice.kind}
+                          data-level={choice.kind === 'restore' ? '' : choice.level}
+                          onClick={() => choose(i)}
+                          className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma"
+                        >
+                          <span className="font-semibold text-plasma">{i + 1}.</span>{' '}
+                          <span className="font-semibold">{name}</span>{' '}
+                          <span className="text-aura">({kind})</span>
+                          <span className="mt-1 block text-aura">{description}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            </div>
+          )}
 
           {screen === 'paused' && (
             <div

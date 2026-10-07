@@ -6,7 +6,35 @@ import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
 // and the HUD's text. `?seed=` fixes the run; `?speed=` makes time pass faster.
 
 const area = (page: Page) => page.getByTestId('survival-area');
-const num = async (page: Page, name: string) => Number(await area(page).getAttribute(name));
+const levelUp = (page: Page) => page.getByTestId('survival-level-up');
+
+/**
+ * A level-up waiting for a choice stops the run; a test of something else takes
+ * the first choice and plays on.
+ */
+async function playOn(page: Page, tap = false) {
+  if ((await levelUp(page).count()) === 0) return;
+  if (tap) await levelUp(page).getByRole('button').first().tap();
+  else await page.keyboard.press('1');
+}
+
+const num = async (page: Page, name: string) => {
+  await playOn(page);
+  return Number(await area(page).getAttribute(name));
+};
+
+/** Pauses the run with Esc (taking any level-up's choice first). */
+async function pauseRun(page: Page) {
+  const paused = page.getByRole('dialog', { name: 'Paused' });
+  await expect
+    .poll(async () => {
+      await playOn(page);
+      if ((await paused.count()) === 0) await page.keyboard.press('Escape');
+      return paused.count();
+    })
+    .toBe(1);
+  return paused;
+}
 
 async function openArena(page: Page, query = '?seed=7') {
   await page.goto('/cats/survival' + query);
@@ -40,7 +68,7 @@ test.describe('on a computer', () => {
     // No ambient cats and no fake cursor on the game's page.
     await expect(page.getByTestId('xenocat')).toHaveCount(0);
     await startRun(page);
-    await expect(area(page)).toHaveAttribute('data-weapons', 'laser-pointer');
+    await expect(area(page)).toHaveAttribute('data-weapons', 'laser-pointer:1');
     expect(await page.locator('html').getAttribute('class')).not.toContain('xenocat-cursor-hidden');
     // The canvas is hidden from assistive technology; the HUD is text.
     await expect(page.locator('canvas')).toHaveAttribute('aria-hidden', 'true');
@@ -53,9 +81,7 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-sent-home')).not.toHaveText('Cats sent home: 0');
 
     // Esc pauses: a dialog, focus on Resume, and time stands still.
-    await page.keyboard.press('Escape');
-    const paused = page.getByRole('dialog', { name: 'Paused' });
-    await expect(paused).toBeVisible();
+    const paused = await pauseRun(page);
     await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
     const stopped = await num(page, 'data-time');
     await page.waitForTimeout(600);
@@ -64,11 +90,7 @@ test.describe('on a computer', () => {
     await expect.poll(() => num(page, 'data-time')).toBeGreaterThan(stopped);
 
     // Giving up ends the run: the results, and the best time kept.
-    await page.keyboard.press('Escape');
-    await page
-      .getByRole('dialog', { name: 'Paused' })
-      .getByRole('button', { name: 'Give up' })
-      .click();
+    await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
     const results = page.getByTestId('survival-results');
     await expect(results).toHaveAttribute('data-outcome', 'gave-up');
     await expect(results.getByRole('heading', { name: 'The run is over' })).toBeVisible();
@@ -101,9 +123,52 @@ test.describe('on a computer', () => {
     await page.keyboard.up('ArrowLeft');
   });
 
+  test('a level-up stops the run for a choice, made with a number key; the run goes on with it', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-level', '1');
+    // He walks about, gathering what the laser leaves.
+    await page.keyboard.down('d');
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await page.keyboard.up('d');
+    await expect(dialog.getByRole('heading', { name: /Level 2\. Choose one\./ })).toBeVisible();
+    await expect(area(page)).toHaveAttribute('data-screen', 'choosing');
+    // Focus in the dialog, on the first choice; the arrow keys move it.
+    const buttons = dialog.getByRole('button');
+    await expect(buttons.first()).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(buttons.nth(1)).toBeFocused();
+    // The run waits.
+    const waited = await area(page).getAttribute('data-time');
+    await page.waitForTimeout(500);
+    expect(await area(page).getAttribute('data-time')).toBe(waited);
+    // A new weapon, by its number.
+    const kinds = await buttons.evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
+    const pick = Math.max(kinds.indexOf('weapon'), 0);
+    const chosen = await buttons.nth(pick).getAttribute('data-choice');
+    const chosenLevel = await buttons.nth(pick).getAttribute('data-level');
+    await page.keyboard.press(String(pick + 1));
+    await expect(dialog).toHaveCount(0);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    await expect(area(page)).toBeFocused();
+    if (kinds[pick] === 'weapon') {
+      await expect(area(page)).toHaveAttribute(
+        'data-weapons',
+        new RegExp(`${chosen}:${chosenLevel}`)
+      );
+    }
+    await expect.poll(() => num(page, 'data-time')).toBeGreaterThan(Number(waited));
+    expect(await num(page, 'data-level')).toBeGreaterThanOrEqual(2);
+  });
+
   test('losing focus pauses the run', async ({ page }) => {
     await openArena(page);
     await startRun(page);
+    await playOn(page);
     await page.evaluate(() => window.dispatchEvent(new Event('blur')));
     await expect(area(page)).toHaveAttribute('data-screen', 'paused');
     await expect(page.getByRole('dialog', { name: 'Paused' })).toBeVisible();
@@ -114,6 +179,37 @@ test.describe('on a touch screen', () => {
   // A phone's screen and touch input (its browser type cannot change inside a group).
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  test('a level-up choice is made with a tap', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page, true);
+    const pad = page.getByTestId('movement-pad');
+    const box = (await pad.boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: box.x + box.width / 2 + 50, y: box.y + box.height / 2 }],
+    });
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(dialog).toContainText('Tap a choice.');
+    const buttons = dialog.getByRole('button');
+    const kinds = await buttons.evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
+    const pick = Math.max(kinds.indexOf('weapon'), 0);
+    const chosen = await buttons.nth(pick).getAttribute('data-choice');
+    const chosenLevel = await buttons.nth(pick).getAttribute('data-level');
+    await buttons.nth(pick).tap();
+    await expect(dialog).toHaveCount(0);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    if (kinds[pick] === 'weapon') {
+      await expect(area(page)).toHaveAttribute(
+        'data-weapons',
+        new RegExp(`${chosen}:${chosenLevel}`)
+      );
+    }
+  });
 
   test('the movement pad walks the hero, the laser sends cats home, and Pause leads to giving up', async ({
     page,
@@ -135,6 +231,7 @@ test.describe('on a touch screen', () => {
     await expect.poll(() => num(page, 'data-hero-x')).toBeGreaterThan(x0 + 60);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await expect.poll(() => num(page, 'data-sent-home'), { timeout: 30_000 }).toBeGreaterThan(0);
+    await playOn(page, true);
     await area(page).getByRole('button', { name: 'Pause' }).tap();
     await page
       .getByRole('dialog', { name: 'Paused' })
