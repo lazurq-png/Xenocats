@@ -15,6 +15,7 @@ export type VarietyId =
   | 'laser'
   | 'possessed'
   | 'mega'
+  | 'comforter'
   // Never in the schedule: it comes only when it chooses to (arena.ts, secretCat).
   | 'neighbour';
 
@@ -46,6 +47,8 @@ export type Variety = {
   radius: number;
   /** Weapons of these kinds pass through it. */
   immuneTo?: readonly WeaponKind[];
+  /** It comforts the cats around it: within `radius`, each loses this much Homesickness a second. */
+  soothes?: { radius: number; perSecond: number };
 };
 
 export const VARIETIES: Readonly<Record<VarietyId, Variety>> = {
@@ -131,6 +134,20 @@ export const VARIETIES: Readonly<Record<VarietyId, Variety>> = {
     drain: 25,
     radius: 90,
   },
+  comforter: {
+    name: 'Purring Cat',
+    description: 'It purrs, and the cats around it forget that they wished to go home.',
+    gait: 'walk',
+    speed: 40,
+    homesickness: 260,
+    drain: 3,
+    // The cats' own size, so it stays in the grid (a bigger one is searched always).
+    radius: 16,
+    // Less than the Laser Pointer gives at its first level (about 18 a second), so
+    // one Purring Cat only slows it. Weaker work (the Thunderous Vacuum's first level,
+    // 10) or two Purring Cats together hold a cat back until one is sent home first.
+    soothes: { radius: 140, perSecond: 12 },
+  },
   neighbour: {
     name: 'The Neighbour’s Cat',
     description: 'It sits beside him, as if it had always lived here. It has not.',
@@ -153,8 +170,8 @@ export type Schedule = {
 
 /**
  * Over the five minutes: plain cats and xenocats first, then the zoomies, swarms of
- * kittens, the hissing, boxes, snipers, the fat and the possessed; a Mega Cat at
- * two minutes and again at four.
+ * kittens, the hissing, boxes, snipers, the purring, the fat and the possessed; a
+ * Mega Cat at two minutes and again at four.
  */
 export const SCHEDULE: Schedule = {
   arrivals: [
@@ -164,6 +181,7 @@ export const SCHEDULE: Schedule = {
     { from: 60_000, who: 'hissing', weight: 2 },
     { from: 90_000, who: 'box', weight: 0.4 },
     { from: 120_000, who: 'laser', weight: 1 },
+    { from: 130_000, who: 'comforter', weight: 0.6 },
     { from: 150_000, who: 'fat', weight: 0.8 },
     { from: 180_000, who: 'possessed', weight: 1.2 },
   ],

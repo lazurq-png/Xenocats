@@ -798,6 +798,30 @@ export function createArena(options: {
     cat.y += (dy / d) * stepLength;
   }
 
+  /** Indices of this step's Purring Cats (varieties that soothe). */
+  const soothers: number[] = [];
+
+  /**
+   * Every Purring Cat comforts the cats around it: each within its reach (itself
+   * and other Purring Cats aside) loses a little Homesickness, never below none.
+   */
+  function soothe(dt: number) {
+    soothers.length = 0;
+    for (let i = 0; i < cats.length; i++) {
+      const variety = cats[i].variety;
+      if (variety !== null && VARIETIES[variety].soothes) soothers.push(i);
+    }
+    for (const i of soothers) {
+      const purring = cats[i];
+      const { radius, perSecond } = VARIETIES[purring.variety!].soothes!;
+      for (const j of within(purring, radius)) {
+        const cat = cats[j];
+        if (cat.variety !== null && VARIETIES[cat.variety].soothes) continue;
+        cat.homesickness = Math.max(cat.homesickness - perSecond * dt, 0);
+      }
+    }
+  }
+
   /** The Laser Cats' shots fly; one that reaches him drains his Resolve. */
   function moveShots(dt: number) {
     for (let i = shots.length - 1; i >= 0; i--) {
@@ -1312,6 +1336,7 @@ export function createArena(options: {
         else grid.insert(i, cat.x, cat.y);
       }
       moveShots(dt);
+      soothe(dt);
 
       // Reached: one drain per moment for each Keeper, an elite's effect on top.
       for (const k of keepers) {

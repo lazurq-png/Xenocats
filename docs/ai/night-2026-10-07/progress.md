@@ -404,3 +404,39 @@ Database reachable (the e2e global setup rebuilt `xenocats_test`).
   - Build.
   - `npm run test:e2e`: 127 passed.
   - `E2E_SERVER=start npm run test:e2e`: 127 passed.
+
+## T12 item 1 — started 01:19: a comforting cat (kind: the Survival game)
+
+A new variety whose behaviour changes how a run plays: a cat that purrs, and every cat near it forgets a little of its homesickness, so the horde around it is slow to send home until it is dealt with first. Its own run-drawn SVG, a place in the schedule, unit tests of its behaviour.
+
+## T12 item 1 — the Purring Cat (completed)
+
+- Branch `night-2026-10-07-t12-1-comforter`, base `b9eec4a`. Start 01:19 (budget ~13,571,000); completed 01:33 (budget ~13,535,000).
+- **CI of checkpoint 2** (`b9eec4a`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37701496841), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37701496164)).
+- **What the code does**
+  - `varieties.ts`: a new variety, **the Purring Cat** (D74). It walks at him and has 260 Homesickness. Every cat within 140 px of it loses 12 Homesickness a second, several Purring Cats adding up and none soothing another. It is in the schedule from 2:10, rarer than most.
+  - `arena.ts`: `soothe()` applies the comfort once a step, after the cats move and before the weapons.
+  - `arena-art.ts`: its drawing.
+  - `arena-view.tsx`: a faint warm halo, drawn under everything else.
+  - Tests in `varieties.test.ts`:
+    - The exact comfort between the Vacuum Cleaner's firings: each cat in reach loses exactly 12 a second per Purring Cat, and every other cat keeps its own. Both the "several add up" case and the "a Purring Cat in another's reach" case are shown to occur. The test failed with the comfort switched off.
+    - Its place in the schedule.
+  - The seeded schedule test gives a rare variety longer in proportion to its weight (D74).
+- **Why it was added**: plan task 12, an exploration item of the kind "the Survival game".
+- **Acceptance**
+  - The behaviour is unit-tested, exactly.
+  - **Built, not seen**: the drawing and the halo.
+  - The balance is a first guess (D75, D76). A Purring Cat must be sent home first, or met with more than one weapon's first level.
+- **Drawn by the run, not seen**: the Purring Cat (a long-haired cream cat, eyes closed, purring arcs) and its halo.
+- **Reviewer**
+  - First review: approve, four Low findings, all acted on (D75):
+    - it was a "big cat" searched everywhere;
+    - its halo was drawn over gems and chests;
+    - its comfort cancelled the Laser Pointer's first level;
+    - the test did not show its overlap cases occurring.
+  - Re-review: approve, one wording note acted on (D76).
+- **Gate** (the selection), all exit 0:
+  - Prettier, lint 0 warnings, type check, group check, build.
+  - Unit: 5 files, 133 passed.
+  - Browser: 96 passed.
+  - The gate ran on the code before the review fixes and again after them, passing both times. After the second run only a comment changed (D76); prettier, lint and the type check passed on it.

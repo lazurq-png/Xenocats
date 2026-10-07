@@ -115,6 +115,13 @@ export const VARIETY_SVG: Readonly<Record<VarietyId, string>> = {
     eyes: AURA,
     under: `<circle cx="32" cy="34" r="27" fill="${AURA}" opacity="0.18"/>`,
   }),
+  // A long-haired cream cat, eyes closed, purring (the arcs).
+  comforter: catSvg({
+    fur: '#efe3c8',
+    belly: '#fbf5e6',
+    eyes: '#5b4a2e',
+    extra: `<ellipse cx="27" cy="25" rx="3.2" ry="3.6" fill="#efe3c8"/><ellipse cx="37" cy="25" rx="3.2" ry="3.6" fill="#efe3c8"/><path d="M24 25.5 Q27 27.5 30 25.5 M34 25.5 Q37 27.5 40 25.5" stroke="#5b4a2e" stroke-width="1.6" fill="none"/><path d="M48 14 Q52 18 48 22 M52 10 Q58 18 52 26" stroke="${AURA}" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.8"/>`,
+  }),
   // The secret cat: a tuxedo, with someone else's collar.
   neighbour: catSvg({
     fur: '#1b1d2b',

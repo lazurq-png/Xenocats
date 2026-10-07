@@ -434,6 +434,21 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       }
       context.stroke();
 
+      // The Purring Cats' comfort: a faint warm halo as far as it reaches (to a
+      // cat's edge), under everything else so the gems and chests stay clear.
+      context.fillStyle = 'rgba(239, 227, 200, 0.07)';
+      for (const cat of arena.cats()) {
+        const soothes = cat.variety ? VARIETIES[cat.variety].soothes : undefined;
+        if (!soothes) continue;
+        const reach = soothes.radius + arena.config.cats.radius;
+        const x = cat.x - camX;
+        const y = cat.y - camY;
+        if (x < -reach || y < -reach || x > width + reach || y > height + reach) continue;
+        context.beginPath();
+        context.arc(x, y, reach, 0, 2 * Math.PI);
+        context.fill();
+      }
+
       // The Thunderous Vacuum's reach, and the gems lying about.
       for (const zone of arena.zones()) {
         context.fillStyle = `rgba(157, 134, 255, ${0.1 + 0.04 * Math.sin(time / 180)})`;

@@ -291,7 +291,17 @@ describe('the schedule', () => {
         .map((a) => a.who)
         .sort()
     ).toEqual(
-      ['basic', 'box', 'fat', 'hissing', 'laser', 'possessed', 'xenocat', 'zoomies'].sort()
+      [
+        'basic',
+        'box',
+        'comforter',
+        'fat',
+        'hissing',
+        'laser',
+        'possessed',
+        'xenocat',
+        'zoomies',
+      ].sort()
     );
   });
 
@@ -309,8 +319,10 @@ describe('the schedule', () => {
       const seen = first.get(arrival.who);
       expect(seen, arrival.who).toBeDefined();
       expect(seen!, arrival.who).toBeGreaterThanOrEqual(arrival.from);
-      // Within a minute of its window opening (a rare one, or few cats wanted, waits).
-      expect(seen!, arrival.who).toBeLessThan(arrival.from + 60_000);
+      // Soon after its window opens: within a minute, longer for a rare one (a
+      // weight below 1 waits in proportion, at most two minutes).
+      const allowance = Math.min(60_000 / Math.min(arrival.weight, 1), 120_000);
+      expect(seen!, arrival.who).toBeLessThan(arrival.from + allowance);
     }
     expect(first.get('kitten')).toBeGreaterThanOrEqual(SCHEDULE.swarms.from);
     expect(first.get('kitten')).toBeLessThan(SCHEDULE.swarms.from + 1000);
@@ -390,5 +402,74 @@ describe('the drawings', () => {
       // Every attribute's quotes are closed.
       expect((svg.match(/"/g) ?? []).length % 2, id).toBe(0);
     }
+  });
+});
+
+describe('the Purring Cat', () => {
+  it('comforts the cats around it (several, more): they lose Homesickness, the rest keep theirs; no Purring Cat soothes another', () => {
+    // The Vacuum Cleaner hurts only when it fires (every 3.2 s): between firings,
+    // only the purring changes a cat's Homesickness.
+    const purring: Schedule = {
+      arrivals: [
+        { from: 0, who: 'basic', weight: 3 },
+        { from: 0, who: 'comforter', weight: 1 },
+      ],
+      swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+      bosses: [],
+    };
+    const a = arena({
+      schedule: purring,
+      escalation: [[0, 40]],
+      startingWeapons: ['vacuum-cleaner'],
+    });
+    const { radius, perSecond } = VARIETIES.comforter.soothes!;
+    const dt = a.config.stepMs / 1000;
+    let soothed = 0;
+    let kept = 0;
+    // Seen: a cat in two Purring Cats' reach; a Purring Cat in another's.
+    let doubly = 0;
+    let purringInReach = 0;
+    while (a.state().time < 40_000) {
+      const before = new Map(a.cats().map((c) => [c.id, c.homesickness]));
+      a.step(still);
+      if (a.drainEvents().some((e) => e.kind === 'fired')) continue;
+      const purrers = a.cats().filter((c) => c.variety === 'comforter');
+      for (const cat of a.cats()) {
+        const was = before.get(cat.id);
+        if (was === undefined) continue;
+        if (
+          cat.variety === 'comforter' &&
+          purrers.some(
+            (p) => p !== cat && Math.hypot(p.x - cat.x, p.y - cat.y) <= radius + cat.radius
+          )
+        ) {
+          purringInReach++;
+        }
+        // Each Purring Cat in reach comforts it (several add up).
+        const purringNear =
+          cat.variety === 'comforter'
+            ? 0
+            : purrers.filter((p) => Math.hypot(p.x - cat.x, p.y - cat.y) <= radius + cat.radius)
+                .length;
+        if (purringNear > 0) {
+          expect(cat.homesickness).toBeCloseTo(Math.max(was - purringNear * perSecond * dt, 0), 9);
+          if (was > 0) soothed++;
+          if (was > 0 && purringNear > 1) doubly++;
+        } else {
+          expect(cat.homesickness).toBe(was);
+          if (was > 0) kept++;
+        }
+      }
+    }
+    expect(soothed).toBeGreaterThan(20);
+    expect(kept).toBeGreaterThan(20);
+    expect(doubly).toBeGreaterThan(0);
+    expect(purringInReach).toBeGreaterThan(0);
+  });
+
+  it('comes from 2:10, now and then', () => {
+    const at = SCHEDULE.arrivals.find((a) => a.who === 'comforter')!;
+    expect(at.from).toBe(130_000);
+    expect(at.weight).toBeLessThan(1);
   });
 });
