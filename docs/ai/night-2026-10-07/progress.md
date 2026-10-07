@@ -477,3 +477,27 @@ The 2026-10-01 run's Q4: every invoice is due 30 days after its date, and the fo
   - Unit: 3 files, 79 passed (`data.test.ts` skipped, opt-in).
   - Browser: 52 passed.
   - The same gate passed on the code before the review fixes.
+
+## T12 item 3 — started 01:47: tests for what checkpoint 2 left to reading (kind: tests)
+
+Checkpoint 2 recorded three Survival behaviours covered by reading only: the URL test hooks' handling of bad values (`testHooks()`), the results' "Now available: …" line (`unlockedBy`), and Laser Cat shots passing over a downed Keeper. The first two move out of the page into pure functions so they can be tested; all three get unit tests.
+
+## T12 item 3 — tests for what checkpoint 2 left to reading (completed)
+
+- Branch `night-2026-10-07-t12-3-tests`, base `1af4360`. Start 01:47 (budget ~13,470,000); completed 01:55 (budget ~13,453,000).
+- **CI of T12 item 2** (`1af4360`): the poll was still running at this commit. The result goes into the next entry, including the "Database tests" step, which is the only check of `data.test.ts`'s new expectation.
+- **What changed** (D79)
+  - `testHooks()` moved from `arena-view.tsx` into `test-hooks.ts` as `parseTestHooks(search, freshSeed)`, unchanged.
+  - `unlockedBy` moved into `progression.ts`, unchanged.
+  - New tests:
+    - `test-hooks.test.ts` (new, 5, in CI's games group): every hook and every kind of bad value.
+    - `progression.test.ts`: the "Now available" line for each milestone.
+    - `coop.test.ts`: Laser Cat shots cross a downed Keeper without hitting him. This test failed with the guard removed.
+- **Why it was added**: plan task 12, an exploration item of the kind "tests". It closes D72's "covered by reading only" list.
+- **Reviewer**: approve, no findings. It traced every hook case and the shot test against the code.
+- **Gate** (FULL, as `ci.yml` changed), all exit 0:
+  - Actionlint 0, prettier on 7 files, lint 0 warnings, type check, group check.
+  - `npm test`: 41 files, 630 passed (17 skipped).
+  - Build.
+  - `npm run test:e2e`: 128 passed.
+  - `E2E_SERVER=start npm run test:e2e`: 128 passed.

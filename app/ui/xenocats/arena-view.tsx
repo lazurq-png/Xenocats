@@ -16,7 +16,7 @@ import {
   type CharacterId,
   MILESTONES,
   type MilestoneId,
-  WEAPON_UNLOCKS,
+  unlockedBy,
   applyRun,
   hasCharacter,
   readProgress,
@@ -25,6 +25,7 @@ import {
 } from './progression';
 import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
+import { parseTestHooks } from './test-hooks';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
@@ -104,34 +105,6 @@ const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
   'gave-up': 'He has given up. The cats remain.',
   goal: 'Five minutes, and the night is survived. The cats remain.',
 };
-
-/** What a milestone unlocks, in a sentence (or nothing). */
-function unlockedBy(id: MilestoneId): string {
-  const names = [
-    ...Object.entries(WEAPON_UNLOCKS)
-      .filter(([, milestone]) => milestone === id)
-      .map(([weapon]) => WEAPONS[weapon as WeaponId].name),
-    ...(Object.keys(CHARACTERS) as CharacterId[])
-      .filter((c) => {
-        const unlock = CHARACTERS[c].unlock;
-        return unlock.kind === 'milestone' && unlock.milestone === id;
-      })
-      .map((c) => CHARACTERS[c].name),
-  ];
-  return names.length > 0 ? `Now available: ${names.join(', ')}.` : '';
-}
-
-function testHooks(): { seed: number; speed: number; boss: number | null } {
-  const params = new URLSearchParams(window.location.search);
-  const seed = Number(params.get('seed'));
-  const speed = Number(params.get('speed'));
-  const boss = params.has('boss') ? Number(params.get('boss')) : NaN;
-  return {
-    seed: Number.isInteger(seed) && seed > 0 ? seed : freshSeed(),
-    speed: Number.isFinite(speed) && speed >= 1 ? Math.min(speed, 50) : 1,
-    boss: Number.isFinite(boss) && boss >= 0 ? boss * 1000 : null,
-  };
-}
 
 /** A sound for a cat of any kind: a variety sounds like the first xenocat type. */
 const typeOf = (type: number) => CAT_TYPES[type] ?? CAT_TYPES[0];
@@ -240,7 +213,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   );
 
   const start = () => {
-    const { seed, speed, boss } = testHooks();
+    const { seed, speed, boss } = parseTestHooks(window.location.search, freshSeed);
     speedRef.current = speed;
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.

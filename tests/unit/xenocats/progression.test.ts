@@ -22,6 +22,7 @@ import {
   runConfig,
   serializeProgress,
   tuftsFor,
+  unlockedBy,
   upgradeCost,
   writeProgress,
 } from '@/app/ui/xenocats/progression';
@@ -438,5 +439,14 @@ describe('storage', () => {
       expect(readProgress()).toEqual(freshProgress());
       expect(() => writeProgress(sample)).not.toThrow();
     });
+  });
+});
+
+describe('what a milestone unlocks, as the results say it', () => {
+  it('names each weapon and character a milestone brings', () => {
+    expect(unlockedBy('survive-2')).toBe('Now available: The Night Porter.');
+    expect(unlockedBy('survive-3')).toBe('Now available: Thunderous Vacuum.');
+    expect(unlockedBy('send-1000')).toBe('Now available: Laser Pointer Deluxe.');
+    expect(unlockedBy('level-20')).toBe('Now available: Hairball.');
   });
 });

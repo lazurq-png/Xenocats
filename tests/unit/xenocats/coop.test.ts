@@ -340,6 +340,36 @@ describe('downed and revived', () => {
     expect(jumps).toBeGreaterThan(3);
   });
 
+  it('Laser Cat shots pass over a downed Keeper', () => {
+    // Only Laser Cats; player 2 is frail; they stand side by side, so shots at
+    // player 1 cross where player 2 lies.
+    const a = coop({
+      escalation: [[0, 30]],
+      startingWeapons: [],
+      secondPlayer: { startingWeapons: [], speed: 210, resolve: 5 },
+      schedule: {
+        arrivals: [{ from: 0, who: 'laser', weight: 1 }],
+        swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+        bosses: [],
+      },
+    });
+    while (!a.state().heroes[1].down && a.state().time < 60_000) a.step(still, true, still);
+    expect(a.state().heroes[1].down).toBe(true);
+    a.drainEvents();
+    const reach = ARENA_CONFIG.hero.reach / 2 + ARENA_CONFIG.laserCat.shotRadius;
+    let crossed = 0;
+    for (let n = 0; n < 1200; n++) {
+      a.step(still, true, still);
+      for (const e of a.drainEvents()) {
+        if (e.kind === 'hero-hit') expect(e.player, 'a shot hit the downed Keeper').toBe(0);
+        if (e.kind === 'revived') return expect(crossed).toBeGreaterThan(0);
+      }
+      const down = a.state().heroes[1];
+      if (a.shots().some((s) => Math.hypot(s.x - down.x, s.y - down.y) <= reach)) crossed++;
+    }
+    expect(crossed).toBeGreaterThan(0);
+  });
+
   it('the run ends when both are down; the results know both', () => {
     const a = coop({
       escalation: [[0, 60]],

@@ -46,6 +46,22 @@ export const WEAPON_UNLOCKS: Readonly<Partial<Record<WeaponId, MilestoneId>>> = 
   hairball: 'level-20',
 };
 
+/** What a milestone unlocks, in a sentence (or nothing). */
+export function unlockedBy(id: MilestoneId): string {
+  const names = [
+    ...Object.entries(WEAPON_UNLOCKS)
+      .filter(([, milestone]) => milestone === id)
+      .map(([weapon]) => WEAPONS[weapon as WeaponId].name),
+    ...(Object.keys(CHARACTERS) as CharacterId[])
+      .filter((c) => {
+        const unlock = CHARACTERS[c].unlock;
+        return unlock.kind === 'milestone' && unlock.milestone === id;
+      })
+      .map((c) => CHARACTERS[c].name),
+  ];
+  return names.length > 0 ? `Now available: ${names.join(', ')}.` : '';
+}
+
 // ------------------------------------------------------------------ the Tailor
 
 export type UpgradeId = 'stubbornness' | 'sternness' | 'brisk-step' | 'long-arms' | 'second-wind';
