@@ -18,7 +18,9 @@ database skip when no `POSTGRES_URL` is configured, or with `E2E_NO_DATABASE=1`
 suite at once drop it under each other. The queries in `app/lib/data.ts` are
 tested in Vitest by `tests/unit/data.test.ts`, against its own schema
 (`xenocats_vitest`, rebuilt when the file runs), so they never meet the browser
-tests' rows; it skips the same way.
+tests' rows. That file is opt-in: it runs only with `DATABASE_TESTS=1` (CI's
+"Database tests" step sets it), so a plain `npm test` never touches a
+database; opted in, it skips the same way.
 
 ---
 

@@ -11,12 +11,14 @@ import { formatCurrency } from '@/app/lib/utils';
 // real database: its own schema,
 // `xenocats_vitest`, on the server POSTGRES_URL names (the environment's, else
 // .env's), rebuilt from db/migrations and the seed before this file runs. The
-// browser tests use `xenocats_test`, so the two suites never meet. Like them,
-// these skip without a URL, or with E2E_NO_DATABASE=1 (the server is unreachable).
+// browser tests use `xenocats_test`, so the two suites never meet.
+// Opt-in: they run only with DATABASE_TESTS=1 (CI's "Database tests" step sets
+// it), so a plain `npm test` never touches a database. Even then they skip
+// without a URL, or with E2E_NO_DATABASE=1 (the server is unreachable).
 // The expected values are worked out from the seed (placeholder-data.ts).
 
 function databaseUrl(schema: string): string | null {
-  if (process.env.E2E_NO_DATABASE) return null;
+  if (process.env.DATABASE_TESTS !== '1' || process.env.E2E_NO_DATABASE) return null;
   let base = process.env.POSTGRES_URL;
   if (!base) {
     try {

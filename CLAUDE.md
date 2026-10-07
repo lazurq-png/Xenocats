@@ -269,11 +269,14 @@ instead, which needs an existing `npm run build`. `next dev` also (re-)adds a Ne
 to `AGENTS.md` when it detects an AI agent, and flips `next-env.d.ts` between
 its dev and build variants; neither is part of a task's change.
 
-`npm test` includes `tests/unit/data.test.ts`, which runs every query in
-`app/lib/data.ts` against a real database: it drops and rebuilds its own
+`tests/unit/data.test.ts` runs every query in `app/lib/data.ts` against a real
+database, and is **opt-in**: it runs only with `DATABASE_TESTS=1`
+(`DATABASE_TESTS=1 npx vitest run tests/unit/data`), so a plain `npm test`
+never touches a database. Opted in, it drops and rebuilds its own
 `xenocats_vitest` schema (and a scratch `xenocats_vitest_migrations`) on the
-server `POSTGRES_URL` names, and skips like the browser tests do — no URL, or
-`E2E_NO_DATABASE=1`. In CI it runs in the *build* job, which has a database.
+server `POSTGRES_URL` names, and still skips like the browser tests do — no
+URL, or `E2E_NO_DATABASE=1`. In CI the *build* job's "Database tests" step sets
+it, on that job's database.
 
 `lint` exits non-zero on **errors only**; warnings print without failing, so a
 clean exit does not mean an empty report. Read the output; do not report "lint

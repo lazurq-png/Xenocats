@@ -162,6 +162,8 @@ jobs:
       - name: Database tests
         if: ${{ !cancelled() && steps.database.outcome == 'success' }}
         run: npx vitest run tests/unit/data
+        env:
+          DATABASE_TESTS: '1'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
