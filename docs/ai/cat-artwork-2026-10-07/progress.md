@@ -4,7 +4,7 @@ Supervised session, finishing the leftovers of
 [`../cat-artwork-2026-10-06/progress.md`](../cat-artwork-2026-10-06/progress.md).
 Superdesign project **"Xenocat cats"** (`b121e4aa-a80f-464b-99ef-b581b0582d0c`),
 `bytedance/seedream-5.0-lite`, 6 credits an image. The credits had reset to 100;
-11 images were generated (66 credits), **34 are left**.
+13 images were generated (78 credits), **22 are left**.
 
 ## Done
 
@@ -59,9 +59,21 @@ also re-keyed with `--hole` to clear a white patch between tail and body.
   showing) and after it, and the asleep summons of Hypno Rex, Pinball Devon,
   Laser Ocicat and Gravity Manx. Not checked at phone width.
 
+## Follow-up fixes
+
+- **Laser Ocicat asleep** came out striped, not spotted: regenerated (`263ee843`
+  → `423c9bb3-93b4-4e17-9bf7-07796e89473f`), "round thumbprint spots, like a
+  leopard or ocelot … spots only, no stripes", keyed with `--erode 2`.
+- **Pinball Devon asleep** had smaller ears than awake: regenerated (`6c0273ab`
+  → `d74a0bd6-fcea-4dda-87f5-9cfd2749d646`), "huge ears, each nearly as tall as
+  its head, standing up even while it sleeps".
+- **Gravity Manx** was orange (hue ~20°) rather than its golden ochre
+  (`#a16207`, ~40°): both poses recoloured without a generation by
+  `recolor.cjs … 12` on the keyed files (18° turned it olive). Re-key from the
+  source JPG and recolour once if they are ever rebuilt.
+
+Unit tests (`tests/unit/xenocats`) rerun after these.
+
 ## Left
 
-- Laser Ocicat asleep came out striped rather than spotted, and Pinball Devon
-  asleep has smaller ears than awake. Both read as the same cat; regenerate only
-  if they bother someone (6 credits each).
-- Gravity Manx is a deeper orange than its palette's golden ochre (`#a16207`).
+Nothing known.
