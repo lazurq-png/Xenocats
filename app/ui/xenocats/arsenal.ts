@@ -1,8 +1,9 @@
 // What the Keeper can carry in Survival (arena.ts): nine weapons that fire on their
 // own, up to level 8, and passives that make him or his weapons better, up to level
 // 5; at most six of each. Each level-up offers three choices (four with the Lucky
-// Bell), drawn from what he does not yet have at its highest level. Pure data and
-// rules, no DOM: arena.ts makes the weapons fire.
+// Bell), drawn from what he does not yet have at its highest level. A weapon at its
+// highest level, held with its passive, evolves when he opens a chest (EVOLUTIONS).
+// Pure data and rules, no DOM: arena.ts makes the weapons fire.
 
 import type { Random } from './random';
 
@@ -20,7 +21,11 @@ export type WeaponId =
   | 'can-opener'
   | 'hairball'
   | 'thunderous-vacuum'
-  | 'laser-pointer-deluxe';
+  | 'laser-pointer-deluxe'
+  // Evolved: never offered, only reached by evolution.
+  | 'infinite-laser'
+  | 'forbidden-catnip-vacuum'
+  | 'yarn-apocalypse';
 
 export type PassiveId =
   | 'rubber-chicken'
@@ -52,6 +57,11 @@ export type WeaponStats = {
 };
 
 type Growth = { [K in keyof WeaponStats]: readonly [number, number] };
+
+/** One set of stats at every level: an evolved weapon does not grow. */
+function fixed(stats: WeaponStats): WeaponStats[] {
+  return Array.from({ length: MAX_WEAPON_LEVEL }, () => stats);
+}
 
 /** Level 1 at the first value, level 8 at the second, evenly between; counts rounded down. */
 function levels(growth: Growth): WeaponStats[] {
@@ -89,7 +99,11 @@ export type WeaponKind =
   /** A zone round him. */
   | 'zone'
   /** A beam that jumps from cat to cat. */
-  | 'chain';
+  | 'chain'
+  /** Beams at every cat near him, joined to one another, all the time. */
+  | 'web'
+  /** Pulls every cat far round him in, then sends those close home at once. */
+  | 'gulp';
 
 export type WeaponInfo = {
   name: string;
@@ -226,7 +240,86 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       pierce: [99, 99],
     }),
   },
+  'infinite-laser': {
+    name: 'Infinite Laser',
+    description: 'The red dot, without end. The screen is a web of it.',
+    kind: 'web',
+    levels: fixed({
+      cooldownMs: 150,
+      damage: 22,
+      area: 520,
+      count: 14,
+      speed: 0,
+      durationMs: 180,
+      pierce: 99,
+    }),
+  },
+  'forbidden-catnip-vacuum': {
+    name: 'Forbidden Catnip Vacuum',
+    description:
+      'It should not exist. It draws in every cat for a long way, then sends them all home.',
+    kind: 'gulp',
+    levels: fixed({
+      cooldownMs: 4000,
+      // Given once, at the burst, to every cat close to him.
+      damage: 600,
+      // How far it pulls from.
+      area: 560,
+      count: 1,
+      // The share of the way each cat is drawn in.
+      speed: 0.85,
+      // From the pull to the burst, ms.
+      durationMs: 700,
+      pierce: 99,
+    }),
+  },
+  'yarn-apocalypse': {
+    name: 'Yarn Apocalypse',
+    description: 'The yarn splits each time it bounces. Nobody will ever wind it up again.',
+    kind: 'bounce',
+    levels: fixed({
+      cooldownMs: 2600,
+      damage: 30,
+      area: 16,
+      count: 4,
+      speed: 380,
+      durationMs: 6000,
+      // How many times each ball splits, at most.
+      pierce: 4,
+    }),
+  },
 };
+
+/** A weapon at its highest level and its passive, held together, become another. */
+export type Evolution = { from: WeaponId; with: PassiveId; to: WeaponId };
+
+export const EVOLUTIONS: readonly Evolution[] = [
+  { from: 'laser-pointer', with: 'battery', to: 'infinite-laser' },
+  { from: 'vacuum-cleaner', with: 'catnip', to: 'forbidden-catnip-vacuum' },
+  { from: 'yarn-ball', with: 'scissors', to: 'yarn-apocalypse' },
+];
+
+/** The weapons a level-up may offer: all but the evolved ones. */
+export const BASE_WEAPONS: readonly WeaponId[] = (Object.keys(WEAPONS) as WeaponId[]).filter(
+  (id) => !EVOLUTIONS.some((e) => e.to === id)
+);
+
+/** The evolution a chest opened now would bring, if any: the first that is ready. */
+export function evolutionFor(
+  weapons: ReadonlyMap<WeaponId, number>,
+  passives: ReadonlyMap<PassiveId, number>
+): Evolution | null {
+  for (const evolution of EVOLUTIONS) {
+    if (
+      weapons.get(evolution.from) === MAX_WEAPON_LEVEL &&
+      (passives.get(evolution.with) ?? 0) > 0 &&
+      !weapons.has(evolution.to)
+    ) {
+      return evolution;
+    }
+  }
+  return null;
+}
 
 export type PassiveInfo = {
   name: string;
@@ -346,10 +439,12 @@ export function offerChoices(
   passives: ReadonlyMap<PassiveId, number>,
   count: number,
   random: Random,
-  available: readonly WeaponId[] = Object.keys(WEAPONS) as WeaponId[]
+  available: readonly WeaponId[] = BASE_WEAPONS
 ): Choice[] {
   const pool: Choice[] = [];
   for (const id of available) {
+    // A weapon that has evolved is gone for good: its evolution holds its place.
+    if (EVOLUTIONS.some((e) => e.from === id && weapons.has(e.to))) continue;
     const level = weapons.get(id);
     if (level === undefined) {
       if (weapons.size < WEAPON_SLOTS) pool.push({ kind: 'weapon', id, level: 1 });
@@ -382,4 +477,9 @@ export function describeChoice(choice: Choice): { name: string; description: str
     name: choice.level === 1 ? info.name : `${info.name}, level ${choice.level}`,
     description: info.description,
   };
+}
+
+/** An evolution, announced with due gravity. */
+export function evolutionText(from: WeaponId, to: WeaponId): string {
+  return `The ${WEAPONS[from].name} is no more. In its place: the ${WEAPONS[to].name}.`;
 }

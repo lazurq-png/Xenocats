@@ -20,12 +20,14 @@
 
 import {
   type Choice,
+  MAX_WEAPON_LEVEL,
   type Modifiers,
   type PassiveId,
   WEAPONS,
   type WeaponId,
   type WeaponKind,
   type WeaponStats,
+  evolutionFor,
   modifiers,
   offerChoices,
   weaponStats,
@@ -87,6 +89,8 @@ export type ArenaConfig = {
   firstShotMs: number;
   /** The level they start at (a test's way to try a weapon at its best). */
   startingLevel: number;
+  /** Passives he starts with, at level 1. */
+  startingPassives: readonly PassiveId[];
   gems: {
     /** Gems this near (times Long Whiskers) fly to him, px. */
     pickup: number;
@@ -148,6 +152,7 @@ export const ARENA_CONFIG: ArenaConfig = {
   startingWeapons: ['laser-pointer'],
   firstShotMs: 550,
   startingLevel: 1,
+  startingPassives: [],
   gems: { pickup: 100, speed: 520, value: 1, eliteValue: 6, cap: 1500 },
   matriarch: { speed: 330, reach: 70 },
   schedule: SCHEDULE,
@@ -244,7 +249,15 @@ export type Projectile = {
   until: number;
   /** The cats it has touched (by id), each only once. */
   touched: number[];
+  /** How many more times it splits when it bounces (the Yarn Apocalypse's). */
+  splits: number;
 };
+
+/** The Yarn Apocalypse's balls stop splitting at this many at once. */
+export const YARN_APOCALYPSE_CAP = 96;
+
+/** The Forbidden Catnip Vacuum's burst: cats this close to him go home, px (before Catnip). */
+export const GULP_BURST_RADIUS = 170;
 
 export type Gem = { x: number; y: number; value: number };
 
@@ -255,6 +268,7 @@ export type ArenaEvent =
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
+  | { kind: 'evolution'; from: WeaponId; to: WeaponId }
   | { kind: 'fired'; weapon: WeaponId }
   | { kind: 'matriarch' }
   | { kind: 'over'; outcome: ArenaOutcome };
@@ -312,11 +326,13 @@ export function createArena(options: {
   for (const id of config.startingWeapons) {
     weapons.set(id, { level: config.startingLevel, readyAt: config.firstShotMs });
   }
-  const passives = new Map<PassiveId, number>();
+  const passives = new Map<PassiveId, number>(config.startingPassives.map((id) => [id, 1]));
   let mods: Modifiers = modifiers(passives);
   const projectiles: Projectile[] = [];
   const spareProjectiles: Projectile[] = [];
   const beams: { from: Vec; to: Vec; until: number }[] = [];
+  // The Forbidden Catnip Vacuum's burst, when it comes (after its pull).
+  let gulpAt = Infinity;
   // Experience.
   const gems: Gem[] = [];
   let xp = 0;
@@ -695,9 +711,10 @@ export function createArena(options: {
     return length < 0.5 ? { x: hero.facing, y: 0 } : { x: dx / length, y: dy / length };
   }
 
-  function launch(p: Omit<Projectile, 'touched'>) {
+  function launch(p: Omit<Projectile, 'touched' | 'splits'> & { splits?: number }) {
     const projectile = spareProjectiles.pop() ?? ({ touched: [] } as unknown as Projectile);
     Object.assign(projectile, p);
+    projectile.splits = p.splits ?? 0;
     projectile.touched.length = 0;
     projectiles.push(projectile);
   }
@@ -729,6 +746,37 @@ export function createArena(options: {
         from = to;
       }
       return hit.size > 0;
+    }
+    if (kind === 'web') {
+      // Beams at every cat near him, each joined to the next: a web, all the time.
+      const targets = nearest(hero, s.area, s.count);
+      if (targets.length === 0) return false;
+      let from: Vec | null = null;
+      for (const i of targets) {
+        const cat = cats[i];
+        const way = aim(cat);
+        // Still a laser: whatever refuses lasers refuses this.
+        beam(hero, way.x, way.y, s.area, 16, s.damage);
+        const to = { x: cat.x, y: cat.y };
+        if (from) beams.push({ from, to, until: time + s.durationMs });
+        from = to;
+      }
+      return true;
+    }
+    if (kind === 'gulp') {
+      const targets = within(hero, s.area);
+      if (targets.length === 0) return false;
+      for (const i of targets) {
+        const cat = cats[i];
+        const d = Math.hypot(cat.x - hero.x, cat.y - hero.y);
+        const keep = Math.max(d * (1 - s.speed), reachOf(cat) + 6);
+        if (d > keep) {
+          cat.x = hero.x + ((cat.x - hero.x) * keep) / d;
+          cat.y = hero.y + ((cat.y - hero.y) * keep) / d;
+        }
+      }
+      gulpAt = time + s.durationMs;
+      return true;
     }
     if (kind === 'pull') {
       const targets = within(hero, s.area);
@@ -791,6 +839,8 @@ export function createArena(options: {
           vy: Math.sin(turn) * s.speed,
           pierce: Infinity,
           until: time + s.durationMs,
+          // The Yarn Apocalypse's "pierce" is how often each ball splits.
+          splits: id === 'yarn-apocalypse' ? s.pierce : 0,
         });
       }
       return true;
@@ -807,6 +857,15 @@ export function createArena(options: {
   }
 
   function swingWeapons(dt: number) {
+    if (time >= gulpAt) {
+      gulpAt = Infinity;
+      const gulp = weapons.get('forbidden-catnip-vacuum');
+      if (gulp) {
+        const s = weaponStats('forbidden-catnip-vacuum', gulp.level, mods);
+        for (const i of within(hero, GULP_BURST_RADIUS * mods.area))
+          hurt(cats[i], s.damage, 'gulp');
+      }
+    }
     for (const [id, held] of weapons) {
       const s = weaponStats(id, held.level, mods);
       const kind = WEAPONS[id].kind;
@@ -824,6 +883,12 @@ export function createArena(options: {
     }
   }
 
+  function yarnApocalypseBalls() {
+    let n = 0;
+    for (const p of projectiles) if (p.weapon === 'yarn-apocalypse') n++;
+    return n;
+  }
+
   function moveProjectiles(dt: number) {
     const left = hero.x - viewport.width / 2;
     const top = hero.y - viewport.height / 2;
@@ -831,12 +896,40 @@ export function createArena(options: {
       const p = projectiles[n];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      if (p.weapon === 'yarn-ball') {
+      if (p.weapon === 'yarn-ball' || p.weapon === 'yarn-apocalypse') {
         // Off the edges of the screen, as he walks.
-        if (p.x < left || p.x > left + viewport.width)
+        let bounced = false;
+        if (p.x < left || p.x > left + viewport.width) {
           p.vx = Math.sign(hero.x - p.x) * Math.abs(p.vx);
-        if (p.y < top || p.y > top + viewport.height)
+          bounced = true;
+        }
+        if (p.y < top || p.y > top + viewport.height) {
           p.vy = Math.sign(hero.y - p.y) * Math.abs(p.vy);
+          bounced = true;
+        }
+        // The Apocalypse's balls split in two where they bounce, up to a limit.
+        if (bounced && p.splits > 0 && yarnApocalypseBalls() < YARN_APOCALYPSE_CAP) {
+          p.splits--;
+          // The other half goes off at a right angle, but back onto the screen.
+          let vx = -p.vy;
+          let vy = p.vx;
+          if (p.x < left || p.x > left + viewport.width)
+            vx = Math.sign(hero.x - p.x) * Math.abs(vx);
+          if (p.y < top || p.y > top + viewport.height) vy = Math.sign(hero.y - p.y) * Math.abs(vy);
+          launch({
+            weapon: p.weapon,
+            bit: false,
+            x: p.x,
+            y: p.y,
+            vx,
+            vy,
+            radius: p.radius,
+            damage: p.damage,
+            pierce: Infinity,
+            until: p.until,
+            splits: p.splits,
+          });
+        }
       }
       for (const i of within(p, p.radius)) {
         const cat = cats[i];
@@ -902,7 +995,16 @@ export function createArena(options: {
       if (Math.hypot(chest.x - hero.x, chest.y - hero.y) > config.chestReach) continue;
       chests.splice(i, 1);
       events.push({ kind: 'chest', x: chest.x, y: chest.y });
-      pending++;
+      // A weapon ready to evolve does, in its place; otherwise a level-up.
+      const evolution = evolutionFor(
+        new Map([...weapons].map(([id, w]) => [id, w.level] as const)),
+        passives
+      );
+      if (evolution) {
+        weapons.delete(evolution.from);
+        weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
+        events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
+      } else pending++;
     }
     if (pending > 0 && !choosing) offer();
   }

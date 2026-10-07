@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { ARENA_CONFIG, type ArenaConfig, createArena } from '@/app/ui/xenocats/arena';
 import {
+  ARENA_CONFIG,
+  type ArenaConfig,
+  type ArenaEvent,
+  GULP_BURST_RADIUS,
+  YARN_APOCALYPSE_CAP,
+  createArena,
+} from '@/app/ui/xenocats/arena';
+import {
+  BASE_WEAPONS,
+  EVOLUTIONS,
   MAX_PASSIVE_LEVEL,
   MAX_WEAPON_LEVEL,
   PASSIVES,
@@ -10,6 +19,8 @@ import {
   WEAPON_SLOTS,
   type WeaponId,
   describeChoice,
+  evolutionFor,
+  evolutionText,
   modifiers,
   offerChoices,
   weaponStats,
@@ -176,7 +187,7 @@ describe('every weapon, at level 1 and at its top level', () => {
     return { sent: a.state().sentHome, a };
   }
 
-  for (const id of ALL_WEAPONS) {
+  for (const id of BASE_WEAPONS) {
     it(`${id}: grows stronger with its levels, and sends cats home at both`, () => {
       const one = weaponStats(id, 1, none);
       const top = weaponStats(id, MAX_WEAPON_LEVEL, none);
@@ -444,4 +455,218 @@ describe('levels in a run', () => {
     // Many attacks alive at once: things in flight, beams, blades.
     expect(most).toBeGreaterThan(30);
   }, 60_000);
+});
+
+describe('evolution', () => {
+  type Run = ReturnType<typeof arena>;
+
+  /** A run where every cat is an elite (each leaves a chest), nothing levels up. */
+  function ready(weapon: WeaponId, level: number, passives: PassiveId[], chestReach = 36) {
+    return arena({
+      ...steady,
+      chestReach,
+      startingWeapons: [weapon],
+      startingLevel: level,
+      startingPassives: passives,
+      escalation: [[0, 20]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 1 },
+    });
+  }
+
+  /** He walks to the nearest chest until he opens one; the events of that step. */
+  function openChest(a: Run): ArenaEvent[] {
+    while (a.state().time < 120_000) {
+      const { x, y } = a.state().hero;
+      const [chest] = [...a.chests()].sort(
+        (p, q) => Math.hypot(p.x - x, p.y - y) - Math.hypot(q.x - x, q.y - y)
+      );
+      let input = still;
+      if (chest) {
+        const d = Math.hypot(chest.x - x, chest.y - y) || 1;
+        input = { x: (chest.x - x) / d, y: (chest.y - y) / d };
+      }
+      a.step(input);
+      const events = a.drainEvents();
+      if (events.some((e) => e.kind === 'chest')) return events;
+    }
+    throw new Error('no chest opened');
+  }
+
+  const held = (a: Run) => new Map(a.state().weapons.map((w) => [w.id, w.level] as const));
+
+  for (const { from, with: passive, to } of EVOLUTIONS) {
+    describe(`${WEAPONS[from].name} + ${PASSIVES[passive].name} → ${WEAPONS[to].name}`, () => {
+      it('at its top level, with the passive, a chest evolves it in its place', () => {
+        const a = ready(from, MAX_WEAPON_LEVEL, [passive]);
+        const events = openChest(a);
+        expect(events).toContainEqual({ kind: 'evolution', from, to });
+        expect(held(a).has(from)).toBe(false);
+        expect(held(a).get(to)).toBe(MAX_WEAPON_LEVEL);
+        // The chest went to the evolution: no level-up waits.
+        expect(a.choices()).toBeNull();
+      });
+
+      it('one level short, the chest is a level-up instead', () => {
+        const a = ready(from, MAX_WEAPON_LEVEL - 1, [passive]);
+        const events = openChest(a);
+        expect(events.some((e) => e.kind === 'evolution')).toBe(false);
+        expect(held(a).get(from)).toBe(MAX_WEAPON_LEVEL - 1);
+        expect(a.choices()).not.toBeNull();
+      });
+
+      it('without the passive, the chest is a level-up instead', () => {
+        const a = ready(from, MAX_WEAPON_LEVEL, []);
+        const events = openChest(a);
+        expect(events.some((e) => e.kind === 'evolution')).toBe(false);
+        expect(held(a).get(from)).toBe(MAX_WEAPON_LEVEL);
+        expect(a.choices()).not.toBeNull();
+      });
+
+      it('without a chest, nothing evolves', () => {
+        const a = ready(from, MAX_WEAPON_LEVEL, [passive], -1);
+        while (a.state().time < 30_000) a.step(still);
+        expect(a.drainEvents().some((e) => e.kind === 'evolution')).toBe(false);
+        expect(held(a).get(from)).toBe(MAX_WEAPON_LEVEL);
+      });
+    });
+  }
+
+  it('the rules alone: the top level, the passive held, and not evolved already', () => {
+    const top = new Map<WeaponId, number>([['laser-pointer', MAX_WEAPON_LEVEL]]);
+    const battery = new Map<PassiveId, number>([['battery', 1]]);
+    expect(evolutionFor(top, battery)?.to).toBe('infinite-laser');
+    expect(evolutionFor(new Map([['laser-pointer', 7]]), battery)).toBeNull();
+    expect(evolutionFor(top, new Map([['catnip', 5]]))).toBeNull();
+    const both = new Map<WeaponId, number>([...top, ['infinite-laser', MAX_WEAPON_LEVEL]]);
+    expect(evolutionFor(both, battery)).toBeNull();
+  });
+
+  it('an evolved weapon is never offered at a level-up', () => {
+    for (const { to } of EVOLUTIONS) expect(BASE_WEAPONS).not.toContain(to);
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const choice of offerChoices(new Map(), new Map(), 4, createRandom(seed))) {
+        if (choice.kind === 'weapon') expect(BASE_WEAPONS).toContain(choice.id);
+      }
+    }
+    // Held, it is at its top level: never offered again either.
+    const evolved = new Map<WeaponId, number>([['infinite-laser', MAX_WEAPON_LEVEL]]);
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const choice of offerChoices(evolved, new Map(), 4, createRandom(seed))) {
+        expect(choice.kind === 'weapon' && choice.id === 'infinite-laser').toBe(false);
+      }
+    }
+  });
+
+  it('once evolved, the weapon it was is never offered again', () => {
+    for (const { from, to } of EVOLUTIONS) {
+      const held = new Map<WeaponId, number>([[to, MAX_WEAPON_LEVEL]]);
+      for (let seed = 1; seed <= 60; seed++) {
+        for (const choice of offerChoices(held, new Map(), 4, createRandom(seed))) {
+          expect(choice.kind === 'weapon' && choice.id === from, `${from} offered`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('an evolution announces itself in the game’s voice', () => {
+    expect(evolutionText('yarn-ball', 'yarn-apocalypse')).toBe(
+      'The Yarn Ball is no more. In its place: the Yarn Apocalypse.'
+    );
+  });
+
+  /** A run with only `id`, many cats that never go home unless it sends them. */
+  function evolved(id: WeaponId, cats = 80, homesickness: [number, number] = [1e9, 1e9]) {
+    return arena({
+      ...steady,
+      startingWeapons: [id],
+      startingLevel: MAX_WEAPON_LEVEL,
+      escalation: [[0, cats]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness },
+    });
+  }
+
+  it('the Infinite Laser: beams at many cats at once, joined into a web, over and over', () => {
+    const a = evolved('infinite-laser');
+    const s = weaponStats('infinite-laser', MAX_WEAPON_LEVEL, none);
+    let most = 0;
+    let webbed = false;
+    const firings: number[] = [];
+    while (a.state().time < 20_000) {
+      a.step(still);
+      const events = a.drainEvents();
+      if (!events.some((e) => e.kind === 'fired')) continue;
+      firings.push(a.state().time);
+      most = Math.max(most, events.filter((e) => e.kind === 'laser').length);
+      const { x, y } = a.state().hero;
+      // Some beams run cat to cat, not from him.
+      if (a.beams().some((b) => Math.hypot(b.from.x - x, b.from.y - y) > 1)) webbed = true;
+    }
+    expect(most).toBe(s.count);
+    expect(webbed).toBe(true);
+    // Fired again and again: never more than a moment apart once cats are near.
+    const late = firings.filter((t) => t > 10_000);
+    for (let i = 1; i < late.length; i++) {
+      expect(late[i] - late[i - 1]).toBeLessThanOrEqual(s.cooldownMs + a.config.stepMs);
+    }
+    expect(late.length).toBeGreaterThan(30);
+  });
+
+  it('the Forbidden Catnip Vacuum: draws in cats from far off, then sends them home together', () => {
+    // Cats that need a lot, but not a burst's worth.
+    const a = evolved('forbidden-catnip-vacuum', 80, [300, 300]);
+    const s = weaponStats('forbidden-catnip-vacuum', MAX_WEAPON_LEVEL, none);
+    let pulledFar = false;
+    let mostAtOnce = 0;
+    while (a.state().time < 30_000) {
+      const before = new Map(a.cats().map((c) => [c.id, Math.hypot(c.x, c.y)]));
+      const sentBefore = a.state().sentHome;
+      a.step(still);
+      const events = a.drainEvents();
+      if (events.some((e) => e.kind === 'fired')) {
+        // At the pull: cats well beyond the burst came within it.
+        for (const cat of a.cats()) {
+          const was = before.get(cat.id) ?? 0;
+          if (was > s.area * 0.6 && Math.hypot(cat.x, cat.y) < GULP_BURST_RADIUS) pulledFar = true;
+        }
+      }
+      mostAtOnce = Math.max(mostAtOnce, a.state().sentHome - sentBefore);
+    }
+    expect(pulledFar).toBe(true);
+    expect(mostAtOnce).toBeGreaterThanOrEqual(10);
+  });
+
+  it('the Yarn Apocalypse: its balls split as they bounce, up to a limit', () => {
+    const a = evolved('yarn-apocalypse');
+    const s = weaponStats('yarn-apocalypse', MAX_WEAPON_LEVEL, none);
+    let most = 0;
+    while (a.state().time < 30_000) {
+      a.step(still);
+      const balls = a.projectiles().filter((p) => p.weapon === 'yarn-apocalypse').length;
+      most = Math.max(most, balls);
+      expect(balls).toBeLessThanOrEqual(YARN_APOCALYPSE_CAP + s.count);
+    }
+    expect(most).toBeGreaterThan(s.count * 4);
+  });
+
+  it('the Yarn Apocalypse: a ball past the edge, and the half it splits off, head back in', () => {
+    const a = evolved('yarn-apocalypse');
+    const { width, height } = viewport;
+    let outside = 0;
+    while (a.state().time < 20_000) {
+      a.step(still);
+      for (const p of a.projectiles()) {
+        if (p.weapon !== 'yarn-apocalypse') continue;
+        // He stands at the origin: the screen is centred on him.
+        if (Math.abs(p.x) > width / 2) {
+          outside++;
+          expect(Math.sign(p.vx)).toBe(-Math.sign(p.x));
+        }
+        if (Math.abs(p.y) > height / 2) {
+          outside++;
+          expect(Math.sign(p.vy)).toBe(-Math.sign(p.y));
+        }
+      }
+    }
+    expect(outside).toBeGreaterThan(0);
+  });
 });

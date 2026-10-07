@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { Button } from '@/app/ui/button';
 import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
 import { HERO_SVG, VARIETY_SVG } from './arena-art';
-import { type Choice, describeChoice } from './arsenal';
+import { type Choice, describeChoice, evolutionText } from './arsenal';
 import { SURVIVAL_BEST_KEY, bestOf, clockText, readBest, writeBest } from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
@@ -38,8 +38,12 @@ const SHOT_COLOR: Record<string, string> = {
   'cat-treats': '#fbbf24',
   'spray-bottle': '#7dd3fc',
   'yarn-ball': '#f472b6',
+  'yarn-apocalypse': '#ec4899',
   hairball: '#a8865b',
 };
+
+/** How long an evolution's announcement stays, ms. */
+const NOTICE_MS = 5000;
 
 /** Cats drawn this size, px. */
 const CAT_SIZE = 44;
@@ -125,6 +129,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const [choices, setChoices] = useState<Choice[] | null>(null);
   // The level the waiting choice is for (several can wait after one gem).
   const [choiceLevel, setChoiceLevel] = useState(2);
+  // An evolution's announcement, for a few seconds.
+  const [notice, setNotice] = useState<string | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
   const best = useSyncExternalStore(subscribeBest, readBest, () => null);
   const arenaRef = useRef<Arena | null>(null);
@@ -174,6 +180,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           : { schedule: { ...SCHEDULE, bosses: [boss, ...SCHEDULE.bosses].sort((a, b) => a - b) } },
     });
     setOutcome(null);
+    setNotice(null);
     setHud(null);
     show('playing');
   };
@@ -237,6 +244,12 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       for (const element of marked) element.removeAttribute('inert');
     };
   }, [running]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   // The run: input, the fixed-step loop, drawing, sounds.
   useEffect(() => {
@@ -515,6 +528,9 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           if (player) player.play(soundsFor(CAT_TYPES[titan]).wake);
         } else if (event.kind === 'chest') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
+        } else if (event.kind === 'evolution') {
+          setNotice(evolutionText(event.from, event.to));
+          if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'level-up') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'matriarch' && titan >= 0 && player) {
@@ -721,6 +737,13 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               </div>
             </div>
           )}
+          <p
+            role="status"
+            data-testid="survival-notice"
+            className="pointer-events-none absolute inset-x-0 top-40 px-4 text-center font-display text-lg font-semibold text-plasma"
+          >
+            {notice}
+          </p>
           <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
             <p data-testid="survival-time">
               Time {clockText(hud?.time ?? 0)} / {clockText(ARENA_CONFIG.timeGoalMs)}

@@ -214,3 +214,43 @@ Database reachable (the e2e global setup rebuilt `xenocats_test`).
     - Affected unit tests (`vitest related`): 3 files, 69 passed.
     - Affected browser specs (12, survival included): 92 passed.
   - An earlier gate run stopped at prettier on `decisions.md`. That state file was not prettier-formatted at base, and earlier gates never included it, so it was left out of the rerun.
+
+## T9 — Weapon evolution (completed)
+
+- Branch `night-2026-10-07-t9-evolution`, base `e46787d`. Start 21:01 (budget ~13,911,000); completed 21:17 (budget ~13,828,000).
+- **CI of T8** (`e46787d`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37671323802), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37671324124)).
+- **What the code does**
+  - `app/ui/xenocats/arsenal.ts`:
+    - Three evolved weapons:
+      - **Infinite Laser** (a constant web of beams, joined cat to cat).
+      - **Forbidden Catnip Vacuum** (pulls every cat from far off, then sends those close home at once).
+      - **Yarn Apocalypse** (balls that split at each bounce, up to a limit).
+    - `EVOLUTIONS` pairs Laser Pointer + Battery, Vacuum Cleaner + Catnip and Yarn Ball + Scissors.
+    - `evolutionFor()` checks the conditions: weapon at level 8, passive held, not evolved already.
+    - `BASE_WEAPONS` lists the only weapons a level-up offers. A weapon that has evolved is never offered again.
+    - `evolutionText()` gives the announcement.
+  - `app/ui/xenocats/arena.ts`:
+    - Opening a chest while a pair is ready evolves the weapon in place of the level-up. The evolved weapon takes the base one's place and slot, and an `evolution` event is sent.
+    - New weapon kinds `web` and `gulp`, and the yarn's splitting.
+    - A config-only `startingPassives` for the tests.
+  - `app/ui/xenocats/arena-view.tsx`: the announcement is a `role="status"` line ("The Yarn Ball is no more. In its place: the Yarn Apocalypse."), shown for 5 s with a sound. The Apocalypse's balls are drawn in a deeper pink.
+  - Tests: 20 new in `tests/unit/xenocats/arsenal.test.ts`:
+    - Each pair evolves with all three parts, but not one level short, not without the passive, and not without a chest.
+    - The evolved weapon replaces the base one.
+    - The pure rule, and that neither an evolved weapon nor an evolved-away base weapon is ever offered.
+    - The announcement's text.
+    - Each evolved weapon's behaviour: the web's count, joins and continuity; the vacuum's far pull and its burst of at least 10 cats at once; the yarn splitting beyond its throw and splits heading back onto the screen.
+    - The per-weapon "grows with its levels" test now covers the base weapons only.
+- **Why it was added**: plan task 9 (D51–D55).
+- **Acceptance criteria**
+  - Covered by the unit tests: all of the task's list except the e2e item.
+  - **E2E: none.** As the task allows, evolutions are recorded as covered by unit tests only (D54).
+  - The announcement in the page is **built, not seen**, and not browser-tested.
+  - Checked by reading only: how the evolved weapons look, and their balance.
+- **Drawn by the run**: nothing new. The evolved weapons reuse the beams and the yarn.
+- **Reviewer**: request changes with three findings (Med: the base weapon re-offered after evolving; Low: yarn splits spent at the edge; Low: D52's cap wording). All were fixed, and the two code fixes are tested; both tests failed with the fixes removed (D55). Re-review: approve, no findings.
+- **Gate** (final code; the selection, not FULL, as nothing outside the game changed). All exit 0:
+  - Prettier on 4 files, lint 0 warnings, type check, group check, build.
+  - Affected unit tests: 3 files, 89 passed.
+  - Affected browser specs (12, survival included): 92 passed.
+  - The same gate also passed on the code before the review fixes (87 unit, 92 e2e).
