@@ -6,11 +6,13 @@ import {
   CustomerId,
   InvoiceId,
   UpdateInvoice,
+  addDays,
+  dueDateProblem,
   parseStatusFilter,
 } from '@/app/lib/schemas';
 
 // The actions pass formData.get(...) straight in, so a missing field arrives as null.
-const valid = { customerId: 'c0ffee', amount: '12.50', status: 'paid' };
+const valid = { customerId: 'c0ffee', amount: '12.50', status: 'paid', dueDate: '2026-11-06' };
 
 describe.each([
   ['CreateInvoice', CreateInvoice],
@@ -19,7 +21,12 @@ describe.each([
   it('accepts a valid invoice and coerces the amount to a number', () => {
     const result = schema.safeParse(valid);
     expect(result.success).toBe(true);
-    expect(result.data).toEqual({ customerId: 'c0ffee', amount: 12.5, status: 'paid' });
+    expect(result.data).toEqual({
+      customerId: 'c0ffee',
+      amount: 12.5,
+      status: 'paid',
+      dueDate: '2026-11-06',
+    });
   });
 
   it.each(['0', '-5', null])('rejects amount %s', (amount) => {
@@ -50,6 +57,25 @@ describe.each([
 
   it('rejects a status other than pending or paid', () => {
     expect(schema.safeParse({ ...valid, status: 'overdue' }).success).toBe(false);
+  });
+
+  it('asks for a due date when none is given, or one that is not a date', () => {
+    for (const dueDate of [null, '', '6/11/2026', '2026-11-6', '2026-11-06T00:00']) {
+      const result = schema.safeParse({ ...valid, dueDate });
+      expect(result.error?.flatten().fieldErrors.dueDate, String(dueDate)).toEqual([
+        'Please choose a due date.',
+      ]);
+    }
+  });
+
+  it('refuses a due date that does not exist', () => {
+    for (const dueDate of ['2026-02-30', '2026-13-01', '2025-02-29']) {
+      const result = schema.safeParse({ ...valid, dueDate });
+      expect(result.error?.flatten().fieldErrors.dueDate, dueDate).toEqual([
+        'Please choose a real date.',
+      ]);
+    }
+    expect(schema.safeParse({ ...valid, dueDate: '2028-02-29' }).success).toBe(true);
   });
 
   it('ignores an id or date sent by the client', () => {
@@ -173,5 +199,28 @@ describe('ChangePasswordForm', () => {
     expect(
       errors(form({ newPassword: 'old-password', confirmPassword: 'old-password' })).newPassword
     ).toEqual(['The new password must differ from the current one.']);
+  });
+});
+
+describe('the due date against the invoice date', () => {
+  it('moves a date by days, across months and years', () => {
+    expect(addDays('2026-10-08', 30)).toBe('2026-11-07');
+    expect(addDays('2026-12-15', 30)).toBe('2027-01-14');
+    expect(addDays('2028-02-28', 1)).toBe('2028-02-29');
+  });
+
+  it('may be the invoice date itself, or up to a year after it', () => {
+    expect(dueDateProblem('2026-10-08', '2026-10-08')).toBeNull();
+    expect(dueDateProblem('2026-11-07', '2026-10-08')).toBeNull();
+    expect(dueDateProblem('2027-10-08', '2026-10-08')).toBeNull();
+  });
+
+  it('may not come before it, nor more than a year after it', () => {
+    expect(dueDateProblem('2026-10-07', '2026-10-08')).toBe(
+      'The due date cannot be before the invoice date.'
+    );
+    expect(dueDateProblem('2027-10-09', '2026-10-08')).toBe(
+      'The due date can be at most a year after the invoice date.'
+    );
   });
 });

@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { addDays } from '@/app/lib/schemas';
 
 // Invoice create, edit and delete through the forms, logged in as the demo user,
 // against the test schema global-setup.ts rebuilds. Each test makes its own
@@ -125,6 +126,50 @@ test('an invoice is edited: a bad amount is refused, then the change is saved', 
   await expect(row).toContainText('Amy Burns');
   await expect(row).toContainText('Paid');
   await expect(await rowsFor(page, cents)).toHaveCount(0);
+});
+
+test('an invoice is due when the form says: 30 days by default, never before its date', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await logIn(page);
+  const cents = uniqueCents();
+  // Dated today (the server's date, in UTC, as here).
+  const today = new Date().toISOString().slice(0, 10);
+
+  await openCreateForm(page);
+  const due = page.getByLabel('Due date');
+  await expect(due).toHaveValue(addDays(today, 30));
+  await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
+  await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
+  await page.getByLabel('Pending').check();
+  await due.fill(addDays(today, 45));
+  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
+
+  // Kept: the edit form shows it.
+  await (await rowsFor(page, cents)).getByRole('link', { name: 'Edit' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}\/edit$/);
+  await page.waitForLoadState('networkidle');
+  await expect(due).toHaveValue(addDays(today, 45));
+  const editUrl = page.url();
+
+  // Before the invoice's date: refused, in the field's own error region.
+  await due.fill(addDays(today, -1));
+  await page.getByRole('button', { name: 'Edit Invoice' }).click();
+  await expect(page.locator('#due-date-error')).toHaveText(
+    'The due date cannot be before the invoice date.'
+  );
+  await expect(due).toHaveAttribute('aria-describedby', 'due-date-help due-date-error');
+  await expect(page).toHaveURL(editUrl);
+
+  // A later one is saved.
+  await due.fill(addDays(today, 60));
+  await page.getByRole('button', { name: 'Edit Invoice' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
+  await page.goto(editUrl);
+  await page.waitForLoadState('networkidle');
+  await expect(due).toHaveValue(addDays(today, 60));
 });
 
 test('an invoice is deleted, and stays deleted after a reload', async ({ page }) => {

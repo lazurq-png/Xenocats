@@ -213,6 +213,8 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
         customer_id: seeded.customer_id.toLowerCase(),
         amount: 448,
         status: 'paid',
+        date: seeded.date,
+        due_date: seeded.due_date,
       });
 
       const detail = await data.fetchInvoiceDetail(row.id);

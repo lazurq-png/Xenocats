@@ -22,6 +22,8 @@ vi.mock('next-auth', () => ({
 vi.mock('next/cache', () => ({ revalidatePath }));
 vi.mock('next/navigation', () => ({ redirect }));
 
+const { addDays } = await import('@/app/lib/schemas');
+
 const {
   createInvoice,
   updateInvoice,
@@ -36,7 +38,13 @@ const {
 
 function invoiceForm(fields: Record<string, string> = {}) {
   const form = new FormData();
-  const values = { customerId: 'c0ffee', amount: '12.50', status: 'paid', ...fields };
+  const values = {
+    customerId: 'c0ffee',
+    amount: '12.50',
+    status: 'paid',
+    dueDate: addDays(new Date().toISOString().slice(0, 10), 30),
+    ...fields,
+  };
   for (const [key, value] of Object.entries(values)) form.set(key, value);
   return form;
 }
@@ -91,15 +99,39 @@ describe('without a session', () => {
 describe('with a session', () => {
   beforeEach(() => auth.mockResolvedValue(signedIn));
 
-  it('createInvoice stores the amount in cents and redirects to the list', async () => {
-    await createInvoice({}, invoiceForm());
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  it('createInvoice stores the amount in cents, dated today, due when the form says', async () => {
+    const due = addDays(today(), 45);
+    await createInvoice({}, invoiceForm({ dueDate: due }));
     expect(sql).toHaveBeenCalledTimes(1);
-    // Dated today, and due 30 days after that date (computed by the database).
-    const today = new Date().toISOString().slice(0, 10);
-    expect(sql.mock.calls[0].slice(1)).toEqual(['c0ffee', 1250, 'paid', today, today]);
-    expect(sql.mock.calls[0][0].join('?')).toContain('?, ?::date + 30)');
+    expect(sql.mock.calls[0].slice(1)).toEqual(['c0ffee', 1250, 'paid', today(), due]);
     expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices');
     expect(redirect).toHaveBeenCalledWith('/dashboard/invoices');
+  });
+
+  it('createInvoice refuses a due date before today, or more than a year on, and writes nothing', async () => {
+    const before = await createInvoice({}, invoiceForm({ dueDate: addDays(today(), -1) }));
+    expect(before.errors?.dueDate).toEqual(['The due date cannot be before the invoice date.']);
+    const far = await createInvoice({}, invoiceForm({ dueDate: addDays(today(), 366) }));
+    expect(far.errors?.dueDate).toEqual([
+      'The due date can be at most a year after the invoice date.',
+    ]);
+    expect(sql).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("createInvoice reports the database's own due-date check as the field's error", async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sql.mockRejectedValue(
+      Object.assign(new Error('violates check constraint'), {
+        constraint_name: 'invoices_due_date_check',
+      })
+    );
+    const result = await createInvoice({}, invoiceForm());
+    expect(result.errors?.dueDate).toEqual(['The due date cannot be before the invoice date.']);
+    expect(redirect).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it('createInvoice still validates the form', async () => {
@@ -108,11 +140,50 @@ describe('with a session', () => {
     expect(sql).not.toHaveBeenCalled();
   });
 
-  it('updateInvoice writes and redirects', async () => {
-    await updateInvoice('i1', {}, invoiceForm({ status: 'pending' }));
-    expect(sql).toHaveBeenCalledTimes(1);
-    expect(sql.mock.calls[0].slice(1)).toEqual(['c0ffee', 1250, 'pending', 'i1']);
+  const invoiceId = 'cc27c14a-0acf-4f4a-a6c9-d45682c144b9';
+
+  it("updateInvoice checks the due date against the invoice's own date, writes and redirects", async () => {
+    sql.mockResolvedValueOnce([{ date: '2026-01-10' }]).mockResolvedValueOnce([]);
+    await updateInvoice(invoiceId, {}, invoiceForm({ status: 'pending', dueDate: '2026-03-01' }));
+    expect(sql).toHaveBeenCalledTimes(2);
+    expect(sql.mock.calls[0].slice(1)).toEqual([invoiceId]);
+    expect(sql.mock.calls[1].slice(1)).toEqual([
+      'c0ffee',
+      1250,
+      'pending',
+      '2026-03-01',
+      invoiceId,
+    ]);
     expect(redirect).toHaveBeenCalledWith('/dashboard/invoices');
+  });
+
+  it('updateInvoice refuses a due date before the invoice date, and writes nothing', async () => {
+    sql.mockResolvedValueOnce([{ date: '2026-01-10' }]);
+    const result = await updateInvoice(invoiceId, {}, invoiceForm({ dueDate: '2026-01-09' }));
+    expect(result.errors?.dueDate).toEqual(['The due date cannot be before the invoice date.']);
+    // Only the read of its date.
+    expect(sql).toHaveBeenCalledTimes(1);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('updateInvoice says so when the invoice was deleted between the read and the write', async () => {
+    sql
+      .mockResolvedValueOnce([{ date: '2026-01-10' }])
+      .mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    const result = await updateInvoice(invoiceId, {}, invoiceForm({ dueDate: '2026-02-09' }));
+    expect(result).toEqual({ message: 'No such invoice.' });
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('updateInvoice names no invoice for an id that is not one, or one that does not exist', async () => {
+    expect(await updateInvoice('i1', {}, invoiceForm())).toEqual({ message: 'No such invoice.' });
+    expect(sql).not.toHaveBeenCalled();
+    sql.mockResolvedValueOnce([]);
+    expect(await updateInvoice(invoiceId, {}, invoiceForm())).toEqual({
+      message: 'No such invoice.',
+    });
+    expect(sql).toHaveBeenCalledTimes(1);
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it('deleteInvoice deletes and revalidates the list', async () => {
@@ -276,12 +347,14 @@ describe('amounts in cents', () => {
     await createInvoice({}, invoiceForm({ amount: '10000.37' }));
     expect(sql.mock.calls[0][2]).toBe(1000037);
     sql.mockClear();
+    // The invoice, dated today (its due date is checked against it).
+    sql.mockResolvedValueOnce([{ date: new Date().toISOString().slice(0, 10) }]);
     await updateInvoice(
       'cc27c14a-0acf-4f4a-a6c9-d45682c144b9',
       {},
       invoiceForm({ amount: '0.29' })
     );
-    expect(sql.mock.calls[0][2]).toBe(29);
+    expect(sql.mock.calls[1][2]).toBe(29);
   });
 });
 

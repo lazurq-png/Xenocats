@@ -106,6 +106,9 @@ export type InvoiceForm = {
   customer_id: string;
   amount: number;
   status: 'pending' | 'paid';
+  /** YYYY-MM-DD: its date (the due date cannot be before it), and its due date. */
+  date: string;
+  due_date: string;
 };
 
 /** An invoice and its customer, as the detail page shows them. */

@@ -440,3 +440,40 @@ A new variety whose behaviour changes how a run plays: a cat that purrs, and eve
   - Unit: 5 files, 133 passed.
   - Browser: 96 passed.
   - The gate ran on the code before the review fixes and again after them, passing both times. After the second run only a comment changed (D76); prettier, lint and the type check passed on it.
+
+## T12 item 2 — started 01:37: a due date on the invoice forms (kind: dashboard features)
+
+The 2026-10-01 run's Q4: every invoice is due 30 days after its date, and the forms neither show nor change it. The create and edit forms get a due-date field (30 days by default), validated not before the invoice's date and not absurdly far after it, with the database's check as the last word.
+
+## T12 item 2 — a due date on the invoice forms (completed)
+
+- Branch `night-2026-10-07-t12-2-due-date`, base `b754102`. Start 01:37 (budget ~13,530,000); completed 01:46 (budget ~13,473,000).
+- **CI of T12 item 1** (`b754102`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37702759354), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37702759276)).
+- **What the code does** (D77, D78)
+  - The create and edit invoice forms have a "Due date" field. On create it defaults to 30 days after today, worked out on the server; on edit it shows the stored date. Its errors appear in its own described region.
+  - The Server Actions validate it:
+    - a real calendar date (zod);
+    - not before the invoice's date;
+    - at most a year after it.
+  - `createInvoice` stores it instead of always "date + 30". `updateInvoice` reads the invoice's own date to check against, and stores it.
+  - The database's own check (`invoices_due_date_check`) becomes the field's error, not "Database Error".
+  - `updateInvoice` now refuses a non-UUID id. It answers "No such invoice." for an unknown one, or one deleted between its read and its write.
+  - `fetchInvoiceById` returns the two dates.
+  - No migration.
+- **Why it was added**: plan task 12, an exploration item of the kind "dashboard features". It answers the 2026-10-01 run's Q4.
+- **Tests**:
+  - `schemas.test.ts`: the due date's format, real dates, `addDays`, the bounds.
+  - `actions.test.ts`: create and update store it; out-of-range dates refused with nothing written; the database's check reported as the field's error; bad, unknown or vanished ids.
+  - `invoices.spec.ts`: the 30-day default, a chosen date kept, one before the invoice's date refused in its error region, a later one saved.
+  - **`data.test.ts`'s expectation for `fetchInvoiceById` was updated but not run.** That file is opt-in, and this run may not run it; CI's "Database tests" step is its check.
+- **Acceptance**: the task's words are covered by the tests above. **Tested in a browser, not seen**: a human should look at the forms' new field at phone and desktop width.
+- **Reviewer** (security, backend, frontend and database rules in scope): approve, three Low findings.
+  - Fixed: an invoice deleted mid-update was reported saved (now tested).
+  - Fixed: the edit form's help text described creation.
+  - Recorded: invoices are dated by the UTC day (D78).
+  - **No security finding.** The session is checked first, the input is validated, error messages are fixed strings, and SQL is parameterised.
+- **Gate** (the selection), all exit 0:
+  - Prettier on 11 files, lint 0 warnings, type check, group check, build.
+  - Unit: 3 files, 79 passed (`data.test.ts` skipped, opt-in).
+  - Browser: 52 passed.
+  - The same gate passed on the code before the review fixes.

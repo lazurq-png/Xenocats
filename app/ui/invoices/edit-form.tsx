@@ -2,6 +2,7 @@
 
 import { CustomerField, InvoiceForm } from '@/app/lib/definitions';
 import {
+  CalendarIcon,
   CheckIcon,
   ClockIcon,
   CurrencyDollarIcon,
@@ -74,6 +75,35 @@ export default function EditInvoiceForm({
           <div id="amount-error" aria-live="polite" aria-atomic="true">
             {state.errors?.amount &&
               state.errors.amount.map((error: string) => (
+                <p className="mt-2 text-sm text-red-400" key={error}>
+                  {error}
+                </p>
+              ))}
+          </div>
+        </div>
+
+        {/* Due Date */}
+        <div className="mb-4">
+          <label htmlFor="dueDate" className="mb-2 block text-sm font-medium text-white">
+            Due date
+          </label>
+          <div className="relative">
+            <input
+              id="dueDate"
+              name="dueDate"
+              type="date"
+              defaultValue={invoice.due_date}
+              className="peer block w-full rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white [color-scheme:dark] focus:border-aura focus:ring-aura"
+              aria-describedby="due-date-help due-date-error"
+            />
+            <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-aura peer-focus:text-plasma" />
+          </div>
+          <p id="due-date-help" className="mt-2 text-xs text-aura">
+            Not before the invoice date, and at most a year after it.
+          </p>
+          <div id="due-date-error" aria-live="polite" aria-atomic="true">
+            {state.errors?.dueDate &&
+              state.errors.dueDate.map((error: string) => (
                 <p className="mt-2 text-sm text-red-400" key={error}>
                   {error}
                 </p>

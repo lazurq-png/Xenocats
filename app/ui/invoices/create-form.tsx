@@ -3,6 +3,7 @@
 import { CustomerField } from '@/app/lib/definitions';
 import Link from 'next/link';
 import {
+  CalendarIcon,
   CheckIcon,
   ClockIcon,
   CurrencyDollarIcon,
@@ -12,7 +13,14 @@ import { Button } from '@/app/ui/button';
 import { createInvoice, State } from '@/app/lib/actions';
 import { useActionState } from 'react';
 
-export default function Form({ customers }: { customers: CustomerField[] }) {
+export default function Form({
+  customers,
+  dueDate,
+}: {
+  customers: CustomerField[];
+  /** The due date it gets by default: 30 days after today (on the server). */
+  dueDate: string;
+}) {
   const initialState: State = { message: null, errors: {} };
   const [state, formAction] = useActionState(createInvoice, initialState);
 
@@ -75,6 +83,35 @@ export default function Form({ customers }: { customers: CustomerField[] }) {
           <div id="amount-error" aria-live="polite" aria-atomic="true">
             {state.errors?.amount &&
               state.errors.amount.map((error: string) => (
+                <p className="mt-2 text-sm text-red-400" key={error}>
+                  {error}
+                </p>
+              ))}
+          </div>
+        </div>
+
+        {/* Due Date */}
+        <div className="mb-4">
+          <label htmlFor="dueDate" className="mb-2 block text-sm font-medium text-white">
+            Due date
+          </label>
+          <div className="relative">
+            <input
+              id="dueDate"
+              name="dueDate"
+              type="date"
+              defaultValue={dueDate}
+              className="peer block w-full rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white [color-scheme:dark] focus:border-aura focus:ring-aura"
+              aria-describedby="due-date-help due-date-error"
+            />
+            <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-aura peer-focus:text-plasma" />
+          </div>
+          <p id="due-date-help" className="mt-2 text-xs text-aura">
+            30 days after the invoice date unless you choose otherwise; at most a year.
+          </p>
+          <div id="due-date-error" aria-live="polite" aria-atomic="true">
+            {state.errors?.dueDate &&
+              state.errors.dueDate.map((error: string) => (
                 <p className="mt-2 text-sm text-red-400" key={error}>
                   {error}
                 </p>
