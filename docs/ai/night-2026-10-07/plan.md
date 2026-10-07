@@ -49,8 +49,8 @@ A task like any other (`night-2026-10-07-c<N>-checkpoint`, through the whole of
    without it? Is every test still relevant: no test of removed behaviour, no
    duplicate, no test that cannot fail? Add what is missing. A test that no
    longer tests anything relevant may be rewritten or removed, with the reason
-   in `decisions.md`. *Explicitly lifts §3's "deleting a file you did not
-   create" for test files under `tests/` only.*
+   in `decisions.md`. _Explicitly lifts §3's "deleting a file you did not
+   create" for test files under `tests/` only._
 2. **Quality and security.** Dispatch the `reviewer` on the range since the last
    checkpoint, with `.claude/rules/security-review.md` in scope. Fix every
    finding within the checkpoint, or record why not.
@@ -103,7 +103,7 @@ A task like any other (`night-2026-10-07-c<N>-checkpoint`, through the whole of
    storage and the autoplay rule stay as they are. Where a file fails to load,
    that sound falls back to its current synthesized version.
 
-   *Explicitly lifts §3's "contacting any external service" for task 3 only,*
+   _Explicitly lifts §3's "contacting any external service" for task 3 only,_
    limited to this:
    - HTTPS GET requests to `commons.wikimedia.org` (its search and file-info
      API) and `upload.wikimedia.org` (the files). No other host.
@@ -200,9 +200,9 @@ arena. **Attacks happen automatically: positioning is the skill.** Cats pour in
 from every side; sent-home cats drop experience; experience buys level-ups;
 level-ups offer upgrades; weapons evolve into absurd late-game machines; the run
 ends at the time goal or when the hero gives up. The escalation is the point:
-*a few cats → a lot of cats → hundreds → the entire screen is cats → the hero
+_a few cats → a lot of cats → hundreds → the entire screen is cats → the hero
 has become a god and the cats are experiencing an unprecedented cosmic
-catastrophe.*
+catastrophe._
 
 **Rules for tasks 6–11** (and for task 12's game items):
 
@@ -214,8 +214,8 @@ catastrophe.*
   game; the game never winks at how ridiculous it is. Name what the plan does
   not (the hero's own health, the currency, the final cat) in that voice, and
   record the names in `decisions.md`.
-- **Art.** *Explicitly lifts the design decision "no new artwork" for tasks
-  6–11 and task 12's game items, for the game's own art only:* the run draws
+- **Art.** _Explicitly lifts the design decision "no new artwork" for tasks
+  6–11 and task 12's game items, for the game's own art only:_ the run draws
   new SVG for the hero, the new enemy varieties, weapons, projectiles,
   experience gems, chests and pickups, in the site's palette
   (`tailwind.config.ts`) and in the style of the existing cats (which it may
@@ -223,8 +223,8 @@ catastrophe.*
   recognizably cats. The existing 20 cat types are reused as enemies with their
   art unchanged. List every new drawing in the report as **drawn by the run,
   not seen**, for a later Superdesign pass.
-- **The cat limit.** *Explicitly lifts "never more than 5 cats on screen" and
-  "one effect at a time on the page" inside the Survival game only.* Spawning
+- **The cat limit.** _Explicitly lifts "never more than 5 cats on screen" and
+  "one effect at a time on the page" inside the Survival game only._ Spawning
   is uncapped and escalates toward thousands; the game measures frame time and
   **stops adding cats while the frame rate is below a floor set in the
   config**, so a weak machine gets fewer cats, not a slideshow. Every other
@@ -264,16 +264,16 @@ catastrophe.*
    movement pad).
    - `/cats/survival` becomes the new game. Its start screen has Start, the
      best time survived, and the controls. The old wave game is retired.
-     *Explicitly lifts §3's "deleting a file you did not create" for task 6,
+     _Explicitly lifts §3's "deleting a file you did not create" for task 6,
      for the old Survival's modules and their tests that nothing uses any more
-     after this task (e.g. `gun.ts`, the wave logic in `survival.ts`).*
+     after this task (e.g. `gun.ts`, the wave logic in `survival.ts`)._
      Whatever Taming (task 5) still uses stays.
    - An **endless arena**: the camera follows the hero; a subtle tiled floor in
      the site's dark colours so movement shows; cats spawn just off-screen in
      every direction.
    - **The hero** (new SVG): walks as above. Has a health bar; **contact with a
      cat drains it** (each variety its own amount); brief invulnerability after
-     a hit. **Rare effects**: a small share of cats (config) are *elites* of
+     a hit. **Rare effects**: a small share of cats (config) are _elites_ of
      the 20 xenocat types and also apply their xenocat effect to the hero on
      contact (Cryo freezes him briefly, Gravi slows him, Mirror reverses his
      controls…), one effect at a time on the hero.
@@ -403,10 +403,10 @@ catastrophe.*
 
 12. **Exploration, until the goal time.** When tasks 1–11 and the checkpoints
     are done, parked or abandoned, keep improving the project **until `D`**.
-    *Explicitly lifts §6's "do not invent work" and "the plan's tasks are done
+    _Explicitly lifts §6's "do not invent work" and "the plan's tasks are done
     before `D`. Write the report and stop", and §1.0's "work no task names is
     not built" and "Done. When the last task ends before `D`, write the report
-    and stop", for this task only.*
+    and stop", for this task only._
 
     **This task does not run out.** Last run's exploration produced one item
     and then stopped 70 minutes before the goal, reporting that "the plan's
@@ -426,8 +426,7 @@ catastrophe.*
     How items work:
     - Each item is its own task (`night-2026-10-07-t12-<n>-<slug>`) through
       the whole of §2, merged like planned work.
-    - Before starting an item, append to `progress.md` what it is, its kind and
-      why it is worth doing.
+    - Before starting an item, append to `progress.md` what it is and its kind.
     - Rotate between five kinds: **the Survival game** (new enemy cats, each
       with run-drawn SVG and a behaviour that makes it play differently, not
       just another skin; new weapons, passives and evolution pairs; balance

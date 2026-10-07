@@ -5,12 +5,13 @@
 //
 // The Canva plan, prompts and keying script live outside the repo, in the
 // Canva reference folder (cats/plan.json, cats/key.js); add a pose here once its
-// file is in public/xenocats/cats/. Hypno Rex's eyes-first entrance fades in
-// `.xenocat-eyes` before the body, so its artwork will need an eyes overlay.
+// file is in public/xenocats/cats/. A cat whose entrance stages its eyes before
+// its body (Hypno Rex, `.xenocat-eyes`) also needs `eyes`: an overlay of the awake
+// artwork holding only the eyes, drawn over it as their own layer.
 
 export type Pose = 'awake' | 'asleep';
 
-export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = {
+export const CAT_ART: Readonly<Record<string, Partial<Record<Pose | 'eyes', string>>>> = {
   'void-tabby': {
     awake: '/xenocats/cats/void-tabby-awake.webp',
     asleep: '/xenocats/cats/void-tabby-asleep.webp',
@@ -79,10 +80,18 @@ export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = 
     awake: '/xenocats/cats/smoke-bombay-awake.webp',
     asleep: '/xenocats/cats/smoke-bombay-asleep.webp',
   },
-  // Asleep still to come (and the eyes overlay above): until then the on-screen
-  // cat keeps its SVG (wholeSet); the gallery and the fight show this.
   'hypno-rex': {
     awake: '/xenocats/cats/hypno-rex-awake.webp',
+    asleep: '/xenocats/cats/hypno-rex-asleep.webp',
+    eyes: '/xenocats/cats/hypno-rex-eyes.webp',
+  },
+  'pinball-devon': {
+    awake: '/xenocats/cats/pinball-devon-awake.webp',
+    asleep: '/xenocats/cats/pinball-devon-asleep.webp',
+  },
+  'laser-ocicat': {
+    awake: '/xenocats/cats/laser-ocicat-awake.webp',
+    asleep: '/xenocats/cats/laser-ocicat-asleep.webp',
   },
 };
 
@@ -90,8 +99,13 @@ export const CAT_ART: Readonly<Record<string, Partial<Record<Pose, string>>>> = 
  * The artwork for a cat's pose, if there is any. With `wholeSet`, only when the
  * cat has artwork for both poses, so a cat never switches style between sleeping
  * and waking up (the on-screen cats do both; the gallery shows them awake only).
+ * `'eyes'` gives the cat's eyes overlay, if it has one.
  */
-export function catArt(id: string, pose: Pose, { wholeSet = false } = {}): string | undefined {
+export function catArt(
+  id: string,
+  pose: Pose | 'eyes',
+  { wholeSet = false } = {}
+): string | undefined {
   const art = CAT_ART[id];
   if (!art) return undefined;
   if (wholeSet && !(art.awake && art.asleep)) return undefined;

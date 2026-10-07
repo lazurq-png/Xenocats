@@ -24,8 +24,19 @@ describe('catArt', () => {
   it('gives a pose its artwork, and nothing for cats without any', () => {
     expect(catArt('void-tabby', 'awake')).toBe('/xenocats/cats/void-tabby-awake.webp');
     expect(catArt('void-tabby', 'asleep')).toBe('/xenocats/cats/void-tabby-asleep.webp');
-    const withoutArt = CAT_TYPES.find((type) => !CAT_ART[type.id])!;
-    expect(catArt(withoutArt.id, 'awake')).toBeUndefined();
+    expect(catArt('no-such-cat', 'awake')).toBeUndefined();
+  });
+
+  it('gives every cat on the roster artwork for both poses', () => {
+    for (const type of CAT_TYPES) {
+      expect(catArt(type.id, 'awake', { wholeSet: true }), type.id).toBeDefined();
+    }
+  });
+
+  it('gives an eyes-first cat an eyes overlay', () => {
+    for (const type of CAT_TYPES.filter((t) => t.entrance === 'eyes-first')) {
+      expect(catArt(type.id, 'eyes', { wholeSet: true }), type.id).toBeDefined();
+    }
   });
 
   it('with wholeSet, gives a cat with both poses its artwork', () => {
@@ -60,6 +71,30 @@ describe('CatSprite with artwork', () => {
       expect(img.getAttribute('src')).toBe('/cat.webp');
       expect(img.getAttribute('width')).toBe('64');
       expect(img.classList.contains('xenocat-art-glow')).toBe(pose === 'awake');
+      cleanup();
+    }
+  });
+
+  it('draws the eyes overlay over the body as its own layer, only while awake', () => {
+    for (const pose of ['awake', 'asleep'] as const) {
+      const { container } = render(
+        <CatSprite
+          palette={type.palette}
+          look={type.look}
+          pose={pose}
+          art="/cat.webp"
+          eyes="/eyes.webp"
+        />
+      );
+      const eyes = container.querySelector('.xenocat-body > img.xenocat-eyes');
+      if (pose === 'awake') {
+        expect(eyes!.getAttribute('src')).toBe('/eyes.webp');
+        // The body image stays outside `.xenocat-eyes`, so the staged entrance
+        // can fade it in separately.
+        expect(container.querySelector('.xenocat-body > img:not(.xenocat-eyes)')).not.toBeNull();
+      } else {
+        expect(eyes).toBeNull();
+      }
       cleanup();
     }
   });

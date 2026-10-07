@@ -423,6 +423,22 @@ test('Hypno Rex spirals the cursor in to the middle of the screen', async ({ pag
     .toBeLessThan(Math.max(startDistance * 0.3, 20));
 });
 
+test('Hypno Rex arrives in its artwork, with its eyes as a layer of their own', async ({
+  page,
+}) => {
+  await openCats(page);
+  await summon(page, 'hypno-rex');
+  const cat = page.locator('[data-cat-type="hypno-rex"]');
+  await expect(cat.locator('img:not(.xenocat-eyes)')).toHaveAttribute(
+    'src',
+    '/xenocats/cats/hypno-rex-awake.webp'
+  );
+  await expect(cat.locator('img.xenocat-eyes')).toHaveAttribute(
+    'src',
+    '/xenocats/cats/hypno-rex-eyes.webp'
+  );
+});
+
 test('Pinball Devon sends the cursor bouncing around the screen', async ({ page }) => {
   await openCats(page);
   const pointer = await summon(page, 'pinball-devon');
