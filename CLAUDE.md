@@ -242,6 +242,7 @@ In this repository the checks that exist are:
 | Type check | `npx next typegen && npx tsc --noEmit`           |
 | Unit tests | `npm test` (Vitest, `tests/unit/`)               |
 | Browser tests | `npm run test:e2e` (Playwright + Chromium, `tests/e2e/`) |
+| Affected tests | `npm run test:affected -- --base <ref> [--run]` (the unit and browser tests a change can reach) |
 | Build      | `npm run build`                                  |
 | Format     | `npx prettier --check <the files you changed>`   |
 | Browser    | `npm run dev`, then open `http://localhost:3000` |
@@ -317,6 +318,14 @@ Say so rather than implying the page was seen.
 Start with the narrowest useful verification.
 
 Expand verification when the change has broader impact.
+
+`npm run test:affected` compares the tree with `--base` (default `main`) and
+prints the tests to run: `vitest related` over the changed files, and the browser
+specs that visit a route the change reaches. When it cannot place a changed file
+(configuration, auth, the root layout, seed data, a deletion) it says `FULL`
+and names the file; then run the full suites. Cheap checks go first (prettier,
+lint, type check), the slow ones after, one at a time: the browser tests are
+timing-sensitive and fail under load.
 
 Never report a verification result that was not actually observed.
 

@@ -38,6 +38,13 @@ stop.
   the CI poll) run in the background while you do the next independent thing; the harness
   re-invokes you when a background command or agent finishes. Never poll one
   yourself, and never `sleep` in the foreground, which is blocked anyway.
+  **The exception is the checks themselves**: they run one after another,
+  cheapest first, and stop at the first failure (§2 step 1). Run side by side,
+  they compete for the CPU, and the timing-sensitive browser tests fail for
+  that alone (last run's D7).
+- **Run the tests a change can affect, not every suite every time.** The full
+  suites run at fixed points; between them, `npm run test:affected` picks the
+  tests (§2.1). CI runs everything on every push, and is polled.
 - **The state files are the memory.** `docs/ai/night-<YYYY-MM-DD>/progress.md`
   is **append-only**: created at the start of the run (§1.4), then one entry
   appended each time a task ends (§2 step 4), and the morning report appended
@@ -225,15 +232,22 @@ Create, delete or fetch nothing else on the remote.
 
 ### 1.5 Baseline
 
-Run the three checks in parallel. None of them writes anything tracked:
+The baseline is one of the points where every suite runs in full (§2.1). Run
+the checks one after another, in this order, and time each one: the timings go
+into the run-start entry, and later estimates use them (§8.3). None of them
+writes anything tracked:
 
 ```bash
 npm run lint > docs/ai/night-<YYYY-MM-DD>/lint-baseline.txt 2>&1; echo "exit $?"
 npx next typegen && npx tsc --noEmit; echo "exit $?"
-npm test; echo "exit $?"
-npm run build; echo "exit $?"
-npm run test:e2e; echo "exit $?"
+time npm test; echo "exit $?"
+time npm run build; echo "exit $?"
+time npm run test:e2e; echo "exit $?"
+time E2E_SERVER=start npm run test:e2e; echo "exit $?"   # over the build above
 ```
+
+Unlike a task's gate, the baseline does not stop at the first failure: run them
+all, so that a red baseline shows every check that is red.
 
 `next typegen` comes first because `tsconfig.json` includes route types
 generated under `.next/`, and stale ones fail `tsc` for no reason in the code.
@@ -251,7 +265,8 @@ The e2e suite starts its own `next dev` on port 3100 with a throwaway
   built. Any other build failure is a red baseline.
 - **Tests**: every test script in `package.json` (today `npm test`, Vitest in
   `tests/unit/`, and `npm run test:e2e`, Playwright in `tests/e2e/`) is in the
-  baseline and the gate, and must exit 0. Browser tests may log in and submit
+  baseline in full, and must exit 0. The gate runs the part of them a task can
+  affect (§2.1). Browser tests may log in and submit
   writing forms: they run against `xenocats_test`, rebuilt before every run.
 - **Database unreachable** (the e2e global setup fails to connect: the machine
   is off the network, or the server is down): record the error line, and run
@@ -295,16 +310,28 @@ these additions.
    `progress.md` entry when it ends (step 4). The base SHA is what the morning
    report diffs the task's code against.
 
-1. **Verify before committing.** All of these must exit 0, run in parallel as
-   in §1.5. **Never commit on a failing or unrun check.**
+1. **Verify before committing.** The gate runs once, on the task's final state,
+   **one check after another, cheapest first, and stops at the first failure**:
+   a type error found in 20 seconds makes the build and the browser tests
+   pointless. All of these must exit 0. **Never commit on a failing or unrun
+   check.**
 
    ```bash
+   npx prettier --check <every file this task changed>
    npm run lint
    npx next typegen && npx tsc --noEmit
-   npm run build                                       # only if in the gate (§1.5)
-   npx prettier --check <every file this task changed>
-   npm test; npm run test:e2e                          # every test script that exists (§1.5)
+   npm run test:affected -- --base night-<YYYY-MM-DD>   # prints the selection (§2.1)
+   <its unit command>                                   # vitest related, or the full suite
+   npm run build                                        # only if in the gate (§1.5)
+   <its e2e command>                                    # the affected specs, or the full suite
+   E2E_SERVER=start npm run test:e2e                    # only on a full-suite point (§2.1)
    ```
+
+   `npm run test:affected -- --base night-<YYYY-MM-DD> --run` runs the unit and
+   e2e selection in one step, stopping at the first failure, but then the build
+   comes after the browser tests; either order passes the gate. Record the
+   selection it printed with the results (step 4): which specs ran is part of
+   the evidence.
 
    Then undo the checks' side effects on `next-env.d.ts` and `AGENTS.md`
    (§1.5) before staging.
@@ -486,6 +513,41 @@ task inherits the assumption. Name the branch in `questions.md`.
 
 **Abandoned work** (§3, §6) stays on its local branch, unmerged and unpushed. A
 pushed branch reads as an offer. Name it in `progress.md` and do not delete it.
+
+### 2.1 Which tests run when
+
+Every check costs minutes that come out of the night, and a check run when
+nothing it covers has changed proves nothing new. So the full suites run at
+fixed points, and between them only the tests a change can affect.
+
+| When | What runs |
+| ---- | --------- |
+| **Working on a task** (implementing, and every repair cycle) | Only the test files being written or repaired, and the one that failed: `npx vitest run <file>`, `npx playwright test <spec> -g "<test title>"`, `npx playwright test --last-failed`. Never a whole suite. |
+| **The gate** (§2 step 1), once per task, on its final state | The selection `npm run test:affected -- --base night-<YYYY-MM-DD>` prints: `vitest related` over the changed files, and the specs visiting a route the change reaches, against `next dev`. |
+| **Full-suite points** | `npm test`, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan, or every 5th task if the plan names none; the last task before the morning report; and any gate where the selector printed `FULL`. |
+| **After a fix the reviewer asked for** | The gate again, on the new final state. The selection is already narrow; no separate full run. |
+
+The selector (`scripts/affected-tests.mjs`) follows each changed file through
+its importers to the App Router files that use it, reduces their routes to
+areas (`/cats`, `/login`, `/dashboard/invoices`, ...) and picks every spec whose
+text names one of those areas. It errs towards running more: a file it cannot
+place (configuration, `auth.ts`, `proxy.ts`, the root layout and
+`global.css`, seed data, a deleted or renamed file, anything outside `app/`,
+`public/` and `tests/`) selects the whole suite, and says which file did. A run
+never edits the selection to make it smaller, never skips a spec it printed,
+and never overrides a `FULL`.
+
+- **A flaky-looking failure** is rerun alone, `npx playwright test <spec> -g
+  "<title>" --repeat-each 5`, not by rerunning the suite until it passes.
+  Several passes in a row decide nothing about the failure that was seen;
+  record it as a flake with its test name (`.claude/rules/testing.md`), and
+  look for its cause before calling it one.
+- **CI fails in a spec the gate did not run** → the selection missed it. Handle
+  it as any CI failure (§2 step 6), and in the same repair commit make the
+  selector pick that spec for that change, with a case in
+  `tests/unit/affected-tests.test.ts`. Record the miss in `decisions.md`.
+- **A task that changes the selector** (`scripts/affected-tests.mjs`) runs the
+  full suites at its gate: the tool cannot vouch for itself.
 
 ---
 
@@ -737,7 +799,12 @@ This repository's first run is recorded in
 lengths; T9 took 16 minutes). On the project this protocol came
 from, the median task took **~20 minutes** (range 3–50), and the `reviewer` took
 4–7 minutes of that. `npm run build` and the e2e suite are the slowest local
-checks; time them and record it. CI overlaps the next task (§2 step 6), so it
+checks; time them and record it. On 2026-10-07 the full unit suite took ~50 s
+(almost all of it starting test environments; `vitest related` over one file,
+~3 s), the build ~30 s, and the full e2e suite 1–1.3 min per server unloaded and
+over 5 min under load; the last run paid for the e2e suite twice per task, plus
+again after every fix. A full-suite point (§2.1) costs those; a targeted gate a
+fraction of them. CI overlaps the next task (§2 step 6), so it
 adds wall-clock time only when it fails, and at the very end, where the report
 waits on the last poll.
 Replace these figures with this repository's own once a run has produced them.
