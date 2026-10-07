@@ -379,6 +379,7 @@ function CatView({
           pose={asleep ? 'asleep' : 'awake'}
           size={size}
           art={catArt(type.id, asleep ? 'asleep' : 'awake', { wholeSet: true })}
+          eyes={catArt(type.id, 'eyes', { wholeSet: true })}
         />
       </div>
       {asleep && (

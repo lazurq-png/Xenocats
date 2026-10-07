@@ -18,6 +18,7 @@ export function CatSprite({
   pose,
   size = 72,
   art,
+  eyes,
   still = false,
 }: {
   palette: CatPalette;
@@ -26,6 +27,11 @@ export function CatSprite({
   size?: number;
   /** Rendered artwork for this pose (cat-art.ts), drawn instead of the SVG. */
   art?: string;
+  /**
+   * An overlay of the awake artwork holding only its eyes (cat-art.ts), drawn over
+   * it as `.xenocat-eyes` so an entrance can stage the eyes apart from the body.
+   */
+  eyes?: string;
   /**
    * The glow held steady instead of pulsing: for a page of many sprites at once
    * (the /cats roster), where every pulse would be redrawn on every frame.
@@ -36,7 +42,7 @@ export function CatSprite({
     // `.xenocat-body` keeps the breathing and staged-entrance hooks; awake, the
     // cat's glow colour pulses around it in place of the SVG's glowing parts.
     return (
-      <span className="xenocat-body block" style={{ width: size, height: size }}>
+      <span className="xenocat-body relative block" style={{ width: size, height: size }}>
         {/* eslint-disable-next-line @next/next/no-img-element -- a sprite drawn at a fixed small size, not a content image */}
         <img
           src={art}
@@ -49,6 +55,17 @@ export function CatSprite({
           }
           style={{ '--xenocat-glow': palette.glow } as React.CSSProperties}
         />
+        {eyes && pose === 'awake' && (
+          // eslint-disable-next-line @next/next/no-img-element -- see above
+          <img
+            src={eyes}
+            alt=""
+            width={size}
+            height={size}
+            draggable={false}
+            className="xenocat-eyes pointer-events-none absolute inset-0"
+          />
+        )}
       </span>
     );
   }
