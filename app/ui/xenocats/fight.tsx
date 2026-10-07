@@ -197,7 +197,7 @@ export default function Fight({
   // False once the section has gone: a lock request still pending then gives up.
   const mountedRef = useRef(true);
   // Cats move every frame, so the loop moves their elements itself; React renders
-  // only when what it shows changes (a cat comes or goes, a life, a wave, the hold).
+  // only when what it shows changes (a cat comes or goes, a life, a wave, a treat).
   const shownRef = useRef('');
   // Set from Start until the game begins: asking for the lock can take a second.
   const startingRef = useRef(false);

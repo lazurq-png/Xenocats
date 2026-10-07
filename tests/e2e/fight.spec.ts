@@ -320,42 +320,72 @@ test('Taming: walk to a treat, carry it to the cat, and the cat is tamed into th
   expect(Object.values(JSON.parse(stored!) as Record<string, number>)).toEqual([1]);
 });
 
-test('Taming: without a treat the cat keeps away from the ranger', async ({ page }) => {
-  test.setTimeout(60_000);
+test('Taming: without a treat the cat keeps away from the ranger, and attacks it', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
   await openFight(page, undefined, { game: 'taming' });
   await page.getByTestId('fight-start-taming').click();
-  const cat = page.getByTestId('fight-cat');
-  await expect(cat).toBeVisible({ timeout: 5000 });
-  // Walk straight at it, empty-handed: it never lets the ranger reach it.
+  await expect(page.getByTestId('fight-cat')).toBeVisible({ timeout: 5000 });
+  // Read at one instant: the ranger, the cat and what it is doing, the effect on the
+  // ranger, and whether a treat is in hand.
+  const look = () =>
+    page.evaluate(() => {
+      const ranger = document.querySelector<HTMLElement>('[data-testid="fight-player"]');
+      const cat = document.querySelector<HTMLElement>('[data-testid="fight-cat"]');
+      const box = cat?.getBoundingClientRect();
+      return {
+        ranger: ranger?.dataset.x
+          ? { x: Number(ranger.dataset.x), y: Number(ranger.dataset.y) }
+          : null,
+        cat: box ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : null,
+        doing: cat?.dataset.doing ?? '',
+        effect: ranger?.dataset.effect ?? '',
+        carrying:
+          document.querySelector<HTMLElement>('[data-testid="fight-carrying"]')?.dataset.carrying ??
+          '',
+      };
+    });
   const held = new Set<string>();
-  const doings = new Set<string>();
-  for (let i = 0; i < 60; i++) {
-    const ranger = (await tamingState(page)).ranger;
-    const box = await cat.boundingBox();
-    if (!ranger || !box) continue;
-    const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    doings.add((await cat.getAttribute('data-doing')) ?? '');
-    for (const [key, on] of [
-      ['d', c.x > ranger.x + 12],
-      ['a', c.x < ranger.x - 12],
-      ['s', c.y > ranger.y + 12],
-      ['w', c.y < ranger.y - 12],
-    ] as const) {
-      if (on && !held.has(key)) {
-        held.add(key);
-        await page.keyboard.down(key);
-      } else if (!on && held.has(key)) {
-        held.delete(key);
-        await page.keyboard.up(key);
-      }
+  const hold = async (key: string, on: boolean) => {
+    if (on && !held.has(key)) {
+      held.add(key);
+      await page.keyboard.down(key);
+    } else if (!on && held.has(key)) {
+      held.delete(key);
+      await page.keyboard.up(key);
+    }
+  };
+  // Walk straight at the cat, empty-handed, until it has dodged and attacked. A treat
+  // picked up on the way changes the game (the cat comes for it): start a new one.
+  let dodged = false;
+  let attacked = false;
+  for (let i = 0; i < 300 && !(dodged && attacked); i++) {
+    const state = await look();
+    if (state.carrying) {
+      for (const key of [...held]) await hold(key, false);
+      await page.getByTestId('fight-area').getByRole('button', { name: 'End game' }).click();
+      await page.getByTestId('fight-start-taming').click();
+      await expect(page.getByTestId('fight-carrying')).toHaveText('Carrying: nothing');
+      continue;
+    }
+    // Empty-handed, it never comes to the ranger.
+    expect(state.doing).not.toBe('coming');
+    if (!['', 'wandering', 'coming'].includes(state.doing)) dodged = true;
+    if (state.effect !== '') attacked = true;
+    if (state.ranger && state.cat) {
+      const { ranger, cat } = state;
+      await hold('d', cat.x > ranger.x + 12);
+      await hold('a', cat.x < ranger.x - 12);
+      await hold('s', cat.y > ranger.y + 12);
+      await hold('w', cat.y < ranger.y - 12);
     }
     await page.waitForTimeout(100);
   }
-  for (const key of held) await page.keyboard.up(key);
-  // It dodged (in its own way) at least once, and nothing was tamed.
-  expect([...doings].some((d) => d !== '' && d !== 'wandering' && d !== 'coming')).toBe(true);
-  expect(doings.has('coming')).toBe(false);
-  await expect(page.getByTestId('fight-tamed-now')).toHaveText('Tamed this game: 0');
+  for (const key of [...held]) await hold(key, false);
+  // It dodged, in its own way, and its attack landed on the ranger as in Survival.
+  expect(dodged).toBe(true);
+  expect(attacked).toBe(true);
 });
 
 test('Survival: a lower score leaves the best score alone; End game stops it too', async ({

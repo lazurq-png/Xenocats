@@ -7,6 +7,8 @@ cursor. Built with the Next.js App Router, PostgreSQL and Tailwind CSS.
 - `/login`: sign in
 - `/dashboard`: overview, invoices and customers (needs a session)
 - `/cats`: every cat, with a button to summon it
+- `/cats/survival`: Survival, a game against the cats (keyboard and mouse)
+- `/cats/taming`: Taming, carrying treats to the cats (also on touch screens)
 
 ## Development
 

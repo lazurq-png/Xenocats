@@ -30,9 +30,7 @@ export default function FightPage({ kind }: { kind: Kind }) {
   if (!fine && kind === 'survival') {
     return (
       <div>
-        <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">
-          {kind === 'survival' ? 'Survival' : 'Taming'}
-        </h1>
+        <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">Survival</h1>
         <p data-testid="fight-needs-keyboard" className="mt-4 max-w-2xl text-lg text-white">
           This game needs a keyboard and mouse, for now. Come back on a computer to play it.
         </p>

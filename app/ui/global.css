@@ -1228,8 +1228,8 @@ input[type='number']::-webkit-outer-spin-button {
   }
 }
 
-/* While cats fling page elements about (puppets.ts), the page clips what flies
-   off it rather than growing to hold it. The html element keeps the scrolling (an
+/* While cats move page elements about (puppets.ts), the page clips whatever
+   overflows it (an element grown past the edge) rather than growing to hold it. The html element keeps the scrolling (an
    overflow of its own stops body's from passing to the viewport), and the body
    clips at the page's edges. */
 html[data-xenocat-puppets] {

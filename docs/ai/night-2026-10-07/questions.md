@@ -31,3 +31,7 @@ To do it, a human (or a run with a permission rule allowing it) would:
 2. Or allow the run to do it: a permission rule for this kind of edit, then put task 3 in a later plan.
 
 The run's measurements of the calls in each file are in progress.md (T3). Nothing changed meanwhile: the synthesised sounds play as before.
+
+## Q6 — The night-run skill should say how the opt-in database tests are run (checkpoint 1)
+
+Since T1, `tests/unit/data.test.ts` runs only with `DATABASE_TESTS=1`, so `npm test` (the baseline, every full-suite point) and `npm run test:affected` (which selects that file for a change to `app/lib/data.ts`) skip it silently: a change to a query would pass the local gate with its only test unrun, and first meet it in CI's build job. Recommendation: one line in `.claude/skills/night-run/SKILL.md` (§1.5 and §2.1): when a task touches `app/lib/data.ts` or the schema, run `DATABASE_TESTS=1 npx vitest run tests/unit/data` (a write to `xenocats_vitest`, which the skill's database rule would then have to allow), otherwise report the database tests as skipped; optionally `test:affected` could print that note. Not done by the run: a run does not rewrite the protocol it runs under. Meanwhile no task tonight touches `data.ts` (the plan says no task needs a migration).

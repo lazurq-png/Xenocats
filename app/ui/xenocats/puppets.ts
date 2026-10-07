@@ -25,7 +25,7 @@ import type { Random } from './random';
 
 export type PuppetLevel = HitLevel['puppets'];
 
-/** Set on <html> while any element is a puppet: the page clips what flies off it. */
+/** Set on <html> while any element is a puppet: the page clips what overflows it (a grown element). */
 export const PUPPETS_ATTRIBUTE = 'data-xenocat-puppets';
 
 /** An element's blur is the cursor's times this: enough to hide it, as smoke would. */
