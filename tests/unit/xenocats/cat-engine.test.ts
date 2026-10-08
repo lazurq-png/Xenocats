@@ -199,15 +199,17 @@ describe('where cats appear', () => {
     }
   });
 
-  it('catches up across a long gap in one tick, as when a background tab resumes', () => {
+  it('catches up across a long gap in one tick, as when a background tab resumes, and still wakes in sight', () => {
     const e = engine();
     const cat = e.summon('void-tabby', 0, null)!;
     cat.eager = false; // a spawned cat: appear, sleep, wake, then attack
     e.tick(100_000, null, always);
     const now = e.cats()[0];
-    expect(now.phase).toBe('attacking');
-    // The pounce starts now, not somewhere in the past.
+    // Its sleep ran out long ago, but it starts waking now, where it can be seen.
+    expect(now.phase).toBe('waking');
     expect(now.phaseStartedAt).toBe(100_000);
+    e.tick(100_000 + e.config.wakeMs, null, always);
+    expect(e.cats()[0].phase).toBe('attacking');
     e.tick(200_000, null, always);
     expect(e.cats()).toHaveLength(0);
   });

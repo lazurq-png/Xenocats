@@ -91,7 +91,8 @@ Use broader validation when the change warrants it.
 
 In this repository the module step is `npm run test:affected -- --base <ref>`
 (`scripts/affected-tests.mjs`): `vitest related` over the changed files, and
-the browser specs that visit a route the change reaches. It prints `FULL` for a
+the browser specs that visit a route the change reaches, plus the opt-in
+database tests (a `database:` line) when a query or the schema changed. It prints `FULL` for a
 change it cannot place; take that, and never shrink its selection by hand. A
 new spec must name the routes it visits as paths (`page.goto('/cats')`, a
 `toHaveURL` regex) so the selector can find it; `tests/unit/affected-tests.test.ts`

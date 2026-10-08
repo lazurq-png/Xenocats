@@ -6,17 +6,25 @@ What needed a human: the question, the options and their consequences, the recom
 
 From T1's review. With the tests opt-in, a CI step that lost its `DATABASE_TESTS: '1'` (or its `POSTGRES_URL`) would report green with 17 skipped tests. Option: run the step with a reporter check (e.g. fail if the vitest JSON summary shows 0 passed). Recommendation: a one-line guard in the next plan; low urgency. Meanwhile: nothing changed.
 
+**Answer:** Ignored for now (human, 2026-10-08).
+
 ## Q2 — Should clicks be blocked while page elements are displaced? (T2)
 
 The plan's task 2 says "clicks stay blocked while elements are displaced". They are not blocked today: commit `d53f566` (2026-10-02, by hand) removed the blocking, and `fake-cursor.tsx` says "Clicks are never blocked: one made while an effect runs lands where the real pointer is". Options: (a) keep it as it is (what was done: "stay" asks for no change); (b) restore blocking of mouse clicks while any element is displaced, as the 10-01 run had it (a small task: listeners in `fake-cursor.tsx`, the touch path too, an e2e test). Recommendation: decide which one the game wants; (b) fits in the next plan.
+
+**Answer:** Clicks are not blocked, on purpose. Option (a). The plan, D9 and D11 are corrected to say so (human, 2026-10-08).
 
 ## Q3 — Five cats now do nothing visible to the page (T2)
 
 Heavy (Gravi Coon), Reverse (Mirror Sphynx), Decoys (Decoy Burmese), Delay (Lag Ragamuffin) and Axis lock (Laser Ocicat) only change how the cursor follows the mouse. A page element held still is unaffected, so under "does what the attack does to the pointer, and nothing else" they leave elements alone (decisions D4). If every cat should still touch the page somehow, the next plan could name a visible equivalent per cat (e.g. Decoys: faint copies of the element). Nothing built meanwhile.
 
+**Answer:** Laser Ocicat shoots lasers at elements, Mirror Sphynx mirrors them, Decoy Burmese sets fake copies that do nothing when clicked. Built (D106) (human, 2026-10-08).
+
 ## Q4 — CI: the dev-server browser tests failed once on an unchanged tree (T1)
 
 Commit `60801d2` ran twice on GitHub. On `night-2026-10-07` every job passed (run 37622699500). On `night-2026-10-07-t1-db-tests-opt-in` the job "Browser tests (dev server)" failed in its step "Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)" (run 37622695999). The failing test is not visible without logs (they need auth). Locally, `keyboard.spec.ts:129` timed out once, under load (the overlapped baseline, progress.md). A human with access can read that run's `playwright-report` artifact. No repair was attempted: the identical tree passed.
+
+**Answer:** Not a build error. It was the dev-server job (`e2e`), not the build job, and a different run from Q9 (answered 2026-10-08).
 
 ## Q5 — Task 3 (real cat recordings) needs a human: the harness refused to let the run integrate downloaded files (T3, abandoned)
 
@@ -32,32 +40,48 @@ To do it, a human (or a run with a permission rule allowing it) would:
 
 The run's measurements of the calls in each file are in progress.md (T3). Nothing changed meanwhile: the synthesised sounds play as before.
 
+**Answer:** The human will look into it (2026-10-08).
+
 ## Q6 — The night-run skill should say how the opt-in database tests are run (checkpoint 1)
 
 Since T1, `tests/unit/data.test.ts` runs only with `DATABASE_TESTS=1`, so `npm test` (the baseline, every full-suite point) and `npm run test:affected` (which selects that file for a change to `app/lib/data.ts`) skip it silently: a change to a query would pass the local gate with its only test unrun, and first meet it in CI's build job. Recommendation: one line in `.claude/skills/night-run/SKILL.md` (§1.5 and §2.1): when a task touches `app/lib/data.ts` or the schema, run `DATABASE_TESTS=1 npx vitest run tests/unit/data` (a write to `xenocats_vitest`, which the skill's database rule would then have to allow), otherwise report the database tests as skipped; optionally `test:affected` could print that note. Not done by the run: a run does not rewrite the protocol it runs under. Meanwhile no task tonight touches `data.ts` (the plan says no task needs a migration).
+
+**Answer:** Option (b) (human, 2026-10-08). The night-run skill runs `DATABASE_TESTS=1 npx vitest run tests/unit/data` in the baseline, at full-suite points, and at a gate whose selection prints a `database:` line. §3 allows those tests to write their own `xenocats_vitest` schema. `npm run test:affected` prints that line, and `--run` runs it, for a change to `app/lib/data.ts`, `db/migrations/`, `scripts/db.mjs` or the tests themselves. CLAUDE.md §9 and `.claude/rules/testing.md` say so too.
 
 ## Q7 — A possible flake: "a customer is created, edited and deleted" under the full dev-server suite (seen in T7's gate)
 
 In T7's final gate (20:05, `next dev`, the full browser suite), `tests/e2e/customers.spec.ts:36` failed once on a `toHaveValue` check of the edit form (121 others passed); T7 touches nothing on the customer pages. Rerun alone five times (`--repeat-each 5`): 5 passed; the whole suite then passed again on the same code. Hypothesis, not proven: on its first visit in a busy `next dev`, the edit page is compiled on demand and its fields are filled after the assertion's 5-second wait. If it recurs in CI's dev-server job, a longer timeout on the edit form's first `toHaveValue`, or warming the route in the test's setup, would test the hypothesis. Nothing changed meanwhile.
 Seen again, on a different test: the full dev-server rerun on the same code (20:10, slower than usual: 3.7 min) failed once in `tests/e2e/keyboard.spec.ts:97` ("the dashboard by keyboard: skip link, navigation and search", a `toHaveURL` wait) and passed everything else; alone, `--repeat-each 5`: 5 passed. Both flakes are dashboard pages visited for the first time in a busy `next dev`, which compiles each route on demand — the same hypothesis. The `next start` suite passed in full (122). Worth watching in CI's dev-server job; nothing changed meanwhile.
 
+**Answer:** Ignored for now (human, 2026-10-08).
+
 ## Q8 — Should a cat warn before it pounces after a background tab returns? (T12 item 5)
 
 While a tab is hidden the page draws nothing, but the cats' clock runs on. On return the engine catches up in one tick: a cat whose sleep ran out meanwhile goes through waking and pounces at once, so the 900 ms waking warning is never seen. This is deliberate (cat-engine.test.ts: "catches up across a long gap in one tick, as when a background tab resumes"), so the run did not change it. If the player should always see the warning, the catch-up could start a cat's waking from the moment the tab returns instead of from when its sleep ended (a one-line change in `cat-engine.ts` and that test). Recommendation: a human's call; it changes how the cats feel.
+
+**Answer:** Waking starts when the tab returns, not when the sleep ended. Built (D107) (human, 2026-10-08).
 
 ## Q9 — Browser-test waits: the rest of the specs, and one more CI flake (T12 items 7 and 8)
 
 Item 8 (D90, D91) gave the two flaky specs' page-change waits 15 s; ten other specs still wait the default 5 s after the login redirect (listed in D91), and `invoices.spec.ts` after its edit link. A shared `logIn` helper with the 15-second wait would cover them all; proposed for a plan (it touches every dashboard spec). Separately, CI on item 7's commit (`3f417dc`) failed once on the run branch, in the *build* job's step "Browser tests against next start (invoices)" ([run](https://github.com/lazurq-png/Xenocats/actions/runs/37724939389)), while the task branch's run of the same tree passed every job ([run](https://github.com/lazurq-png/Xenocats/actions/runs/37724939274)); which test failed is not visible without logs (they need auth). No repair was attempted on an identical tree that passed elsewhere (as for Q4). A human with access can read that run's `playwright-report` artifact; if it is an invoice test's page wait, it is the exposure above.
 **Q9, explained by T12 item 9** (06:20): the run-branch CI failure on item 7's commit was almost certainly `invoices-filter.spec.ts`'s due-date test, which item 7's "Due" column made ambiguous during the move from list to invoice page (D93); reproduced locally against `next start` and fixed in item 9's commit.
 
+**Answer:** The human proposed running the jobs in containers instead of installing everything each time. The failure itself was a test this run broke (D93), not the install. The human then asked for containers wherever they make CI faster: built for the two browser jobs (D108), unverified until CI runs (2026-10-08).
+
 ## Q10 — Should a touch screen be able to pet a sleeping cat? (T12 item 10)
 
 Petting needs the pointer to rest on a sleeping cat for a while (`config.petMs`); a touch screen has no resting pointer, and a tap on a sleeping cat wakes it, angry (`poke`). So on a phone a sleeping cat can only be angered, never petted. A press held on a sleeping cat could pet it instead (and a quick tap still wake it) — a change to what a touch does, so a human's call. Proposed for a plan.
+
+**Answer:** The human will note it as a fix for the next plan (2026-10-08).
 
 ## Q11 — Should the Keeper's weapons aim at a cat that does no harm? (T12 item 11)
 
 The Laser Pointer (and every weapon that picks "the nearest cat") aims at the Neighbour's Cat, the secret cat that drains nothing, when it is nearest — so a Keeper who stands still and draws it spends his laser on a harmless guest for some 50 s. Keep (a guest is still a cat to send home; it costs the player something, which suits a secret), or have targeting skip cats with no drain (a one-line filter in `nearest`). A game-design call.
 
+**Answer:** Keep as is (human, 2026-10-08).
+
 ## Q12 — One time zone for the database's "today"? (T12 item 12)
 
 The app dates an invoice by the UTC day (`createInvoice`, the create form's default due date), while `CURRENT_DATE` — the overdue rule, and since item 12 the "Due in N days" count — is the day in the database session's time zone, which nothing sets. On a server not on UTC they disagree for some hours a day: an invoice created then is "due in 29 (or 31) days", and dates near midnight fall on the other side of "overdue". Setting `TimeZone: 'UTC'` on the app's three `postgres` connections (`app/lib/data.ts`, `actions.ts`, `auth.ts`) would make every "today" the same; it touches every date the app reads, so it is a decision for a plan, with a look at the development server's own setting.
+
+**Answer:** Ignored for now. The human will decide whether to fix it in the dashboard or the database (2026-10-08).

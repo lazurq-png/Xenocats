@@ -1,6 +1,6 @@
 ---
 name: night-run
-description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes the tasks of a human-written plan read from docs/ai/night-<today>/plan.md until the plan's goal — a day and time such as "Thursday 08:00" — and stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, an append-only progress.md with an entry each time a task ends, forbidden operations (including any database but the development one, which the run touches only through the build and the browser tests), what happens at the goal time (the task in flight is finished, then the morning report is appended to progress.md and the run stops), a per-session budget reserve that protects the morning report or a handoff, stop conditions, and a morning report that shows each task's code with what it does and why it was added. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
+description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes the tasks of a human-written plan read from docs/ai/night-<today>/plan.md until the plan's goal — a day and time such as "Thursday 08:00" — and stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, an append-only progress.md with an entry each time a task ends, forbidden operations (including any database but the development one, which the run touches only through the build, the browser tests and the opt-in database tests), what happens at the goal time (the task in flight is finished, then the morning report is appended to progress.md and the run stops), a per-session budget reserve that protects the morning report or a handoff, stop conditions, and a morning report that shows each task's code with what it does and why it was added. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
 ---
 
 # Unattended Run
@@ -31,8 +31,9 @@ stop.
   pushing and fetching this run's own branches, and a read-only,
   unauthenticated poll of GitHub Actions for commits this run pushed (§2 step
   6). The database is the development one in `.env`: the browser tests rebuild
-  and write its `xenocats_test` schema, the build reads `xenocats`, and nothing
-  else touches it (§3).
+  and write its `xenocats_test` schema, the database tests (`tests/unit/data.test.ts`,
+  run with `DATABASE_TESTS=1`) rebuild and write `xenocats_vitest`, the build
+  reads `xenocats`, and nothing else touches it (§3).
 - **Work in parallel wherever nothing depends.** Independent reads and checks go
   in one message of parallel tool calls. Long jobs (the build, the `reviewer`,
   the CI poll) run in the background while you do the next independent thing; the harness
@@ -241,6 +242,7 @@ writes anything tracked:
 npm run lint > docs/ai/night-<YYYY-MM-DD>/lint-baseline.txt 2>&1; echo "exit $?"
 npx next typegen && npx tsc --noEmit; echo "exit $?"
 time npm test; echo "exit $?"
+time DATABASE_TESTS=1 npx vitest run tests/unit/data; echo "exit $?"
 time npm run build; echo "exit $?"
 time npm run test:e2e; echo "exit $?"
 time E2E_SERVER=start npm run test:e2e; echo "exit $?"   # over the build above
@@ -268,12 +270,16 @@ The e2e suite starts its own `next dev` on port 3100 with a throwaway
   baseline in full, and must exit 0. The gate runs the part of them a task can
   affect (§2.1). Browser tests may log in and submit
   writing forms: they run against `xenocats_test`, rebuilt before every run.
+- **Database tests** (`tests/unit/data.test.ts`) are opt-in: `npm test` skips
+  them, so the baseline runs them separately with `DATABASE_TESTS=1`, against
+  their own `xenocats_vitest` schema, rebuilt when the file runs. They must
+  exit 0 with their tests run, not skipped: count the skips in the output.
 - **Database unreachable** (the e2e global setup fails to connect: the machine
   is off the network, or the server is down): record the error line, and run
   the e2e suite as `E2E_NO_DATABASE=1 npm run test:e2e` for the rest of the
   run, which skips the tests that need it. The build leaves the gate too, as
   above. Report every task's database-backed behaviour as checked by reading
-  only (§5). Re-try the plain command at each task start; when it passes again,
+  only (§5), and the database tests as skipped. Re-try the plain command at each task start; when it passes again,
   record that and return to it.
 - **Side effects of the checks.** `next dev` and `next build` rewrite the
   tracked `next-env.d.ts`, and `next dev` (re-)adds an agent-rules block to
@@ -468,8 +474,8 @@ these additions.
      and why. Never infer a result.
    - **`failure` the run cannot fix** → CI's environment, not the code: a
      repository setting is missing or wrong, or the runner image changed
-     (e.g. the *Start PostgreSQL* step fails: no preinstalled PostgreSQL, or
-     TLS off), shown by the failing job's
+     (e.g. the *PostgreSQL* step fails: the service container did not start,
+     or TLS stayed off; or the job's Playwright image cannot be pulled), shown by the failing job's
      name and step and by the same check passing locally. Record "CI failed:
      environment (<what is missing>)" and put in `questions.md` exactly what a
      human must set. Spend **no** repair cycle on it, and do not count it toward
@@ -524,7 +530,8 @@ fixed points, and between them only the tests a change can affect.
 | ---- | --------- |
 | **Working on a task** (implementing, and every repair cycle) | Only the test files being written or repaired, and the one that failed: `npx vitest run <file>`, `npx playwright test <spec> -g "<test title>"`, `npx playwright test --last-failed`. Never a whole suite. |
 | **The gate** (§2 step 1), once per task, on its final state | The selection `npm run test:affected -- --base night-<YYYY-MM-DD>` prints: `vitest related` over the changed files, and the specs visiting a route the change reaches, against `next dev`. |
-| **Full-suite points** | `npm test`, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan, or every 5th task if the plan names none; the last task before the morning report; and any gate where the selector printed `FULL`. |
+| **Database tests** | `DATABASE_TESTS=1 npx vitest run tests/unit/data`, at the gate whenever the selector prints a `database:` line (a change to `app/lib/data.ts`, `db/migrations/`, `scripts/db.mjs` or the tests themselves); `--run` runs it. Otherwise only at full-suite points. Nowhere else does anything run them. |
+| **Full-suite points** | `npm test`, the database tests above, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan, or every 5th task if the plan names none; the last task before the morning report; and any gate where the selector printed `FULL`. |
 | **After a fix the reviewer asked for** | The gate again, on the new final state. The selection is already narrow; no separate full run. |
 
 The selector (`scripts/affected-tests.mjs`) follows each changed file through
@@ -564,7 +571,9 @@ Never, unattended:
 - Stashing, restoring or discarding changes you did not make in this run.
 - **Any database but the development one, or touching it by hand.** The run
   reaches the database only through `npm run test:e2e` (which rebuilds
-  `xenocats_test`) and the build (which reads `xenocats`). Never run SQL or
+  `xenocats_test`), the database tests (`DATABASE_TESTS=1 npx vitest run
+  tests/unit/data`, which rebuild `xenocats_vitest`) and the build (which reads
+  `xenocats`). Never run SQL or
   `npm run db:*` yourself, never touch the `xenocats` schema or anything else
   on that server, and never a hosted database. A schema change is a new file in
   `db/migrations/` (never an edit to an applied one), written when the plan asks
@@ -589,7 +598,8 @@ Never, unattended:
 - Contacting any external service, **except** `git push`/`fetch` to `origin`
   for this run's branches; the §2 step 6 poll (`ci-poll.mjs` and the `/jobs`
   lookup): read-only, no token, only on commits this run pushed; and the
-  development database, through the build and the browser tests above.
+  development database, through the build, the browser tests and the database
+  tests above.
 
 **If a task needs one of these, abandon it.** Write in `questions.md` what was
 needed, which rule blocked it, and the exact command or diff for a human to

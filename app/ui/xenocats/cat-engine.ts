@@ -329,7 +329,9 @@ export function createCatEngine(options: {
             if (cat.eager) setPhase(cat, 'ready', at, Infinity);
             else setPhase(cat, 'sleeping', at, between(config.sleepMs));
           } else if (cat.phase === 'sleeping') {
-            startWaking(cat, at);
+            // From now, not from when its sleep ran out: after a gap (a background
+            // tab come back) the waking warning is still seen before the pounce.
+            startWaking(cat, now);
           } else if (cat.phase === 'waking') {
             setPhase(cat, 'ready', at, Infinity);
           } else if (cat.phase === 'attacking') {

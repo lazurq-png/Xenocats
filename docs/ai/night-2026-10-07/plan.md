@@ -87,8 +87,8 @@ A task like any other (`night-2026-10-07-c<N>-checkpoint`, through the whole of
    element. The calm-intensity hits (`PAGE_HITS` in `page-hits.ts`) follow the
    same mapping at their smaller reach. Shaking is right only for an attack
    that shakes the pointer (`jitter`). Everything still reverts exactly; clicks
-   stay blocked while elements are displaced; focused fields are never
-   touched. Unit tests: for every effect, whether an element moves, and in
+   are never blocked (they land where the real pointer is); focused fields are
+   never touched. Unit tests: for every effect, whether an element moves, and in
    which way, is what the table says. E2E on `/cats`, summoning each cat in
    turn: Smoke Bombay leaves an element's box where it was while it is
    obscured; Pinball Devon displaces it and keeps it inside the viewport;

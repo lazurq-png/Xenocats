@@ -617,7 +617,7 @@ const hit = (page: Page) =>
   );
 
 // Each cat in turn. Every element its attack hits does what the attack does to the
-// pointer (decisions.md D4); here, two of them closely, and for all twenty: every
+// pointer (decisions.md D4, Q3); here, five of them closely, and for all twenty: every
 // element is back exactly as it was when the attack ends.
 for (const type of CAT_TYPES) {
   test(`${type.name}: the page elements it hits are back exactly when its attack ends`, async ({
@@ -677,11 +677,41 @@ for (const type of CAT_TYPES) {
       expect(furthest).toBeGreaterThan(100);
     }
 
+    if (type.id === 'mirror-sphynx') {
+      // Mirrored where they stand.
+      for (const element of await hit(page)) {
+        expect(element.scale).toMatch(/^-/);
+        expect([element.dx, element.dy]).toEqual([0, 0]);
+      }
+    }
+
+    if (type.id === 'laser-ocicat') {
+      // A beam shows, and the elements it hits are knocked aside.
+      await expect(page.locator('[data-xenocat-beam][style*="opacity: 1"]').first()).toBeAttached();
+      await expect
+        .poll(async () => (await hit(page)).some(({ dx, dy }) => dx !== 0 || dy !== 0))
+        .toBe(true);
+    }
+
+    if (type.id === 'decoy-burmese') {
+      // Fake copies of what it hit, and a click on one does nothing: no second cat.
+      const copy = page.locator('[data-xenocat-decoy]').first();
+      await expect(copy).toBeAttached();
+      const before = page.url();
+      const box = (await copy.boundingBox())!;
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      // Time for a navigation or a summon to start, had the click done anything.
+      await page.waitForTimeout(500);
+      expect(page.url()).toBe(before);
+      await expect(page.getByTestId('xenocat')).toHaveCount(1);
+    }
+
     await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', {
       timeout: type.effect.durationMs + 5000,
     });
     await expect.poll(() => restyled(page)).toEqual([]);
     await expect(page.locator('html')).not.toHaveAttribute('data-xenocat-puppets');
+    await expect(page.locator('[data-xenocat-props]')).toHaveCount(0);
   });
 }
 

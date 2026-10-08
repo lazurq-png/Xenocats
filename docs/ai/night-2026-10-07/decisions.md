@@ -33,14 +33,14 @@ Acceptance criteria (from the task's words):
 | Void Tabby | `vanish` | hidden 3 s | hidden where it stands |
 | Gravi Coon | `heavy` | moves at 30 % speed | nothing: a still pointer is not moved |
 | Pulsar Siamese | `knockback` | flung 300 px away from the cat | flung away from the cat |
-| Mirror Sphynx | `reverse` | moves the opposite way | nothing |
+| Mirror Sphynx | `reverse` | moves the opposite way | mirrored where it stands (Q3, D106) |
 | Static Calico | `jitter` | shakes ±15 px | **shakes** (the only plain shaking attack) |
 | Cryo Persian | `freeze` | frozen in place, iced | frosted in place, no motion |
 | Nebula Ragdoll | `drift` | pushed steadily one way | drifts steadily one way |
 | Quantum Kitten | `teleport` | jumps to a random spot, 3 times | jumps to a random spot, 3 times |
 | Magneto Bengal | `magnet` | pulled towards the cat | pulled towards the cat |
 | Orbit Abyssinian | `orbit` | circles the cat | circles the cat |
-| Decoy Burmese | `decoys` | three decoy cursors beside it | nothing (decoys are extra cursors, not the pointer) |
+| Decoy Burmese | `decoys` | three decoy cursors beside it | stays put; fake copies of it (buttons, links, text) where the decoy cursors would be, which do nothing when clicked (Q3, D106) |
 | Wobble Fold | `drunk` | wobbles about | sways about where it stands |
 | Munchkin Mite | `tiny` | shrinks to a quarter | shrinks in place |
 | Titan Forest Cat | `giant` | grows fourfold | grows in place |
@@ -49,7 +49,7 @@ Acceptance criteria (from the task's words):
 | Smoke Bombay | `blur` | blurry, half-transparent | hidden behind smoke in place (blur x3, grey, half-transparent) |
 | Hypno Rex | `spiral` | spirals in to the screen's middle | spirals in to the screen's middle |
 | Pinball Devon | `bounce` | flies off, bounces off the screen's edges | flies off (away from the cat), bounces off the viewport's edges |
-| Laser Ocicat | `axis-lock` | moves on one axis only | nothing |
+| Laser Ocicat | `axis-lock` | moves on one axis only | laser beams from the cat, each shot knocking it aside along the beam (Q3, D106) |
 | combo: Ice puck | freeze + bounce | frosted, bouncing | frosted, bouncing |
 | combo: Slingshot | knockback, then magnet | flung away, then reeled in | flung away, then pulled towards the cat |
 | combo: Hangover | reverse + drunk | wrong way, swaying | sways |
@@ -57,7 +57,7 @@ Acceptance criteria (from the task's words):
 | combo: Pulsar | tiny + giant | swells and shrinks | swells and shrinks in place |
 | combo: Static fog | jitter + blur | fizzing in a haze | shakes, behind smoke |
 
-Five cats (Heavy, Reverse, Decoys, Delay, Axis lock) now leave elements as they are: their attacks only change how the pointer follows the mouse, and an element has no mouse. That is the literal consequence of "an element only moves if the attack moves the pointer ... and nothing else"; raised as Q3 in case a visible equivalent is wanted.
+Five cats (Heavy, Reverse, Decoys, Delay, Axis lock) left elements as they were: their attacks only change how the pointer follows the mouse, and an element has no mouse. Raised as Q3; the human's answer gave three of them a visible equivalent (D106), so only Heavy and Delay still leave elements as they are.
 
 Pinball's direction: the plan says "a random direction"; the effect launches the pointer away from the cat, so each element flies away from the cat, which differs from element to element. Kept to the effect, since the task asks for what the attack does to the pointer.
 
@@ -69,14 +69,14 @@ Pinball's direction: the plan says "a random direction"; the effect launches the
 
 **D8 — Exact revert fixed in Chromium.** The new per-cat browser test found elements left with an empty `style=""` after every attack. The release code was unchanged by this task, so this was there before. Chromium writes CSSOM changes (`el.style.translate = ...`) to the attribute lazily, and `removeAttribute('style')` alone let a pending write land afterwards. `release()` now sets the saved text first, then removes the attribute if there was none. It shows only without a `MutationObserver` on the page: one with `attributeOldValue` forces the writes through and hides the bug (that is how the first probes missed it). Covered by the per-cat e2e tests; jsdom cannot reproduce it.
 
-**D9 — Clicks: kept as they are** (Q2). The plan says "clicks stay blocked while elements are displaced", but click blocking was removed by hand in `d53f566` (2026-10-02, "redid so elements move independant of mouse"), and `fake-cursor.tsx` says "Clicks are never blocked". "Stay" asks for no change, so none was made.
+**D9 — Clicks are never blocked** (Q2). Click blocking was removed on purpose in `d53f566` (2026-10-02, "redid so elements move independant of mouse"), and `fake-cursor.tsx` says "Clicks are never blocked". The plan's task 2 said otherwise; the human confirmed (2026-10-08) that not blocking is intended, and the plan's wording was corrected. No change to the code. One exception, by the human's choice: Decoy Burmese's fake copies catch clicks, including any aimed at what lies beneath them (D106).
 
 **D10 — e2e helper.** Chromium reads `translate: 0px 0px` back as `"0px"`; the spec's parser treats a missing y as 0.
 
 **D11 — T2 review (request changes), and what was done.**
 1. *Medium, fixed.* The level's `fling` multiplied every effect's displacement, so at calm, in chaos and for panels the attacks that put the pointer somewhere (spiral, orbit, magnet, bounce, Ice puck) missed their target: a calm spiral stopped halfway, a chaos one overshot the middle, a calm orbit circled a point between element and cat. `fling` now applies only to attacks that throw the pointer some way from where it is (`amplify: 'offset'`), as `strengthen()` already does for an angry cat; the others put the element where they put the pointer at every level. Unit tests now check those rows at calm, chaos and as a panel; with the old rule four of them fail (checked by putting it back).
 2. *Low, fixed.* The settings page's intensity descriptions (`app/ui/settings/cat-intensity.tsx`) said calm "only nudges" and chaos makes "things fly right off" the page; now "only hit what is near your pointer" and "things fly across it".
-3. *Low, no code change.* Clicks are not blocked (D9): kept as an open question (Q2), to be reported as a requirement not met, not as decided.
+3. *Low, no code change.* Clicks are not blocked (D9). Raised as Q2; the human confirmed this is intended.
 Observations not acted on: a field focused *during* an attack keeps moving (as before this task); an element's home is measured once per attack, so scrolling mid-attack clamps from the old position (as before).
 Re-review (read only): approve, no remaining findings. Its observation: the Slingshot and Hangover combos carry no `amplify` marker, so their knockback / wobble parts are not halved at calm (as an angry cat's `strengthen()` treats them too); if wanted, the fix belongs in `combos.ts`. Not changed: the task names no distance for combos.
 
@@ -413,3 +413,25 @@ Both are data only (existing weapon kinds `spread` and `arc`; their shots drawn 
 ## T12 item 14 — the agents' rules name routes that no longer exist
 
 **D105 — Facts corrected, guardrails untouched.** `.claude/agents/reviewer.md` sent the standing reviewer to "the schema in `app/seed/route.ts`" and cited `app/seed/route.ts` and `app/query/route.ts` as code that leaks database errors; `.claude/rules/backend.md` listed the app's route handlers as "only the one-off seed/query routes". Both routes were deleted in `a1e8040`; the schema is `db/migrations/*.sql`, and the only route handler is the invoice CSV export, which checks the session itself and returns fixed messages (read for this item). The three references are corrected; nothing else in either file changes — in particular the reviewer's "never request `/seed`, or run SQL" and its "only copy of its data" stay as written: they are guardrails, conservative is right for them, and an unattended run does not loosen its own reviewer's limits. Documentation only: no code, no test changes.
+
+## Answers to the run's questions (2026-10-08, supervised)
+
+**D106 — Three cats now do something visible to the page (Q3).** The human asked for: Laser Ocicat shoots lasers at elements, Mirror Sphynx reverses everything inside an element, Decoy Burmese makes fake copies of buttons and text that do nothing when clicked. Asked further, they chose a mirror image (not reversed text) and beams that also knock the element aside. Built in `puppets.ts`, with the beams and copies in a new `props.ts`:
+- *Mirror* (`reverse`): the element's `scale` becomes `-s s`, so it is mirrored left to right, combined with any shrink or growth. It does not move. Text is not rewritten: D5 removed the text effects for touching React's DOM.
+- *Laser* (`axis-lock`): about one shot a second per element (the first at a random moment). Each draws a red beam from the cat to the element for 180 ms, and knocks the element 40 px along the beam (times the level's fling), settling back in 0.5 s. A shot that could not settle before the attack ends is not fired, so the element is never snapped back.
+- *Decoys* (`decoys`): the element stays still. Copies of it go where the effect puts the decoy cursors round a still pointer (so the table is still the engine's). Only buttons, links, labels, headings, paragraphs and list items are copied, never fields, rows or panels. A copy has no `id`, `name`, `for`, `form` or `data-testid`, and is out of the tab order. Its holder swallows `click` and `auxclick` (`preventDefault`, `stopPropagation`) and prevents `mousedown`, so a click on a copy neither follows a link nor reaches anything else, and the copy never takes focus.
+- Beams and copies live in one stage appended to `<body>` (`data-xenocat-props`, `aria-hidden`, `data-xenocat-ignore`, below the cats and the cursor), removed with the last prop. Release and `clear()` remove them, as they restore the style.
+Only the plain cats' attacks (and their angry versions). Combos keep their rows; Hangover, which contains Reverse, still only sways. Known exposure: a decoy attack on a dashboard page during a browser test puts duplicate text on the page for 5 s, and a `getByText` in strict mode could then match twice. Puppets already move elements during tests the same way; watch for it.
+Review (request changes), acted on. Fixed: (2) copies stayed while a second attack on the same element ran on; they now go with the Decoys attack. (3) After a navigation inside /dashboard, the old page's copies and beams stayed over the new page; an element no longer on the page is now released at once. (5) The browser test's check that a click on a copy does nothing now waits 0.5 s before asserting. Unit tests cover (2) and (3). Decided by the human (2026-10-08): (1, Medium) a copy catches every click on it, and may block anything underneath it. It stays that way: the one deliberate exception to "clicks are never blocked" (D9). Was: a copy catches every click on it, so it eats a click meant for a real control underneath it. That contradicts "clicks are never blocked" (D9). The alternative, `pointer-events: none` on the copies, lets that click through to what is beneath, so a copy only seems to do nothing when nothing real is under it. (4) duplicate text in strict `getByText` checks, as above.
+
+**D107 — A cat wakes from the moment it can be seen (Q8).** A sleeping cat whose sleep ran out while the tab was hidden now starts waking at the tick that notices, not at the moment its sleep ended. So the 900 ms waking warning is shown before the pounce. Ticks run on animation frames, which stop in a hidden tab, so the first tick after the gap is the tab's return. In a visible tab the two moments differ by at most a frame. Two cats whose sleeps both ran out in the gap now wake together, and may pair into a combo.
+
+**D108 — CI's browser jobs run in containers (Q9).** The human asked for containers wherever they make CI faster than installing onto a fresh Ubuntu runner. Changed:
+- *build* and *e2e* run inside `mcr.microsoft.com/playwright:v1.63.0-noble`, which has Chromium and its system libraries. That replaces `playwright install --with-deps chromium`, an apt install on every run. The install step stays as `playwright install chromium`, a no-op while the image's tag matches the locked `@playwright/test`. If the two drift apart, it downloads the right browser rather than failing. The tag has to be raised with every Playwright upgrade.
+- PostgreSQL is a `postgres:17` service container instead of the runner's preinstalled server, which a container job cannot reach. A service container takes no server flags, so `scripts/ci-database.mjs` switches TLS on over SQL, using the image's snakeoil certificate, and checks a TLS connection gets through. It then sets `POSTGRES_URL` to the container's private address, so `db:seed`'s private-host check passes on its own terms.
+- `AUTH_SECRET` comes from Node's `crypto`: the image may not have `openssl`.
+- `setup-node` stays in both jobs, to keep Node 24 and the npm cache.
+- *checks* stays on the runner: it only needs Node, which `setup-node` restores from cache in seconds, and a container there would only add an image pull.
+
+Not verified locally (no Docker on this machine); actionlint passes. The first push shows whether it works and how much it saves: compare the browser jobs' durations with the runs before. The main risk is the snakeoil certificate. If the image lacks it, the *PostgreSQL* step fails with "PostgreSQL did not turn TLS on". Q9's original build failure was a test, not the install (D93): this is for speed, not a fix for it.
+

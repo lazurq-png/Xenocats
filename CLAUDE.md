@@ -302,9 +302,12 @@ no production database yet: one is built later with `db:migrate`, by a human.
 three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
 over a migrated and seeded `xenocats` schema, then the browser tests against
 `next start` (`E2E_SERVER=start`); and *e2e* — the browser tests against
-`next dev`. The *build* and *e2e* jobs start the PostgreSQL preinstalled on the
-runner (TLS on, throwaway password), so CI needs no repository secret and no
-outside database, and runs the database tests too. Each job that starts Next
+`next dev`. The *build* and *e2e* jobs run inside the Playwright image
+(`mcr.microsoft.com/playwright`, its tag the locked `@playwright/test` version),
+so Chromium is not installed on every run. Each starts a throwaway PostgreSQL
+service container, which `scripts/ci-database.mjs` switches TLS on for and
+points `POSTGRES_URL` at. So CI needs no repository secret and no outside
+database, and runs the database tests too. Each job that starts Next
 makes its own throwaway `AUTH_SECRET`. It runs on GitHub, not on your machine: never
 report a CI result you have not observed.
 The one sanctioned way to observe one is the night-run skill's read-only poll
@@ -324,7 +327,9 @@ Expand verification when the change has broader impact.
 
 `npm run test:affected` compares the tree with `--base` (default `main`) and
 prints the tests to run: `vitest related` over the changed files, and the browser
-specs that visit a route the change reaches. When it cannot place a changed file
+specs that visit a route the change reaches. For a change to a query, the schema
+or the database tests themselves it also prints a `database:` line, naming the
+opt-in database tests that `vitest related` would skip. When it cannot place a changed file
 (configuration, auth, the root layout, seed data, a deletion) it says `FULL`
 and names the file; then run the full suites. Cheap checks go first (prettier,
 lint, type check), the slow ones after, one at a time: the browser tests are
