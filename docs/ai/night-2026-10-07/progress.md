@@ -792,3 +792,22 @@ Item 8 gave the two specs that flaked a 15-second wait after a page change; ten 
 - **Gate**
   - Full gate (FULL), all exit 0: prettier, lint 0 warnings, type check, group check; `npm test` 44 files, 653 passed (17 skipped); build; `npm run test:e2e` 131 passed; `E2E_SERVER=start npm run test:e2e` 131 passed.
   - After the review's changes (the selection): prettier, lint, type check, group check, build; 32 browser tests passed.
+
+## T12 item 14 — started 07:33: the agents' rules name routes that no longer exist (kind: security and quality)
+
+The standing reviewer is told the schema lives in `app/seed/route.ts` and that `app/seed/route.ts` and `app/query/route.ts` leak database errors; `.claude/rules/backend.md` says the only route handlers are those seed/query routes. Both were deleted (`a1e8040`); the schema is `db/migrations/*.sql`, and the one route handler, the invoice CSV export, checks the session itself. A reviewer pointed at files that do not exist reviews the wrong surface. The factual references are corrected; no guardrail is touched.
+
+## T12 item 14 — the agents' rules name routes that no longer exist (completed)
+
+- Branch `night-2026-10-07-t12-14-stale-routes`, base `edc2ace`. Started 07:33, before the goal. Completed 10:26, **after the goal (08:30)**, as the task in flight at it.
+- **Gap: about 07:35 to 10:20, nothing ran.** The session hit its usage limit a third time ("resets 10:20am"). The first reviewer of this item stopped with that error, and the review was redone at 10:20.
+- **CI of T12 item 13** (`edc2ace`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37732819680), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37732819170)).
+- **What changed** (D105): documentation only.
+  - `.claude/agents/reviewer.md`: the schema is `db/migrations/*.sql`, not `app/seed/route.ts`; the "leaked errors" example no longer cites the deleted seed and query routes.
+  - `.claude/rules/backend.md`: the app's one route handler is the invoice CSV export, which checks the session itself.
+  - No guardrail touched: the reviewer's "never request `/seed`, or run SQL" and "only copy of its data" stay as written.
+- **Why it was added**: plan task 12, an exploration item of the kind "security and quality". A reviewer pointed at files that no longer exist reviews the wrong surface.
+- **Reviewer**: approve, no findings. It verified each fact and that no guardrail was loosened.
+- **Gate**: prettier on both files, lint 0 warnings, type check, group check, build, all exit 0.
+  - The selection had nothing to run (no code). The gate script reported "failed" at that step only because its output filter found no lines.
+  - Run directly, `npm run build` exit 0 and `npm run test:affected -- --run` exit 0 ("nothing to run").
