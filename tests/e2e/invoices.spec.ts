@@ -201,13 +201,27 @@ test('an invoice is deleted, and stays deleted after a reload', async ({ page })
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('each invoice card shows its due date under its date', async ({ page }) => {
+  test('an invoice card shows its own due date under its date', async ({ page }) => {
+    test.setTimeout(60_000);
     await logIn(page);
-    await page.goto('/dashboard/invoices');
+    // An invoice due 45 days on: not the default, so the card must show its due date.
+    const cents = uniqueCents();
+    const today = new Date().toISOString().slice(0, 10);
+    await openCreateForm(page);
+    await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
+    await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
+    await page.getByLabel('Pending').check();
+    await page.getByLabel('Due date').fill(addDays(today, 45));
+    await page.getByRole('button', { name: 'Create Invoice' }).click();
+    await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
+
+    await page.goto(`/dashboard/invoices?query=${cents}`);
     // The phone layout's cards (the table is hidden at this width).
     await expect(page.locator('table').first()).toBeHidden();
-    const dues = page.getByText(/^Due [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
-    await expect(dues.first()).toBeVisible();
-    expect(await dues.count()).toBeGreaterThan(0);
+    // The search leaves only this invoice (its card can show twice for a moment as the
+    // list streams in): its due date, under its date.
+    await expect(
+      page.getByText(`Due ${formatDateToLocal(addDays(today, 45))}`, { exact: true }).first()
+    ).toBeVisible();
   });
 });

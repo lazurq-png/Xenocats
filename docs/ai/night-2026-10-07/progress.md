@@ -704,3 +704,22 @@ Item 5 found a cat behaviour bug by reading the engine. This item looks for more
 - **Gate**
   - Full gate (FULL, as `ci.yml` changed), all exit 0: actionlint 0, prettier, lint 0 warnings, type check, group check; `npm test` 44 files, 651 passed (17 skipped); build; `npm run test:e2e` 130 passed; `E2E_SERVER=start npm run test:e2e` 130 passed.
   - After the review's changes (test file and CI group only): actionlint 0, prettier, lint, type check, group check, and the test itself passed.
+
+## Checkpoint 4 (completed)
+
+- Branch `night-2026-10-07-c4-checkpoint`, base `03d24e1`; covers `23b9f87..03d24e1` (T12 items 6–10). Start 06:49 (budget ~13,204,000); completed 06:59 (budget ~13,190,000).
+- **CI of T12 item 10** (`03d24e1`): **CI passed** on both branches ([run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37729209303), [task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37729209595)).
+- **1. Tests.** Every behaviour changed in the range has a test that fails without it; each item's entry names them.
+  - **Strengthened:** the phone layout's due line now proves it shows the invoice's own due date, not only that a line is there.
+  - **Removed:** nothing. No test is of removed behaviour, a duplicate, or unable to fail.
+  - **Recorded:** the list query's new column is checked by a browser test and the opt-in database test (CI runs it), not by a plain `npm test`.
+- **2. Quality and security.** The reviewer read the range with `.claude/rules/security-review.md` in scope: logging, the lint rule, the invoice data, the CI groups, the arsenal, and how the items interact.
+  - **No security or correctness finding.**
+  - Two Low findings and a nit, all handled (D97): the phone test strengthened; the database-test coverage recorded; "The Cat Treats is no more." left as the product's voice.
+- **What changed** (code): `tests/e2e/invoices.spec.ts` (the phone test).
+- **Verification** (a full-suite point; `GATE_FULL=1`), all exit 0:
+  - Prettier, lint 0 warnings, type check, group check.
+  - `npm test`: 44 files, 651 passed (17 skipped).
+  - Build.
+  - `npm run test:e2e`: 130 passed.
+  - `E2E_SERVER=start npm run test:e2e`: 130 passed.
