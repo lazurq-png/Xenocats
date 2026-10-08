@@ -108,3 +108,11 @@ All green, run one after another on `ae34cbc`:
   - `npm run build` exit 0.
   - Acceptance criteria (D24, D25): by command except co-op's two sections and how the menu looks (reading only).
 - **Reviewer**: request changes (one Medium, four Low), all fixed; re-review approve with one Low, fixed (D25, D26). **Tested in a browser, not seen**: a human should look at the pause menu on a phone and with co-op.
+
+## Checkpoint 1 (completed)
+
+- Branch `night-2026-10-08-c1-checkpoint`, base `d88d6df`. Start 15:55 (budget ~14,678,000); completed 16:05 (budget ~14,663,000). (T5's entry gives its completion as 15:56; the clock read 15:54.)
+- **CI of T5** (`d88d6df`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37788108362), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37788103387)).
+- **What was checked, found and changed**: tests over tasks 1–5 (D27): one gap closed with `game-settings.test.tsx` (the aim setting's storage and the settings component), added to CI's jsdom group. Quality and security review over the whole range (D28): approve, no findings; two observations recorded.
+- **What it brings**: the night's first five changes are reviewed together and the new settings are covered below the browser tests, so a later task that breaks them fails in seconds instead of minutes. Decisions: D27–D28.
+- **Verification (a full-suite point)**: prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0; `actionlint` (with shellcheck, pyflakes) exit 0 and CI's group check passes; `npm test`: 43 files passed, 1 skipped, 674 passed, 17 skipped; database tests: 17 passed; `npm run build` exit 0; `npm run test:e2e` (next dev): 133 passed; `E2E_SERVER=start npm run test:e2e`: 133 passed.
