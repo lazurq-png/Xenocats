@@ -59,29 +59,33 @@ export type WeaponStats = {
   pierce: number;
 };
 
-type Growth = { [K in keyof WeaponStats]: readonly [number, number] };
+/** What one level adds to the level before it: each stat named is added to. */
+export type Step = Partial<WeaponStats>;
 
 /** One set of stats at every level: an evolved weapon does not grow. */
 function fixed(stats: WeaponStats): WeaponStats[] {
   return Array.from({ length: MAX_WEAPON_LEVEL }, () => stats);
 }
 
-/** Level 1 at the first value, level 8 at the second, evenly between; counts rounded down. */
-function levels(growth: Growth): WeaponStats[] {
-  return Array.from({ length: MAX_WEAPON_LEVEL }, (_, i) => {
-    const t = i / (MAX_WEAPON_LEVEL - 1);
-    const at = ([a, b]: readonly [number, number]) => a + (b - a) * t;
-    return {
-      cooldownMs: Math.round(at(growth.cooldownMs)),
-      damage: Math.round(at(growth.damage)),
-      area: Math.round(at(growth.area)),
-      count: Math.floor(at(growth.count) + 1e-9),
-      // Not rounded: some speeds are shares and turns (the vacuum's pull, the blades').
-      speed: Math.round(at(growth.speed) * 100) / 100,
-      durationMs: Math.round(at(growth.durationMs)),
-      pierce: Math.floor(at(growth.pierce) + 1e-9),
-    };
-  });
+/**
+ * Level 1's stats, then what each of levels 2 to 8 adds (seven steps). Every level
+ * changes something the player notices (levelChanges), and its card says exactly
+ * that, so a level never passes unseen.
+ */
+function ladder(base: WeaponStats, steps: readonly Step[]): WeaponStats[] {
+  if (steps.length !== MAX_WEAPON_LEVEL - 1) throw new Error('A ladder has seven steps.');
+  const all = [base];
+  for (const step of steps) {
+    const before = all[all.length - 1];
+    const next = { ...before };
+    for (const key of Object.keys(step) as (keyof WeaponStats)[]) {
+      // Rounded: the speeds that are shares and turns (the vacuum's pull, the
+      // blades') keep two decimals.
+      next[key] = Math.round((before[key] + (step[key] ?? 0)) * 100) / 100;
+    }
+    all.push(next);
+  }
+  return all;
 }
 
 export type WeaponKind =
@@ -113,6 +117,8 @@ export type WeaponInfo = {
   /** In the game's voice. */
   description: string;
   kind: WeaponKind;
+  /** What its count counts, one of them ("beam"): the level-up cards' word. */
+  unit: string;
   levels: readonly WeaponStats[];
 };
 
@@ -121,132 +127,185 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
     name: 'Laser Pointer',
     description: 'A red dot no cat can ignore. Whatever it touches grows homesick.',
     kind: 'beam',
-    levels: levels({
-      cooldownMs: [1100, 650],
-      damage: [20, 45],
-      area: [300, 420],
-      count: [1, 4],
-      speed: [0, 0],
-      durationMs: [180, 180],
-      pierce: [99, 99],
-    }),
+    unit: 'beam',
+    levels: ladder(
+      { cooldownMs: 1100, damage: 20, area: 300, count: 1, speed: 0, durationMs: 180, pierce: 99 },
+      [
+        { count: 1 },
+        { damage: 8 },
+        { cooldownMs: -220 },
+        { count: 1 },
+        { damage: 9, area: 60 },
+        { cooldownMs: -230 },
+        { count: 1, damage: 8, area: 60 },
+      ]
+    ),
   },
   'cat-treats': {
     name: 'Cat Treats',
     description: 'Thrown in a spread. Delicious, and yet they make a cat long for home.',
     kind: 'spread',
-    levels: levels({
-      cooldownMs: [1300, 700],
-      damage: [14, 30],
-      area: [9, 13],
-      count: [3, 9],
-      speed: [420, 520],
-      durationMs: [1400, 1700],
-      pierce: [2, 5],
-    }),
+    unit: 'treat',
+    levels: ladder(
+      { cooldownMs: 1300, damage: 14, area: 9, count: 3, speed: 420, durationMs: 1400, pierce: 2 },
+      [
+        { count: 2 },
+        { damage: 5, pierce: 1 },
+        { cooldownMs: -300 },
+        { count: 2, area: 2 },
+        { damage: 5, pierce: 1, speed: 100 },
+        { cooldownMs: -300, durationMs: 300 },
+        { count: 2, damage: 6, pierce: 1, area: 2 },
+      ]
+    ),
   },
   'vacuum-cleaner': {
     name: 'Vacuum Cleaner',
     description: 'Now and then it draws the nearest cats in, protesting.',
     kind: 'pull',
-    levels: levels({
-      cooldownMs: [3200, 1900],
-      damage: [6, 18],
-      area: [170, 300],
-      count: [1, 1],
-      speed: [0.35, 0.6],
-      durationMs: [300, 300],
-      pierce: [99, 99],
-    }),
+    unit: 'pull',
+    levels: ladder(
+      {
+        cooldownMs: 3200,
+        damage: 6,
+        area: 170,
+        count: 1,
+        speed: 0.35,
+        durationMs: 300,
+        pierce: 99,
+      },
+      [
+        { area: 40 },
+        { damage: 4 },
+        { cooldownMs: -450 },
+        { speed: 0.12, area: 45 },
+        { damage: 4 },
+        { cooldownMs: -850 },
+        { damage: 4, area: 45, speed: 0.13 },
+      ]
+    ),
   },
   'spray-bottle': {
     name: 'Spray Bottle',
     description: 'Water in a wide arc. No cat has ever forgiven it.',
     kind: 'arc',
-    levels: levels({
-      cooldownMs: [1500, 800],
-      damage: [10, 24],
-      area: [70, 140],
-      count: [6, 16],
-      speed: [360, 460],
-      durationMs: [500, 650],
-      pierce: [2, 4],
-    }),
+    unit: 'droplet',
+    levels: ladder(
+      { cooldownMs: 1500, damage: 10, area: 70, count: 6, speed: 360, durationMs: 500, pierce: 2 },
+      [
+        { count: 3 },
+        { damage: 4, area: 20 },
+        { cooldownMs: -300 },
+        { count: 3, pierce: 1 },
+        { damage: 5, area: 25, speed: 100 },
+        { cooldownMs: -400, durationMs: 150 },
+        { count: 4, damage: 5, area: 25, pierce: 1 },
+      ]
+    ),
   },
   'yarn-ball': {
     name: 'Yarn Ball',
     description: 'It bounces about the screen, and no cat can let it pass.',
     kind: 'bounce',
-    levels: levels({
-      cooldownMs: [3500, 2200],
-      damage: [12, 26],
-      area: [12, 18],
-      count: [1, 4],
-      speed: [300, 380],
-      durationMs: [3000, 4500],
-      pierce: [99, 99],
-    }),
+    unit: 'ball',
+    levels: ladder(
+      {
+        cooldownMs: 3500,
+        damage: 12,
+        area: 12,
+        count: 1,
+        speed: 300,
+        durationMs: 3000,
+        pierce: 99,
+      },
+      [
+        { count: 1 },
+        { damage: 5, durationMs: 500 },
+        { cooldownMs: -600 },
+        { count: 1, area: 3 },
+        { damage: 5, speed: 80, durationMs: 500 },
+        { cooldownMs: -700 },
+        { count: 1, damage: 4, area: 3, durationMs: 500 },
+      ]
+    ),
   },
   'can-opener': {
     name: 'Can Opener',
     description: 'Blades that circle him. The sound alone sends cats home.',
     kind: 'orbit',
-    levels: levels({
-      cooldownMs: [0, 0],
-      damage: [55, 110],
-      area: [70, 110],
-      count: [1, 5],
-      speed: [2.6, 4.2],
-      durationMs: [0, 0],
-      pierce: [99, 99],
-    }),
+    unit: 'blade',
+    levels: ladder(
+      { cooldownMs: 0, damage: 55, area: 70, count: 1, speed: 2.6, durationMs: 0, pierce: 99 },
+      [
+        { count: 1 },
+        { damage: 20 },
+        { count: 1, area: 20 },
+        { speed: 0.8 },
+        { count: 1, damage: 20 },
+        { area: 20, speed: 0.8 },
+        { count: 1, damage: 15 },
+      ]
+    ),
   },
   hairball: {
     name: 'Hairball',
     description: 'Coughed up at a cat. It bursts into smaller, worse hairballs.',
     kind: 'burst',
-    levels: levels({
-      cooldownMs: [2000, 1200],
-      damage: [22, 44],
-      area: [14, 20],
-      count: [4, 9],
-      speed: [330, 400],
-      durationMs: [900, 1200],
-      pierce: [1, 1],
-    }),
+    unit: 'piece',
+    levels: ladder(
+      { cooldownMs: 2000, damage: 22, area: 14, count: 4, speed: 330, durationMs: 900, pierce: 1 },
+      [
+        { count: 1 },
+        { damage: 7 },
+        { cooldownMs: -400, count: 1 },
+        { area: 3, speed: 70 },
+        { count: 1, damage: 7, durationMs: 300 },
+        { cooldownMs: -400, count: 1 },
+        { count: 1, damage: 8, area: 3 },
+      ]
+    ),
   },
   'thunderous-vacuum': {
     name: 'Thunderous Vacuum',
     description: 'A vast and terrible hum. Every cat near him wishes it were elsewhere.',
     kind: 'zone',
-    levels: levels({
-      cooldownMs: [0, 0],
-      damage: [10, 30],
-      area: [110, 190],
-      count: [1, 1],
-      speed: [0, 0],
-      durationMs: [0, 0],
-      pierce: [99, 99],
-    }),
+    unit: 'zone',
+    levels: ladder(
+      { cooldownMs: 0, damage: 10, area: 110, count: 1, speed: 0, durationMs: 0, pierce: 99 },
+      [
+        { area: 20 },
+        { damage: 5 },
+        { area: 20 },
+        { damage: 5 },
+        { area: 20 },
+        { damage: 5 },
+        { damage: 5, area: 20 },
+      ]
+    ),
   },
   'laser-pointer-deluxe': {
     name: 'Laser Pointer Deluxe',
     description: 'The red dot, refined: it leaps from cat to cat.',
     kind: 'chain',
-    levels: levels({
-      cooldownMs: [1600, 900],
-      damage: [18, 36],
-      area: [220, 300],
-      count: [3, 8],
-      speed: [0, 0],
-      durationMs: [220, 220],
-      pierce: [99, 99],
-    }),
+    unit: 'jump',
+    levels: ladder(
+      { cooldownMs: 1600, damage: 18, area: 220, count: 3, speed: 0, durationMs: 220, pierce: 99 },
+      [
+        { count: 1 },
+        { damage: 6 },
+        { cooldownMs: -300, count: 1 },
+        { area: 40 },
+        { count: 1, damage: 6 },
+        { cooldownMs: -400, count: 1 },
+        { count: 1, damage: 6, area: 40 },
+      ]
+    ),
   },
   'infinite-laser': {
     name: 'Infinite Laser',
     description: 'The red dot, without end. The screen is a web of it.',
     kind: 'web',
+    unit: 'beam',
     levels: fixed({
       cooldownMs: 150,
       damage: 22,
@@ -262,6 +321,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
     description:
       'It should not exist. It draws in every cat for a long way, then sends them all home.',
     kind: 'gulp',
+    unit: 'pull',
     levels: fixed({
       cooldownMs: 4000,
       // Given once, at the burst, to every cat close to him.
@@ -280,6 +340,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
     name: 'Yarn Apocalypse',
     description: 'The yarn splits each time it bounces. Nobody will ever wind it up again.',
     kind: 'bounce',
+    unit: 'ball',
     levels: fixed({
       cooldownMs: 2600,
       damage: 30,
@@ -295,6 +356,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
     name: 'Banquet',
     description: 'Treats in every direction at once. Every cat is invited; every cat goes home.',
     kind: 'spread',
+    unit: 'treat',
     levels: fixed({
       cooldownMs: 500,
       damage: 40,
@@ -311,6 +373,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
     name: 'Monsoon',
     description: 'The bottle, but the sky. A wall of water the way he faces, and it does not stop.',
     kind: 'arc',
+    unit: 'droplet',
     levels: fixed({
       cooldownMs: 600,
       damage: 30,
@@ -326,6 +389,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
     name: 'Bottomless Saucer',
     description: 'Warm milk, circling him without end. No cat has ever refused it.',
     kind: 'orbit',
+    unit: 'saucer',
     levels: fixed({
       cooldownMs: 0,
       damage: 160,
@@ -451,7 +515,7 @@ export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
     speed: 1 + 0.1 * level('rubber-chicken'),
     cooldown: 1 - 0.08 * level('battery'),
     area: 1 + 0.1 * level('catnip'),
-    count: Math.floor(level('scissors') / 2) + (level('scissors') === MAX_PASSIVE_LEVEL ? 1 : 0),
+    count: level('scissors'),
     maxResolve: 20 * level('wool-sweater'),
     recovery: 0.4 * level('warm-milk'),
     pickup: 1 + 0.25 * level('long-whiskers'),
@@ -518,20 +582,132 @@ export function offerChoices(
   return picked;
 }
 
-/** A choice's name and line, for the level-up dialog. */
-export function describeChoice(choice: Choice): { name: string; description: string } {
+const percent = (after: number, before: number) => Math.round((after / before - 1) * 100);
+
+/** What a weapon's area is, in its level-up card's words. */
+const AREA_WORD: Readonly<Record<WeaponKind, string>> = {
+  beam: 'reach',
+  chain: 'reach',
+  web: 'reach',
+  pull: 'reach',
+  gulp: 'reach',
+  zone: 'reach',
+  orbit: 'reach',
+  spread: 'size',
+  bounce: 'size',
+  burst: 'size',
+  arc: 'range',
+};
+
+/**
+ * What `level` of a weapon adds to the level before it: one phrase for each stat it
+ * changes, and nothing for one it does not ("+1 beam", "+40% homesickness"). Read
+ * from the stats themselves, so a card and what the level does cannot disagree.
+ * Level 1 (and an evolved weapon, which does not grow) adds nothing.
+ */
+export function levelChanges(id: WeaponId, level: number): string[] {
+  const { levels, kind, unit } = WEAPONS[id];
+  if (level < 2 || level > levels.length) return [];
+  const before = levels[level - 2];
+  const after = levels[level - 1];
+  const changes: string[] = [];
+  const more = (n: number, one: string) => `+${n} ${one}${n === 1 ? '' : 's'}`;
+  if (after.count !== before.count) changes.push(more(after.count - before.count, unit));
+  if (after.damage !== before.damage) {
+    changes.push(`+${percent(after.damage, before.damage)}% homesickness`);
+  }
+  if (after.cooldownMs !== before.cooldownMs) {
+    changes.push(`fires ${-percent(after.cooldownMs, before.cooldownMs)}% sooner`);
+  }
+  if (after.area !== before.area) {
+    changes.push(`+${percent(after.area, before.area)}% ${AREA_WORD[kind]}`);
+  }
+  if (after.speed !== before.speed) {
+    const word = kind === 'pull' ? 'pull' : kind === 'orbit' ? 'turning speed' : 'speed';
+    changes.push(`+${percent(after.speed, before.speed)}% ${word}`);
+  }
+  if (after.durationMs !== before.durationMs) {
+    changes.push(`lasts ${percent(after.durationMs, before.durationMs)}% longer`);
+  }
+  if (after.pierce !== before.pierce) {
+    const n = after.pierce - before.pierce;
+    changes.push(`passes through ${n} more cat${n === 1 ? '' : 's'}`);
+  }
+  return changes;
+}
+
+const tenth = (n: number) => Math.round(n * 10) / 10;
+
+/** The kinds whose count means nothing to the arena: the vacuums pull and hum as one. */
+const UNCOUNTED: readonly WeaponKind[] = ['pull', 'zone', 'gulp'];
+
+/** What Scissors adds one of, in the cards' words: "beam, treat, … or jump". */
+const COUNTED = (() => {
+  const units = [
+    ...new Set(
+      BASE_WEAPONS.filter((id) => !UNCOUNTED.includes(WEAPONS[id].kind)).map(
+        (id) => WEAPONS[id].unit
+      )
+    ),
+  ];
+  return `${units.slice(0, -1).join(', ')} or ${units[units.length - 1]}`;
+})();
+
+/** Each of the passives' modifiers, as a level-up card says what one step of it adds. */
+const MODIFIER_WORDS: { [K in keyof Modifiers]: (step: number) => string } = {
+  speed: (step) => `+${Math.round(step * 100)}% walking speed`,
+  cooldown: (step) => `weapons ready ${Math.round(-step * 100)}% sooner`,
+  area: (step) => `+${Math.round(step * 100)}% weapon reach`,
+  count: (step) => `+${step} ${COUNTED} for each weapon that fires them`,
+  maxResolve: (step) => `+${step} Resolve`,
+  recovery: (step) => `+${tenth(step)} Resolve a second`,
+  pickup: (step) => `+${Math.round(step * 100)}% pickup reach`,
+  might: (step) => `+${Math.round(step * 100)}% homesickness`,
+  choices: (step) => `+${step} choice at every level`,
+};
+
+/**
+ * What `level` of a passive adds to the level before it (level 1: to having none),
+ * read from `modifiers` itself. Every level of a passive adds the same.
+ */
+export function passiveChanges(id: PassiveId, level: number): string[] {
+  if (level < 1 || level > PASSIVES[id].maxLevel) return [];
+  const before = modifiers(new Map(level > 1 ? [[id, level - 1]] : []));
+  const after = modifiers(new Map([[id, level]]));
+  return (Object.keys(MODIFIER_WORDS) as (keyof Modifiers)[])
+    .filter((key) => Math.abs(after[key] - before[key]) > 1e-9)
+    .map((key) => MODIFIER_WORDS[key](after[key] - before[key]));
+}
+
+/**
+ * A choice's name, its line in the game's voice, and what taking it changes (none
+ * for a new weapon: its line says what it does), for the level-up dialog.
+ */
+export function describeChoice(choice: Choice): {
+  name: string;
+  description: string;
+  change: string | null;
+} {
   if (choice.kind === 'restore') {
     return {
       name: 'A Moment of Rest',
       description: 'Nothing more to learn. Some Resolve returns.',
+      change: null,
     };
   }
   const info = choice.kind === 'weapon' ? WEAPONS[choice.id] : PASSIVES[choice.id];
+  const changes =
+    choice.kind === 'weapon'
+      ? levelChanges(choice.id, choice.level)
+      : passiveChanges(choice.id, choice.level);
   return {
     name: choice.level === 1 ? info.name : `${info.name}, level ${choice.level}`,
     description: info.description,
+    change: changes.length > 0 ? `${capitalise(changes.join(', '))}.` : null,
   };
 }
+
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** An evolution, announced with due gravity. */
 export function evolutionText(from: WeaponId, to: WeaponId): string {

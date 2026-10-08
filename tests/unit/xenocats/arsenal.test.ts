@@ -21,8 +21,10 @@ import {
   describeChoice,
   evolutionFor,
   evolutionText,
+  levelChanges,
   modifiers,
   offerChoices,
+  passiveChanges,
   weaponStats,
   xpToNext,
 } from '@/app/ui/xenocats/arsenal';
@@ -137,6 +139,102 @@ describe('the level-up offer', () => {
       expect(describeChoice({ kind: 'weapon', id, level: 3 }).name).toContain('level 3');
     }
     for (const id of ALL_PASSIVES) expect(PASSIVES[id].description.length).toBeGreaterThan(10);
+  });
+});
+
+describe('every upgrade says what it does, and does it', () => {
+  /** The phrase a card uses for each stat (see levelChanges). */
+  const PHRASE: Record<string, RegExp> = {
+    count: /^\+\d+ [a-z]+$/,
+    damage: /^\+\d+% homesickness$/,
+    cooldownMs: /^fires \d+% sooner$/,
+    area: /^\+\d+% (reach|size|range)$/,
+    speed: /^\+\d+% (speed|pull|turning speed)$/,
+    durationMs: /^lasts \d+% longer$/,
+    pierce: /^passes through \d+ more cats?$/,
+  };
+
+  for (const id of BASE_WEAPONS) {
+    it(`${WEAPONS[id].name}: each level names every stat it changes, and only those`, () => {
+      const { levels } = WEAPONS[id];
+      for (let level = 2; level <= MAX_WEAPON_LEVEL; level++) {
+        const before = levels[level - 2];
+        const after = levels[level - 1];
+        const changed = (Object.keys(PHRASE) as (keyof typeof before)[]).filter(
+          (key) => after[key] !== before[key]
+        );
+        const phrases = levelChanges(id, level);
+        expect(phrases, `level ${level}`).toHaveLength(changed.length);
+        for (const key of changed) {
+          expect(
+            phrases.some((phrase) => PHRASE[key].test(phrase)),
+            `level ${level}: ${key}`
+          ).toBe(true);
+        }
+        // The numbers are the stats' own.
+        if (after.count !== before.count) {
+          expect(phrases).toContain(
+            `+${after.count - before.count} ${WEAPONS[id].unit}${after.count - before.count === 1 ? '' : 's'}`
+          );
+        }
+        if (after.damage !== before.damage) {
+          const pct = Math.round((after.damage / before.damage - 1) * 100);
+          expect(phrases).toContain(`+${pct}% homesickness`);
+        }
+        // Every level is one the player notices: one more of something, or a tenth more.
+        const noticed =
+          after.count > before.count ||
+          after.pierce > before.pierce ||
+          (['damage', 'area', 'speed', 'durationMs'] as const).some(
+            (key) => before[key] > 0 && after[key] / before[key] >= 1.1
+          ) ||
+          (before.cooldownMs > 0 && after.cooldownMs / before.cooldownMs <= 0.9);
+        expect(noticed, `level ${level}`).toBe(true);
+        // ...and it is never a step back.
+        expect(after.damage).toBeGreaterThanOrEqual(before.damage);
+        expect(after.count).toBeGreaterThanOrEqual(before.count);
+        expect(after.cooldownMs).toBeLessThanOrEqual(before.cooldownMs);
+      }
+      expect(levelChanges(id, 1)).toEqual([]);
+    });
+  }
+
+  it('the level-up card carries the change; a new weapon its own line only', () => {
+    expect(describeChoice({ kind: 'weapon', id: 'laser-pointer', level: 2 }).change).toBe(
+      '+1 beam.'
+    );
+    expect(describeChoice({ kind: 'weapon', id: 'laser-pointer', level: 1 }).change).toBeNull();
+    // Scissors names what it adds to: the vacuums pull and hum as one, whatever it says.
+    expect(describeChoice({ kind: 'passive', id: 'scissors', level: 1 }).change).toBe(
+      '+1 beam, treat, droplet, ball, blade, piece or jump for each weapon that fires them.'
+    );
+    expect(describeChoice({ kind: 'restore' }).change).toBeNull();
+  });
+
+  it('every pick of a passive adds the same, the first included', () => {
+    for (const id of ALL_PASSIVES) {
+      const step = (level: number) => {
+        const after = modifiers(new Map([[id, level]]));
+        const before = modifiers(new Map(level > 1 ? [[id, level - 1]] : []));
+        return (Object.keys(after) as (keyof typeof after)[]).map(
+          (key) => Math.round((after[key] - before[key]) * 1000) / 1000
+        );
+      };
+      for (let level = 1; level <= PASSIVES[id].maxLevel; level++) {
+        expect(step(level), `${id} level ${level}`).toEqual(step(1));
+        expect(step(level).some((change) => change !== 0)).toBe(true);
+        expect(passiveChanges(id, level), `${id} level ${level}`).toEqual(passiveChanges(id, 1));
+        expect(passiveChanges(id, level).length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('Scissors: each pick, one more of what every weapon fires', () => {
+    for (let level = 0; level <= MAX_PASSIVE_LEVEL; level++) {
+      const mods = modifiers(new Map(level > 0 ? [['scissors', level]] : []));
+      expect(mods.count).toBe(level);
+      expect(weaponStats('laser-pointer', 1, mods).count).toBe(1 + level);
+    }
   });
 });
 

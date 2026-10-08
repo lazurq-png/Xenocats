@@ -1051,7 +1051,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                 </p>
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
-                    const { name, description } = describeChoice(choice);
+                    const { name, description, change } = describeChoice(choice);
                     const kind =
                       choice.kind === 'weapon'
                         ? 'Weapon'
@@ -1072,6 +1072,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                           <span className="font-semibold">{name}</span>{' '}
                           <span className="text-aura">({kind})</span>
                           <span className="mt-1 block text-aura">{description}</span>
+                          {change && (
+                            <span
+                              data-testid="choice-change"
+                              className="mt-1 block font-semibold text-cream"
+                            >
+                              {change}
+                            </span>
+                          )}
                         </button>
                       </li>
                     );

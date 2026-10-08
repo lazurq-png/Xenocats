@@ -42,3 +42,20 @@ All green, run one after another on `ae34cbc`:
   - `npm run test:e2e` (next dev): 127 passed. `E2E_SERVER=start npm run test:e2e`: 127 passed.
   - Acceptance criteria (D3): all checked by command (the browser tests above), except "describes Survival only", checked by reading.
 - **Reviewer**: request changes, one Medium finding (the same selector test), fixed as recommended (D4). **Tested in a browser, not seen**: a human should look at `/cats`'s Fight a cat section and a field-guide card with two counts.
+
+## T2 — Every upgrade does what it says, every time it is taken (completed)
+
+- Branch `night-2026-10-08-t2-upgrades-say-what-they-do`, base `6ea1b52`. Start 14:51 (budget ~14,899,000); completed 15:06 (budget ~14,834,000).
+- **CI of T1** (`6ea1b52`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37779817805), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37779813384)).
+- **What the code does**
+  - `arsenal.ts`: each of the nine base weapons climbs an explicit ladder (level 1, then seven steps), every step something the player notices; level 8 is exactly the old level 8. Scissors adds one more of what weapons fire per pick (was `floor(level / 2)`). `levelChanges` and `passiveChanges` say what a level adds, read from the stats; `describeChoice` returns it as `change`.
+  - `arena-view.tsx`: the level-up card shows that change on a line of its own (e.g. "+1 beam.", "Fires 20% sooner.", "+10% walking speed.").
+  - Tests: `arsenal.test.ts` holds every weapon level to naming each stat it changes and nothing else, to a noticeable change, and every passive to an equal step; `survival.spec.ts` checks the cards of a real level-up name their change.
+- **What it brings**: every level-up now visibly improves something and the card says exactly what, so a player choosing Scissors or a weapon level gets what they picked instead of an invisible half-step. Decisions: D5–D11.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings (= baseline); `next typegen && tsc --noEmit` exit 0 (after clearing `.next/dev/types`, D11).
+  - Selector: unit `vitest related` over 4 files: 5 files, 158 passed. e2e: 11 specs, 93 passed (next dev), before and after the review fixes. The two level-up tests also passed 3 of 3 each (`--repeat-each 3`).
+  - `npm run build` exit 0 (after clearing `.next/dev/types`; the first attempt failed on a half-written `validator.ts`, D11).
+  - The balance test and every arena, co-op, progression and variety test pass unchanged (82).
+  - Acceptance criteria: all checked by command.
+- **Reviewer**: approve with three Low findings; two fixed (Scissors' card wording, the e2e check counting what it checked), one recorded (D10).

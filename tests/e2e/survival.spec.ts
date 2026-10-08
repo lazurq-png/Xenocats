@@ -174,6 +174,22 @@ test.describe('on a computer', () => {
     // Focus in the dialog, on the first choice; the arrow keys move it.
     const buttons = dialog.getByRole('button');
     await expect(buttons.first()).toBeFocused();
+    // Each card that improves something says exactly what (arsenal.ts, levelChanges):
+    // a passive, or a weapon held already; a new weapon has only its own line.
+    let named = 0;
+    for (const button of await buttons.all()) {
+      const kind = await button.getAttribute('data-kind');
+      const level = Number(await button.getAttribute('data-level'));
+      const change = button.getByTestId('choice-change');
+      if (kind === 'passive' || (kind === 'weapon' && level > 1)) {
+        await expect(change).toHaveText(/^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes)/);
+        named++;
+      } else {
+        await expect(change).toHaveCount(0);
+      }
+    }
+    // This seed's first offer holds at least one such card, so the check above ran.
+    expect(named).toBeGreaterThan(0);
     await page.keyboard.press('ArrowDown');
     await expect(buttons.nth(1)).toBeFocused();
     // The run waits.
