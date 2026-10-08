@@ -633,3 +633,24 @@ Item 2 let an invoice be due when its form says; the list still shows only its d
   - Unit (`data.test.ts` skipped, opt-in).
   - Browser: 53 passed.
   - The same gate passed before the review fixes (52).
+
+## T12 item 8 — started 05:58: the dev-server flakes of Q7 (kind: tests)
+
+This run's Q7 recorded two browser tests that each failed once under the full `next dev` suite and passed when rerun: the customer create/edit/delete test (a `toHaveValue` on the edit form) and the dashboard-by-keyboard test (a `toHaveURL`), both on a dashboard page's first visit, which `next dev` compiles on demand, with the default 5-second wait. Reproduce first; then fix the waits, not the assertions.
+
+## T12 item 8 — the dev-server flakes of Q7 (completed)
+
+- Branch `night-2026-10-07-t12-8-dev-flakes`, base `3f417dc`. Start 05:58 (budget ~13,296,000); completed 06:09 (budget ~13,261,000).
+- **CI of T12 item 7** (`3f417dc`): **split result.**
+  - [Task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37724939274): **passed** every job.
+  - [Run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37724939389) of the same tree: **failed** in the build job's step "Browser tests against next start (invoices)". Its other two jobs passed.
+  - Which test failed is not visible without logs. No repair was attempted on an identical tree that passed elsewhere (questions.md Q9).
+- **What was found** (D90): reproduced from a cold `.next` under load (eight workers, four repeats). 15 of 28 failed, the snapshots showing the login form still submitting when the 5-second `toHaveURL` ran out. This is a busy `next dev` compiling a route on its first visit, not a defect.
+  - At four workers (Playwright's default here) the same cold run passed 28 of 28 before and after the change. The fix's effect on a rare flake cannot be shown statistically in one night, and Q7 stays open.
+- **What changed** (D90, D91)
+  - In `customers.spec.ts` and `keyboard.spec.ts`, every page-change wait that still had 5 s gets 15 s (`NAVIGATION`). That is the specs' own pattern after a submit. The customer test also checks it reached the edit page, and its overall timeout is 60 s.
+  - No assertion was weakened, no global timeout raised, no retry added.
+  - The same exposure in ten other specs is left for a plan (Q9).
+- **Why it was added**: plan task 12, an exploration item of the kind "tests". It is this run's Q7.
+- **Reviewer**: approve, four Low findings: the other specs (recorded, Q9), the test timeout (fixed), a comment (left), "four workers" inexact (corrected, D91).
+- **Gate** (the selection), all exit 0: prettier, lint 0 warnings, type check, group check, build; the two specs, 7 passed.
