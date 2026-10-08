@@ -7,7 +7,7 @@ branch it describes, so the reasoning stays attached to the diff it explains.
 | File | Written by | Holds |
 | ---- | ---------- | ----- |
 | `plan.md` | **a human** | The goal (when the run ends) and the tasks. An agent never creates, edits or ticks it off. |
-| `progress.md` | the agent | Append-only log: a run-start entry, then one entry appended each time a task ends, with its base SHA, what the code does, why it was added, and the verification actually run. An unattended run's morning report is appended last. |
+| `progress.md` | the agent | Append-only log: a run-start entry, then one entry appended each time a task ends, with its base SHA, what the code does, what it brings the project (its choices are in `decisions.md`), and the verification actually run. An unattended run's morning report, an index of its tasks, is inserted at the top. |
 | `decisions.md` | the agent | Non-obvious choices, numbered `D1`, `D2`, …, each with its reason, including acceptance criteria derived for an underspecified task. |
 | `questions.md` | the agent | What needed a human: the question, the options and their consequences, the recommendation, and what was done meanwhile. |
 
@@ -36,15 +36,24 @@ Write the plan before starting the run:
 
 1. <task> — <what "done" looks like, if it is not obvious>
 2. <task>
+
+## Exploration
+
+<The kinds of work the run picks for itself once the tasks are done, until the
+goal time, e.g. tests; security and quality; dashboard features. Optionally,
+candidates to start with and anything exploration must leave alone.>
 ```
 
 - **The goal is when the run ends, not what it achieves.** A weekday means the
   first such moment after the run starts, so `Thursday 08:00` written on a
   Wednesday evening means the next morning. At that time the run finishes the
-  task in flight, appends the morning report to `progress.md`, and stops. If
-  the tasks run out first, it stops then.
-- **The tasks are the whole of the work.** Work no task names is not built. It
-  comes back as a proposed task in the morning report.
+  task in flight, writes the morning report at the top of `progress.md`, and stops.
+  It never stops early for lack of work: once the tasks are done it explores,
+  building small improvements of the kinds under `## Exploration`, until the
+  goal time. Without that section it uses tests, security and quality, and
+  bugs found by reading the code.
+- **The tasks and the exploration kinds are the whole of the work.** Anything
+  else comes back as a proposed task in the morning report.
 - **Lifting a rule** of the protocol for one task must be written explicitly,
   naming the rule and the task. No plan lifts the push rules or the database
   rule.
@@ -78,5 +87,5 @@ The run cannot fix any of these, and most of them end it silently:
    limit.
 
 ```text
-/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.5): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.5); (2) a night-* run branch exists whose committed progress.md has no "## Morning report" → resume it (§9.2); (3) no branch night-<today> exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline and its tasks are the only work.
+/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.5): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.5); (2) the loop in the skill's §1 lists a night-* run branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) no branch night-<today> exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
 ```

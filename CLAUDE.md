@@ -535,10 +535,11 @@ see §13 for when to run it.
 Use `.claude/skills/night-run/` when this session is running unattended (no
 human available to answer). It executes the tasks of the plan a human wrote in
 `docs/ai/night-<date>/plan.md` until that plan's `## Goal` — a day and time such
-as `Thursday 08:00` — then finishes the task in flight, appends the morning
-report to `progress.md` and stops. It stops if the plan, its tasks or a readable
-goal are missing, and when the tasks run out early it stops rather than
-inventing work. It keeps `progress.md` append-only, one entry per finished
+as `Thursday 08:00` — then finishes the task in flight, writes the morning
+report at the top of `progress.md` and stops. It stops if the plan, its tasks or a readable
+goal are missing. When the tasks are done before the goal it explores
+(small improvements of the kinds the plan names) until the goal; it never
+stops early for lack of work. It keeps `progress.md` append-only, one entry per finished
 task. It defines the
 preflight, the branch-per-task and commit cadence, when a finished task's branch
 may be pushed and to where, the durable state files, the forbidden operations —

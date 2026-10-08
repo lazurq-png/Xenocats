@@ -433,5 +433,5 @@ Review (request changes), acted on. Fixed: (2) copies stayed while a second atta
 - `setup-node` stays in both jobs, to keep Node 24 and the npm cache.
 - *checks* stays on the runner: it only needs Node, which `setup-node` restores from cache in seconds, and a container there would only add an image pull.
 
-Not verified locally (no Docker on this machine); actionlint passes. The first push shows whether it works and how much it saves: compare the browser jobs' durations with the runs before. The main risk is the snakeoil certificate. If the image lacks it, the *PostgreSQL* step fails with "PostgreSQL did not turn TLS on". Q9's original build failure was a test, not the install (D93): this is for speed, not a fix for it.
+Not verified locally (no Docker on this machine); actionlint passes. **Verified on GitHub:** every check passed on `71520b3`, the commit that brought it (reported by the human, 2026-10-08), so the snakeoil certificate is there and the service container works. The first push shows whether it works and how much it saves: compare the browser jobs' durations with the runs before. The main risk is the snakeoil certificate. If the image lacks it, the *PostgreSQL* step fails with "PostgreSQL did not turn TLS on". Q9's original build failure was a test, not the install (D93): this is for speed, not a fix for it.
 
