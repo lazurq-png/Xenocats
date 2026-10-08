@@ -572,6 +572,11 @@ describe('evolution', () => {
     expect(evolutionText('yarn-ball', 'yarn-apocalypse')).toBe(
       'The Yarn Ball is no more. In its place: the Yarn Apocalypse.'
     );
+    expect(evolutionText('cat-treats', 'banquet')).toBe(
+      'The Cat Treats is no more. In its place: the Banquet.'
+    );
+    // Every evolution reads as a sentence: never "the The".
+    for (const { from, to } of EVOLUTIONS) expect(evolutionText(from, to)).not.toMatch(/the The/i);
   });
 
   /** A run with only `id`, many cats that never go home unless it sends them. */
@@ -633,6 +638,47 @@ describe('evolution', () => {
     }
     expect(pulledFar).toBe(true);
     expect(mostAtOnce).toBeGreaterThanOrEqual(10);
+  });
+
+  /**
+   * Cats sent home in 30 s by `id` alone, at its top level, from a steady horde of
+   * sturdy cats: sturdy, so the weapon decides how many go, not how fast they come.
+   */
+  function sentHomeBy(id: WeaponId) {
+    const a = arena({
+      ...steady,
+      startingWeapons: [id],
+      startingLevel: MAX_WEAPON_LEVEL,
+      escalation: [[0, 120]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [150, 150] },
+    });
+    while (a.state().time < 30_000) a.step(still);
+    return a.state().sentHome;
+  }
+
+  /** The widest gap between the ways one throw's shots fly, radians (a ring has none wide). */
+  function widestGap(id: WeaponId) {
+    const a = evolved(id);
+    while (a.state().projectiles === 0 && a.state().time < 20_000) a.step(still);
+    expect(a.state().projectiles).toBe(weaponStats(id, MAX_WEAPON_LEVEL, none).count);
+    const ways = a
+      .projectiles()
+      .map((p) => Math.atan2(p.vy, p.vx))
+      .sort((u, v) => u - v);
+    let widest = ways[0] + 2 * Math.PI - ways[ways.length - 1];
+    for (let i = 1; i < ways.length; i++) widest = Math.max(widest, ways[i] - ways[i - 1]);
+    return widest;
+  }
+
+  it('the Banquet sends home more than Cat Treats at their best, in a ring', () => {
+    expect(sentHomeBy('banquet')).toBeGreaterThan(sentHomeBy('cat-treats') * 1.5);
+    // A ring: no way out of it is wider than an eighth of a turn; Cat Treats are a fan.
+    expect(widestGap('banquet')).toBeLessThan(Math.PI / 4);
+    expect(widestGap('cat-treats')).toBeGreaterThan(Math.PI);
+  });
+
+  it('Monsoon sends home more than the Spray Bottle at its best', () => {
+    expect(sentHomeBy('monsoon')).toBeGreaterThan(sentHomeBy('spray-bottle') * 1.5);
   });
 
   it('the Yarn Apocalypse: its balls split as they bounce, up to a limit', () => {

@@ -50,7 +50,9 @@ type Screen = 'start' | 'playing' | 'choosing' | 'paused' | 'results';
 /** How each weapon's shots are drawn. */
 const SHOT_COLOR: Record<string, string> = {
   'cat-treats': '#fbbf24',
+  banquet: '#fbbf24',
   'spray-bottle': '#7dd3fc',
+  monsoon: '#38bdf8',
   'yarn-ball': '#f472b6',
   'yarn-apocalypse': '#ec4899',
   hairball: '#a8865b',

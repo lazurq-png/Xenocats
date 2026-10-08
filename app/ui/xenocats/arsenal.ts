@@ -26,6 +26,8 @@ export type WeaponId =
   | 'infinite-laser'
   | 'forbidden-catnip-vacuum'
   | 'yarn-apocalypse'
+  | 'banquet'
+  | 'monsoon'
   | 'bottomless-saucer';
 
 export type PassiveId =
@@ -289,6 +291,37 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       pierce: 4,
     }),
   },
+  banquet: {
+    name: 'Banquet',
+    description: 'Treats in every direction at once. Every cat is invited; every cat goes home.',
+    kind: 'spread',
+    levels: fixed({
+      cooldownMs: 500,
+      damage: 40,
+      area: 14,
+      // A ring of treats: a spread turns 0.16 rad between each, so 39 go almost all
+      // the way round him (348°).
+      count: 39,
+      speed: 560,
+      durationMs: 1800,
+      pierce: 8,
+    }),
+  },
+  monsoon: {
+    name: 'Monsoon',
+    description: 'The bottle, but the sky. A wall of water the way he faces, and it does not stop.',
+    kind: 'arc',
+    levels: fixed({
+      cooldownMs: 600,
+      damage: 30,
+      // The arc's droplets: bigger, and they fly further.
+      area: 220,
+      count: 32,
+      speed: 520,
+      durationMs: 650,
+      pierce: 8,
+    }),
+  },
   'bottomless-saucer': {
     name: 'Bottomless Saucer',
     description: 'Warm milk, circling him without end. No cat has ever refused it.',
@@ -315,6 +348,8 @@ export const EVOLUTIONS: readonly Evolution[] = [
   { from: 'laser-pointer', with: 'battery', to: 'infinite-laser' },
   { from: 'vacuum-cleaner', with: 'catnip', to: 'forbidden-catnip-vacuum' },
   { from: 'yarn-ball', with: 'scissors', to: 'yarn-apocalypse' },
+  { from: 'cat-treats', with: 'long-whiskers', to: 'banquet' },
+  { from: 'spray-bottle', with: 'wool-sweater', to: 'monsoon' },
   { from: 'can-opener', with: 'warm-milk', to: 'bottomless-saucer', secret: true },
 ];
 
@@ -500,5 +535,9 @@ export function describeChoice(choice: Choice): { name: string; description: str
 
 /** An evolution, announced with due gravity. */
 export function evolutionText(from: WeaponId, to: WeaponId): string {
-  return `The ${WEAPONS[from].name} is no more. In its place: the ${WEAPONS[to].name}.`;
+  return `${the(WEAPONS[from].name, 'The')} is no more. In its place: ${the(WEAPONS[to].name, 'the')}.`;
 }
+
+/** A name with its article ("the Yarn Ball"), unless it brings its own ("The Matriarch"). */
+const the = (name: string, article: 'The' | 'the') =>
+  /^The /.test(name) ? name : `${article} ${name}`;

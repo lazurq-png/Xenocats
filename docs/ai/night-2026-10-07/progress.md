@@ -578,3 +578,34 @@ The 2026-10-01 run's Q7 noted that a login for an email with no account skips th
   - Build.
   - `npm run test:e2e`: 129 passed.
   - `E2E_SERVER=start npm run test:e2e`: 129 passed.
+
+## T12 item 6 — started 05:34: two more evolution pairs (kind: the Survival game)
+
+New evolution pairs for two base weapons that had none: Cat Treats with Long Whiskers, and Spray Bottle with Wool Sweater. Each evolved weapon is named in the game's voice and does what its base does at a scale the base never reaches, backed by a seeded simulation test that it sends home more than its base at the top level.
+
+## T12 item 6 — two more evolution pairs (completed)
+
+- Branch `night-2026-10-07-t12-6-evolutions`, base `23b9f87`. Start 05:34 (budget ~13,348,000); completed 05:44 (budget ~13,323,000).
+- **CI of checkpoint 3** (`23b9f87`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37723213036), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37723212965)).
+- **What the code does** (D86, D87)
+  - **Cat Treats + Long Whiskers → Banquet**: a ring of 39 treats, every 0.5 s.
+  - **Spray Bottle + Wool Sweater → Monsoon**: the bottle's arc with 32 bigger, longer-flying droplets.
+  - Both are data only on the existing `spread` and `arc` kinds, with their own shot colours. The codex lists seven entries.
+  - `evolutionText` no longer puts "the" before a name that brings its own "The".
+- **Why it was added**: plan task 12, an exploration item of the kind "the Survival game". Task 9 allowed more pairs.
+- **Tests** (`arsenal.test.ts`)
+  - The existing evolution tests now cover both pairs: the condition with all three parts, refusal without each part, replacement, never offered.
+  - Seeded simulations: each evolved weapon sends home more than 1.5 times what its base does, over 30 s against sturdy cats.
+  - The Banquet's throw is a ring: no gap wider than an eighth of a turn, which Cat Treats' fan fails.
+  - Every evolution's announcement never reads "the The".
+  - `survival.spec.ts`: the codex now counts six "???".
+- **Reviewer**: request changes:
+  - Medium: the Banquet was a 211° fan with a test that could not tell.
+  - Low: "the The Banquet", the second time this run made that slip (T10's D63).
+  - Both fixed (D87), the second at its cause.
+  - Re-review: approve.
+- **Gate** (the selection), all exit 0:
+  - Prettier, lint 0 warnings, type check, group check, build.
+  - Unit: 5 files, 145 passed.
+  - Browser: 97 passed.
+  - The same gate passed before the review fixes.

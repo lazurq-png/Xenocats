@@ -334,7 +334,8 @@ test.describe('on a computer', () => {
       .toBe(true);
     const codex = page.getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
-    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(4);
+    // Six evolutions and the secret cat: one found, the rest unknown.
+    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(6);
     // Kept after a reload; he goes out as the Night Porter, with the Spray Bottle.
     await page.reload();
     await expect(porter).toBeChecked();
