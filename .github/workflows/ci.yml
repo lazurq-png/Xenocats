@@ -37,7 +37,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           npx vitest run tests/unit/xenocats/random tests/unit/xenocats/effects
-          tests/unit/xenocats/cursor-controller tests/unit/xenocats/cat-engine
+          tests/unit/xenocats/cursor-controller tests/unit/xenocats/cat-engine tests/unit/xenocats/cat-engine-invariants
           tests/unit/xenocats/cat-types tests/unit/xenocats/intensity
       - name: Unit tests (cats, jsdom)
         if: ${{ !cancelled() }}

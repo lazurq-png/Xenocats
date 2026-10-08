@@ -681,3 +681,26 @@ This run's Q7 recorded two browser tests that each failed once under the full `n
   - `npm run test:e2e`: 130 passed.
   - `E2E_SERVER=start npm run test:e2e`: 130 passed.
   - The first two runs each failed one `next start` browser test (the regressions above): repair cycles 1 and 2, on different failures.
+
+## T12 item 10 — started 06:40: looking for cat behaviour bugs by random play (kind: cat behaviour bugs)
+
+Item 5 found a cat behaviour bug by reading the engine. This item looks for more by playing the cat engine at random — summons asleep and awake, clicks, window sizes, intensity changes, ticks of every length, the pointer on and off the page — and checking after every step what must always hold: never more than five cats, every cat on the screen, positions numbers, combo partners each other's, phases known and timed. Whatever it finds is fixed; what it checks stays as a test.
+
+## T12 item 10 — looking for cat behaviour bugs by random play (completed)
+
+- Branch `night-2026-10-07-t12-10-cat-invariants`, base `3c4e2dc`. Start 06:40 (budget ~13,231,000); completed 06:48 (budget ~13,205,000).
+- **CI of T12 item 9** (`3c4e2dc`): **CI passed** on both branches ([run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37728357592), [task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37728357913)), the invoice step against `next start` included.
+- **Result** (D95): **no bug found.** The cat engine was played at random: summons, clicks, window sizes from 60 to 1600 px, intensity changes, ticks of every length, the pointer on and off the page. Every invariant held after every step.
+- **Kept as a test**: `tests/unit/xenocats/cat-engine-invariants.test.ts` (new, in CI's cats/Node step; about 50 ms). After every step it requires:
+  - at most five cats, all on the screen;
+  - positions are numbers;
+  - every phase is known, and timed except "ready";
+  - combo partners exist and point back, one pair at a time.
+  - After play, every cat that was on screen leaves, given time.
+  - It failed with item 5's resize fix removed.
+- **Sent to a human**: Q10, whether a held touch should pet a sleeping cat. On a phone a sleeping cat can only be angered today.
+- **Why it was added**: plan task 12, an exploration item of the kind "cat behaviour bugs".
+- **Reviewer**: approve, three Low findings and a nit, all acted on (D96): the test ran twice in CI, a cat stuck in "ready" was invisible to it, a missing partner was accepted, and the cat size was a copy.
+- **Gate**
+  - Full gate (FULL, as `ci.yml` changed), all exit 0: actionlint 0, prettier, lint 0 warnings, type check, group check; `npm test` 44 files, 651 passed (17 skipped); build; `npm run test:e2e` 130 passed; `E2E_SERVER=start npm run test:e2e` 130 passed.
+  - After the review's changes (test file and CI group only): actionlint 0, prettier, lint, type check, group check, and the test itself passed.
