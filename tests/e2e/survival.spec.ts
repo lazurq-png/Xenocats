@@ -1,5 +1,6 @@
 import { type Page, devices, expect, test } from '@playwright/test';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
+import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
 
 // Survival, the arena, on /cats/survival (no login, no database). The canvas cannot
 // be read, so the tests read the run's state from the play area's data- attributes
@@ -92,6 +93,36 @@ test('the retired Taming game is gone: /cats/taming is not found', async ({ page
 
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('sound is switched in the pause menu: it holds after Resume, and the lobby and the site share it', async ({
+    page,
+  }) => {
+    await openArena(page);
+    const lobby = page.getByTestId('survival-lobby-sound');
+    await expect(lobby).toBeChecked();
+    await startRun(page);
+    const paused = await pauseRun(page);
+    const sound = paused.getByRole('checkbox', { name: 'Sound' });
+    await expect(sound).toBeChecked();
+    // Resume is still what the menu puts the focus on.
+    await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
+    // From the keyboard, like any checkbox.
+    await sound.focus();
+    await page.keyboard.press(' ');
+    await expect(sound).not.toBeChecked();
+    expect(await page.evaluate((key) => localStorage.getItem(key), SOUND_KEY)).toBe('off');
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    const again = await pauseRun(page);
+    await expect(again.getByRole('checkbox', { name: 'Sound' })).not.toBeChecked();
+    await again.getByRole('button', { name: 'Give up' }).click();
+    // The lobby shows the same setting, and switches it back.
+    await expect(lobby).not.toBeChecked();
+    await lobby.check();
+    expect(await page.evaluate((key) => localStorage.getItem(key), SOUND_KEY)).toBe('on');
+    await page.reload();
+    await expect(page.getByTestId('survival-lobby-sound')).toBeChecked();
+  });
 
   test('a run: time passes, the Laser Pointer sends cats home, Esc pauses, giving up shows the results and keeps the best time', async ({
     page,
@@ -420,6 +451,27 @@ test.describe('on a touch screen', () => {
   // A phone's screen and touch input (its browser type cannot change inside a group).
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  test('sound is switched in the pause menu with a tap; it holds, and the lobby shows it', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await expect(page.getByTestId('survival-lobby-sound')).toBeChecked();
+    await startRun(page, true);
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    const sound = paused.getByRole('checkbox', { name: 'Sound' });
+    await sound.tap();
+    await expect(sound).not.toBeChecked();
+    await paused.getByRole('button', { name: 'Resume' }).tap();
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    await expect(paused.getByRole('checkbox', { name: 'Sound' })).not.toBeChecked();
+    await paused.getByRole('button', { name: 'Give up' }).tap();
+    await expect(page.getByTestId('survival-lobby-sound')).not.toBeChecked();
+  });
 
   test('a level-up choice is made with a tap', async ({ page }) => {
     test.setTimeout(60_000);

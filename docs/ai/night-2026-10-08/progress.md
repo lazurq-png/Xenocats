@@ -59,3 +59,19 @@ All green, run one after another on `ae34cbc`:
   - The balance test and every arena, co-op, progression and variety test pass unchanged (82).
   - Acceptance criteria: all checked by command.
 - **Reviewer**: approve with three Low findings; two fixed (Scissors' card wording, the e2e check counting what it checked), one recorded (D10).
+
+## T3 — Sound settings in the lobby and the pause menu (completed)
+
+- Branch `night-2026-10-08-t3-sound-settings`, base `12191a6`. Start 15:06 (budget ~14,832,000); completed 15:14 (budget ~14,809,000).
+- **CI of T2** (`12191a6`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37781697981), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37781694245)).
+- **What the code does**
+  - `game-settings.tsx` (new): a "Settings" fieldset with a Sound checkbox bound to the site's sound setting (`sounds.ts`); switching it on also unlocks audio inside that click or tap.
+  - `arena-view.tsx`: the settings appear in Survival's lobby (desktop and touch) and in its pause menu.
+  - `survival.spec.ts`: on desktop (keyboard) and touch (tap), sound switched off in the pause menu holds after Resume, shows in the lobby, and (desktop) is switched back from the lobby and kept after a reload.
+- **What it brings**: a player can silence the game, or bring the sound back, without leaving it, on a phone too, where the dashboard's speaker button is nowhere in reach. Decisions: D12–D15.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings (= baseline); `tsc --noEmit` exit 0 (`.next/dev/types` cleared, D11).
+  - Selector: no unit test relates to the three files ("No test files found", exit 0); e2e: 11 specs, 95 passed on next dev, before and after the review fix. The two new tests also passed 2 of 2 each.
+  - `npm run build` exit 0.
+  - Acceptance criteria (D14): all by command, except that switching off silences the game at once and switching on in a run can be heard: by reading (`play()` asks `getSoundEnabled` before every sound; D15).
+- **Reviewer**: approve, one Low finding fixed (D15). **Tested in a browser, not seen**: a human should look at the Settings in the lobby and the pause menu at phone width.

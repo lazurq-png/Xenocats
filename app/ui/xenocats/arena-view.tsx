@@ -26,6 +26,7 @@ import {
 import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
 import { parseTestHooks } from './test-hooks';
+import { GameSettings } from './game-settings';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
@@ -835,6 +836,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           )}
         </fieldset>
       )}
+      <GameSettings where="lobby" />
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button data-testid="survival-start" onClick={start} disabled={running}>
           {screen === 'results' ? 'Play again' : 'Start Survival'}
@@ -1102,6 +1104,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                   Paused
                 </h2>
                 <p className="mt-2 text-sm text-aura">The cats wait. They are patient.</p>
+                <GameSettings where="pause" />
                 <div className="mt-4 flex justify-center gap-3">
                   <Button onClick={resume}>Resume</Button>
                   <Button onClick={giveUp}>Give up</Button>
