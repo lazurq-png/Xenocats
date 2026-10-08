@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test';
 import { addDays } from '@/app/lib/schemas';
+import { formatDateToLocal } from '@/app/lib/utils';
 
 // Invoice create, edit and delete through the forms, logged in as the demo user,
 // against the test schema global-setup.ts rebuilds. Each test makes its own
@@ -147,6 +148,10 @@ test('an invoice is due when the form says: 30 days by default, never before its
   await page.getByRole('button', { name: 'Create Invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
 
+  // The list shows it, under its own heading.
+  await expect(page.getByRole('columnheader', { name: 'Due', exact: true })).toBeVisible();
+  await expect(await rowsFor(page, cents)).toContainText(formatDateToLocal(addDays(today, 45)));
+
   // Kept: the edit form shows it.
   await (await rowsFor(page, cents)).getByRole('link', { name: 'Edit' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}\/edit$/);
@@ -188,4 +193,18 @@ test('an invoice is deleted, and stays deleted after a reload', async ({ page })
 
   // A fresh load of the list (a page load waits for the whole streamed table).
   await expect(await rowsFor(page, cents)).toHaveCount(0);
+});
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('each invoice card shows its due date under its date', async ({ page }) => {
+    await logIn(page);
+    await page.goto('/dashboard/invoices');
+    // The phone layout's cards (the table is hidden at this width).
+    await expect(page.locator('table').first()).toBeHidden();
+    const dues = page.getByText(/^Due [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
+    await expect(dues.first()).toBeVisible();
+    expect(await dues.count()).toBeGreaterThan(0);
+  });
 });

@@ -162,6 +162,7 @@ export async function fetchFilteredInvoices(
         invoices.id,
         invoices.amount,
         invoices.date,
+        invoices.due_date,
         invoices.status,
         ${isOverdue()} AS overdue,
         customers.name,

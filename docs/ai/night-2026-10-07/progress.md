@@ -609,3 +609,27 @@ New evolution pairs for two base weapons that had none: Cat Treats with Long Whi
   - Unit: 5 files, 145 passed.
   - Browser: 97 passed.
   - The same gate passed before the review fixes.
+
+## T12 item 7 — started 05:46: the invoice list shows each invoice's due date (kind: dashboard features)
+
+Item 2 let an invoice be due when its form says; the list still shows only its date, so a chosen due date is visible only on the invoice's own page. The list gains a "Due" column (and a due line on the phone layout).
+
+## T12 item 7 — the invoice list shows due dates (completed)
+
+- Branch `night-2026-10-07-t12-7-due-column`, base `8ab4311`. Start 05:46 (budget ~13,321,000); completed 05:55 (budget ~13,297,000).
+- **CI of T12 item 6** (`8ab4311`): **CI passed** on both branches ([run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37724133044), [task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37724133677)).
+- **What the code does** (D88, D89)
+  - `fetchFilteredInvoices` returns each invoice's due date.
+  - The list's table has a "Due" column, and the phone layout a "Due …" line under the date.
+  - The table now scrolls sideways on its own where its columns need more room, as the customers table does.
+- **Why it was added**: plan task 12, an exploration item of the kind "dashboard features". It follows item 2, where a chosen due date was otherwise visible only on the invoice's own page.
+- **Tests**
+  - `invoices.spec.ts`: the "Due" header, and the list row showing the due date chosen on the form; at 390 px, the cards show "Due <date>".
+  - `data.test.ts` (opt-in; CI runs it): the row carries the seeded due date.
+- **Tested in a browser, not seen**: a human should look at the invoice list at 768 and 1024 px (the sideways scroll) and on a phone.
+- **Reviewer**: approve, three Low findings: the table's overflow (fixed), dates in the formatting process's time zone (recorded; pre-existing), the phone line untested (tested now). All in D89.
+- **Gate** (the selection), all exit 0:
+  - Prettier, lint 0 warnings, type check, group check, build.
+  - Unit (`data.test.ts` skipped, opt-in).
+  - Browser: 53 passed.
+  - The same gate passed before the review fixes (52).

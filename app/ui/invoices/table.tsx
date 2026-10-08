@@ -22,7 +22,9 @@ export default async function InvoicesTable({
   const invoices = await fetchFilteredInvoices(query, currentPage, status);
 
   return (
-    <div className="mt-6 flow-root">
+    // Its own sideways scroll where the columns need more room than there is (as the
+    // customers table): the page around it stays put.
+    <div className="mt-6 flow-root overflow-x-auto">
       <div className="inline-block min-w-full align-middle">
         <div data-xenocat-frame className="rounded-2xl border border-line bg-panel p-2 md:pt-0">
           <div className="md:hidden">
@@ -44,6 +46,7 @@ export default async function InvoicesTable({
                       {formatCurrency(invoice.amount)}
                     </p>
                     <p>{formatDateToLocal(invoice.date)}</p>
+                    <p className="text-sm text-aura">Due {formatDateToLocal(invoice.due_date)}</p>
                   </div>
                   <div className="flex justify-end gap-2">
                     <ViewInvoice id={invoice.id} label={label(invoice)} />
@@ -70,6 +73,9 @@ export default async function InvoicesTable({
                   Date
                 </th>
                 <th scope="col" className="px-3 py-5 font-medium">
+                  Due
+                </th>
+                <th scope="col" className="px-3 py-5 font-medium">
                   Status
                 </th>
                 <th scope="col" className="relative py-3 pl-6 pr-3">
@@ -92,6 +98,9 @@ export default async function InvoicesTable({
                   <td className="whitespace-nowrap px-3 py-3">{invoice.email}</td>
                   <td className="whitespace-nowrap px-3 py-3">{formatCurrency(invoice.amount)}</td>
                   <td className="whitespace-nowrap px-3 py-3">{formatDateToLocal(invoice.date)}</td>
+                  <td className="whitespace-nowrap px-3 py-3">
+                    {formatDateToLocal(invoice.due_date)}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-3">
                     <InvoiceStatus status={invoice.status} overdue={invoice.overdue} />
                   </td>

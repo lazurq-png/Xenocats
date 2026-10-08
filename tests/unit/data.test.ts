@@ -152,6 +152,11 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
       expect((await data.fetchFilteredInvoices('44800', 1)).map((row) => row.amount)).toEqual([
         44800,
       ]);
+      // Each row carries its due date (the list shows it).
+      const [due] = await data.fetchFilteredInvoices('44800', 1);
+      expect(day(due.due_date)).toBe(
+        invoices.find((invoice) => invoice.amount === 44800)!.due_date
+      );
       expect(
         (await data.fetchFilteredInvoices('2022-11-14', 1)).map((row) => day(row.date))
       ).toEqual(['2022-11-14']);
