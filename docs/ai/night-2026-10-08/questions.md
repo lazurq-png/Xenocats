@@ -11,3 +11,12 @@ Task 7 asked a phone to see "at least as much of the arena as a desktop shows ar
 - (c) Less, for bigger sprites on a phone: a little less warning of cats from the sides.
 
 Recommendation: look at it on a phone. It is one constant, `ARENA_CONFIG.view` in `app/ui/xenocats/arena.ts`, with its unit tests in `tests/unit/xenocats/arena.test.ts` ("the camera on a small screen").
+
+## Q2 — Petting a sleeping cat on a real phone (T8)
+
+Built and tested in Chromium's touch emulation: a press held a second on a sleeping cat pets it; a quick tap wakes it, angry (decisions D43–D45). Not testable there: a phone's own long-press gestures. On Android Chrome the context menu is suppressed and petting should work; on an iPhone, a long press over text or a link may start text selection, the callout or a link preview, which cancels the press, so the cat would be neither petted nor woken.
+
+- (a) Check on an iPhone and an Android phone: summon a cat asleep on `/cats` and hold a finger on it.
+- (b) If iOS cancels it, the cats' layer could take `-webkit-touch-callout: none` / `user-select: none` on the cat's own element during a hold, or the hold could be shorter than the system's long press (about 500 ms): both are small, separate changes.
+
+Recommendation: (a) first.

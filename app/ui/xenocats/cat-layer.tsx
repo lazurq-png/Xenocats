@@ -17,7 +17,7 @@ import { catArt } from './cat-art';
 import { CatSprite } from './cat-sprite';
 import { CAT_TYPES, type CatType } from './cat-types';
 import type { CatConfig } from './config';
-import { strengthen } from './effects';
+import { type Vec, strengthen } from './effects';
 import { useXenocatCursor } from './fake-cursor';
 import { recordStat } from './field-guide';
 import { INTENSITY_CONFIG, getIntensity, subscribeIntensity } from './intensity';
@@ -142,17 +142,50 @@ export function XenocatCatsProvider({
     // A press that pokes a cat is the cat's: the rest of it (up to and including
     // its click) never reaches what lies beneath — a hidden Delete button, say.
     // Keyboard-made clicks (detail 0) never come through here.
+    //
+    // On a touch screen (or with a pen) nothing rests on a cat, so a press on a
+    // sleeping cat is held instead: while it lasts, the finger is the resting pointer
+    // (petting needs `petMs` of it, as with a mouse); let go sooner, it was a tap,
+    // and the cat wakes as a click would wake it.
     let swallowPress = false;
+    // The finger holding (pointerId): another finger neither moves nor ends the hold.
+    let hold: { id: number; at: Vec; since: number } | null = null;
     const onPoke = (event: PointerEvent) => {
+      // A second finger while one holds a cat leaves that hold as it is.
+      if (hold && event.pointerType !== 'mouse') return;
       swallowPress = false;
+      hold = null;
       const touched = { x: event.clientX, y: event.clientY };
-      const at = event.pointerType === 'mouse' ? (cursor.position() ?? touched) : touched;
+      if (event.pointerType !== 'mouse') {
+        if (engine.sleepingAt(touched)) {
+          hold = { id: event.pointerId, at: touched, since: cursor.now() };
+          swallowPress = true;
+          event.preventDefault();
+          event.stopPropagation();
+          wake();
+        }
+        return;
+      }
+      const at = cursor.position() ?? touched;
       if (engine.poke(at, cursor.now())) {
         setCats(snapshot(engine));
         swallowPress = true;
         event.preventDefault();
         event.stopPropagation();
       }
+    };
+    const onHoldMove = (event: PointerEvent) => {
+      if (hold && event.pointerId === hold.id) hold.at = { x: event.clientX, y: event.clientY };
+    };
+    // The end of a held press: short of a pet, it was a tap, and the cat wakes.
+    const onHoldEnd = (event: PointerEvent) => {
+      if (!hold || event.pointerId !== hold.id) return;
+      const { at, since } = hold;
+      hold = null;
+      if (cursor.now() - since < engine.config.petMs && engine.poke(at, cursor.now())) {
+        setCats(snapshot(engine));
+      }
+      wake();
     };
     const onPressRest = (event: Event) => {
       if (!swallowPress) return;
@@ -161,11 +194,17 @@ export function XenocatCatsProvider({
       event.stopPropagation();
       if (event.type === 'click' || event.type === 'contextmenu') swallowPress = false;
     };
-    const endPress = () => {
+    const endPress = (event: PointerEvent) => {
+      // Another finger's cancelled press leaves the hold alone.
+      if (hold && event.pointerId !== hold.id) return;
       swallowPress = false;
+      // A scroll or a system gesture took the press: neither pet nor poke.
+      hold = null;
     };
     const pressRest = ['pointerup', 'mousedown', 'mouseup', 'click', 'contextmenu'] as const;
     window.addEventListener('pointerdown', onPoke, { capture: true });
+    window.addEventListener('pointermove', onHoldMove, { capture: true });
+    window.addEventListener('pointerup', onHoldEnd, { capture: true });
     for (const type of pressRest) window.addEventListener(type, onPressRest, { capture: true });
     window.addEventListener('pointercancel', endPress, { capture: true });
 
@@ -202,7 +241,8 @@ export function XenocatCatsProvider({
       frameId = 0;
       playPhases();
       // Petting needs the pointer on the page: one that has left it pets nothing.
-      const pointer = cursor.isPresent() ? cursor.position() : null;
+      // A finger held on a cat is the pointer while it is held.
+      const pointer = hold ? hold.at : cursor.isPresent() ? cursor.position() : null;
       const changed = engine.tick(
         cursor.now(),
         pointer,
@@ -249,6 +289,8 @@ export function XenocatCatsProvider({
       window.removeEventListener('resize', onResize);
       for (const type of gestures) window.removeEventListener(type, unlock, { capture: true });
       window.removeEventListener('pointerdown', onPoke, { capture: true });
+      window.removeEventListener('pointermove', onHoldMove, { capture: true });
+      window.removeEventListener('pointerup', onHoldEnd, { capture: true });
       for (const type of pressRest)
         window.removeEventListener(type, onPressRest, { capture: true });
       window.removeEventListener('pointercancel', endPress, { capture: true });

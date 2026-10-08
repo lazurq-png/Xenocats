@@ -150,3 +150,19 @@ All green, run one after another on `ae34cbc`:
   - `npm run build` exit 0.
   - Acceptance criteria (D37): by command except readability at the zoom (reading only; Q1).
 - **Reviewer**: request changes (640 reframed the plan's measure); then request changes (768 zoomed out laptop windows); then approve with two Low notes, added to Q1 (D39, D41, D42). **Tested in a browser, not seen**: a human should play it on a phone.
+
+## T8 — Pet a sleeping cat on a touch screen (completed)
+
+- Branch `night-2026-10-08-t8-touch-pet`, base `3d18903`. Start 17:44 (budget ~14,516,000); completed 17:59 (budget ~14,480,000).
+- **CI of T7** (`3d18903`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37803147151), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37803142059)).
+- **What the code does**
+  - `cat-layer.tsx`: a touch or pen press on a sleeping cat is held instead of poking at once: while held, the finger is the pointer the engine pets by (`petMs`, purring, sleeping on); released sooner it was a tap, and the cat wakes angry; a cancelled press (a scroll) does neither; only the holding finger counts. The mouse is unchanged.
+  - `cat-engine.ts`: `sleepingAt(point)`, the sleeping cat under a point.
+  - Tests: unit (jsdom) — a held touch pets, a tap wakes angry and never reaches what lies beneath, a second finger changes nothing, a cancelled press does neither; e2e on a Pixel 7 — a long press pets, a tap wakes angry.
+- **What it brings**: on a phone a sleeping cat can now be petted, as on a computer, instead of only woken angry; a quick tap still wakes it. Decisions: D43–D45; questions.md Q2 asks for a check on a real iPhone.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0.
+  - `vitest related` over 4 files: 6 files, 64 passed; after the review fixes the layer, engine and petting tests 44 passed.
+  - `npm run build` exit 0. e2e: the selector's 22 specs, 137 passed (next dev), before and after the review fixes; the two new touch tests 2 of 2.
+  - Acceptance criteria (D44): by command; a real phone's long-press gestures by nothing (Q2).
+- **Reviewer**: approve with four Low; two fixed (multi-touch, a comment), one kept by rule, one to Q2 (D45). **Tested in a browser, not seen**: a human should hold a finger on a sleeping cat on a phone.

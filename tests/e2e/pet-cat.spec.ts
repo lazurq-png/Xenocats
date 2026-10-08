@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, devices, expect, test } from '@playwright/test';
 import { CAT_CONFIG } from '@/app/ui/xenocats/config';
 import { vanish } from '@/app/ui/xenocats/effects';
 
@@ -92,5 +92,53 @@ test('clicking a sleeping cat wakes it at once, angry, and its attack lasts long
   // …and ends within 4.5 s.
   await expect(fake).toHaveAttribute('data-effect', '', {
     timeout: vanish.durationMs * CAT_CONFIG.angryFactor,
+  });
+});
+
+test.describe('on a touch screen', () => {
+  const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
+  test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  /** /cats on a phone, a Void Tabby summoned asleep; its centre, on the screen. */
+  async function sleepingCat(page: Page) {
+    await page.goto('/cats');
+    await expect(page.getByRole('heading', { name: 'The cats' })).toBeVisible();
+    const summon = page.getByTestId('summon-asleep-void-tabby');
+    await summon.scrollIntoViewIfNeeded();
+    const cat = page.locator('[data-testid="xenocat"][data-cat-type="void-tabby"]');
+    // A tap before hydration is lost: tap until the cat comes.
+    await expect
+      .poll(
+        async () => {
+          if ((await cat.count()) === 0) await summon.tap();
+          return cat.count();
+        },
+        { timeout: 15_000 }
+      )
+      .toBe(1);
+    await expect(cat).toHaveAttribute('data-phase', 'sleeping', { timeout: 10_000 });
+    const box = (await cat.boundingBox())!;
+    return { cat, centre: { x: box.x + box.width / 2, y: box.y + box.height / 2 } };
+  }
+
+  test('a press held on a sleeping cat pets it: it purrs and sleeps on', async ({ page }) => {
+    test.setTimeout(45_000);
+    const { cat, centre } = await sleepingCat(page);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [centre] });
+    await expect(cat).toHaveAttribute('data-petted', 'true', { timeout: CAT_CONFIG.petMs + 3000 });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    // Petted, not poked: still asleep, and not angry.
+    await page.waitForTimeout(300);
+    await expect(cat).toHaveAttribute('data-phase', 'sleeping');
+    await expect(cat).not.toHaveAttribute('data-angry', 'true');
+  });
+
+  test('a quick tap on a sleeping cat wakes it, angry', async ({ page }) => {
+    test.setTimeout(45_000);
+    const { cat, centre } = await sleepingCat(page);
+    await page.touchscreen.tap(centre.x, centre.y);
+    await expect(cat).toHaveAttribute('data-angry', 'true');
+    await expect(cat).not.toHaveAttribute('data-phase', 'sleeping');
   });
 });
