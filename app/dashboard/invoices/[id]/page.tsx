@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { fetchInvoiceDetail } from '@/app/lib/data';
 import { InvoiceId } from '@/app/lib/schemas';
-import { formatCurrency, formatDateToLocal } from '@/app/lib/utils';
+import { dueText, formatCurrency, formatDateToLocal } from '@/app/lib/utils';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import { DeleteInvoice, UpdateInvoice } from '@/app/ui/invoices/buttons';
 import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
@@ -65,6 +65,16 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             <div key={term} className="rounded-xl bg-void/60 p-4">
               <dt className="text-xs text-aura">{term}</dt>
               <dd className="mt-1 break-all text-base font-medium text-white">{value}</dd>
+              {term === 'Due' && invoice.status === 'pending' && (
+                <dd
+                  data-testid="invoice-due-in"
+                  className={
+                    invoice.overdue ? 'mt-1 text-sm text-red-400' : 'mt-1 text-sm text-aura'
+                  }
+                >
+                  {dueText(invoice.days_until_due)}
+                </dd>
+              )}
             </div>
           ))}
         </dl>

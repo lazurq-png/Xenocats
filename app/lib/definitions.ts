@@ -121,6 +121,8 @@ export type InvoiceDetail = {
   due_date: string;
   /** Pending and past its due date. */
   overdue: boolean;
+  /** Whole days until its due date (negative once past), by the database's day. */
+  days_until_due: number;
   customer_id: string;
   name: string;
   email: string;

@@ -300,6 +300,8 @@ export async function fetchInvoiceDetail(id: string) {
         invoices.date,
         invoices.due_date,
         ${isOverdue()} AS overdue,
+        -- Whole days until it is due, by the same day the overdue rule uses.
+        (invoices.due_date - CURRENT_DATE) AS days_until_due,
         customers.id AS customer_id,
         customers.name,
         customers.email

@@ -233,6 +233,9 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
       });
       expect(day(detail!.date)).toBe(seeded.date);
       expect(day(detail!.due_date)).toBe(seeded.due_date);
+      // Whole days until it was due: long past (a 2023 invoice), counted by the database.
+      expect(Number.isInteger(detail!.days_until_due)).toBe(true);
+      expect(detail!.days_until_due).toBeLessThan(-365);
 
       const nobody = '00000000-0000-4000-8000-000000000000';
       expect(await data.fetchInvoiceById(nobody)).toBeUndefined();

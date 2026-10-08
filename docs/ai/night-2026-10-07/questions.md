@@ -57,3 +57,7 @@ Petting needs the pointer to rest on a sleeping cat for a while (`config.petMs`)
 ## Q11 — Should the Keeper's weapons aim at a cat that does no harm? (T12 item 11)
 
 The Laser Pointer (and every weapon that picks "the nearest cat") aims at the Neighbour's Cat, the secret cat that drains nothing, when it is nearest — so a Keeper who stands still and draws it spends his laser on a harmless guest for some 50 s. Keep (a guest is still a cat to send home; it costs the player something, which suits a secret), or have targeting skip cats with no drain (a one-line filter in `nearest`). A game-design call.
+
+## Q12 — One time zone for the database's "today"? (T12 item 12)
+
+The app dates an invoice by the UTC day (`createInvoice`, the create form's default due date), while `CURRENT_DATE` — the overdue rule, and since item 12 the "Due in N days" count — is the day in the database session's time zone, which nothing sets. On a server not on UTC they disagree for some hours a day: an invoice created then is "due in 29 (or 31) days", and dates near midnight fall on the other side of "overdue". Setting `TimeZone: 'UTC'` on the app's three `postgres` connections (`app/lib/data.ts`, `actions.ts`, `auth.ts`) would make every "today" the same; it touches every date the app reads, so it is a decision for a plan, with a look at the development server's own setting.

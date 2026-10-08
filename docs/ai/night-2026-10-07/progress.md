@@ -745,3 +745,32 @@ The series' first rule is that attacks are automatic and "positioning is the ski
 - **Why it was added**: plan task 12, an exploration item of the kind "the Survival game" (a balance check backed by a seeded simulation).
 - **Reviewer**: request changes. Medium: the secret cat skewed the stand-still runs. Low: "same choices" wrong, per-seed checks brittle, "the real game" inexact. All acted on, with the measurement redone (D99). The test-only changes after the review were not re-reviewed.
 - **Gate** (the selection), all exit 0: prettier, lint 0 warnings, type check, group check; `arena.test.ts` 23 passed.
+
+## T12 item 12 — started 07:08: an unpaid invoice says how long until it is due (kind: dashboard features)
+
+An invoice's own page gives its due date, but not how near it is. For an unpaid invoice, the page says "Due today", "Due in N days" or "Overdue by N days" under the due date, worked out from today; a paid invoice shows only the date.
+
+## T12 item 12 — an unpaid invoice says how long until it is due (completed)
+
+- Branch `night-2026-10-07-t12-12-due-in`, base `79720ea`. Start 07:08 (budget ~13,168,000); completed 07:19 (budget ~13,137,000).
+- **CI of checkpoint 4** (`b0366dc`): **CI passed** on both branches ([run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37730061355), [task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37730061349)).
+- **CI of T12 item 11** (`79720ea`): **CI passed** on both branches ([run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37730509926), [task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37730510301)).
+- **What the code does** (D100–D102)
+  - An unpaid invoice's own page says "Due today", "Due in N days" or "Overdue by N days" under its due date: red when overdue, quiet otherwise. A paid invoice shows only the date.
+  - The database counts the days (`due_date - CURRENT_DATE`) by the same day its overdue rule uses, so the text and the overdue badge always agree. `dueText(days)` words the number.
+- **Why it was added**: plan task 12, an exploration item of the kind "dashboard features".
+- **Tests**
+  - `utils.test.ts`: the wording.
+  - `data.test.ts` (opt-in; CI runs it): the count is a whole number, and long past for a 2023 invoice.
+  - `invoice-detail.spec.ts`: a new invoice "Due in 30 days" (29–31 accepted, Q12), a seeded overdue one "Overdue by N days", a paid one with no such line.
+- **Tested in a browser, not seen.**
+- **Sent to a human**: Q12, one time zone for the database's "today". The app dates invoices by UTC, while `CURRENT_DATE` follows the server's setting.
+- **Reviewer**
+  - First review: request changes. Medium: the text and the overdue badge used two different "todays". Fixed by counting in the database (D101).
+  - Re-review: approve, one Low (the 30-day test's dependency on the database's time zone), acted on (D102).
+- **Gate** (the selection, on the code after D101), all exit 0:
+  - Prettier on 7 files, lint 0 warnings, type check, group check, build.
+  - Unit: 2 files, 15 passed (`data.test.ts` skipped, opt-in).
+  - Browser: 54 passed.
+  - The last change (the test's 29–31) was run alone (1 passed) with prettier, lint and the type check.
+  - An earlier gate passed on the first version.
