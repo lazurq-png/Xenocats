@@ -311,6 +311,11 @@ type Keeper = {
   resolve: number;
   untouchableUntil: number;
   facing: number;
+  /**
+   * Where he aims, in the arena, when the player aims with a crosshair (desktop,
+   * player 1); null when his weapons find their own cats.
+   */
+  aim: Vec | null;
   /** An elite's effect on him, while it lasts. */
   effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null;
   weapons: Map<WeaponId, { level: number; readyAt: number }>;
@@ -402,6 +407,7 @@ export function createArena(options: {
       resolve: own.resolve,
       untouchableUntil: 0,
       facing: 1,
+      aim: null,
       effect: null,
       weapons,
       passives,
@@ -934,12 +940,31 @@ export function createArena(options: {
   /** How near a cat comes before it reaches him: its size counts. */
   const reachOf = (cat: ArenaCat) => config.hero.reach + cat.radius - config.cats.radius;
 
-  /** The way from the hero to a cat; the way he faces if it stands on him. */
-  function aim(cat: ArenaCat): Vec {
-    const dx = cat.x - hero.x;
-    const dy = cat.y - hero.y;
+  /** The way from the hero to a point; the way he faces if it is on him. */
+  function towards(at: Vec): Vec {
+    const dx = at.x - hero.x;
+    const dy = at.y - hero.y;
     const length = Math.hypot(dx, dy);
     return length < 0.5 ? { x: hero.facing, y: 0 } : { x: dx / length, y: dy / length };
+  }
+
+  /** The way from the hero to a cat; the way he faces if it stands on him. */
+  const aim = (cat: ArenaCat): Vec => towards(cat);
+
+  /** Between the beams or treats of one firing: they fan out round the way he aims. */
+  const FAN = 0.16;
+
+  /**
+   * Aimed with a crosshair: of the cats he can reach (within `range` of him), the
+   * `count` nearest the crosshair, nearest first. A far crosshair picks the cats
+   * on its side of him, never one past his reach.
+   */
+  function nearestAimed(aimed: Vec, range: number, count: number): number[] {
+    return nearest(hero, range, Infinity)
+      .map((i) => ({ i, d: (cats[i].x - aimed.x) ** 2 + (cats[i].y - aimed.y) ** 2 }))
+      .sort((a, b) => a.d - b.d || a.i - b.i)
+      .slice(0, count)
+      .map((found) => found.i);
   }
 
   function launch(
@@ -956,6 +981,16 @@ export function createArena(options: {
   /** Fires a weapon that fires; false if it found nothing to fire at (it waits). */
   function fire(id: WeaponId, s: WeaponStats): boolean {
     const kind = WEAPONS[id].kind;
+    // Aimed with a crosshair: what goes one way goes towards it, cat or no cat.
+    const aimed = hero.aim;
+    if (kind === 'beam' && aimed) {
+      const way = Math.atan2(towards(aimed).y, towards(aimed).x);
+      for (let k = 0; k < s.count; k++) {
+        const turn = way + (k - (s.count - 1) / 2) * FAN;
+        beam(hero, Math.cos(turn), Math.sin(turn), s.area, 16, s.damage);
+      }
+      return true;
+    }
     if (kind === 'beam') {
       const targets = nearest(hero, s.area, s.count);
       if (targets.length === 0) return false;
@@ -969,7 +1004,9 @@ export function createArena(options: {
       const hit = new Set<number>();
       let from: Vec = { x: hero.x, y: hero.y };
       for (let jump = 0; jump < s.count; jump++) {
-        const [i] = nearest(from, s.area, 1, hit);
+        // Aimed, the first jump goes to the cat he can reach nearest the crosshair.
+        const [i] =
+          jump === 0 && aimed ? nearestAimed(aimed, s.area, 1) : nearest(from, s.area, 1, hit);
         if (i === undefined) break;
         const cat = cats[i];
         hit.add(cat.id);
@@ -982,8 +1019,9 @@ export function createArena(options: {
       return hit.size > 0;
     }
     if (kind === 'web') {
-      // Beams at every cat near him, each joined to the next: a web, all the time.
-      const targets = nearest(hero, s.area, s.count);
+      // Beams at every cat near him (aimed: those he can reach nearest the
+      // crosshair), each joined to the next: a web, all the time.
+      const targets = aimed ? nearestAimed(aimed, s.area, s.count) : nearest(hero, s.area, s.count);
       if (targets.length === 0) return false;
       let from: Vec | null = null;
       for (const i of targets) {
@@ -1030,13 +1068,17 @@ export function createArena(options: {
     }
     const base = { weapon: id, bit: false, x: hero.x, y: hero.y, radius: s.area, damage: s.damage };
     if (kind === 'spread' || kind === 'burst') {
-      const [i] = nearest(hero, 650, 1);
-      if (i === undefined) return false;
-      const way = aim(cats[i]);
+      let way: Vec;
+      if (aimed) way = towards(aimed);
+      else {
+        const [i] = nearest(hero, 650, 1);
+        if (i === undefined) return false;
+        way = aim(cats[i]);
+      }
       const angle = Math.atan2(way.y, way.x);
       const shots = kind === 'burst' ? 1 : s.count;
       for (let k = 0; k < shots; k++) {
-        const turn = angle + (k - (shots - 1) / 2) * 0.16;
+        const turn = angle + (k - (shots - 1) / 2) * FAN;
         launch({
           ...base,
           vx: Math.cos(turn) * s.speed,
@@ -1048,8 +1090,12 @@ export function createArena(options: {
       return true;
     }
     if (kind === 'arc') {
-      // A wide arc, the way he faces.
-      const facing = hero.facing > 0 ? 0 : Math.PI;
+      // A wide arc, the way he faces (aimed: towards the crosshair).
+      const facing = aimed
+        ? Math.atan2(towards(aimed).y, towards(aimed).x)
+        : hero.facing > 0
+          ? 0
+          : Math.PI;
       const spread = Math.PI * 0.6;
       for (let k = 0; k < s.count; k++) {
         const turn = facing + (k / Math.max(s.count - 1, 1) - 0.5) * spread;
@@ -1066,7 +1112,10 @@ export function createArena(options: {
     }
     if (kind === 'bounce') {
       for (let k = 0; k < s.count; k++) {
-        const turn = random.next() * 2 * Math.PI;
+        // Any way at all; aimed, within a quarter turn of the crosshair's way.
+        const turn = aimed
+          ? Math.atan2(towards(aimed).y, towards(aimed).x) + (random.next() - 0.5) * (Math.PI / 2)
+          : random.next() * 2 * Math.PI;
         launch({
           ...base,
           vx: Math.cos(turn) * s.speed,
@@ -1267,6 +1316,15 @@ export function createArena(options: {
 
     resize(size: { width: number; height: number }) {
       viewport = size;
+    },
+
+    /**
+     * Player 1 aims at `point` in the arena (the crosshair, desktop only), or, with
+     * null, his weapons find their own cats again. The vacuums and the blades that
+     * circle him never aim, so it changes nothing for them.
+     */
+    aimAt(point: Vec | null) {
+      keepers[0].aim = point && { x: point.x, y: point.y };
     },
 
     /**

@@ -814,3 +814,146 @@ describe('evolution', () => {
     expect(outside).toBeGreaterThan(0);
   });
 });
+
+describe('aiming with a crosshair (desktop, player 1)', () => {
+  /** Up and to the left of him, well away: a way no weapon would take by itself. */
+  const OFFSET = { x: -300, y: -300 };
+  const AIM_ANGLE = Math.atan2(OFFSET.y, OFFSET.x);
+  const off = (angle: number) =>
+    Math.abs(Math.atan2(Math.sin(angle - AIM_ANGLE), Math.cos(angle - AIM_ANGLE)));
+
+  /** A Keeper with only `id` at its top level, no cats ever, aiming or not. */
+  function empty(id: WeaponId, aiming: boolean) {
+    const a = arena({ ...steady, startingWeapons: [id], startingLevel: MAX_WEAPON_LEVEL });
+    const { x, y } = a.state().hero;
+    if (aiming) a.aimAt({ x: x + OFFSET.x, y: y + OFFSET.y });
+    return a;
+  }
+
+  /** What one second of firing sends out, read as the ways it leaves him. */
+  function ways(id: WeaponId, aiming: boolean) {
+    const a = empty(id, aiming);
+    const found: number[] = [];
+    for (let n = 0; n < 40; n++) {
+      a.step(still, false);
+      const hero = a.state().hero;
+      for (const p of a.projectiles()) {
+        if (!p.bit && Math.hypot(p.x - hero.x, p.y - hero.y) < 60) {
+          found.push(Math.atan2(p.vy, p.vx));
+        }
+      }
+      for (const b of a.beams()) found.push(Math.atan2(b.to.y - b.from.y, b.to.x - b.from.x));
+    }
+    return found;
+  }
+
+  // How far round from the crosshair's way each may go: its own fan.
+  const AIMING: [WeaponId, number][] = [
+    ['laser-pointer', 1.5 * 0.16 + 1e-6],
+    ['cat-treats', 4 * 0.16 + 1e-6],
+    ['hairball', 1e-6],
+    ['spray-bottle', 0.3 * Math.PI + 1e-6],
+    ['yarn-ball', Math.PI / 4 + 1e-6],
+  ];
+
+  for (const [id, fan] of AIMING) {
+    it(`${WEAPONS[id].name}: every shot heads for the crosshair, cat or no cat`, () => {
+      const aimed = ways(id, true);
+      expect(aimed.length).toBeGreaterThan(0);
+      for (const angle of aimed) expect(off(angle)).toBeLessThanOrEqual(fan);
+    });
+  }
+
+  it('without the crosshair, nothing changes: the beam and the treats wait for a cat', () => {
+    expect(ways('laser-pointer', false)).toEqual([]);
+    expect(ways('cat-treats', false)).toEqual([]);
+    // The bottle still sprays the way he faces (right), away from the crosshair.
+    for (const angle of ways('spray-bottle', false)) expect(off(angle)).toBeGreaterThan(1);
+  });
+
+  /** A Keeper with only `id`, cats all round, stepped a while; aiming or not. */
+  function crowded(id: WeaponId, aiming: boolean, seed = 5) {
+    const a = arena(
+      {
+        ...steady,
+        startingWeapons: [id],
+        startingLevel: MAX_WEAPON_LEVEL,
+        escalation: [[0, 60]],
+        cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
+      },
+      seed
+    );
+    const { x, y } = a.state().hero;
+    const point = { x: x + OFFSET.x, y: y + OFFSET.y };
+    if (aiming) a.aimAt(point);
+    return { a, point };
+  }
+
+  for (const id of ['laser-pointer-deluxe', 'infinite-laser'] as WeaponId[]) {
+    it(`${WEAPONS[id].name}: aimed, it takes the cats in its reach nearest the crosshair, never one past it`, () => {
+      const { a, point } = crowded(id, true);
+      const area = weaponStats(id, MAX_WEAPON_LEVEL, none).area;
+      const key = (v: { x: number; y: number }) => `${v.x},${v.y}`;
+      const toAim = (v: { x: number; y: number }) => Math.hypot(v.x - point.x, v.y - point.y);
+      let before = new Set<string>();
+      let checked = 0;
+      for (let n = 0; n < 400; n++) {
+        a.step(still);
+        const hero = a.state().hero;
+        const now = a.beams().filter((b) => !before.has(key(b.from) + key(b.to)));
+        before = new Set(a.beams().map((b) => key(b.from) + key(b.to)));
+        // What this step's firing reached: the chain's first jump starts at him; the
+        // web's lines join its cats.
+        const reached = now.flatMap((b) => {
+          const fromHim = b.from.x === hero.x && b.from.y === hero.y;
+          if (id === 'laser-pointer-deluxe') return fromHim ? [b.to] : [];
+          return fromHim ? [] : [b.from, b.to];
+        });
+        if (reached.length === 0) continue;
+        // Weapons fire after the cats move, so those still here stand where they were.
+        const inReach = a
+          .cats()
+          .filter((c) => Math.hypot(c.x - hero.x, c.y - hero.y) <= area + c.radius);
+        const farthest = Math.max(...reached.map(toAim));
+        for (const end of reached) {
+          expect(Math.hypot(end.x - hero.x, end.y - hero.y)).toBeLessThanOrEqual(
+            area + 2 * ARENA_CONFIG.cats.radius
+          );
+        }
+        // No cat he could reach, and left out, is nearer the crosshair.
+        const chosen = new Set(reached.map(key));
+        for (const cat of inReach) {
+          if (!chosen.has(key(cat))) expect(toAim(cat)).toBeGreaterThanOrEqual(farthest - 1e-6);
+        }
+        checked++;
+      }
+      expect(checked).toBeGreaterThan(0);
+    });
+  }
+
+  it('the vacuums and the blades never aim: a run is the same with the crosshair or without', () => {
+    for (const id of [
+      'vacuum-cleaner',
+      'thunderous-vacuum',
+      'forbidden-catnip-vacuum',
+      'can-opener',
+      'bottomless-saucer',
+    ] as WeaponId[]) {
+      const aimed = crowded(id, true).a;
+      const free = crowded(id, false).a;
+      for (let n = 0; n < 300; n++) {
+        aimed.step(still);
+        free.step(still);
+      }
+      expect(aimed.state().sentHome, id).toBe(free.state().sentHome);
+      expect(aimed.cats().map((c) => [c.x, c.y])).toEqual(free.cats().map((c) => [c.x, c.y]));
+    }
+  });
+
+  it('the crosshair can be put away again: null, and the weapons find their own cats', () => {
+    const a = empty('laser-pointer', true);
+    a.aimAt(null);
+    for (let n = 0; n < 40; n++) a.step(still, false);
+    expect(a.beams()).toEqual([]);
+  });
+});

@@ -5,7 +5,15 @@ import { Button } from '@/app/ui/button';
 import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
 import { HERO_SVGS, VARIETY_SVG } from './arena-art';
 import { type Choice, WEAPONS, type WeaponId, describeChoice, evolutionText } from './arsenal';
-import { bestOf, clockText, readBest, writeBest } from './arena-storage';
+import {
+  type AimMode,
+  bestOf,
+  clockText,
+  readAim,
+  readBest,
+  subscribeAim,
+  writeBest,
+} from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
 import { recordStat } from './field-guide';
@@ -92,6 +100,8 @@ type Hud = {
   xp: number;
   xpToNext: number;
   weapons: string;
+  /** Where the crosshair is on the screen ("x,y"), or "" without one. */
+  crosshair: string;
   /** Each Keeper's Resolve, and whether he is down (co-op: two). */
   heroes: {
     resolve: number;
@@ -161,6 +171,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const [notice, setNotice] = useState<string | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
   const best = useSyncExternalStore(subscribeBest, readBest, () => null);
+  // Aiming with a crosshair: a computer's choice (a touch screen has no pointer).
+  const storedAim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
+  const aimMode: AimMode = touch ? 'auto' : storedAim;
+  const aimRef = useRef<AimMode>(aimMode);
+  // Where the mouse is on the screen, while a run lasts (null until it moves).
+  const pointerRef = useRef<Vec | null>(null);
+  useEffect(() => {
+    aimRef.current = aimMode;
+  }, [aimMode]);
   const arenaRef = useRef<Arena | null>(null);
   const screenRef = useRef<Screen>('start');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -327,6 +346,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     if (!arena || !canvas || !context) return;
+    // A new run has no crosshair until the mouse moves in it: not the last run's.
+    pointerRef.current = null;
 
     let dirty = true;
     const redraw = () => {
@@ -590,6 +611,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         }
       });
       context.restore();
+
+      // The crosshair, on the screen where the mouse points.
+      const pointer = aimRef.current === 'crosshair' ? pointerRef.current : null;
+      if (pointer) {
+        context.save();
+        context.strokeStyle = '#c1e838';
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(pointer.x, pointer.y, 11, 0, Math.PI * 2);
+        for (const [dx, dy] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          context.moveTo(pointer.x + dx * 6, pointer.y + dy * 6);
+          context.lineTo(pointer.x + dx * 17, pointer.y + dy * 17);
+        }
+        context.stroke();
+        context.restore();
+      }
     };
 
     const frame = () => {
@@ -611,6 +653,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
       const input = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
       const input2 = twoPlayers ? walkDirection(held, PLAYER_KEYS[1]) : { x: 0, y: 0 };
+      // Player 1 aims where the mouse points: the screen, back into the arena
+      // under the camera (centred on it, `zoom` arena pixels to a screen pixel).
+      const pointer = aimRef.current === 'crosshair' ? pointerRef.current : null;
+      if (pointer) {
+        const cam = arena.camera();
+        arena.aimAt({
+          x: cam.x + (pointer.x - window.innerWidth / 2) * cam.zoom,
+          y: cam.y + (pointer.y - window.innerHeight / 2) * cam.zoom,
+        });
+      } else arena.aimAt(null);
       let steps = 0;
       while (carry >= arena.config.stepMs && steps < MAX_STEPS_PER_FRAME) {
         arena.step(input, guard.allowsSpawning(), input2);
@@ -690,6 +742,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           xp: state.xp,
           xpToNext: state.xpToNext,
           weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
+          crosshair:
+            aimRef.current === 'crosshair' && pointerRef.current
+              ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
+              : '',
           heroes: state.heroes.map((h) => ({
             resolve: h.resolve,
             maxResolve: h.maxResolve,
@@ -756,10 +812,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     const onKeyUp = (event: KeyboardEvent) => {
       held.delete(event.code);
     };
+    const onPointer = (event: MouseEvent) => {
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+    };
     const onHidden = () => {
       if (document.visibilityState === 'hidden') pause();
     };
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('mousemove', onPointer);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', pause);
     window.addEventListener('resize', resize);
@@ -767,6 +827,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     return () => {
       cancelAnimationFrame(frameId);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('mousemove', onPointer);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', pause);
       window.removeEventListener('resize', resize);
@@ -836,7 +897,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           )}
         </fieldset>
       )}
-      <GameSettings where="lobby" />
+      <GameSettings where="lobby" touch={touch} />
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button data-testid="survival-start" onClick={start} disabled={running}>
           {screen === 'results' ? 'Play again' : 'Start Survival'}
@@ -920,7 +981,11 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-hero2-x={hud?.heroes[1]?.x ?? ''}
           data-hero2-y={hud?.heroes[1]?.y ?? ''}
           data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
-          className="fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none"
+          data-aim={aimMode}
+          data-crosshair={hud?.crosshair ?? ''}
+          className={`fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none${
+            aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
+          }`}
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
           {hud?.boss && (
@@ -1104,7 +1169,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                   Paused
                 </h2>
                 <p className="mt-2 text-sm text-aura">The cats wait. They are patient.</p>
-                <GameSettings where="pause" />
+                <GameSettings where="pause" touch={touch} />
                 <div className="mt-4 flex justify-center gap-3">
                   <Button onClick={resume}>Resume</Button>
                   <Button onClick={giveUp}>Give up</Button>

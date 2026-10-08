@@ -75,3 +75,20 @@ All green, run one after another on `ae34cbc`:
   - `npm run build` exit 0.
   - Acceptance criteria (D14): all by command, except that switching off silences the game at once and switching on in a run can be heard: by reading (`play()` asks `getSoundEnabled` before every sound; D15).
 - **Reviewer**: approve, one Low finding fixed (D15). **Tested in a browser, not seen**: a human should look at the Settings in the lobby and the pause menu at phone width.
+
+## T4 — Aim with a crosshair (desktop option) (completed)
+
+- Branch `night-2026-10-08-t4-crosshair`, base `2549bd6`. Start 15:15 (budget ~14,807,000); completed 15:39 (budget ~14,733,000).
+- **CI of T3** (`2549bd6`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37782783189), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37782778649)).
+- **What the code does**
+  - `arena.ts`: `aimAt(point | null)` gives player 1 an aim point; aimed, the beams, treats, hairballs, spray and yarn go towards it (cat or no cat), the chain's first jump and the web take the reachable cats nearest it. The vacuums and the circling blades are untouched; with no aim point everything is as before.
+  - `arena-view.tsx`: with the crosshair chosen (desktop only), the mouse's screen position becomes an arena point under the camera each frame, a crosshair is drawn there and the cursor is hidden over the play area; reset at each run's start.
+  - `game-settings.tsx`, `arena-storage.ts`: "Aim: Automatic / Crosshair" in the lobby's and the pause menu's Settings on a computer, stored as `xenocats:survival:v1:aim`, automatic by default.
+  - Tests: unit tests per aiming weapon kind (shots within their fan of the crosshair; chain and web stay in reach and take the cats nearest it), the five non-aiming weapons unchanged, and the crosshair put away; e2e: the choice on desktop and not on touch, the crosshair following the mouse, switched off in the pause menu, kept after a reload.
+- **What it brings**: a desktop player can choose where the Keeper's weapons fire instead of leaving it to the nearest cat, so aiming becomes a skill alongside positioning. Decisions: D16–D20.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0 (`.next/dev/types` cleared).
+  - `vitest related` over 6 files: 5 files, 168 passed. e2e: 11 specs, 97 passed (next dev), before and after the review fixes; the two new tests 2 of 2 each.
+  - `npm run build` exit 0.
+  - Acceptance criteria (D19): all by command except how the crosshair looks (reading only).
+- **Reviewer**: request changes (one Medium, two Low), all fixed; re-review approve (D20). **Tested in a browser, not seen**: a human should look at the crosshair and the Aim choice.

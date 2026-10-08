@@ -94,6 +94,42 @@ test('the retired Taming game is gone: /cats/taming is not found', async ({ page
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
+  test('aiming with a crosshair: chosen in the lobby, drawn where the mouse is, put away in the pause menu', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await expect(page.getByTestId('survival-lobby-aim-auto')).toBeChecked();
+    await page.getByTestId('survival-lobby-aim-crosshair').check();
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-aim', 'crosshair');
+    const crosshairAt = async (x: number, y: number) => {
+      await page.mouse.move(x, y);
+      await expect
+        .poll(async () => {
+          await playOn(page);
+          return area(page).getAttribute('data-crosshair');
+        })
+        .toBe(`${x},${y}`);
+    };
+    await crosshairAt(300, 200);
+    await crosshairAt(900, 600);
+    // The pause menu shows the choice; switched back to automatic, the crosshair goes.
+    const paused = await pauseRun(page);
+    await expect(paused.getByTestId('survival-pause-aim-crosshair')).toBeChecked();
+    await paused.getByTestId('survival-pause-aim-auto').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-aim', 'auto');
+    await expect
+      .poll(async () => {
+        await playOn(page);
+        return area(page).getAttribute('data-crosshair');
+      })
+      .toBe('');
+    // Kept for the next visit.
+    await page.reload();
+    await expect(page.getByTestId('survival-lobby-aim-auto')).toBeChecked();
+  });
+
   test('sound is switched in the pause menu: it holds after Resume, and the lobby and the site share it', async ({
     page,
   }) => {
@@ -451,6 +487,21 @@ test.describe('on a touch screen', () => {
   // A phone's screen and touch input (its browser type cannot change inside a group).
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  test('a touch screen is not offered a crosshair: its weapons aim themselves', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await expect(page.getByTestId('survival-lobby-sound')).toBeVisible();
+    await expect(page.getByTestId('survival-lobby-aim-crosshair')).toHaveCount(0);
+    await startRun(page, true);
+    await expect(area(page)).toHaveAttribute('data-aim', 'auto');
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    await expect(paused.getByTestId('survival-pause-sound')).toBeVisible();
+    await expect(paused.getByTestId('survival-pause-aim-crosshair')).toHaveCount(0);
+  });
 
   test('sound is switched in the pause menu with a tap; it holds, and the lobby shows it', async ({
     page,
