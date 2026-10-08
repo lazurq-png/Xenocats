@@ -31,7 +31,7 @@ test.describe('logged in', () => {
     await page.getByLabel('Email').fill('user@nextmail.com');
     await page.getByLabel('Password', { exact: true }).fill('123456');
     await page.getByRole('button', { name: /log in/i }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
   });
 
   test('an invoice that does not exist gets the cat 404, with a way back', async ({ page }) => {
@@ -41,7 +41,7 @@ test.describe('logged in', () => {
     await expect(page.getByRole('heading', { level: 1, name: '404 Not Found' })).toBeVisible();
     await expectCat(page, 'cat-sleeping');
     await page.getByRole('link', { name: 'Back to the invoices' }).click();
-    await expect(page).toHaveURL(/\/dashboard\/invoices$/);
+    await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
   });
 
   test('a search that finds nothing says so, with a cat, in both lists', async ({ page }) => {

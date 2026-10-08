@@ -774,3 +774,21 @@ An invoice's own page gives its due date, but not how near it is. For an unpaid 
   - Browser: 54 passed.
   - The last change (the test's 29–31) was run alone (1 passed) with prettier, lint and the type check.
   - An earlier gate passed on the first version.
+
+## T12 item 13 — started 07:21: every spec waits for a busy dev server after logging in (kind: tests)
+
+Item 8 gave the two specs that flaked a 15-second wait after a page change; ten others still wait the default 5 seconds after the login redirect — the same first-visit compile under `next dev` (questions.md Q9) — and the invoice spec after its edit link. They get the same wait.
+
+## T12 item 13 — every spec waits for a busy dev server after logging in (completed)
+
+- Branch `night-2026-10-07-t12-13-login-waits`, base `77ebb8a`. Start 07:21 (budget ~13,135,000); completed 07:31 (budget ~13,118,000).
+- **CI of T12 item 12** (`77ebb8a`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37731639076), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37731639108)).
+- **What changed** (D103, D104)
+  - Every remaining page-change wait of the kind item 8 diagnosed now allows 15 s instead of 5: a first visit compiling under a busy `next dev`. That covers the login's redirect in ten specs, the invoice edit link, `cats-link`'s `/cats` and return, the invoice list in `cat-states`, and the invoice detail page.
+  - `invoice-detail` and `cats-link` allow 60 s per test, as their waits now add up past the default 30.
+  - Only timeouts changed. No matcher or pattern was weakened, and no retry or global timeout was added.
+- **Why it was added**: plan task 12, an exploration item of the kind "tests". It answers Q9's remaining waits.
+- **Reviewer**: approve, two Low and a nit, all acted on (D104): test timeouts, a description, four more waits.
+- **Gate**
+  - Full gate (FULL), all exit 0: prettier, lint 0 warnings, type check, group check; `npm test` 44 files, 653 passed (17 skipped); build; `npm run test:e2e` 131 passed; `E2E_SERVER=start npm run test:e2e` 131 passed.
+  - After the review's changes (the selection): prettier, lint, type check, group check, build; 32 browser tests passed.

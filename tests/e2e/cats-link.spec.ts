@@ -6,6 +6,10 @@ import { expect, test } from '@playwright/test';
 // the cats never touch, so no cat on the page can get in the way.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 
+// Several page changes per test, each allowed 15 s under a busy next dev: more
+// than the default 30 s in all.
+test.describe.configure({ timeout: 60_000 });
+
 test('cats stop coming on /cats and start again back on the dashboard', async ({ page }) => {
   // Chaos (a first cat within 3 s) keeps the waits short. Before the login, so the
   // dashboard runs at chaos from its first render.
@@ -15,12 +19,12 @@ test('cats stop coming on /cats and start again back on the dashboard', async ({
   await page.getByLabel('Email').fill('user@nextmail.com');
   await page.getByLabel('Password', { exact: true }).fill('123456');
   await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
   await expect(page.getByTestId('xenocat-page')).toHaveAttribute('data-cat-intensity', 'chaos');
 
   await page.getByRole('link', { name: 'Meet the cats' }).focus();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/cats$/);
+  await expect(page).toHaveURL(/\/cats$/, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'The cats' })).toBeVisible();
   // Summoned cats only: no intensity, no cat left over from the dashboard, and none
   // arriving in longer than chaos ever takes to bring one.
@@ -31,7 +35,7 @@ test('cats stop coming on /cats and start again back on the dashboard', async ({
 
   await page.getByRole('link', { name: 'Back to the dashboard' }).focus();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
   await expect(page.getByTestId('xenocat-page')).toHaveAttribute('data-cat-intensity', 'chaos');
   await expect
     .poll(() => page.getByTestId('xenocat').count(), { timeout: 4_000 })

@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Email').fill('user@nextmail.com');
   await page.getByLabel('Password', { exact: true }).fill('123456');
   await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
 });
 
 test('chaos is chosen on the settings page, remembered, and brings cats at once', async ({

@@ -12,7 +12,7 @@ async function logIn(page: Page) {
   await page.getByLabel('Email').fill('user@nextmail.com');
   await page.getByLabel('Password', { exact: true }).fill('123456');
   await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
 }
 
 /** An amount in cents that no seeded or other test's invoice has. */
@@ -105,7 +105,7 @@ test('an invoice is edited: a bad amount is refused, then the change is saved', 
   await createInvoice(page, cents);
 
   await (await rowsFor(page, cents)).getByRole('link', { name: 'Edit' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}\/edit$/);
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}\/edit$/, { timeout: 15_000 });
   await page.waitForLoadState('networkidle');
   const amount = page.getByLabel('Choose an amount');
   expect(Number(await amount.inputValue())).toBe(cents / 100);
@@ -157,7 +157,7 @@ test('an invoice is due when the form says: 30 days by default, never before its
 
   // Kept: the edit form shows it.
   await (await rowsFor(page, cents)).getByRole('link', { name: 'Edit' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}\/edit$/);
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}\/edit$/, { timeout: 15_000 });
   await page.waitForLoadState('networkidle');
   await expect(due).toHaveValue(addDays(today, 45));
   const editUrl = page.url();
