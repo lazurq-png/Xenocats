@@ -361,6 +361,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       const art = catArt(type.id, 'awake');
       return art ? bitmapOf(art, CAT_SIZE * 2, redraw) : () => null;
     });
+    // A boss wears a xenocat's face at a Mega Cat's size: drawn from a large
+    // bitmap, made the first time that face is a boss's.
+    const bossSprites = new Map<number, () => HTMLCanvasElement | null>();
+    const bossSprite = (type: number) => {
+      let sprite = bossSprites.get(type);
+      if (!sprite) {
+        const art = catArt(CAT_TYPES[type].id, 'awake');
+        sprite = art ? bitmapOf(art, 256, redraw) : () => null;
+        bossSprites.set(type, sprite);
+      }
+      return sprite();
+    };
+    // Until then a notice that matters (a boss, an evolution, a Keeper down or
+    // back) is not covered by a xenocat's arrival.
+    let importantUntil = 0;
+    // The xenocat kinds announced this run: each is news once.
+    const announced = new Set<number>();
+    const important = (text: string) => {
+      importantUntil = performance.now() + NOTICE_MS;
+      setNotice(text);
+    };
     const heroSprites = [characterRef.current, secondRef.current ?? 'keeper'].map((id) =>
       bitmapOf(
         `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVGS[id])}`,
@@ -498,11 +519,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       for (const cat of arena.cats()) {
         const x = cat.x - camX;
         const y = cat.y - camY;
-        // A variety is drawn at its own size; a xenocat at the cats' size.
+        // A variety is drawn at its own size; a xenocat at the cats' size. A boss
+        // has a variety's size and a xenocat's face.
         const size = cat.variety ? cat.radius * 2.8 : CAT_SIZE;
         const half = size / 2;
         if (x < -size || y < -size || x > width + size || y > height + size) continue;
-        const bitmap = cat.variety ? varietySprites[cat.variety]() : sprites[cat.type]();
+        const bitmap = !cat.variety
+          ? sprites[cat.type]()
+          : cat.type >= 0
+            ? (bossSprite(cat.type) ?? sprites[cat.type]())
+            : varietySprites[cat.variety]();
         if (bitmap) context.drawImage(bitmap, x - half, y - half, size, size);
         else {
           context.fillStyle = cat.variety ? '#8a8aa0' : CAT_TYPES[cat.type].palette.body;
@@ -685,24 +711,36 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         } else if (event.kind === 'hero-hit') {
           if (event.type >= 0) hits.push(event.type);
           if (player) sound(() => player.play(soundsFor(typeOf(event.type)).attack));
-        } else if (event.kind === 'boss' && titan >= 0) {
-          if (player) player.play(soundsFor(CAT_TYPES[titan]).wake);
+        } else if (event.kind === 'boss') {
+          important(`A giant ${CAT_TYPES[event.type].name} has come for the Keeper.`);
+          if (player && titan >= 0) player.play(soundsFor(CAT_TYPES[titan]).wake);
+        } else if (event.kind === 'xenocat') {
+          // A xenocat is an event the first time its kind comes in a run (an
+          // elite says so), never over a notice that matters more.
+          if (!announced.has(event.type) && now >= importantUntil) {
+            announced.add(event.type);
+            setNotice(
+              event.elite
+                ? `${CAT_TYPES[event.type].name} has come, and it means it.`
+                : `${CAT_TYPES[event.type].name} has come.`
+            );
+          }
         } else if (event.kind === 'chest') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'evolution') {
           foundRef.current.add(event.to);
-          setNotice(evolutionText(event.from, event.to));
+          important(evolutionText(event.from, event.to));
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'secret') {
           // Nothing is said: it is simply there. The codex remembers.
           foundRef.current.add(event.id);
         } else if (event.kind === 'downed') {
-          setNotice(
+          important(
             `Player ${event.player + 1} is down. If the other lasts ${Math.round(arena.config.coop.reviveMs / 1000)} seconds, he will stand again.`
           );
           if (player) player.play(soundsFor(CAT_TYPES[0]).attack);
         } else if (event.kind === 'revived') {
-          setNotice(
+          important(
             event.by === 'ally'
               ? `Player ${event.player + 1} stands again.`
               : twoPlayers

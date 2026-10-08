@@ -116,3 +116,21 @@ All green, run one after another on `ae34cbc`:
 - **What was checked, found and changed**: tests over tasks 1–5 (D27): one gap closed with `game-settings.test.tsx` (the aim setting's storage and the settings component), added to CI's jsdom group. Quality and security review over the whole range (D28): approve, no findings; two observations recorded.
 - **What it brings**: the night's first five changes are reviewed together and the new settings are covered below the browser tests, so a later task that breaks them fails in seconds instead of minutes. Decisions: D27–D28.
 - **Verification (a full-suite point)**: prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0; `actionlint` (with shellcheck, pyflakes) exit 0 and CI's group check passes; `npm test`: 43 files passed, 1 skipped, 674 passed, 17 skipped; database tests: 17 passed; `npm run build` exit 0; `npm run test:e2e` (next dev): 133 passed; `E2E_SERVER=start npm run test:e2e`: 133 passed.
+
+## T6 — Regular enemies are the drawn cats; the 20 artwork cats are special (completed)
+
+- Branch `night-2026-10-08-t6-artwork-cats-special`, base `c42d98e`. Start 16:06 (budget ~14,661,000); completed 17:13 (budget ~14,570,000).
+- **CI of checkpoint 1** (`c42d98e`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37789568172), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37789562810)).
+- **What the code does**
+  - `varieties.ts`: the horde is drawn cats only (basic 8, the Zoomies Cat from 10 s and the Hissing Cat from 40 s at weight 3); the twenty xenocats visit on a clock of their own (`SCHEDULE.xenocats`: from 15 s, every 8–15 s).
+  - `arena.ts`: a visiting xenocat is an elite 40% of the time and leaves a chest when sent home (`visitor`); each Mega Cat boss wears a random xenocat's face (`type`); new `xenocat` event and the boss event's `type`.
+  - `arena-view.tsx`: a boss is drawn with its face's artwork (a 256 px bitmap); notices: "A giant X has come for the Keeper.", and each xenocat kind's first visit in a run ("X has come.", "…, and it means it." for an elite), never over a boss, evolution or downed/revived notice.
+  - Tests: unit tests of the arrivals (no ordinary or swarm cat a xenocat; visits rare by the clock, some elites, every boss with a face) and of the visit's chest; the schedule test describes the new schedule; coop's and one arsenal fixture keep their old elite share (D31); the boss e2e checks its notice; `startRun` waits 15 s (D33).
+- **What it brings**: the twenty finished cats are no longer fodder in the crowd: each is a visit worth noticing, with a chest for sending it home, and the bosses wear their faces, while the horde, the time-goal balance and the evolutions stay as they were. Decisions: D29–D35.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0.
+  - Unit, one file at a time on the final code: arena 23, varieties 22, arsenal 94, coop 15, progression 24, all passed.
+  - Seeded measurements (temporary scripts, not kept): survival times and chests/attacks per run (D30, D34).
+  - `npm run build` exit 0. e2e: 11 specs, 99 passed (next dev), on the final code; the Mega Cat test 3 of 3; one load flake fixed at its cause (D33).
+  - Acceptance criteria (D32, D34): by command except how a boss with artwork looks and the notice rules (reading only).
+- **Reviewer**: request changes (notices flooding as "rare" was a share; an upscaled boss), redesigned; re-review approve with two Low, handled (D34, D35). **Tested in a browser, not seen**: a human should look at a boss with a cat's face and the notices.

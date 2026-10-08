@@ -162,7 +162,7 @@ export const ARENA_CONFIG: ArenaConfig = {
     speed: [45, 95],
     homesickness: [16, 34],
     drain: [4, 11],
-    eliteShare: 0.04,
+    eliteShare: 0.4,
     effectMaxMs: 2500,
     spawnMargin: 60,
     hardCap: 6000,
@@ -259,6 +259,8 @@ export type ArenaCat = {
   shotAt: number;
   /** The kitten swarm it came with, or 0. */
   swarm: number;
+  /** A xenocat's visit (schedule `xenocats`): it leaves a chest when sent home. */
+  visitor: boolean;
   x: number;
   y: number;
   speed: number;
@@ -338,7 +340,10 @@ export type ArenaEvent =
       /** Which Keeper (0 for player 1, 1 for player 2). */
       player: number;
     }
-  | { kind: 'boss'; x: number; y: number }
+  /** A Mega Cat has come, wearing the face of xenocat `type`. */
+  | { kind: 'boss'; x: number; y: number; type: number }
+  /** A xenocat (one with artwork) has come: rare, and an elite as often as not. */
+  | { kind: 'xenocat'; type: number; elite: boolean }
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
@@ -451,6 +456,7 @@ export function createArena(options: {
   // Kitten swarms (how many of each are left), bosses come, chests lie about.
   let nextSwarm = config.schedule.swarms.from;
   let swarmId = 0;
+  let nextXenocat = config.schedule.xenocats?.from ?? Infinity;
   const swarms = new Map<number, number>();
   let bossesCome = 0;
   const chests: Vec[] = [];
@@ -559,6 +565,7 @@ export function createArena(options: {
     cat.turnAt = 0;
     cat.shotAt = time + config.laserCat.everyMs;
     cat.swarm = 0;
+    cat.visitor = false;
     cats.push(cat);
     return cat;
   }
@@ -573,6 +580,8 @@ export function createArena(options: {
     cat.limit = byType(type, config.cats.homesickness, 3);
     cat.drain = Math.round(byType(type, config.cats.drain, 5));
     cat.elite = random.next() < config.cats.eliteShare;
+    events.push({ kind: 'xenocat', type, elite: cat.elite });
+    return cat;
   }
 
   function spawnVariety(id: VarietyId, at: Vec): ArenaCat {
@@ -662,11 +671,22 @@ export function createArena(options: {
         swarms.set(id, size);
       }
     }
+    // A xenocat's visit: rare by the clock, not a share of the horde.
+    const visits = config.schedule.xenocats;
+    if (visits && time >= nextXenocat) {
+      nextXenocat = time + random.range(visits.everyMs[0], visits.everyMs[1]);
+      if (spawn && cats.length < config.cats.hardCap) {
+        const visitor = spawnXenocat(offScreen(random.next() * 2 * Math.PI));
+        visitor.visitor = true;
+      }
+    }
     while (bossesCome < bosses.length && time >= bosses[bossesCome]) {
       bossesCome++;
       const at = offScreen(random.next() * 2 * Math.PI, VARIETIES.mega.radius);
-      spawnVariety('mega', at);
-      events.push({ kind: 'boss', x: at.x, y: at.y });
+      const boss = spawnVariety('mega', at);
+      // A Mega Cat's size and strength, and one of the xenocats' faces.
+      boss.type = random.int(0, types.length - 1);
+      events.push({ kind: 'boss', x: at.x, y: at.y, type: boss.type });
     }
   }
 
@@ -684,8 +704,9 @@ export function createArena(options: {
       });
       sentHome++;
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
-      // A boss, an elite, or the last kitten of a swarm leaves a chest.
-      let chest = cat.variety === 'mega' || (cat.elite && cat.swarm === 0);
+      // A boss, an elite, a visiting xenocat, or the last kitten of a swarm
+      // leaves a chest.
+      let chest = cat.variety === 'mega' || cat.visitor || (cat.elite && cat.swarm === 0);
       if (cat.swarm !== 0) {
         const left = (swarms.get(cat.swarm) ?? 1) - 1;
         if (left <= 0) {

@@ -326,7 +326,8 @@ describe('every weapon, at level 1 and at its top level', () => {
       ...steady,
       startingWeapons: ['thunderous-vacuum'],
       escalation: [[0, 40]],
-      cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9] },
+      // No elites: an elite's effect could move him off the centre this measures from.
+      cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9], eliteShare: 0 },
     });
     const radius = weaponStats('thunderous-vacuum', 1, none).area;
     // Long enough for the slowest cats to walk in from off screen.

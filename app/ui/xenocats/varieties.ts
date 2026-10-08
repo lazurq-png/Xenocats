@@ -166,19 +166,28 @@ export type Schedule = {
   swarms: { from: number; everyMs: number; size: readonly [number, number] };
   /** When a Mega Cat arrives, ms into the run. */
   bosses: readonly number[];
+  /**
+   * The xenocats' own visits, apart from the horde: the first at `from`, then one
+   * every `everyMs` (between the two, at random). Rare by count, however large the
+   * horde grows. Absent: none come this way (they may still be in `arrivals`).
+   */
+  xenocats?: { from: number; everyMs: readonly [number, number] };
 };
 
 /**
- * Over the five minutes: plain cats and xenocats first, then the zoomies, swarms of
- * kittens, the hissing, boxes, snipers, the purring, the fat and the possessed; a
- * Mega Cat at two minutes and again at four.
+ * Over the five minutes: plain cats first, then the zoomies, swarms of kittens, the
+ * hissing, boxes, snipers, the purring, the fat and the possessed; a Mega Cat at two
+ * minutes and again at four. The twenty xenocats (the cats with artwork) are not
+ * the horde: one visits every 8 to 15 seconds from the first quarter minute, often
+ * as an elite, and leaves a chest; the bosses wear their faces (arena.ts).
  */
 export const SCHEDULE: Schedule = {
   arrivals: [
-    { from: 0, who: 'basic', weight: 6 },
-    { from: 0, who: 'xenocat', weight: 4 },
-    { from: 20_000, who: 'zoomies', weight: 2 },
-    { from: 60_000, who: 'hissing', weight: 2 },
+    { from: 0, who: 'basic', weight: 8 },
+    // The zoomies and the hissing come sooner and more often than when the xenocats
+    // were the horde: they take the place of the xenocats' strength (decisions D30).
+    { from: 10_000, who: 'zoomies', weight: 3 },
+    { from: 40_000, who: 'hissing', weight: 3 },
     { from: 90_000, who: 'box', weight: 0.4 },
     { from: 120_000, who: 'laser', weight: 1 },
     { from: 130_000, who: 'comforter', weight: 0.6 },
@@ -187,6 +196,7 @@ export const SCHEDULE: Schedule = {
   ],
   swarms: { from: 45_000, everyMs: 25_000, size: [12, 20] },
   bosses: [120_000, 240_000],
+  xenocats: { from: 15_000, everyMs: [8_000, 15_000] },
 };
 
 /** Which varieties may come at `ms`, with their weights. */

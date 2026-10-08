@@ -104,14 +104,18 @@ async function openArena(page: Page, query = '?seed=7') {
 /** Starts a run; a click before hydration is lost, so click until it starts. */
 async function startRun(page: Page, tap = false) {
   await expect
-    .poll(async () => {
-      if ((await area(page).count()) === 0) {
-        const button = page.getByTestId('survival-start');
-        if (tap) await button.tap();
-        else await button.click();
-      }
-      return area(page).count();
-    })
+    .poll(
+      async () => {
+        if ((await area(page).count()) === 0) {
+          const button = page.getByTestId('survival-start');
+          if (tap) await button.tap();
+          else await button.click();
+        }
+        return area(page).count();
+      },
+      // A busy `next dev` may still be hydrating the page (as the other specs allow).
+      { timeout: 15_000 }
+    )
     .toBe(1);
   await expect(area(page)).toHaveAttribute('data-screen', 'playing');
 }
@@ -371,6 +375,10 @@ test.describe('on a computer', () => {
       )
       .toBe(1);
     await expect(bar).toContainText('Mega Cat');
+    // It wears a xenocat's face, and says whose.
+    await expect(page.getByTestId('survival-notice')).toHaveText(
+      /^A giant .+ has come for the Keeper\.$/
+    );
     const meter = bar.getByRole('meter', { name: 'Mega Cat' });
     await expect(meter).toHaveAttribute('aria-valuemax', '4500');
     await expect(meter).toHaveAttribute('aria-valuetext', /^Homesickness \d+%$/);
