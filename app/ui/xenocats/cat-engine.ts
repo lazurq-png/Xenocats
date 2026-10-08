@@ -171,8 +171,51 @@ export function createCatEngine(options: {
   return {
     config,
 
-    resize(size: Size) {
+    /**
+     * The screen's new size. A cat it no longer holds (the window narrowed, a phone
+     * turned) moves in to its edge, so none is left out of sight, and along it to a
+     * spot no other cat is on, if there is one (on a screen too small for that,
+     * they share). True if any moved.
+     */
+    resize(size: Size): boolean {
       viewport = size;
+      const { catSize, margin } = config;
+      const maxX = Math.max(viewport.width - catSize - margin, margin);
+      const maxY = Math.max(viewport.height - catSize - margin, margin);
+      const clampX = (x: number) => Math.min(Math.max(x, margin), maxX);
+      const clampY = (y: number) => Math.min(Math.max(y, margin), maxY);
+      let moved = false;
+      for (const cat of cats) {
+        let x = clampX(cat.x);
+        let y = clampY(cat.y);
+        if (x === cat.x && y === cat.y) continue;
+        // As findSpot: two cats overlap unless a full cat apart on one axis.
+        const free = (px: number, py: number) =>
+          !cats.some(
+            (other) =>
+              other !== cat && Math.abs(px - other.x) < catSize && Math.abs(py - other.y) < catSize
+          );
+        if (!free(x, y)) {
+          // The nearest free spot a whole cat's step or more away along the edges.
+          search: for (let step = catSize; step <= Math.max(maxX, maxY); step += catSize) {
+            for (const [px, py] of [
+              [x, clampY(y + step)],
+              [x, clampY(y - step)],
+              [clampX(x + step), y],
+              [clampX(x - step), y],
+            ]) {
+              if (free(px, py)) {
+                [x, y] = [px, py];
+                break search;
+              }
+            }
+          }
+        }
+        cat.x = x;
+        cat.y = y;
+        moved = true;
+      }
+      return moved;
     },
 
     /**

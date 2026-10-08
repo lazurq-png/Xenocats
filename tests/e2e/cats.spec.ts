@@ -684,3 +684,39 @@ for (const type of CAT_TYPES) {
     await expect(page.locator('html')).not.toHaveAttribute('data-xenocat-puppets');
   });
 }
+
+test('cats stay on the screen when it narrows, as when a phone is turned upright', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await openCats(page);
+  // Four cats, asleep (they stay), wherever they land on the wide screen. Summoned
+  // from the keyboard: a click could land on a sleeping cat and wake it instead.
+  for (const type of CAT_TYPES.slice(0, 4)) {
+    await page.getByTestId(`summon-asleep-${type.id}`).focus();
+    await page.keyboard.press('Enter');
+  }
+  const cats = page.getByTestId('xenocat');
+  await expect(cats).toHaveCount(4);
+  await expect(page.locator('[data-testid="xenocat"][data-phase="sleeping"]')).toHaveCount(4);
+  const count = 4;
+  await page.setViewportSize({ width: 300, height: 700 });
+  // Every one is drawn inside the narrow screen, none past its edges.
+  const edges = () =>
+    cats.evaluateAll((all) =>
+      all.map((el) => {
+        const box = el.getBoundingClientRect();
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+      })
+    );
+  await expect
+    .poll(async () => {
+      const boxes = await edges();
+      // All of them still there (asleep), and each inside.
+      return (
+        boxes.length === count &&
+        boxes.every((b) => b.left >= 0 && b.right <= 300 && b.top >= 0 && b.bottom <= 700)
+      );
+    })
+    .toBe(true);
+});

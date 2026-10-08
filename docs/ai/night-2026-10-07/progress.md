@@ -532,3 +532,29 @@ The 2026-10-01 run's Q7 noted that a login for an email with no account skips th
   - Build.
   - `npm run test:e2e`: 128 passed, the login and lockout browser tests included.
   - `E2E_SERVER=start npm run test:e2e`: 128 passed.
+
+## T12 item 5 — started 02:24: cats left off screen when the window shrinks (kind: cat behaviour bugs)
+
+`engine.resize` only records the new size: a cat placed near the right or bottom edge of a wider window stays where it was when the window narrows (or a phone turns from landscape to portrait) — off the screen, where it sleeps unseen, cannot be petted or clicked, attacks a spot where nothing is, and still counts toward the five on screen. Cats will be kept on the screen when it changes size.
+
+## T12 item 5 — cats kept on screen when it narrows (completed)
+
+- Branch `night-2026-10-07-t12-5-cats-on-resize`, base `a47938f`. Start 02:24 (budget ~13,420,000); completed 02:33 (budget ~13,369,000).
+- **CI of T12 item 4** (`a47938f`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37706457233), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37706456752)).
+- **The bug** (D82): when the window narrowed, or a phone turned upright, cats near the old right or bottom edge were left off the screen. There they slept unseen, could be neither petted nor woken, attacked a spot where nothing is, and still counted toward the five.
+- **What the code does** (D82–D84)
+  - `cat-engine.ts` `resize` moves any cat the new screen no longer holds in to its edge. If that spot is taken, it slides along the edges to the nearest free one; where there is none (a tiny screen), the cats share. A cat that fits is left where it is.
+  - `cat-layer.tsx` redraws when a cat moved, and gives the engine the page's own size, which excludes a scrollbar.
+- **Why it was added**: plan task 12, an exploration item of the kind "cat behaviour bugs". The bug was found by reading the engine.
+- **Tests**
+  - `cat-engine.test.ts`: narrowed to 300 × 600, each cat is inside, none overlap, and those that fitted are unmoved; widening moves nothing; on a screen smaller than a cat, every cat sits at its corner. The first failed without the fix, and the no-overlap check failed without the slide.
+  - `cats.spec.ts`: four sleeping cats summoned from the keyboard on a 1280 px window, then the window narrowed to 300 × 700. Every cat is still there and drawn inside. This failed without the fix and passed 3 of 3 runs with it.
+- **Not changed, sent to a human (questions.md Q8)**: after a background tab returns, a cat whose sleep ran out pounces at once without the waking warning. That behaviour is deliberate and tested in the engine, so it is a product question.
+- **Known limit** (D84): a scrollbar that appears without a resize is not noticed until the next resize. This is never worse than before.
+- **Reviewer**
+  - First review: approve, three Low and a nit, all acted on (D83): cats stacking at the edge, the scrollbar, a test that could pass with no cats, the tiny screen.
+  - Re-review: approve, two Low: a test made immune to a click waking a cat; the scrollbar limit recorded (D84).
+- **Gate** (the selection, every browser spec, as the cat layer is on every page), all exit 0:
+  - Prettier, lint 0 warnings, type check, group check, build.
+  - Unit: 5 files, 60 passed.
+  - Browser: 129 passed.
