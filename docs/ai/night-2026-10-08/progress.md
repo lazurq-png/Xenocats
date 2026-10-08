@@ -183,3 +183,17 @@ All green, run one after another on `ae34cbc`:
   - Selector: no unit test; e2e the 22 specs reaching the images' pages, 137 passed (next dev), before and after the review fixes. `npm run build` exit 0.
   - **Built, not seen**: a human should look at `laser-ocicat-awake.webp`, `titan-forest-cat-asleep.webp` and `gravi-coon-asleep.webp` beside their other poses.
 - **Reviewer**: request changes (the visor recoloured; noses, antenna bulbs, the script's arguments), all handled (D48).
+
+## T10 — The landing page's header loses its two links (completed)
+
+- Branch `night-2026-10-08-t10-landing-header`, base `2cf047e`. Start 18:13 (budget ~14,452,000); completed 18:21 (budget ~14,427,000).
+- **CI of T9** (`2cf047e`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37807067648), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37807063682)).
+- **What the code does**
+  - `app/page.tsx`: the header's navigation ("Log in" and "Meet the cats") is gone; the header holds the logo; the hero's links are unchanged.
+  - `smoke.spec.ts`: the test of the removed header links is replaced by one at 1280 and 390 px: exactly one "Log in" and one "Meet the cats" link, both in the hero, visible, leading where they did; the header holds only the logo.
+- **What it brings**: the landing page says "Log in" and "Meet the cats" once each, in the hero, instead of twice. Decisions: D49.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0.
+  - Selector: no unit test relates; e2e the 3 specs reaching `/`: 17 passed (next dev), twice. `npm run build` exit 0.
+  - Acceptance criteria: by command. **Tested in a browser, not seen**: a human should look at `/`'s header with only the logo.
+- **Reviewer**: approve, no findings.

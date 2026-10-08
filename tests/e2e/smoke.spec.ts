@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 
 test('home page renders and links to the login page', async ({ page }) => {
   await page.goto('/');
-  // The header and the hero both link to the login page; this is the hero's.
+  // The hero's link (the header has only the logo).
   const login = page.getByRole('main').getByRole('link', { name: 'Log in' });
   await expect(login).toBeVisible();
   await login.click();
@@ -30,12 +30,27 @@ test('the password can be shown and hidden again', async ({ page }) => {
   await expect(password).toHaveAttribute('type', 'password');
 });
 
-test('the home page header links to the login page and the cats', async ({ page }) => {
-  await page.goto('/');
-  const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/login');
-  await expect(nav.getByRole('link', { name: 'Meet the cats' })).toHaveAttribute('href', '/cats');
-});
+for (const [width, height] of [
+  [1280, 800],
+  [390, 844],
+]) {
+  test(`at ${width} px the home page has one Log in and one Meet the cats link, both in the hero`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    const login = page.getByRole('link', { name: 'Log in' });
+    const cats = page.getByRole('link', { name: 'Meet the cats' });
+    await expect(login).toHaveCount(1);
+    await expect(cats).toHaveCount(1);
+    // Both in the hero, under the page's main heading, and visible.
+    await expect(page.getByRole('main').getByRole('link', { name: 'Log in' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: 'Meet the cats' })).toBeVisible();
+    await expect(page.getByRole('banner').getByRole('link')).toHaveCount(1); // the logo
+    await expect(login).toHaveAttribute('href', '/login');
+    await expect(cats).toHaveAttribute('href', '/cats');
+  });
+}
 
 test('the dashboard sends a visitor without a session to the login page', async ({ page }) => {
   await page.goto('/dashboard');
