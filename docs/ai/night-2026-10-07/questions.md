@@ -53,3 +53,7 @@ Item 8 (D90, D91) gave the two flaky specs' page-change waits 15 s; ten other sp
 ## Q10 — Should a touch screen be able to pet a sleeping cat? (T12 item 10)
 
 Petting needs the pointer to rest on a sleeping cat for a while (`config.petMs`); a touch screen has no resting pointer, and a tap on a sleeping cat wakes it, angry (`poke`). So on a phone a sleeping cat can only be angered, never petted. A press held on a sleeping cat could pet it instead (and a quick tap still wake it) — a change to what a touch does, so a human's call. Proposed for a plan.
+
+## Q11 — Should the Keeper's weapons aim at a cat that does no harm? (T12 item 11)
+
+The Laser Pointer (and every weapon that picks "the nearest cat") aims at the Neighbour's Cat, the secret cat that drains nothing, when it is nearest — so a Keeper who stands still and draws it spends his laser on a harmless guest for some 50 s. Keep (a guest is still a cat to send home; it costs the player something, which suits a secret), or have targeting skip cats with no drain (a one-line filter in `nearest`). A game-design call.

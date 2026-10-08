@@ -448,3 +448,45 @@ describe('the best time', () => {
     expect(clockText(300_000)).toBe('5:00');
   });
 });
+
+describe('balance: positioning is the skill', () => {
+  /**
+   * How long a Keeper lasts in the game as configured (seeded; stepped at 50 ms, as
+   * the arsenal's simulation tests are), standing still or walking a wide circle. The
+   * secret cat is left out: it comes only to a Keeper who stands still, and his
+   * laser would spend itself on a cat that does no harm — another effect than this.
+   */
+  function lasts(seed: number, walking: boolean) {
+    const a = createArena({
+      random: createRandom(seed),
+      types: CAT_TYPES,
+      viewport,
+      config: { stepMs: 50, secretCat: { afterMs: Infinity, stillMs: Infinity } },
+    });
+    while (a.state().status !== 'over' && a.state().time < 300_000) {
+      // The same policy for both: the first of each level-up's offer.
+      if (a.choices()) {
+        a.choose(0);
+        continue;
+      }
+      const t = a.state().time / 4000;
+      a.step(walking ? { x: Math.cos(t), y: Math.sin(t) } : { x: 0, y: 0 });
+    }
+    return a.state().time;
+  }
+
+  it('a Keeper who stands still is worn down early; one who keeps walking lasts much longer', () => {
+    const seeds = [1, 2, 3, 4, 5, 6, 7, 8];
+    const still = seeds.map((seed) => lasts(seed, false));
+    const walking = seeds.map((seed) => lasts(seed, true));
+    const ratios = seeds.map((_, i) => walking[i] / still[i]).sort((a, b) => a - b);
+    // Standing still: gone within the first two minutes, every time.
+    for (const ms of still) expect(ms).toBeLessThan(100_000);
+    // Walking: twice as long in the middle of the seeds; more than half as long again
+    // on all but one; past two minutes on most. (Counts, not every seed, so a change
+    // that only reshuffles the shared random draws does not fail it on one seed.)
+    expect((ratios[3] + ratios[4]) / 2).toBeGreaterThan(2);
+    expect(ratios.filter((r) => r > 1.5).length).toBeGreaterThanOrEqual(7);
+    expect(walking.filter((ms) => ms > 120_000).length).toBeGreaterThanOrEqual(6);
+  }, 60_000);
+});

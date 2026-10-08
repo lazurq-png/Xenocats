@@ -723,3 +723,25 @@ Item 5 found a cat behaviour bug by reading the engine. This item looks for more
   - Build.
   - `npm run test:e2e`: 130 passed.
   - `E2E_SERVER=start npm run test:e2e`: 130 passed.
+
+## T12 item 11 — started 07:03: positioning is the skill, as a seeded balance test (kind: the Survival game)
+
+The series' first rule is that attacks are automatic and "positioning is the skill". A seeded simulation of the real game (full schedule, all varieties, level-ups taken) compares a Keeper who stands still with one who keeps walking, over several seeds, and pins the difference as a balance test, so a later change to the numbers cannot quietly make standing still as good as moving.
+
+## T12 item 11 — positioning is the skill, as a seeded balance test (completed)
+
+- Branch `night-2026-10-07-t12-11-balance`, base `b0366dc`. Start 07:01 (budget ~13,188,000); completed 07:05 (budget ~13,170,000).
+- **CI of checkpoint 4** (`b0366dc`): the poll was still running at this commit; the result goes into the next entry.
+- **What was measured** (D98, D99): the game as configured (the full schedule, varieties, bosses, chests; stepped at 50 ms), eight seeds, the secret cat left out, the same level-up policy (the first of each offer).
+  - A Keeper standing still was worn down at 66–76 s.
+  - One walking a wide circle lasted 124–175 s, 1.7 to 2.7 times as long.
+  - **No number changed**: the series' rule "positioning is the skill" holds as things stand.
+- **What changed**: `tests/unit/xenocats/arena.test.ts` gains "balance: positioning is the skill" (about 1.8 s). It requires:
+  - standing still ends before 1:40 on every seed;
+  - walking lasts more than 1.5× as long on at least seven, past 2:00 on at least six, and twice as long at the median.
+  - It fails if a change makes standing still as good as moving, or the opening unwinnable.
+- **Not claimed**: that a skilled player reaches the 5-minute goal; that would need a smarter bot than a test should hold.
+- **Sent to a human**: Q11, whether weapons should aim at the harmless secret cat.
+- **Why it was added**: plan task 12, an exploration item of the kind "the Survival game" (a balance check backed by a seeded simulation).
+- **Reviewer**: request changes. Medium: the secret cat skewed the stand-still runs. Low: "same choices" wrong, per-seed checks brittle, "the real game" inexact. All acted on, with the measurement redone (D99). The test-only changes after the review were not re-reviewed.
+- **Gate** (the selection), all exit 0: prettier, lint 0 warnings, type check, group check; `arena.test.ts` 23 passed.
