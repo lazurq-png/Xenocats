@@ -15,7 +15,7 @@ proxy.ts + auth.config.ts   — which pages need a session (the `authorized` cal
 app/**/page.tsx             — Server Components; read data by calling app/lib/data.ts
 app/lib/actions.ts          — Server Actions ('use server'): validate with zod, write, revalidate, redirect
 app/lib/data.ts             — every read query, raw SQL via `postgres` tagged templates
-app/**/route.ts             — Route Handlers; only the one-off seed/query routes exist
+app/**/route.ts             — Route Handlers; only the invoice CSV export (it checks the session itself)
 auth.ts                     — NextAuth credentials provider, user lookup, bcrypt compare
 ```
 

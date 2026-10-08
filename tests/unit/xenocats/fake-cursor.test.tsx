@@ -201,7 +201,7 @@ describe('XenocatCursorProvider', () => {
     await waitFor(() => expect(save.outerHTML).toBe(before));
   });
 
-  it('calm: an attack only nudges the page near the pointer', async () => {
+  it('calm: an attack hits the page near the pointer as it does the cursor', async () => {
     window.localStorage.setItem(INTENSITY_KEY, 'calm');
     try {
       mockPointer(true);
@@ -215,8 +215,9 @@ describe('XenocatCursorProvider', () => {
       act(() => {
         cursor.attack(vanish, { x: 300, y: 300 });
       });
-      expect(save.getAttribute('data-xenocat-hit')).toBe('blur');
-      expect(save.style.opacity).toBe('');
+      // Vanish hides the button where it stands.
+      await waitFor(() => expect(save.style.opacity).toBe('0'));
+      expect(save.style.translate).toBe('0px 0px');
       clock = vanish.durationMs;
       await waitFor(() => expect(save.outerHTML).toBe(before));
     } finally {
@@ -252,20 +253,31 @@ describe('on a touch screen', () => {
     expect(screen.queryByTestId('fake-cursor')).toBeNull();
     const save = screen.getByText('Save');
     save.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, right: 60, bottom: 20, x: 0, y: 0, width: 60, height: 20 }) as DOMRect;
+      ({
+        left: 100,
+        top: 100,
+        right: 160,
+        bottom: 120,
+        x: 100,
+        y: 100,
+        width: 60,
+        height: 20,
+      }) as DOMRect;
     const before = save.outerHTML;
 
     // No touch yet: nothing to attack.
     expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(false);
     expect(cursor.touchPoint()).toBeNull();
 
-    fireEvent.pointerDown(window, { clientX: 10, clientY: 10, pointerType: 'touch' });
-    expect(cursor.touchPoint()).toEqual({ x: 10, y: 10 });
+    fireEvent.pointerDown(window, { clientX: 110, clientY: 110, pointerType: 'touch' });
+    expect(cursor.touchPoint()).toEqual({ x: 110, y: 110 });
     expect(cursor.position()).toBeNull();
     act(() => {
       expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(true);
     });
-    expect(save.getAttribute('data-xenocat-hit')).toBe('shake');
+    // Jitter shakes the button: it is moved, a little.
+    expect(save.style.translate).not.toBe('');
+    expect(save.style.translate).not.toBe('0px 0px');
     expect(cursor.isBusy()).toBe(true);
     // One at a time.
     expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(false);
@@ -291,7 +303,7 @@ describe('on a touch screen', () => {
     act(() => {
       expect(cursor.attack({ ...vanish, durationMs: 5000 }, { x: 300, y: 300 })).toBe(true);
     });
-    expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
+    expect(save.hasAttribute('style')).toBe(false);
     expect(cursor.isBusy()).toBe(false);
     fireEvent.click(save, { detail: 1 });
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -307,9 +319,9 @@ describe('on a touch screen', () => {
     act(() => {
       cursor.attack({ ...jitter, durationMs: 5000 }, { x: 300, y: 300 });
     });
-    expect(save.hasAttribute('data-xenocat-hit')).toBe(true);
+    expect(save.hasAttribute('style')).toBe(true);
     cleanup();
-    expect(save.hasAttribute('data-xenocat-hit')).toBe(false);
+    expect(save.hasAttribute('style')).toBe(false);
   });
 });
 

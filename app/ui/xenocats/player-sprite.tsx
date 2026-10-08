@@ -1,10 +1,10 @@
-import type { Facing } from './survival';
+import type { Facing } from './walking';
 
-// The cat ranger of Fight a cat, Survival: a 64×64 astronaut seen from above and a
+// The cat ranger of Taming (fight.tsx): a 64×64 astronaut seen from above and a
 // little in front, in eight facings. The east side is drawn; the west side mirrors
-// it. The gun arm is drawn apart and turns to the exact aim: the game loop rotates
-// the element passed as `gunRef` every frame (gunTransform), so the body re-renders
-// only when the facing changes.
+// it. The gun arm, drawn apart to turn to an exact aim through `gunRef`, was the old
+// Survival's; nothing arms him since Survival became the arena (decisions.md, D27),
+// and Taming draws him empty-handed.
 
 export const PLAYER_SIZE = 64;
 
@@ -58,9 +58,12 @@ export function PlayerSprite({
   facing,
   walking,
   gunRef,
+  armed = true,
 }: {
   facing: Facing;
   walking: boolean;
+  /** Carrying the gun (no game does since D27), or empty-handed (Taming). */
+  armed?: boolean;
   /** The gun the game loop turns; decoys leave it pointing the way they face. */
   gunRef?: React.Ref<HTMLDivElement>;
 }) {
@@ -88,7 +91,7 @@ export function PlayerSprite({
       className={walking ? 'xenocat-player xenocat-player-walking' : 'xenocat-player'}
       style={{ position: 'relative', width: PLAYER_SIZE, height: PLAYER_SIZE }}
     >
-      {gunBehind(facing) && gun}
+      {armed && gunBehind(facing) && gun}
       <svg
         width={PLAYER_SIZE}
         height={PLAYER_SIZE}
@@ -166,7 +169,7 @@ export function PlayerSprite({
           )}
         </g>
       </svg>
-      {!gunBehind(facing) && gun}
+      {armed && !gunBehind(facing) && gun}
     </div>
   );
 }

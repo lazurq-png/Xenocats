@@ -5,12 +5,16 @@ import { type Page, expect, test } from '@playwright/test';
 // own pending invoice (an amount no other test uses) and asserts only on it.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 
+// Several page changes per test, each allowed 15 s under a busy next dev: more
+// than the default 30 s in all.
+test.describe.configure({ timeout: 60_000 });
+
 async function logIn(page: Page) {
   await page.goto('/login');
   await page.getByLabel('Email').fill('user@nextmail.com');
   await page.getByLabel('Password', { exact: true }).fill('123456');
   await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
 }
 
 /** Creates a pending invoice for Amy Burns with a unique amount; returns its cents. */
@@ -41,7 +45,7 @@ test('an invoice has a detail page, reached from the list', async ({ page }) => 
   const cents = await createInvoice(page);
   const row = await findInvoice(page, cents);
   await row.getByRole('link', { name: `View invoice for Amy Burns, ${dollars(cents)}` }).click();
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Amy Burns' })).toBeVisible();
   const details = page.locator('dl');
   await expect(details).toContainText(dollars(cents));
@@ -51,6 +55,25 @@ test('an invoice has a detail page, reached from the list', async ({ page }) => 
   await expect(
     page.getByRole('region', { name: 'Amy Burns' }).getByText('Pending', { exact: true })
   ).toBeVisible();
+  // Unpaid, due 30 days on: how near that is, under the due date. (The invoice is
+  // dated by the UTC day, the count made by the database's day: on a database not on
+  // UTC they differ by one for some hours a day — questions.md Q12.)
+  await expect(page.getByTestId('invoice-due-in')).toHaveText(/^Due in (29|30|31) days$/);
+});
+
+test('an overdue invoice says by how long; a paid one says nothing of it', async ({ page }) => {
+  await logIn(page);
+  // The seed's unpaid invoices are long past due.
+  await page.goto('/dashboard/invoices?status=overdue');
+  await page.locator('table tbody tr').first().getByRole('link', { name: /^View/ }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  await expect(page.getByTestId('invoice-due-in')).toHaveText(/^Overdue by \d+ days$/);
+
+  await page.goto('/dashboard/invoices?status=paid');
+  await page.locator('table tbody tr').first().getByRole('link', { name: /^View/ }).click();
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  await expect(page.locator('dt').filter({ hasText: /^Due$/ })).toBeVisible();
+  await expect(page.getByTestId('invoice-due-in')).toHaveCount(0);
 });
 
 test('deleting asks first, in a dialog that keeps focus, cancels on Esc and gives focus back', async ({
@@ -104,7 +127,7 @@ test('deleting from the detail page goes back to the list', async ({ page }) => 
   const cents = await createInvoice(page);
   const row = await findInvoice(page, cents);
   await row.getByRole('link', { name: /^View invoice/ }).click();
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/, { timeout: 15_000 });
   const detail = page.url();
   const pageErrors: Error[] = [];
   page.on('pageerror', (error) => pageErrors.push(error));

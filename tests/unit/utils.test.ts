@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatCurrency, formatDateToLocal, generatePagination, parsePage } from '@/app/lib/utils';
+import {
+  dueText,
+  formatCurrency,
+  formatDateToLocal,
+  generatePagination,
+  parsePage,
+} from '@/app/lib/utils';
 
 describe('formatCurrency', () => {
   it('formats cents as US dollars', () => {
@@ -51,5 +57,15 @@ describe('parsePage', () => {
     for (const value of [null, undefined, '', '0', '-1', '-0', '2.5', 'abc', '1e400', 'Infinity']) {
       expect(parsePage(value), String(value)).toBe(1);
     }
+  });
+});
+
+describe('dueText', () => {
+  it('says how near the due date is, in whole days', () => {
+    expect(dueText(0)).toBe('Due today');
+    expect(dueText(1)).toBe('Due in 1 day');
+    expect(dueText(30)).toBe('Due in 30 days');
+    expect(dueText(-1)).toBe('Overdue by 1 day');
+    expect(dueText(-365)).toBe('Overdue by 365 days');
   });
 });

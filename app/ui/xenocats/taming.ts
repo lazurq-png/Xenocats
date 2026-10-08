@@ -1,9 +1,13 @@
-// Fight a cat, Taming mode, as a pure state machine (time and pointer passed in).
+// Fight a cat, Taming mode, as a pure state machine (time and the ranger passed in).
 //
-// One cat at a time wanders the screen. A pointer moving near it makes it dodge, each
-// cat type in its own way, derived from its attack (DODGES). A pointer that keeps
-// still makes it curious: it walks over and stops beneath it. Holding the pointer
-// still on a cat for 2 s tames it, and the next cat comes.
+// The ranger (walked with WASD, or the movement pad on a touch screen) carries
+// treats to the cats. Treats turn up at random spots, a few at a time, and vanish
+// if nobody picks them up; walking over one picks it up, one at a time. One cat at
+// a time wanders the screen. While the ranger has no treat the cat keeps away: it
+// flees a ranger who comes close, each type in its own way derived from its attack
+// (DODGES), and attacks from a distance with its own effect. While the ranger
+// carries a treat it stops all that and comes over; when they touch, the treat is
+// given and the cat is tamed, and the next one comes. Nothing is ever lost.
 
 import type { CatType } from './cat-types';
 import { CAT_CONFIG } from './config';
@@ -149,37 +153,65 @@ export function dodgeTarget(
 }
 
 export type TamingConfig = {
-  /** Holding still on a cat this long tames it, ms. */
-  tameMs: number;
-  /** The pointer is on the cat within this distance of its centre, px. */
+  /** How fast the ranger walks, px/s (the game moves it; Survival's pace). */
+  rangerSpeed: number;
+  /** The ranger touches the cat within this distance of its centre, px. */
   catchRadius: number;
-  /** A pointer that moves within this distance of the cat makes it dodge, px. */
+  /** Without a treat, the ranger this near makes the cat flee, px. */
   noticeRadius: number;
-  /** A pointer is still while it stays within this distance, px. */
-  stillPx: number;
-  /** A pointer still this long makes the cat curious: it walks over, ms. */
-  curiousAfterMs: number;
-  /** How fast a wandering or curious cat walks, px/s. */
+  /** Without a treat, the cat attacks the ranger from this near, px. */
+  attackRange: number;
+  /** How often it attacks while the ranger is in range, ms. */
+  attackEveryMs: number;
+  /** How fast a wandering cat walks, px/s. */
   walkSpeed: number;
-  /** After a dodge the cat ignores the pointer this long, so it can be approached, ms. */
+  /** How fast a cat comes to a ranger carrying a treat, px/s. */
+  approachSpeed: number;
+  /** After a dodge the cat stays put this long before it flees again, ms. */
   calmMs: number;
   /** The pause before the next cat, ms. */
   breakMs: number;
-  /** A new cat appears at least this far from the pointer, px. */
-  keepAwayFromPointer: number;
+  /** A new cat appears at least this far from the ranger, px. */
+  keepAwayFromRanger: number;
+  /** A new treat appears this often, ms, while there are fewer than `maxTreats`. */
+  treatEveryMs: number;
+  maxTreats: number;
+  /** A treat nobody picks up vanishes after this long, ms. */
+  treatLifeMs: number;
+  /** The ranger picks a treat up within this distance of it, px. */
+  pickupRadius: number;
 };
 
 export const TAMING_CONFIG: TamingConfig = {
-  tameMs: 2000,
-  catchRadius: CAT_CONFIG.catSize / 2,
-  noticeRadius: 140,
-  stillPx: 6,
-  curiousAfterMs: 1000,
-  walkSpeed: 110,
-  calmMs: 500,
+  rangerSpeed: 280,
+  catchRadius: CAT_CONFIG.catSize / 2 + 16,
+  noticeRadius: 160,
+  attackRange: 320,
+  attackEveryMs: 2500,
+  walkSpeed: 90,
+  approachSpeed: 170,
+  calmMs: 600,
   breakMs: 1200,
-  keepAwayFromPointer: 240,
+  keepAwayFromRanger: 240,
+  treatEveryMs: 1800,
+  maxTreats: 3,
+  treatLifeMs: 9000,
+  pickupRadius: 40,
 };
+
+/** What a cat can be won over with. Emoji for now: placeholders for real artwork. */
+export const TREATS = [
+  { kind: 'fish', name: 'Fish', emoji: '🐟' },
+  { kind: 'catnip', name: 'Catnip', emoji: '🌿' },
+  { kind: 'yarn', name: 'Yarn', emoji: '🧶' },
+  { kind: 'milk', name: 'Milk', emoji: '🥛' },
+] as const;
+
+export type TreatKind = (typeof TREATS)[number]['kind'];
+
+export const treatInfo = (kind: TreatKind) => TREATS.find((treat) => treat.kind === kind)!;
+
+export type Treat = { id: number; kind: TreatKind; x: number; y: number; expiresAt: number };
 
 export type TamingCat = {
   id: number;
@@ -188,21 +220,36 @@ export type TamingCat = {
   x: number;
   y: number;
   /** What it is doing: a dodge's kind while dodging. */
-  doing: 'wandering' | 'curious' | 'held' | DodgeKind;
+  doing: 'wandering' | 'coming' | DodgeKind;
 };
 
 export type TamingSnapshot = {
   cat: TamingCat | null;
-  /** How far along the 2 s hold is, 0–1. */
-  hold: number;
+  treats: readonly Treat[];
+  /** The treat the ranger carries, if any. */
+  carrying: TreatKind | null;
   /** Type ids tamed this game, in order. */
   tamed: readonly string[];
+};
+
+/** What happened in one tick. */
+export type TamingEvents = {
+  /** The type id of a cat tamed this tick. */
+  tamed: string | null;
+  /** The cat, if it attacked the ranger this tick (its effect lands on the ranger). */
+  attack: TamingCat | null;
+  /** A treat the ranger picked up this tick. */
+  picked: TreatKind | null;
 };
 
 type Motion = { from: Vec; to: Vec; startsAt: number; endsAt: number; kind: DodgeKind };
 
 export type Taming = ReturnType<typeof createTaming>;
 
+/**
+ * Taming with treats. Time and the ranger's position are passed in, and anything
+ * random comes from `random`, so it is tested in Node.
+ */
 export function createTaming(options: {
   random: Random;
   types: readonly CatType[];
@@ -219,10 +266,11 @@ export function createTaming(options: {
   let lastTick = options.now;
   let motion: Motion | null = null;
   let calmUntil = -Infinity;
+  let nextAttackAt = -Infinity;
   let wanderTo: Vec | null = null;
-  /** Where the pointer has been keeping still, and since when. */
-  let still: { at: Vec; since: number } | null = null;
-  let holdSince: number | null = null;
+  let treats: Treat[] = [];
+  let nextTreatAt = options.now;
+  let carrying: TreatKind | null = null;
   let tamed: string[] = [];
 
   const inset = CAT_CONFIG.catSize / 2;
@@ -230,28 +278,36 @@ export function createTaming(options: {
     x: random.range(inset, Math.max(viewport.width - inset, inset + 1)),
     y: random.range(inset, Math.max(viewport.height - inset, inset + 1)),
   });
+  const view = (c: TamingCat): TamingCat => ({
+    id: c.id,
+    typeId: c.typeId,
+    x: c.x,
+    y: c.y,
+    doing: c.doing,
+  });
 
-  function spawn(pointer: Vec) {
+  function spawnCat(ranger: Vec, now: number) {
     let spot = randomSpot();
     for (let attempt = 0; attempt < 20; attempt++) {
-      if (Math.hypot(spot.x - pointer.x, spot.y - pointer.y) >= config.keepAwayFromPointer) break;
+      if (Math.hypot(spot.x - ranger.x, spot.y - ranger.y) >= config.keepAwayFromRanger) break;
       spot = randomSpot();
     }
     const type = random.pick(types);
     cat = { id: nextId++, typeId: type.id, type, ...spot, doing: 'wandering' };
     motion = null;
     wanderTo = null;
-    holdSince = null;
     calmUntil = -Infinity;
+    // A moment to see it before it first attacks.
+    nextAttackAt = now + config.attackEveryMs / 2;
   }
 
-  /** Walks the cat towards `to` for `dt` seconds; true once it is there. */
-  function walk(to: Vec, dt: number): boolean {
+  /** Walks the cat towards `to` at `speed` for `dt` seconds; true once it is there. */
+  function walk(to: Vec, speed: number, dt: number): boolean {
     if (!cat) return true;
     const dx = to.x - cat.x;
     const dy = to.y - cat.y;
     const distance = Math.hypot(dx, dy);
-    const step = config.walkSpeed * dt;
+    const step = speed * dt;
     if (distance <= step) {
       cat.x = to.x;
       cat.y = to.y;
@@ -262,8 +318,28 @@ export function createTaming(options: {
     return false;
   }
 
-  const holdProgress = (now: number) =>
-    holdSince === null ? 0 : Math.min((now - holdSince) / config.tameMs, 1);
+  /** The treats: old ones vanish, new ones come, and one under the ranger is picked up. */
+  function tickTreats(now: number, ranger: Vec): TreatKind | null {
+    treats = treats.filter((treat) => treat.expiresAt > now);
+    if (now >= nextTreatAt) {
+      if (treats.length < config.maxTreats) {
+        const kind = random.pick(TREATS).kind;
+        treats = [
+          ...treats,
+          { id: nextId++, kind, ...randomSpot(), expiresAt: now + config.treatLifeMs },
+        ];
+      }
+      nextTreatAt = now + config.treatEveryMs;
+    }
+    if (carrying) return null;
+    const reached = treats.find(
+      (treat) => Math.hypot(treat.x - ranger.x, treat.y - ranger.y) <= config.pickupRadius
+    );
+    if (!reached) return null;
+    treats = treats.filter((treat) => treat !== reached);
+    carrying = reached.kind;
+    return reached.kind;
+  }
 
   return {
     config,
@@ -272,92 +348,80 @@ export function createTaming(options: {
       viewport = size;
     },
 
-    snapshot(now: number): TamingSnapshot {
-      return {
-        cat: cat ? { id: cat.id, typeId: cat.typeId, x: cat.x, y: cat.y, doing: cat.doing } : null,
-        hold: holdProgress(now),
-        tamed: [...tamed],
-      };
+    snapshot(): TamingSnapshot {
+      return { cat: cat ? view(cat) : null, treats: [...treats], carrying, tamed: [...tamed] };
     },
 
     /**
-     * Advances to `now`. `room` is how many more cats the screen may hold (others
-     * count against the limit); no cat comes while it is 0. Returns the type id of
-     * a cat tamed this tick, or null.
+     * Advances to `now`, the ranger at `ranger`. `room` is how many more cats the
+     * screen may hold (others count against the limit); no cat comes while it is 0.
      */
-    tick(now: number, pointer: Vec, room = 1): string | null {
+    tick(now: number, ranger: Vec, room = 1): TamingEvents {
       const dt = Math.max(now - lastTick, 0) / 1000;
       lastTick = now;
-
-      // Is the pointer keeping still?
-      const moved =
-        !still || Math.hypot(pointer.x - still.at.x, pointer.y - still.at.y) > config.stillPx;
-      if (moved) still = { at: pointer, since: now };
-      const stillFor = now - still!.since;
+      const events: TamingEvents = { tamed: null, attack: null, picked: tickTreats(now, ranger) };
 
       if (!cat) {
-        if (now >= nextCatAt && room > 0 && types.length > 0) spawn(pointer);
-        return null;
+        if (now >= nextCatAt && room > 0 && types.length > 0) spawnCat(ranger, now);
+        return events;
       }
 
       // A dodge under way (or waiting for a slow cat to react) runs to its end.
       if (motion) {
-        if (now < motion.startsAt) return null;
+        if (now < motion.startsAt) return events;
         const t = Math.min((now - motion.startsAt) / (motion.endsAt - motion.startsAt), 1);
         const eased = 1 - (1 - t) ** 3;
         cat.x = motion.from.x + (motion.to.x - motion.from.x) * eased;
         cat.y = motion.from.y + (motion.to.y - motion.from.y) * eased;
         cat.doing = motion.kind;
-        if (t < 1) return null;
+        if (t < 1) return events;
         motion = null;
         calmUntil = now + config.calmMs;
         wanderTo = null;
       }
 
-      const distance = Math.hypot(pointer.x - cat.x, pointer.y - cat.y);
+      // A treat in hand: the cat stops fleeing and attacking and comes for it. When
+      // they touch, the treat is given, the cat is tamed, and the next one comes.
+      if (carrying) {
+        cat.doing = 'coming';
+        walk(ranger, config.approachSpeed, dt);
+        if (Math.hypot(ranger.x - cat.x, ranger.y - cat.y) <= config.catchRadius) {
+          const id = cat.typeId;
+          tamed = [...tamed, id];
+          cat = null;
+          carrying = null;
+          nextCatAt = now + config.breakMs;
+          events.tamed = id;
+        }
+        return events;
+      }
 
-      // A pointer moving close by: dodge.
-      if (moved && distance <= config.noticeRadius && now >= calmUntil) {
+      const distance = Math.hypot(ranger.x - cat.x, ranger.y - cat.y);
+
+      // No treat: the cat keeps away, attacking from a distance...
+      if (distance <= config.attackRange && now >= nextAttackAt) {
+        nextAttackAt = now + config.attackEveryMs;
+        events.attack = view(cat);
+      }
+
+      // ...and fleeing a ranger who comes close, each kind in its own way.
+      if (distance <= config.noticeRadius && now >= calmUntil) {
         const style = dodgeFor(cat.type);
         const startsAt = now + style.reactMs;
         motion = {
           from: { x: cat.x, y: cat.y },
-          to: dodgeTarget(style, cat, pointer, viewport, random),
+          to: dodgeTarget(style, cat, ranger, viewport, random),
           startsAt,
           endsAt: startsAt + style.durationMs,
           kind: style.kind,
         };
-        holdSince = null;
-        return null;
+        return events;
       }
 
-      // Held: the pointer is on the cat and keeping still.
-      if (!moved && distance <= config.catchRadius) {
-        holdSince ??= now;
-        cat.doing = 'held';
-        if (now - holdSince >= config.tameMs) {
-          const id = cat.typeId;
-          tamed = [...tamed, id];
-          cat = null;
-          holdSince = null;
-          nextCatAt = now + config.breakMs;
-          return id;
-        }
-        return null;
-      }
-      holdSince = null;
-
-      // A still pointer draws the cat over; otherwise it wanders.
-      if (stillFor >= config.curiousAfterMs) {
-        cat.doing = 'curious';
-        walk(pointer, dt);
-        wanderTo = null;
-      } else {
-        cat.doing = 'wandering';
-        wanderTo ??= randomSpot();
-        if (walk(wanderTo, dt)) wanderTo = null;
-      }
-      return null;
+      cat.doing = 'wandering';
+      wanderTo ??= randomSpot();
+      if (walk(wanderTo, config.walkSpeed, dt)) wanderTo = null;
+      return events;
     },
   };
 }

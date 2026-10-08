@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CAT_TYPES, catTypeById } from '@/app/ui/xenocats/cat-types';
+import { PAD_SIZE, padDirection } from '@/app/ui/xenocats/movement-pad';
 import { createRandom } from '@/app/ui/xenocats/random';
 import {
   DODGES,
   TAMING_CONFIG,
+  TREATS,
   addTamed,
   createTaming,
   dodgeFor,
@@ -81,124 +83,215 @@ describe('dodging', () => {
 
   it('a pointer moving close makes the cat dodge away', () => {
     const g = gameWith('pulsar-siamese'); // knockback: dashes 320 px
-    const cat = g.snapshot(TAMING_CONFIG.breakMs).cat!;
-    const near = { x: cat.x - 60, y: cat.y };
+    const cat = g.snapshot().cat!;
+    // On the cat's side nearer the edge: it runs off into open screen, not a wall.
+    const near = { x: cat.x + 60 * Math.sign(cat.x - 600 || 1), y: cat.y };
     let now = TAMING_CONFIG.breakMs + 16;
     g.tick(now, near);
     for (now += 16; now < TAMING_CONFIG.breakMs + 600; now += 16) g.tick(now, near);
-    const after = g.snapshot(now).cat!;
+    const after = g.snapshot().cat!;
     expect(distance(after, near)).toBeGreaterThan(distance(cat, near) + 100);
   });
 
   it('the lagging cat notices late', () => {
     const g = gameWith('lag-ragamuffin'); // delay: reacts after 800 ms
-    const cat = g.snapshot(TAMING_CONFIG.breakMs).cat!;
-    const near = { x: cat.x - 60, y: cat.y };
+    const cat = g.snapshot().cat!;
+    // On the cat's side nearer the edge: it runs off into open screen, not a wall.
+    const near = { x: cat.x + 60 * Math.sign(cat.x - 600 || 1), y: cat.y };
     let now = TAMING_CONFIG.breakMs + 16;
     g.tick(now, near);
     for (now += 16; now < TAMING_CONFIG.breakMs + 700; now += 16) g.tick(now, near);
-    expect(g.snapshot(now).cat).toMatchObject({ x: cat.x, y: cat.y });
+    expect(g.snapshot().cat).toMatchObject({ x: cat.x, y: cat.y });
     for (; now < TAMING_CONFIG.breakMs + 1600; now += 16) g.tick(now, near);
-    expect(distance(g.snapshot(now).cat!, cat)).toBeGreaterThan(50);
+    expect(distance(g.snapshot().cat!, cat)).toBeGreaterThan(50);
   });
 });
 
-describe('taming: hold still on the cat for 2 s', () => {
-  /** Keeps the pointer still at `at` from `from` to `to`; returns any cat tamed. */
-  function hold(
-    g: ReturnType<typeof gameWith>,
-    at: { x: number; y: number },
-    from: number,
-    to: number
-  ) {
-    let tamed: string | null = null;
-    for (let now = from; now <= to; now += 16) tamed = g.tick(now, at) ?? tamed;
-    return tamed;
+/** A game with one cat type, its treats and cat on their own clock; the ranger far off. */
+function treatGame(config: Partial<typeof TAMING_CONFIG> = {}, typeId = 'void-tabby', seed = 1) {
+  return createTaming({
+    random: createRandom(seed),
+    types: [catTypeById(typeId)!],
+    viewport,
+    now: 0,
+    config,
+  });
+}
+
+/** Runs from `from` to `to` (16 ms frames), the ranger where `at` says; returns every event. */
+function run(
+  g: ReturnType<typeof treatGame>,
+  from: number,
+  to: number,
+  at: (now: number) => { x: number; y: number }
+) {
+  const events = { tamed: [] as string[], attacks: [] as number[], picked: [] as string[] };
+  for (let now = from; now <= to; now += 16) {
+    const e = g.tick(now, at(now));
+    if (e.tamed) events.tamed.push(e.tamed);
+    if (e.attack) events.attacks.push(now);
+    if (e.picked) events.picked.push(e.picked);
+  }
+  return events;
+}
+
+const corner = { x: 5, y: 5 };
+
+describe('treats', () => {
+  it('turn up at random spots, a few at a time, as often as the config says', () => {
+    const g = treatGame({ treatEveryMs: 1000, maxTreats: 3, treatLifeMs: 60_000 });
+    run(g, 0, 500, () => corner);
+    expect(g.snapshot().treats).toHaveLength(1);
+    run(g, 516, 2100, () => corner);
+    expect(g.snapshot().treats).toHaveLength(3);
+    // Never more than the most at once.
+    run(g, 2116, 10_000, () => corner);
+    const { treats } = g.snapshot();
+    expect(treats).toHaveLength(3);
+    expect(new Set(treats.map((t) => `${t.x},${t.y}`)).size).toBe(3);
+    for (const treat of treats) {
+      expect(TREATS.map((t) => t.kind)).toContain(treat.kind);
+      expect(treat.x).toBeGreaterThan(0);
+      expect(treat.x).toBeLessThan(viewport.width);
+    }
+  });
+
+  it('vanish when nobody picks them up', () => {
+    const g = treatGame({ treatEveryMs: 100_000, treatLifeMs: 2000 });
+    run(g, 0, 1984, () => corner);
+    expect(g.snapshot().treats).toHaveLength(1);
+    run(g, 2000, 2016, () => corner);
+    expect(g.snapshot().treats).toHaveLength(0);
+  });
+
+  it('walking over one picks it up; one at a time', () => {
+    const g = treatGame({ treatEveryMs: 100, maxTreats: 2, treatLifeMs: 60_000 });
+    run(g, 0, 200, () => corner);
+    const [first, second] = g.snapshot().treats;
+    expect(second).toBeDefined();
+    const e = g.tick(216, first);
+    expect(e.picked).toBe(first.kind);
+    expect(g.snapshot().carrying).toBe(first.kind);
+    expect(g.snapshot().treats.map((t) => t.id)).not.toContain(first.id);
+    // Already carrying one: walking over another leaves it where it is.
+    expect(g.tick(232, second).picked).toBeNull();
+    expect(g.snapshot().carrying).toBe(first.kind);
+    expect(g.snapshot().treats.map((t) => t.id)).toContain(second.id);
+  });
+});
+
+describe('the cat, without a treat', () => {
+  it('attacks the ranger from a distance, as often as the config says, and not from afar', () => {
+    const g = treatGame({ treatEveryMs: 1e9, walkSpeed: 0, attackEveryMs: 1000 });
+    run(g, 0, TAMING_CONFIG.breakMs, () => corner);
+    const cat = g.snapshot().cat!;
+    // Inside the attack range but outside the flee radius: it stays and attacks.
+    const near = { x: cat.x + 250 * Math.sign(600 - cat.x || 1), y: cat.y };
+    const events = run(g, TAMING_CONFIG.breakMs + 16, TAMING_CONFIG.breakMs + 4000, () => near);
+    expect(events.attacks.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < events.attacks.length; i++) {
+      expect(events.attacks[i] - events.attacks[i - 1]).toBeGreaterThanOrEqual(1000);
+    }
+    // Far off: no attacks.
+    const far = run(g, TAMING_CONFIG.breakMs + 4016, TAMING_CONFIG.breakMs + 8000, () => ({
+      x: cat.x > 600 ? 0 : viewport.width,
+      y: cat.y > 400 ? 0 : viewport.height,
+    }));
+    expect(far.attacks).toEqual([]);
+  });
+
+  it('flees a ranger who comes close', () => {
+    const g = treatGame({ treatEveryMs: 1e9 }, 'pulsar-siamese'); // knockback: dashes 320 px
+    run(g, 0, TAMING_CONFIG.breakMs, () => corner);
+    const cat = g.snapshot().cat!;
+    // On the cat's side nearer the edge: it runs off into open screen, not a wall.
+    const near = { x: cat.x + 60 * Math.sign(cat.x - 600 || 1), y: cat.y };
+    run(g, TAMING_CONFIG.breakMs + 16, TAMING_CONFIG.breakMs + 600, () => near);
+    expect(distance(g.snapshot().cat!, near)).toBeGreaterThan(distance(cat, near) + 100);
+    expect(g.snapshot().tamed).toEqual([]);
+  });
+
+  it('is never tamed by touching it empty-handed', () => {
+    const g = treatGame({ treatEveryMs: 1e9 });
+    run(g, 0, TAMING_CONFIG.breakMs, () => corner);
+    const events = run(g, TAMING_CONFIG.breakMs + 16, 20_000, () => g.snapshot().cat ?? corner);
+    expect(events.tamed).toEqual([]);
+  });
+});
+
+describe('the cat, with a treat in hand', () => {
+  /** A game whose ranger has picked up a treat, the cat on screen, at time `now`. */
+  function carrying(typeId = 'void-tabby') {
+    const g = treatGame({ treatEveryMs: 100, maxTreats: 1, treatLifeMs: 60_000 }, typeId);
+    run(g, 0, TAMING_CONFIG.breakMs, () => corner);
+    const treat = g.snapshot().treats[0];
+    const now = TAMING_CONFIG.breakMs + 16;
+    expect(g.tick(now, treat).picked).toBe(treat.kind);
+    return { g, now, at: { x: treat.x, y: treat.y } };
   }
 
-  it('a still pointer draws the cat over, and two seconds on it tames the cat', () => {
-    const pointer = { x: 100, y: 100 };
-    const g = gameWith('void-tabby', pointer);
-    const start = TAMING_CONFIG.breakMs;
-    // Curious after 1 s, then it walks over (at most ~1300 px at 110 px/s), then 2 s.
-    const tamed = hold(g, pointer, start + 16, start + 20_000);
-    expect(tamed).toBe('void-tabby');
-    const snap = g.snapshot(start + 20_000);
-    expect(snap.tamed).toContain('void-tabby');
+  it('stops attacking and fleeing, and comes to the ranger', () => {
+    const { g, now, at } = carrying();
+    const before = distance(g.snapshot().cat!, at);
+    const events = run(g, now + 16, now + 400, () => at);
+    expect(events.attacks).toEqual([]);
+    // Still on its way (not tamed yet), and nearer.
+    const cat = g.snapshot().cat;
+    expect(cat).not.toBeNull();
+    expect(cat!.doing).toBe('coming');
+    expect(distance(cat!, at)).toBeLessThan(before);
   });
 
-  it('is tamed two seconds after the hold begins, not before', () => {
-    // Wait for the cat to come to a still pointer, and time the hold from there.
-    const pointer = { x: 100, y: 100 };
-    const g = gameWith('void-tabby', pointer);
-    const start = TAMING_CONFIG.breakMs;
-    let now = start + 16;
-    for (; now < start + 20_000; now += 16) {
-      g.tick(now, pointer);
-      if (g.snapshot(now).cat?.doing === 'held') break;
-    }
-    expect(g.snapshot(now).cat?.doing).toBe('held');
-    const heldAt = now;
-    let tamedAt: number | null = null;
-    for (now += 16; now < heldAt + 3000; now += 16) {
-      if (g.tick(now, pointer)) {
-        tamedAt = now;
-        break;
-      }
-    }
-    expect(tamedAt).not.toBeNull();
-    expect(tamedAt! - heldAt).toBeGreaterThanOrEqual(TAMING_CONFIG.tameMs);
-    expect(tamedAt! - heldAt).toBeLessThan(TAMING_CONFIG.tameMs + 50);
+  it('is tamed when they touch; the treat is used up, and the next cat comes', () => {
+    const { g, now, at } = carrying();
+    const events = run(g, now + 16, now + 15_000, () => at);
+    expect(events.tamed).toEqual(['void-tabby']);
+    expect(events.attacks).toEqual([]);
+    expect(g.snapshot().tamed).toEqual(['void-tabby']);
+    expect(g.snapshot().carrying).toBeNull();
+    // A new cat, which keeps away again: no treat in hand.
+    run(g, now + 15_016, now + 15_000 + TAMING_CONFIG.breakMs + 32, () => corner);
+    expect(g.snapshot().cat).not.toBeNull();
+    expect(g.snapshot().cat!.doing).not.toBe('coming');
   });
 
-  it('moving during the hold starts it over (and the cat dodges)', () => {
-    const pointer = { x: 100, y: 100 };
-    const g = gameWith('void-tabby', pointer);
+  it('even a cat mid-dodge comes once its dodge ends', () => {
+    const g = treatGame({ treatEveryMs: 100, maxTreats: 1, treatLifeMs: 60_000 }, 'gravi-coon');
+    run(g, 0, TAMING_CONFIG.breakMs, () => corner);
+    const cat = g.snapshot().cat!;
+    // Startle it, then fetch the treat while it lumbers off.
     let now = TAMING_CONFIG.breakMs + 16;
-    for (; now < 30_000; now += 16) {
-      g.tick(now, pointer);
-      if (g.snapshot(now).cat?.doing === 'held') break;
-    }
-    for (const end = now + 1500; now < end; now += 16) g.tick(now, pointer);
-    expect(g.snapshot(now).hold).toBeGreaterThan(0.6);
-    // A twitch of 10 px: no longer still.
-    expect(g.tick(now + 16, { x: 110, y: 100 })).toBeNull();
-    expect(g.snapshot(now + 16).hold).toBe(0);
-    expect(g.snapshot(now + 16).tamed).toEqual([]);
+    g.tick(now, { x: cat.x - 40, y: cat.y });
+    const treat = g.snapshot().treats[0];
+    now += 16;
+    expect(g.tick(now, treat).picked).toBe(treat.kind);
+    const events = run(g, now + 16, now + 15_000, () => treat);
+    expect(events.tamed).toEqual(['gravi-coon']);
   });
+});
 
-  it('a pointer resting next to the cat, not on it, does not tame it', () => {
-    const start = TAMING_CONFIG.breakMs;
-    // A cat that never walks, so the pointer stays just off it.
-    const shy = createTaming({
-      random: createRandom(1),
-      types: [catTypeById('void-tabby')!],
-      viewport,
-      now: 0,
-      config: { curiousAfterMs: Infinity, walkSpeed: 0 },
-    });
-    shy.tick(0, { x: 0, y: 0 });
-    shy.tick(start, { x: 0, y: 0 });
-    const shyCat = shy.snapshot(start).cat!;
-    const beside = { x: shyCat.x + TAMING_CONFIG.catchRadius + 5, y: shyCat.y };
-    // The pointer lands just off the cat (which dodges), then keeps still; with no
-    // walking, the cat never comes back under it.
+describe('taming on a touch screen', () => {
+  it('a ranger walked with the movement pad carries a treat to the cat and tames it', () => {
+    const g = treatGame({ treatEveryMs: 100, maxTreats: 1, treatLifeMs: 60_000 });
+    const pad = { x: 100, y: 700 };
+    let ranger = { x: 600, y: 400 };
     let tamed: string | null = null;
-    for (let now = start + 16; now < start + 5000; now += 16) {
-      tamed = shy.tick(now, beside) ?? tamed;
+    for (let now = 0; now < 30_000 && !tamed; now += 16) {
+      const { treats, carrying } = g.snapshot();
+      // The thumb pushes the pad towards the treat; with one in hand it lets go.
+      const target = carrying ? null : (treats[0] ?? null);
+      const thumb = target
+        ? {
+            x: pad.x + Math.sign(Math.round(target.x - ranger.x)) * 50,
+            y: pad.y + Math.sign(Math.round(target.y - ranger.y)) * 50,
+          }
+        : null;
+      const way = padDirection(thumb, pad, PAD_SIZE / 2);
+      const step = (TAMING_CONFIG.rangerSpeed * 16) / 1000;
+      ranger = { x: ranger.x + way.x * step, y: ranger.y + way.y * step };
+      tamed = g.tick(now, ranger).tamed;
     }
-    expect(tamed).toBeNull();
-    expect(shy.snapshot(start + 5000).hold).toBe(0);
-  });
-
-  it('after a cat is tamed, the next one comes', () => {
-    const pointer = { x: 100, y: 100 };
-    const g = gameWith('void-tabby', pointer);
-    let now = TAMING_CONFIG.breakMs + 16;
-    for (; now < 30_000; now += 16) if (g.tick(now, pointer)) break;
-    expect(g.snapshot(now).cat).toBeNull();
-    for (const end = now + TAMING_CONFIG.breakMs + 32; now < end; now += 16) g.tick(now, pointer);
-    expect(g.snapshot(now).cat).not.toBeNull();
+    expect(tamed).toBe('void-tabby');
   });
 });
 
@@ -206,9 +299,9 @@ describe('never more than five cats', () => {
   it('no cat comes while the screen is full of other cats', () => {
     const g = createTaming({ random: createRandom(1), types: CAT_TYPES, viewport, now: 0 });
     for (let now = 0; now < 10_000; now += 16) g.tick(now, { x: 100, y: 100 }, 0);
-    expect(g.snapshot(10_000).cat).toBeNull();
+    expect(g.snapshot().cat).toBeNull();
     g.tick(10_016, { x: 100, y: 100 }, 1);
-    expect(g.snapshot(10_016).cat).not.toBeNull();
+    expect(g.snapshot().cat).not.toBeNull();
   });
 });
 

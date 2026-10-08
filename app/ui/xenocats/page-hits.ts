@@ -1,72 +1,23 @@
-// What a cat's attack does to the page around the pointer. Which elements it hits
-// and how depends on the cat intensity (intensity.ts):
+// Which page elements a cat's attack hits, around the pointer (or, on a touch
+// screen, the last touch). Each hit element is then attacked as the cursor is: it
+// becomes a puppet (puppets.ts) that does what the attack does to a pointer held
+// still where it stands, and nothing else. How many elements are hit and how far
+// they go depends on the cat intensity (intensity.ts):
 //
-//   calm     the elements near the pointer (buttons, links, text, cards, table
-//            rows, inputs) get an effect matched to the attack — a shake, tilt,
-//            blur, flip or glow, a push, or scrambled or swapped text.
-//   normal   more elements, whole panels (frames) and a few anywhere on screen are
-//            attacked the way the cursor is: each becomes a puppet of the mouse
-//            under the cat's effect (puppets.ts). Scrambled or swapped text too.
-//   chaos    most of the screen, flung much further: things fly off the page.
+//   calm     a few elements near the pointer (buttons, links, text, cards, table
+//            rows, inputs), thrown half as far as the cursor would be.
+//   normal   more elements, whole panels (frames) and a few anywhere on screen,
+//            thrown as far as the cursor.
+//   chaos    most of the screen, thrown much further (but never off it).
 //
-// It all reverts exactly when the attack ends.
-//
-// How it stays reversible: an effect only adds `data-xenocat-hit*` attributes and
-// a few `--xenocat-hit-*` custom properties, which CSS rules in global.css turn
-// into the effect. The restore function puts the `style` attribute back exactly as
-// it was (absent stays absent) and removes the attributes. Text is never
-// rewritten: scrambled or swapped text is drawn by a `::after` whose CSS alt text
-// is empty, over the real text made transparent, so assistive technology reads
-// the real text throughout. A focused or editable field is never given text.
+// It all reverts exactly when the attack ends (puppets.ts puts each `style`
+// attribute back as it was). Text is never touched, and the field being typed in
+// is never hit at all.
 
 import { CAT_CONFIG } from './config';
 import type { Vec } from './effects';
 import type { Intensity } from './intensity';
 import type { Random } from './random';
-
-export type HitKind =
-  'shake' | 'wobble' | 'tilt' | 'blur' | 'flip' | 'glow' | 'push' | 'scramble' | 'swap';
-
-export type HitStyle = {
-  kind: HitKind;
-  /** shake/wobble/blur: px or deg; tilt: deg; push: px. */
-  amount?: number;
-  /** push: away from the cat, towards it, or a fixed direction. */
-  direction?: 'away' | 'toward' | 'down' | 'up' | 'sideways';
-  /** glow: a CSS colour. */
-  color?: string;
-};
-
-/** Each attack's (and combo's) effect on the page when calm, keyed by effect id. */
-export const PAGE_HITS: Readonly<Record<string, HitStyle>> = {
-  vanish: { kind: 'blur', amount: 6 },
-  heavy: { kind: 'push', amount: 18, direction: 'down' },
-  knockback: { kind: 'push', amount: 40, direction: 'away' },
-  reverse: { kind: 'flip' },
-  jitter: { kind: 'shake', amount: 3 },
-  freeze: { kind: 'glow', color: '#7dd3fc' },
-  drift: { kind: 'push', amount: 24, direction: 'away' },
-  teleport: { kind: 'swap' },
-  magnet: { kind: 'push', amount: 30, direction: 'toward' },
-  orbit: { kind: 'tilt', amount: 12 },
-  decoys: { kind: 'scramble' },
-  drunk: { kind: 'wobble', amount: 6 },
-  tiny: { kind: 'shake', amount: 1.5 },
-  giant: { kind: 'shake', amount: 6 },
-  delay: { kind: 'blur', amount: 2 },
-  fall: { kind: 'push', amount: 40, direction: 'down' },
-  blur: { kind: 'blur', amount: 4 },
-  spiral: { kind: 'tilt', amount: 25 },
-  bounce: { kind: 'push', amount: 20, direction: 'up' },
-  'axis-lock': { kind: 'push', amount: 30, direction: 'sideways' },
-  // The combos (combos.ts), each from its two attacks.
-  'ice-puck': { kind: 'glow', color: '#7dd3fc' },
-  slingshot: { kind: 'push', amount: 50, direction: 'away' },
-  hangover: { kind: 'wobble', amount: 10 },
-  'ghost-jump': { kind: 'swap' },
-  pulsar: { kind: 'shake', amount: 8 },
-  'static-fog': { kind: 'blur', amount: 5 },
-};
 
 /** How far an attack reaches on the page. */
 export type HitReach = {
@@ -83,19 +34,16 @@ export type HitReach = {
 export type HitLevel = {
   reach: HitReach;
   /**
-   * Null: the calm CSS effects (PAGE_HITS). Otherwise every hit element is
-   * attacked as the cursor is (puppets.ts), its displacement multiplied by
-   * `fling` (by `frameFling` for a whole panel), and its size kept within `scale`.
+   * Every hit element is attacked as the cursor is (puppets.ts), its
+   * displacement, for an attack that throws the pointer some way from where it
+   * is (`amplify: 'offset'`), multiplied by `fling` (by `frameFling` for a whole
+   * panel), and its size kept within `scale`.
    */
   puppets: {
     fling: number;
     frameFling: number;
     scale: readonly [number, number];
-    /** The chance an element also gets a weird twist (puppets.ts `twistFor`). */
-    weird: number;
-    /** Wild twists (upside down, mirrored, squashed) instead of slight ones. */
-    wild: boolean;
-  } | null;
+  };
 };
 
 export const HIT_LEVELS: Readonly<Record<Intensity, HitLevel>> = {
@@ -106,15 +54,15 @@ export const HIT_LEVELS: Readonly<Record<Intensity, HitLevel>> = {
       anywhere: 0,
       frames: false,
     },
-    puppets: null,
+    puppets: { fling: 0.5, frameFling: 0.5, scale: [0.5, 1.6] },
   },
   normal: {
     reach: { radius: 220, max: 8, anywhere: 4, frames: true },
-    puppets: { fling: 1, frameFling: 0.5, scale: [0.25, 2], weird: 0.15, wild: false },
+    puppets: { fling: 1, frameFling: 0.5, scale: [0.25, 2] },
   },
   chaos: {
     reach: { radius: 400, max: 14, anywhere: 12, frames: true },
-    puppets: { fling: 2.5, frameFling: 1.5, scale: [0.1, 4], weird: 0.6, wild: true },
+    puppets: { fling: 2.5, frameFling: 1.5, scale: [0.1, 4] },
   },
 };
 
@@ -220,139 +168,6 @@ export function pickAnywhere<T>(
   return extra;
 }
 
-/**
- * The same text with the letters of each word shuffled, spaces and punctuation in
- * place. A word that shuffles back to itself gets its first two letters swapped.
- */
-export function scrambleText(text: string, random: Random): string {
-  return text.replace(/[\p{L}\p{N}]{2,}/gu, (word) => {
-    const letters = [...word];
-    for (let i = letters.length - 1; i > 0; i--) {
-      const j = random.int(0, i);
-      [letters[i], letters[j]] = [letters[j], letters[i]];
-    }
-    const out = letters.join('');
-    if (out !== word || new Set(word).size === 1) return out;
-    return letters[1] + letters[0] + letters.slice(2).join('');
-  });
-}
-
-/** True for an element whose only content is text: its text can be drawn over. */
-function isTextLeaf(element: Element): boolean {
-  if (element.children.length > 0) return false;
-  if (element.matches('input, select, textarea, [contenteditable], [contenteditable] *')) {
-    return false;
-  }
-  return (element.textContent ?? '').trim().length > 0;
-}
-
-/** A focused or editable field, or anything around one, never has its text touched. */
-function mayTouchText(element: Element): boolean {
-  const active = element.ownerDocument.activeElement;
-  if (active && active !== element.ownerDocument.body && element.contains(active)) return false;
-  return isTextLeaf(element);
-}
-
-const PROPERTIES = [
-  '--xenocat-hit-amount',
-  '--xenocat-hit-dx',
-  '--xenocat-hit-dy',
-  '--xenocat-hit-color',
-] as const;
-
-export const HIT_ATTRIBUTE = 'data-xenocat-hit';
-export const TEXT_ATTRIBUTE = 'data-xenocat-hit-text';
-
-/**
- * Applies `style` to `targets` for an attack by a cat centred at `cat`. Returns
- * the function that puts every target back exactly as it was.
- */
-export function applyHits(
-  targets: readonly HTMLElement[],
-  style: HitStyle,
-  cat: Vec,
-  random: Random
-): () => void {
-  const saved = targets.map((element) => ({
-    element,
-    styleAttribute: element.getAttribute('style'),
-    hit: element.getAttribute(HIT_ATTRIBUTE),
-    text: element.getAttribute(TEXT_ATTRIBUTE),
-  }));
-
-  const set = (element: HTMLElement, name: (typeof PROPERTIES)[number], value: string) =>
-    element.style.setProperty(name, value);
-  // No inline style for text: the CSS hides the real text with a transparent text
-  // fill and paints the shown text in the element's own colour.
-  const textOver = (element: HTMLElement, text: string) => {
-    element.setAttribute(TEXT_ATTRIBUTE, text);
-    element.setAttribute(HIT_ATTRIBUTE, 'text');
-  };
-
-  if (style.kind === 'scramble') {
-    for (const element of targets) {
-      if (mayTouchText(element)) textOver(element, scrambleText(element.textContent!, random));
-      else element.setAttribute(HIT_ATTRIBUTE, 'shake');
-    }
-  } else if (style.kind === 'swap') {
-    // Pairs of text elements trade their text; anything left over shakes.
-    const texts = targets.filter(mayTouchText);
-    for (let i = 0; i + 1 < texts.length; i += 2) {
-      const [a, b] = [texts[i], texts[i + 1]];
-      const [textA, textB] = [a.textContent!, b.textContent!];
-      textOver(a, textB);
-      textOver(b, textA);
-    }
-    for (const element of targets) {
-      if (!element.hasAttribute(TEXT_ATTRIBUTE)) element.setAttribute(HIT_ATTRIBUTE, 'shake');
-    }
-  } else {
-    for (const element of targets) {
-      if (style.amount !== undefined) set(element, '--xenocat-hit-amount', String(style.amount));
-      if (style.color) set(element, '--xenocat-hit-color', style.color);
-      if (style.kind === 'push') {
-        const { x, y } = pushVector(element, style, cat);
-        set(element, '--xenocat-hit-dx', `${x}px`);
-        set(element, '--xenocat-hit-dy', `${y}px`);
-      }
-      element.setAttribute(HIT_ATTRIBUTE, style.kind);
-    }
-  }
-
-  return () => {
-    for (const { element, styleAttribute, hit, text } of saved) {
-      // The very text it had, not a re-serialisation of it.
-      if (styleAttribute === null) element.removeAttribute('style');
-      else element.setAttribute('style', styleAttribute);
-      if (hit === null) element.removeAttribute(HIT_ATTRIBUTE);
-      else element.setAttribute(HIT_ATTRIBUTE, hit);
-      if (text === null) element.removeAttribute(TEXT_ATTRIBUTE);
-      else element.setAttribute(TEXT_ATTRIBUTE, text);
-    }
-  };
-}
-
-function pushVector(element: HTMLElement, style: HitStyle, cat: Vec): Vec {
-  const amount = style.amount ?? 20;
-  const rect = element.getBoundingClientRect();
-  const centre = { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 };
-  const dx = centre.x - cat.x;
-  const dy = centre.y - cat.y;
-  const length = Math.hypot(dx, dy) || 1;
-  switch (style.direction) {
-    case 'toward':
-      return { x: (-dx / length) * amount, y: (-dy / length) * amount };
-    case 'down':
-      return { x: 0, y: amount };
-    case 'up':
-      return { x: 0, y: -amount };
-    case 'sideways':
-      return { x: Math.sign(dx || 1) * amount, y: 0 };
-    default:
-      return { x: (dx / length) * amount, y: (dy / length) * amount };
-  }
-}
-
 function containsFocusedField(element: Element): boolean {
   const active = element.ownerDocument.activeElement;
   return (
@@ -383,40 +198,4 @@ export function pickTargets(
   if (reach.anywhere === 0) return near;
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   return [...near, ...pickAnywhere(candidates, near, reach.anywhere, viewport, contains, random)];
-}
-
-/** Text effects (scrambled or swapped text) for the attacks that have one. */
-export function hitText(
-  targets: readonly HTMLElement[],
-  effectId: string,
-  random: Random
-): (() => void) | null {
-  const style = PAGE_HITS[effectId];
-  if (!style || (style.kind !== 'scramble' && style.kind !== 'swap')) return null;
-  return targets.length > 0 ? applyHits(targets, style, { x: 0, y: 0 }, random) : null;
-}
-
-/**
- * Hits the page around `pointer` with the calm CSS effects for an attack whose
- * effect is `effectId`, by a cat centred at `cat`. Returns the restore function,
- * or null if nothing was hit.
- */
-export function hitPage(
-  root: ParentNode,
-  effectId: string,
-  pointer: Vec,
-  cat: Vec,
-  random: Random,
-  options: { radius?: number; max?: number } = {}
-): (() => void) | null {
-  const style = PAGE_HITS[effectId];
-  if (!style) return null;
-  const calm = HIT_LEVELS.calm.reach;
-  const targets = pickTargets(
-    root,
-    pointer,
-    { ...calm, radius: options.radius ?? calm.radius, max: options.max ?? calm.max },
-    random
-  );
-  return targets.length > 0 ? applyHits(targets, style, cat, random) : null;
 }

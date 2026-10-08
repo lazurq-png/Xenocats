@@ -21,6 +21,8 @@ describe('affected-tests', () => {
       '/dashboard',
     ]);
     expect(specAreas(`page.goto('/')`, areas)).toEqual(['/']);
+    // A page under an area counts for it (the games are pages of /cats).
+    expect(specAreas(`await page.goto('/cats/survival' + query);`, areas)).toEqual(['/cats']);
     // An asset path is not a route.
     expect(specAreas(`'/xenocats/cats/tabby.png'`, areas)).toEqual([]);
   });
@@ -60,6 +62,25 @@ describe('affected-tests', () => {
   });
 
   it('prints nothing to run when nothing needs it', () => {
-    expect(commands(select(['docs/ai/README.md']))).toEqual({ unit: null, e2e: null });
+    expect(commands(select(['docs/ai/README.md']))).toEqual({
+      unit: null,
+      database: null,
+      e2e: null,
+    });
+  });
+
+  it.each([
+    'app/lib/data.ts',
+    'tests/unit/data.test.ts',
+    'db/migrations/0005_example.sql',
+    'scripts/db.mjs',
+  ])('names the opt-in database tests when %s changes', (file) => {
+    const selection = select([file]);
+    expect(selection.database).toEqual([file]);
+    expect(commands(selection).database).toBe('DATABASE_TESTS=1 npx vitest run tests/unit/data');
+  });
+
+  it('does not name the database tests for a change they do not cover', () => {
+    expect(select(['app/lib/actions.ts', 'app/ui/invoices/table.tsx']).database).toEqual([]);
   });
 });

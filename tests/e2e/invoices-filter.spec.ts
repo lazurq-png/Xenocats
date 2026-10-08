@@ -10,7 +10,7 @@ async function logIn(page: Page) {
   await page.getByLabel('Email').fill('user@nextmail.com');
   await page.getByLabel('Password', { exact: true }).fill('123456');
   await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
 }
 
 /** The desktop table's rows (the phone list is hidden at this width). */
@@ -145,6 +145,9 @@ test('a new unpaid invoice is due in 30 days: pending, not overdue', async ({ pa
   // The detail page gives its due date: 30 days after today.
   await page.goto(`/dashboard/invoices?query=${tag}`);
   await rows(page).first().getByRole('link', { name: /view/i }).click();
+  // On the invoice's own page (the list has a "Due" column too: the check below must
+  // not run on the list it is leaving).
+  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/, { timeout: 15_000 });
   const due = new Date(Date.now() + 30 * 86_400_000);
   const shown = due.toLocaleDateString('en-US', {
     day: 'numeric',
@@ -152,7 +155,8 @@ test('a new unpaid invoice is due in 30 days: pending, not overdue', async ({ pa
     year: 'numeric',
     timeZone: 'UTC',
   });
-  await expect(page.getByText('Due', { exact: true })).toBeVisible();
+  // The invoice's own "Due" (a term in its details), not the list's column heading.
+  await expect(page.locator('dt').filter({ hasText: /^Due$/ })).toBeVisible();
   await expect(page.getByText(shown)).toHaveCount(1);
 });
 

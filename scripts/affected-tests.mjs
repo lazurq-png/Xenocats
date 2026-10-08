@@ -14,14 +14,19 @@
 //         use it (page, layout, route, error, ...), each route is reduced to its
 //         area (`/cats`, `/login`, `/dashboard/invoices`, ...), and a spec
 //         covers every area whose path appears in it.
+//   database  the opt-in database tests (`tests/unit/data.test.ts`), when a
+//         query, the schema or the tests themselves changed: `npm test` and
+//         `vitest related` skip them unless DATABASE_TESTS=1 is set, so the
+//         selection names them. They write to the `xenocats_vitest` schema.
 //
 // It errs towards running more: a file it cannot place (configuration, auth,
 // the root layout, seed data, a deleted file, anything outside the known
 // folders) selects the whole e2e suite, and says why. CI still runs everything
 // on every push.
 //
-// --run  runs the selection: unit tests, then browser tests (against `next dev`),
-//        stopping at the first failure; exits with that failure's code.
+// --run  runs the selection: unit tests, the database tests, then browser tests
+//        (against `next dev`), stopping at the first failure; exits with that
+//        failure's code.
 // --json prints the selection as JSON instead.
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -51,6 +56,12 @@ const E2E_FULL = new Map([
 ]);
 
 const UNIT_FULL = /^(vitest\.config\.\w+|package\.json|package-lock\.json|tsconfig\.json)$/;
+
+// What the opt-in database tests cover: the queries, the schema and how it is
+// applied, and the tests themselves.
+const DATABASE =
+  /^(app\/lib\/data\.ts|tests\/unit\/data\.test\.ts|db\/migrations\/[^/]+\.sql|scripts\/db\.mjs)$/;
+const DATABASE_TESTS = 'tests/unit/data';
 
 const CODE = /\.(tsx?|mjs|js|css)$/;
 const ROUTE_FILE =
@@ -154,14 +165,17 @@ function areasOfRouteFile(routeFile, allAreas) {
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// The areas a spec visits: each area's path, as a string or a URL regex, anywhere in it.
+// The areas a spec visits: each area's path, as a string or a URL regex, anywhere in
+// it. A longer path counts for the area it belongs to (/cats/survival for /cats), but
+// not for another area's (/dashboard/invoices is not /dashboard).
 export function specAreas(specText, allAreas) {
   const text = specText.replaceAll('\\/', '/');
-  return allAreas.filter((area) =>
-    area === '/'
-      ? /['"`]\/['"`?#]/.test(text)
-      : new RegExp(`(^|[^\\w-])${escapeRegExp(area)}(?![\\w-]|/[a-z])`).test(text)
-  );
+  return allAreas.filter((area) => {
+    if (area === '/') return /['"`]\/['"`?#]/.test(text);
+    const path = new RegExp(`(^|[^\\w-])(${escapeRegExp(area)}(?:/[\\w-]+)*)(?![\\w-])`, 'g');
+    for (const match of text.matchAll(path)) if (areaOf(match[2]) === area) return true;
+    return false;
+  });
 }
 
 // The selection for a list of changed paths (relative, `/`-separated).
@@ -247,6 +261,7 @@ export function select(changed, root = ROOT) {
   return {
     unit: unitFull ? { full: unitFull } : { files: [...unitFiles].sort() },
     e2e: e2eFull ? { full: e2eFull } : { specs: [...e2eSpecs].sort() },
+    database: changed.filter((file) => DATABASE.test(file)),
     reasons,
     specs,
   };
@@ -267,7 +282,10 @@ export function commands(selection) {
     : selection.e2e.specs.length
       ? `npx playwright test ${selection.e2e.specs.join(' ')}`
       : null;
-  return { unit, e2e };
+  const database = selection.database.length
+    ? `DATABASE_TESTS=1 npx vitest run ${DATABASE_TESTS}`
+    : null;
+  return { unit, database, e2e };
 }
 
 function main(argv) {
@@ -293,6 +311,12 @@ function main(argv) {
       `\nunit: ${selection.unit.full ? `FULL — ${selection.unit.full}` : `${selection.unit.files.length} changed file(s)`}`
     );
     console.log(`      ${cmds.unit ?? '(nothing to run)'}`);
+    if (cmds.database) {
+      console.log(
+        `database: ${selection.database.join(', ')} changed; \`npm test\` and the unit line above skip its tests`
+      );
+      console.log(`      ${cmds.database}`);
+    }
     console.log(
       `e2e:  ${selection.e2e.full ? `FULL — ${selection.e2e.full}` : `${selection.e2e.specs.length} spec(s)`}`
     );
@@ -300,10 +324,19 @@ function main(argv) {
   }
 
   if (!argv.includes('--run')) return 0;
-  for (const cmd of [cmds.unit, cmds.e2e]) {
-    if (!cmd) continue;
-    console.log(`\n$ ${cmd}`);
-    const { status } = spawnSync(cmd, { cwd: ROOT, stdio: 'inherit', shell: true });
+  const runs = [
+    cmds.unit && { cmd: cmds.unit },
+    // Set through the environment, not the command line: Windows' shell has no `VAR=1 cmd`.
+    cmds.database && {
+      cmd: `npx vitest run ${DATABASE_TESTS}`,
+      env: { ...process.env, DATABASE_TESTS: '1' },
+      shown: cmds.database,
+    },
+    cmds.e2e && { cmd: cmds.e2e },
+  ].filter(Boolean);
+  for (const { cmd, env, shown } of runs) {
+    console.log(`\n$ ${shown ?? cmd}`);
+    const { status } = spawnSync(cmd, { cwd: ROOT, stdio: 'inherit', shell: true, env });
     if (status !== 0) return status ?? 1;
   }
   return 0;

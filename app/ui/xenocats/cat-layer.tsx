@@ -107,7 +107,17 @@ export function XenocatCatsProvider({
   const wakeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    const onResize = () => engine.resize({ width: window.innerWidth, height: window.innerHeight });
+    const onResize = () => {
+      // A cat the smaller screen no longer holds moves in: draw it there.
+      // The page's own width and height, without a scrollbar: the cat layer's size
+      // (the window's, where the page reports none, as jsdom does).
+      const page = document.documentElement;
+      const width = page.clientWidth || window.innerWidth;
+      const height = page.clientHeight || window.innerHeight;
+      if (engine.resize({ width, height })) {
+        setCats(snapshot(engine));
+      }
+    };
     onResize();
     window.addEventListener('resize', onResize);
 

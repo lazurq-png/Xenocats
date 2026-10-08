@@ -1,21 +1,26 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
+import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
+import { COMBOS } from '@/app/ui/xenocats/combos';
 import {
   type Effect,
+  ICE,
+  JITTER_PX,
+  DRUNK_AMPLITUDE,
   bounce,
-  giant,
-  heavy,
-  restingLook,
-  reverse,
-  spiral,
-  vanish,
+  knockback,
 } from '@/app/ui/xenocats/effects';
 import { HIT_LEVELS } from '@/app/ui/xenocats/page-hits';
+import { STAGE_ATTRIBUTE } from '@/app/ui/xenocats/props';
 import {
+  LASER_EVERY_MS,
+  LASER_KICK_MS,
+  LASER_KNOCK_PX,
+  LASER_SETTLE_MS,
   PUPPETS_ATTRIBUTE,
-  WANDER_PX,
   createPuppetTheatre,
-  twistFor,
+  laserShot,
+  span,
 } from '@/app/ui/xenocats/puppets';
 import { createRandom } from '@/app/ui/xenocats/random';
 
@@ -24,22 +29,26 @@ afterEach(() => {
 });
 
 const viewport = { width: 1200, height: 800 };
-const cat = { x: 100, y: 100 };
-const normal = { ...HIT_LEVELS.normal.puppets!, weird: 0 };
-const chaos = { ...HIT_LEVELS.chaos.puppets!, weird: 0 };
+const cat = { x: 200, y: 200 };
+const home = { x: 400, y: 300 };
+const { calm, normal, chaos } = {
+  calm: HIT_LEVELS.calm.puppets,
+  normal: HIT_LEVELS.normal.puppets,
+  chaos: HIT_LEVELS.chaos.puppets,
+};
 
-/** An element whose centre is at (x, y), 100 × 40 px. */
-function element(x: number, y: number, attributes = '') {
+/** An element whose centre is at (x, y), 100 × 40 px unless told otherwise. */
+function element(x: number, y: number, attributes = '', width = 100, height = 40) {
   document.body.insertAdjacentHTML('beforeend', `<button ${attributes}>Pay</button>`);
   const button = document.body.lastElementChild as HTMLElement;
   button.getBoundingClientRect = () =>
     ({
-      left: x - 50,
-      top: y - 20,
-      right: x + 50,
-      bottom: y + 20,
-      width: 100,
-      height: 40,
+      left: x - width / 2,
+      top: y - height / 2,
+      right: x + width / 2,
+      bottom: y + height / 2,
+      width,
+      height,
     }) as DOMRect;
   return button;
 }
@@ -50,111 +59,465 @@ const moved = (el: HTMLElement) => {
   return { x, y: y ?? 0 };
 };
 
-/** Lets the "pointer" through as it is: what the element does is its own wandering alone. */
-const follow: Effect = {
-  id: 'follow',
-  name: 'Follow',
-  description: 'test only',
-  durationMs: 3000,
-  step: ({ real }) => ({ look: restingLook(real) }),
+type Frame = {
+  at: number;
+  d: { x: number; y: number };
+  /** Its height's scale; a mirrored element's width scales by minus that. */
+  scale: number;
+  mirrored: boolean;
+  opacity: string;
+  filter: string;
 };
 
-/**
- * One element under `effect` (and the same element under `follow`, wandering the
- * same way: the same seed gives the same path), run to `until` ms.
- */
-function compare(effect: Effect, until: number, settings = normal) {
-  const run = (e: Effect) => {
-    const theatre = createPuppetTheatre({ random: createRandom(7) });
-    const button = element(600, 400);
-    theatre.add([button], e, cat, 0, settings);
-    for (let now = 0; now <= until; now += 16) theatre.frame(now, viewport);
-    return moved(button);
-  };
-  return { under: run(effect), alone: run(follow) };
+/** One element under `effect`, frame by frame for as long as it lasts, then one frame after. */
+function run(effect: Effect, settings = normal, at = home, attributes = '', seed = 5) {
+  const theatre = createPuppetTheatre({ random: createRandom(seed) });
+  const el = element(at.x, at.y, attributes);
+  theatre.add([el], effect, cat, 0, settings);
+  const frames: Frame[] = [];
+  for (let now = 0; now < effect.durationMs; now += 16) {
+    theatre.frame(now, viewport);
+    frames.push({
+      at: now,
+      d: moved(el),
+      scale: Math.abs(Number(el.style.scale.split(' ').at(-1))),
+      mirrored: el.style.scale.startsWith('-'),
+      opacity: el.style.opacity,
+      filter: el.style.filter,
+    });
+  }
+  theatre.frame(effect.durationMs, viewport);
+  return { frames, el, theatre };
 }
 
-describe('page elements attacked as the cursor is', () => {
-  it('move on their own, the mouse nowhere involved, each on a path of its own', () => {
-    const theatre = createPuppetTheatre({ random: createRandom(1) });
-    const a = element(300, 300);
-    const b = element(900, 500);
-    theatre.add([a, b], follow, cat, 0, normal);
-    const seen = new Set<string>();
-    for (let now = 0; now <= 2000; now += 100) {
-      theatre.frame(now, viewport);
-      seen.add(a.style.translate);
-      expect(Math.hypot(moved(a).x, moved(a).y)).toBeLessThanOrEqual(2 * WANDER_PX * Math.SQRT2);
+const length = (v: { x: number; y: number }) => Math.hypot(v.x, v.y);
+const centre = (f: Frame, from = home) => ({ x: from.x + f.d.x, y: from.y + f.d.y });
+const toCat = (f: Frame) => length({ x: centre(f).x - cat.x, y: centre(f).y - cat.y });
+const at = (frames: Frame[], ms: number) => frames.find((f) => f.at >= ms)!;
+const last = (frames: Frame[]) => frames[frames.length - 1];
+
+type Motion =
+  | 'still'
+  | 'shakes'
+  | 'away'
+  | 'drifts'
+  | 'jumps'
+  | 'toward'
+  | 'circles'
+  | 'sways'
+  | 'falls'
+  | 'spirals'
+  | 'bounces'
+  | 'away, then back'
+  | 'knocked';
+type Look =
+  'plain' | 'hidden' | 'frost' | 'smoke' | 'shrinks' | 'grows' | 'pulses' | 'faint' | 'mirrored';
+
+/**
+ * What every attack does to a page element, as decisions.md's table says (D4): it
+ * moves only if the attack moves a pointer held still, and looks as the cursor does;
+ * but Reverse mirrors it and Axis lock shoots lasers that knock it aside (Q3).
+ */
+const TABLE: Record<string, { moves: Motion; looks: Look }> = {
+  vanish: { moves: 'still', looks: 'hidden' },
+  heavy: { moves: 'still', looks: 'plain' },
+  knockback: { moves: 'away', looks: 'plain' },
+  reverse: { moves: 'still', looks: 'mirrored' },
+  jitter: { moves: 'shakes', looks: 'plain' },
+  freeze: { moves: 'still', looks: 'frost' },
+  drift: { moves: 'drifts', looks: 'plain' },
+  teleport: { moves: 'jumps', looks: 'plain' },
+  magnet: { moves: 'toward', looks: 'plain' },
+  orbit: { moves: 'circles', looks: 'plain' },
+  decoys: { moves: 'still', looks: 'plain' },
+  drunk: { moves: 'sways', looks: 'plain' },
+  tiny: { moves: 'still', looks: 'shrinks' },
+  giant: { moves: 'still', looks: 'grows' },
+  delay: { moves: 'still', looks: 'plain' },
+  fall: { moves: 'falls', looks: 'plain' },
+  blur: { moves: 'still', looks: 'smoke' },
+  spiral: { moves: 'spirals', looks: 'plain' },
+  bounce: { moves: 'bounces', looks: 'plain' },
+  'axis-lock': { moves: 'knocked', looks: 'plain' },
+  // The combos.
+  'ice-puck': { moves: 'bounces', looks: 'frost' },
+  slingshot: { moves: 'away, then back', looks: 'plain' },
+  hangover: { moves: 'sways', looks: 'plain' },
+  'ghost-jump': { moves: 'jumps', looks: 'faint' },
+  pulsar: { moves: 'still', looks: 'pulses' },
+  'static-fog': { moves: 'shakes', looks: 'smoke' },
+};
+
+const EFFECTS: Effect[] = [
+  ...CAT_TYPES.map((type) => type.effect),
+  ...COMBOS.map((combo) => combo.effect),
+];
+
+function expectMotion(moves: Motion, frames: Frame[]) {
+  const distances = frames.map((f) => length(f.d));
+  const furthest = Math.max(...distances);
+  switch (moves) {
+    case 'still':
+      for (const f of frames) expect(f.d).toEqual({ x: 0, y: 0 });
+      break;
+    case 'shakes': {
+      expect(furthest).toBeGreaterThan(0);
+      expect(furthest).toBeLessThanOrEqual(JITTER_PX * Math.SQRT2 + 1);
+      expect(new Set(frames.map((f) => `${f.d.x},${f.d.y}`)).size).toBeGreaterThan(10);
+      break;
     }
-    expect(seen.size).toBeGreaterThan(10);
-    expect(moved(a)).not.toEqual(moved(b));
+    case 'away': {
+      const end = last(frames).d;
+      expect(length(end)).toBeGreaterThan(200);
+      // Away from the cat: the same way as from the cat to the element.
+      expect(end.x * (home.x - cat.x) + end.y * (home.y - cat.y)).toBeGreaterThan(0);
+      break;
+    }
+    case 'drifts': {
+      const [one, two] = [at(frames, 1000).d, at(frames, 2000).d];
+      expect(length(two)).toBeGreaterThan(length(one) + 50);
+      // One way all along.
+      expect(Math.abs(Math.atan2(one.y, one.x) - Math.atan2(two.y, two.x))).toBeLessThan(0.05);
+      break;
+    }
+    case 'jumps': {
+      // A few spots, and nothing in between: it jumps, it does not slide.
+      const spots = new Set(frames.map((f) => `${f.d.x},${f.d.y}`));
+      expect(spots.size).toBeGreaterThan(1);
+      expect(spots.size).toBeLessThanOrEqual(3);
+      expect(furthest).toBeGreaterThan(50);
+      break;
+    }
+    case 'toward':
+      expect(toCat(last(frames))).toBeLessThan(toCat(frames[0]) / 2);
+      break;
+    case 'circles': {
+      const rest = frames.slice(1);
+      for (const f of rest) expect(Math.abs(toCat(f) - 140)).toBeLessThan(3);
+      const angles = rest.map((f) => Math.atan2(centre(f).y - cat.y, centre(f).x - cat.x));
+      expect(Math.max(...angles) - Math.min(...angles)).toBeGreaterThan(Math.PI);
+      break;
+    }
+    case 'sways': {
+      expect(furthest).toBeGreaterThan(10);
+      expect(furthest).toBeLessThanOrEqual(DRUNK_AMPLITUDE * Math.SQRT2 + 1);
+      expect(frames.some((f) => f.d.x > 5)).toBe(true);
+      expect(frames.some((f) => f.d.x < -5)).toBe(true);
+      break;
+    }
+    case 'falls': {
+      for (const f of frames) expect(f.d.x).toBe(0);
+      for (let i = 1; i < frames.length; i++) {
+        expect(frames[i].d.y).toBeGreaterThanOrEqual(frames[i - 1].d.y);
+      }
+      expect(last(frames).d.y).toBeGreaterThan(200);
+      break;
+    }
+    case 'spirals': {
+      const end = centre(last(frames));
+      expect(length({ x: end.x - 600, y: end.y - 400 })).toBeLessThan(60);
+      break;
+    }
+    case 'bounces': {
+      expect(furthest).toBeGreaterThan(200);
+      // Off the edges and back: it turns round at least once on each axis... or one.
+      const steps = frames.slice(1).map((f, i) => ({
+        x: f.d.x - frames[i].d.x,
+        y: f.d.y - frames[i].d.y,
+      }));
+      const turned = (axis: 'x' | 'y') =>
+        steps.some((s) => s[axis] > 0) && steps.some((s) => s[axis] < 0);
+      expect(turned('x') || turned('y')).toBe(true);
+      break;
+    }
+    case 'knocked': {
+      expect(furthest).toBeGreaterThan(5);
+      expect(furthest).toBeLessThanOrEqual(LASER_KNOCK_PX * HIT_LEVELS.chaos.puppets.fling + 1);
+      // Along the beam, away from the cat, and back where it was in between shots.
+      for (const f of frames) {
+        expect(f.d.x * (home.x - cat.x) + f.d.y * (home.y - cat.y)).toBeGreaterThanOrEqual(0);
+      }
+      const shots = frames.filter(
+        (f, i) => i > 0 && length(f.d) > 0 && length(frames[i - 1].d) === 0
+      ).length;
+      expect(shots).toBeGreaterThanOrEqual(3);
+      expect(last(frames).d).toEqual({ x: 0, y: 0 });
+      break;
+    }
+    case 'away, then back': {
+      const flung = toCat(at(frames, 1000));
+      expect(flung).toBeGreaterThan(toCat(frames[0]) + 100);
+      expect(toCat(last(frames))).toBeLessThan(toCat(frames[0]));
+      break;
+    }
+  }
+}
+
+function expectLook(looks: Look, frames: Frame[]) {
+  const mid = at(frames, 200);
+  if (looks !== 'hidden' && looks !== 'smoke' && looks !== 'faint') {
+    for (const f of frames) expect(f.opacity).toBe('1');
+  }
+  if (looks !== 'frost' && looks !== 'smoke') for (const f of frames) expect(f.filter).toBe('');
+  if (!['shrinks', 'grows', 'pulses'].includes(looks)) {
+    for (const f of frames) expect(f.scale).toBe(1);
+  }
+  for (const f of frames) expect(f.mirrored).toBe(looks === 'mirrored');
+  switch (looks) {
+    case 'hidden':
+      for (const f of frames) expect(f.opacity).toBe('0');
+      break;
+    case 'frost':
+      for (const f of frames) expect(f.filter).toContain(`drop-shadow(0 0 4px ${ICE})`);
+      break;
+    case 'smoke':
+      for (const f of frames) {
+        expect(f.filter).toMatch(/blur\(\d+(\.\d+)?px\) grayscale\(1\)/);
+        expect(Number(f.opacity)).toBeLessThan(1);
+      }
+      break;
+    case 'shrinks':
+      expect(mid.scale).toBeLessThan(1);
+      break;
+    case 'grows':
+      expect(mid.scale).toBeGreaterThan(1);
+      break;
+    case 'pulses':
+      expect(frames.some((f) => f.scale < 1)).toBe(true);
+      expect(frames.some((f) => f.scale > 1)).toBe(true);
+      break;
+    case 'faint':
+      expect(Number(mid.opacity)).toBeGreaterThan(0);
+      expect(Number(mid.opacity)).toBeLessThan(0.5);
+      break;
+  }
+}
+
+describe('every attack does to a page element what it does to the pointer', () => {
+  it('the table covers every cat’s attack and every combo, and nothing else', () => {
+    expect(Object.keys(TABLE).sort()).toEqual(EFFECTS.map((effect) => effect.id).sort());
   });
 
-  it('reverse runs an element’s wandering backwards; heavy drags it', () => {
-    const backwards = compare(reverse, 1500);
-    expect(backwards.under.x).toBeCloseTo(-backwards.alone.x, 0);
-    expect(backwards.under.y).toBeCloseTo(-backwards.alone.y, 0);
-    const dragged = compare(heavy, 1500);
-    expect(Math.hypot(dragged.under.x, dragged.under.y)).toBeLessThan(
-      Math.hypot(dragged.alone.x, dragged.alone.y)
-    );
+  for (const effect of EFFECTS) {
+    const { moves, looks } = TABLE[effect.id] ?? {};
+    it(`${effect.id}: moves ${moves}, looks ${looks}, and is put back exactly`, () => {
+      const { frames, el } = run(effect, normal, home, 'style="color: red;"');
+      expectMotion(moves, frames);
+      expectLook(looks, frames);
+      expect(el.getAttribute('style')).toBe('color: red;');
+      expect(document.documentElement.hasAttribute(PUPPETS_ATTRIBUTE)).toBe(false);
+    });
+  }
+
+  // An attack that puts the pointer somewhere (the middle, round the cat, off the
+  // edges) puts an element there at every level, and a panel too: only how far an
+  // attack *throws* it depends on the level.
+  for (const effect of EFFECTS.filter((e) => e.amplify !== 'offset')) {
+    const { moves } = TABLE[effect.id] ?? {};
+    it(`${effect.id}: moves ${moves} when calm, in chaos, and as a panel`, () => {
+      expectMotion(moves, run(effect, calm).frames);
+      document.body.innerHTML = '';
+      expectMotion(moves, run(effect, chaos).frames);
+      document.body.innerHTML = '';
+      expectMotion(moves, run(effect, normal, home, 'data-xenocat-frame').frames);
+    });
+  }
+
+  it('the element never leaves the viewport, even flung by chaos', () => {
+    for (const effect of EFFECTS) {
+      for (const seed of [1, 2, 3]) {
+        for (const f of run(effect, chaos, home, '', seed).frames) {
+          const c = centre(f);
+          expect(c.x - 50, effect.id).toBeGreaterThanOrEqual(0);
+          expect(c.x + 50, effect.id).toBeLessThanOrEqual(viewport.width);
+          expect(c.y - 20, effect.id).toBeGreaterThanOrEqual(0);
+          expect(c.y + 20, effect.id).toBeLessThanOrEqual(viewport.height);
+        }
+        document.body.innerHTML = '';
+      }
+    }
   });
 
-  it('pinball bounces them about the screen, each its own way', () => {
+  it('one already partly off screen is never pulled further off, nor pulled in by an attack that does not move it', () => {
+    const top = { x: 600, y: 5 };
+    for (const f of run(knockback, chaos, { ...top }).frames) {
+      expect(f.d.y).toBeGreaterThanOrEqual(0);
+    }
+    const frost = EFFECTS.find((effect) => effect.id === 'freeze')!;
+    for (const f of run(frost, chaos, top).frames) expect(f.d).toEqual({ x: 0, y: 0 });
+  });
+
+  it('calm moves an element half as far as normal', () => {
+    const tame = last(run(knockback, calm).frames).d;
+    const full = last(run(knockback, normal).frames).d;
+    expect(tame.x).toBeCloseTo(full.x * calm.fling, -1);
+    expect(tame.y).toBeCloseTo(full.y * calm.fling, -1);
+  });
+
+  it('a panel goes less far than a button when normal', () => {
+    const button = last(run(knockback, normal).frames).d;
+    const panel = last(run(knockback, normal, home, 'data-xenocat-frame').frames).d;
+    expect(panel.x).toBeCloseTo(button.x * normal.frameFling, -1);
+  });
+});
+
+describe('the attacks that do what a still pointer cannot show (Q3)', () => {
+  const effect = (id: string) => EFFECTS.find((e) => e.id === id)!;
+  const stage = () => document.querySelector<HTMLElement>(`[${STAGE_ATTRIBUTE}]`);
+
+  it('a laser shot never starts unless it can settle before the attack ends', () => {
+    for (const roll of [0, 0.3, 0.99]) {
+      expect(laserShot(5000, 5000, roll).knock).toBe(0);
+      for (let at = 0; at < 5000; at += 10) {
+        const { knock, beam } = laserShot(at, 5000, roll);
+        expect(knock).toBeGreaterThanOrEqual(0);
+        expect(knock).toBeLessThanOrEqual(1);
+        if (knock === 0 && !beam) continue;
+        const shotAt = at - ((at - roll * LASER_EVERY_MS) % LASER_EVERY_MS);
+        expect(shotAt + LASER_KICK_MS + LASER_SETTLE_MS).toBeLessThanOrEqual(5000);
+      }
+    }
+  });
+
+  it('Laser Ocicat shoots a beam from the cat at the element, then takes it away', () => {
+    const laser = effect('axis-lock');
     const theatre = createPuppetTheatre({ random: createRandom(3) });
-    const a = element(300, 300);
-    const b = element(900, 500);
-    theatre.add([a, b], bounce, cat, 0, normal);
-    let furthest = 0;
-    for (let now = 0; now <= 2000; now += 16) {
+    const button = element(home.x, home.y);
+    theatre.add([button], laser, cat, 0, normal);
+    const lit: number[] = [];
+    for (let now = 0; now < laser.durationMs; now += 16) {
       theatre.frame(now, viewport);
-      furthest = Math.max(furthest, Math.hypot(moved(a).x, moved(a).y));
+      const beam = stage()?.querySelector<HTMLElement>('[data-xenocat-beam]');
+      if (beam?.style.opacity === '1') {
+        lit.push(now);
+        expect(beam.style.left).toBe(`${cat.x}px`);
+        const to = { x: home.x + moved(button).x, y: home.y + moved(button).y };
+        expect(parseFloat(beam.style.width)).toBeCloseTo(
+          Math.hypot(to.x - cat.x, to.y - cat.y),
+          -1
+        );
+      }
     }
-    expect(furthest).toBeGreaterThan(200);
-    expect(moved(a)).not.toEqual(moved(b));
+    expect(lit.length).toBeGreaterThan(0);
+    theatre.frame(laser.durationMs, viewport);
+    expect(stage()).toBeNull();
+    // Hidden from assistive technology, never hit itself.
+    theatre.add([button], laser, cat, 10_000, normal);
+    theatre.frame(10_000 + LASER_EVERY_MS, viewport);
+    expect(stage()!.getAttribute('aria-hidden')).toBe('true');
+    expect(stage()!.hasAttribute('data-xenocat-ignore')).toBe(true);
+    theatre.clear();
+    expect(stage()).toBeNull();
   });
 
-  it('spiral draws them in to the middle of the screen', () => {
-    const theatre = createPuppetTheatre({ random: createRandom(1) });
-    const button = element(200, 200);
-    theatre.add([button], spiral, cat, 0, normal);
-    for (let now = 0; now < spiral.durationMs; now += 16) theatre.frame(now, viewport);
-    const at = { x: 200 + moved(button).x, y: 200 + moved(button).y };
-    expect(Math.hypot(at.x - 600, at.y - 400)).toBeLessThan(60);
+  it('Decoy Burmese sets fake copies of a button round it, which do nothing when clicked', () => {
+    const decoys = effect('decoys');
+    const theatre = createPuppetTheatre({ random: createRandom(4) });
+    const button = element(home.x, home.y, 'id="pay" data-testid="pay" style="color: red;"');
+    const field = element(800, 500);
+    field.outerHTML = '<input value="typed">';
+    const input = document.body.lastElementChild as HTMLElement;
+    input.getBoundingClientRect = button.getBoundingClientRect;
+    theatre.add([button, input], decoys, cat, 0, normal);
+    theatre.frame(16, viewport);
+
+    const copies = Array.from(stage()!.querySelectorAll<HTMLElement>('[data-xenocat-decoy]'));
+    expect(copies).toHaveLength(3);
+    for (const copy of copies) {
+      const inner = copy.firstElementChild as HTMLElement;
+      expect(inner.tagName).toBe('BUTTON');
+      expect(inner.textContent).toBe('Pay');
+      expect(inner.id).toBe('');
+      expect(inner.hasAttribute('data-testid')).toBe(false);
+      expect(inner.getAttribute('tabindex')).toBe('-1');
+      // Its own inline style as it was before the attack, not the puppet's.
+      expect(inner.style.color).toBe('red');
+      expect(inner.style.translate).toBe('none');
+      // Somewhere else than the button.
+      const centre = {
+        x: parseFloat(copy.style.left) + 50,
+        y: parseFloat(copy.style.top) + 20,
+      };
+      expect(Math.hypot(centre.x - home.x, centre.y - home.y)).toBeGreaterThan(40);
+    }
+    // The button itself stays where it is, and a field is never copied.
+    expect(moved(button)).toEqual({ x: 0, y: 0 });
+    expect(document.querySelectorAll('input')).toHaveLength(1);
+
+    // A click on a copy goes nowhere: nothing default, nothing else on the page hears it.
+    let heard = 0;
+    const listen = () => heard++;
+    document.addEventListener('click', listen);
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    copies[0].firstElementChild!.dispatchEvent(click);
+    document.removeEventListener('click', listen);
+    expect(click.defaultPrevented).toBe(true);
+    expect(heard).toBe(0);
+
+    theatre.frame(decoys.durationMs, viewport);
+    expect(stage()).toBeNull();
+    expect(button.getAttribute('style')).toBe('color: red;');
   });
 
-  it('vanish hides them; giant grows them, within the level’s limit', () => {
-    const theatre = createPuppetTheatre({ random: createRandom(1) });
-    const hidden = element(300, 300);
-    const big = element(800, 300);
-    theatre.add([hidden], vanish, cat, 0, normal);
-    theatre.add([big], giant, cat, 0, normal);
-    theatre.frame(100, viewport);
-    expect(hidden.style.opacity).toBe('0');
-    expect(big.style.scale).toBe(`${normal.scale[1]} ${normal.scale[1]}`);
+  it('the copies go when the Decoys attack does, even while another attack runs on', () => {
+    const theatre = createPuppetTheatre({ random: createRandom(4) });
+    const button = element(home.x, home.y);
+    const decoys = effect('decoys');
+    theatre.add([button], decoys, cat, 0, normal);
+    theatre.add([button], effect('freeze'), cat, decoys.durationMs - 100, normal);
+    theatre.frame(16, viewport);
+    expect(stage()!.querySelectorAll('[data-xenocat-decoy]')).toHaveLength(3);
+    theatre.frame(decoys.durationMs, viewport);
+    expect(stage()).toBeNull();
+    expect(theatre.isActive(decoys.durationMs)).toBe(true);
+    theatre.clear();
   });
 
-  it('chaos flings them further; a panel goes less far when normal', () => {
-    const wild = compare(follow, 1500, chaos);
-    const tame = compare(follow, 1500, normal);
-    expect(wild.under.x).toBeCloseTo(tame.under.x * chaos.fling, 0);
-    const theatre = createPuppetTheatre({ random: createRandom(7) });
-    const panel = element(600, 400, 'data-xenocat-frame');
-    theatre.add([panel], follow, cat, 0, normal);
-    for (let now = 0; now <= 1500; now += 16) theatre.frame(now, viewport);
-    expect(moved(panel).x).toBeCloseTo(tame.under.x * normal.frameFling, 0);
+  it('everything of an element taken off the page goes at once (a navigation)', () => {
+    const theatre = createPuppetTheatre({ random: createRandom(4) });
+    const button = element(home.x, home.y);
+    theatre.add([button], effect('decoys'), cat, 0, normal);
+    theatre.frame(16, viewport);
+    expect(stage()).not.toBeNull();
+    button.remove();
+    theatre.frame(32, viewport);
+    expect(stage()).toBeNull();
+    expect(theatre.isActive(32)).toBe(false);
   });
 
+  it('Mirror Sphynx mirrors an element where it stands, grown or shrunk alike', () => {
+    const theatre = createPuppetTheatre({ random: createRandom(5) });
+    const button = element(home.x, home.y);
+    const tiny = EFFECTS.find((e) => e.id === 'tiny')!;
+    theatre.add([button], effect('reverse'), cat, 0, normal);
+    theatre.add([button], tiny, cat, 0, normal);
+    theatre.frame(500, viewport);
+    const [x, y] = button.style.scale.split(' ').map(Number);
+    expect(x).toBeLessThan(0);
+    expect(x).toBe(-y);
+    expect(y).toBeLessThan(1);
+  });
+});
+
+describe('the span an element may move in', () => {
+  it('keeps its box inside the viewport, or no further out than it is', () => {
+    expect(span(400, 100, 1200)).toEqual([50, 1150]);
+    expect(span(10, 100, 1200)).toEqual([10, 1150]);
+    // Bigger than the screen: it stays where it is.
+    expect(span(600, 1500, 1200)).toEqual([600, 600]);
+  });
+});
+
+describe('the theatre', () => {
   it('an element hit by two attacks moves by both', () => {
-    const one = compare(follow, 1000);
     const theatre = createPuppetTheatre({ random: createRandom(7) });
-    const button = element(600, 400);
-    theatre.add([button], follow, cat, 0, normal);
-    theatre.add([button], follow, cat, 0, normal);
-    for (let now = 0; now <= 1000; now += 16) theatre.frame(now, viewport);
-    // Two wanderings at once: further than either alone would go, in all.
-    expect(moved(button)).not.toEqual(one.under);
-    expect(button.style.translate).not.toBe('');
+    const button = element(home.x, home.y);
+    theatre.add([button], knockback, cat, 0, normal);
+    theatre.frame(1000, viewport);
+    const once = moved(button);
+    theatre.add([button], knockback, cat, 1000, normal);
+    theatre.frame(1400, viewport);
+    expect(length(moved(button))).toBeGreaterThan(length(once) + 100);
   });
 
   it('puts the style back exactly when the attack ends, and marks the page while it lasts', () => {
@@ -180,20 +543,5 @@ describe('page elements attacked as the cursor is', () => {
     theatre.clear();
     expect(button.hasAttribute('style')).toBe(false);
     expect(document.documentElement.hasAttribute(PUPPETS_ATTRIBUTE)).toBe(false);
-  });
-});
-
-describe('weird twists', () => {
-  it('never at 0, always at 1; slight when normal, wild in chaos', () => {
-    const random = createRandom(4);
-    for (let i = 0; i < 50; i++) {
-      expect(twistFor(random, 0, true)).toEqual({ rotate: 0, scaleX: 1, scaleY: 1 });
-      const slight = twistFor(random, 1, false);
-      expect(Math.abs(slight.rotate)).toBeLessThanOrEqual(8);
-      expect(slight.scaleX).toBeGreaterThanOrEqual(0.9);
-    }
-    const wild = Array.from({ length: 60 }, () => twistFor(random, 1, true));
-    expect(wild.some((t) => t.rotate === 180)).toBe(true);
-    expect(wild.some((t) => t.scaleX < 0)).toBe(true);
   });
 });

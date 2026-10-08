@@ -162,6 +162,7 @@ export async function fetchFilteredInvoices(
         invoices.id,
         invoices.amount,
         invoices.date,
+        invoices.due_date,
         invoices.status,
         ${isOverdue()} AS overdue,
         customers.name,
@@ -268,7 +269,9 @@ export async function fetchInvoiceById(id: string) {
         invoices.id,
         invoices.customer_id,
         invoices.amount,
-        invoices.status
+        invoices.status,
+        to_char(invoices.date, 'YYYY-MM-DD') AS date,
+        to_char(invoices.due_date, 'YYYY-MM-DD') AS due_date
       FROM invoices
       WHERE invoices.id = ${id};
     `;
@@ -278,8 +281,6 @@ export async function fetchInvoiceById(id: string) {
       // Convert amount from cents to dollars
       amount: invoice.amount / 100,
     }));
-
-    console.log(invoice);
 
     return invoice[0];
   } catch (error) {
@@ -299,6 +300,8 @@ export async function fetchInvoiceDetail(id: string) {
         invoices.date,
         invoices.due_date,
         ${isOverdue()} AS overdue,
+        -- Whole days until it is due, by the same day the overdue rule uses.
+        (invoices.due_date - CURRENT_DATE) AS days_until_due,
         customers.id AS customer_id,
         customers.name,
         customers.email

@@ -63,6 +63,7 @@ export type InvoicesTable = {
   email: string;
   image_url: string;
   date: string;
+  due_date: string;
   amount: number;
   status: 'pending' | 'paid';
   /** Pending and past its due date. */
@@ -106,6 +107,9 @@ export type InvoiceForm = {
   customer_id: string;
   amount: number;
   status: 'pending' | 'paid';
+  /** YYYY-MM-DD: its date (the due date cannot be before it), and its due date. */
+  date: string;
+  due_date: string;
 };
 
 /** An invoice and its customer, as the detail page shows them. */
@@ -117,6 +121,8 @@ export type InvoiceDetail = {
   due_date: string;
   /** Pending and past its due date. */
   overdue: boolean;
+  /** Whole days until its due date (negative once past), by the database's day. */
+  days_until_due: number;
   customer_id: string;
   name: string;
   email: string;

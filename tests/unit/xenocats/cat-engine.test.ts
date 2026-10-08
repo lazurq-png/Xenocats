@@ -199,17 +199,58 @@ describe('where cats appear', () => {
     }
   });
 
-  it('catches up across a long gap in one tick, as when a background tab resumes', () => {
+  it('catches up across a long gap in one tick, as when a background tab resumes, and still wakes in sight', () => {
     const e = engine();
     const cat = e.summon('void-tabby', 0, null)!;
     cat.eager = false; // a spawned cat: appear, sleep, wake, then attack
     e.tick(100_000, null, always);
     const now = e.cats()[0];
-    expect(now.phase).toBe('attacking');
-    // The pounce starts now, not somewhere in the past.
+    // Its sleep ran out long ago, but it starts waking now, where it can be seen.
+    expect(now.phase).toBe('waking');
     expect(now.phaseStartedAt).toBe(100_000);
+    e.tick(100_000 + e.config.wakeMs, null, always);
+    expect(e.cats()[0].phase).toBe('attacking');
     e.tick(200_000, null, always);
     expect(e.cats()).toHaveLength(0);
+  });
+
+  it('when the screen narrows, a cat it no longer holds moves in to its edge; one it holds stays', () => {
+    const e = engine({ seed: 3 });
+    for (const type of ['void-tabby', 'gravi-coon', 'pulsar-siamese', 'cryo-persian']) {
+      e.summon(type, 0, null, { asleep: true });
+    }
+    const { catSize, margin } = e.config;
+    const before = e.cats().map((c) => ({ x: c.x, y: c.y }));
+    expect(before.some((c) => c.x > 300 - catSize - margin)).toBe(true);
+    expect(e.resize({ width: 300, height: 600 })).toBe(true);
+    e.cats().forEach((cat, i) => {
+      expect(cat.x).toBeGreaterThanOrEqual(margin);
+      expect(cat.x + catSize).toBeLessThanOrEqual(300 - margin);
+      expect(cat.y + catSize).toBeLessThanOrEqual(600 - margin);
+      // One that fitted already has not moved.
+      if (before[i].x + catSize <= 300 - margin && before[i].y + catSize <= 600 - margin) {
+        expect({ x: cat.x, y: cat.y }).toEqual(before[i]);
+      }
+    });
+    // Moved in, they do not land on one another: the narrow screen has room.
+    for (const a of e.cats()) {
+      for (const b of e.cats()) {
+        if (a === b) continue;
+        const apart = Math.abs(a.x - b.x) >= catSize || Math.abs(a.y - b.y) >= catSize;
+        expect(apart, `cats ${a.id} and ${b.id} overlap`).toBe(true);
+      }
+    }
+    // Wider again: nothing to move.
+    expect(e.resize({ width: 1200, height: 800 })).toBe(false);
+  });
+
+  it('on a screen smaller than a cat, every cat sits at its corner', () => {
+    const e = engine({ seed: 3 });
+    e.summon('void-tabby', 0, null, { asleep: true });
+    e.summon('gravi-coon', 0, null, { asleep: true });
+    const { margin } = e.config;
+    e.resize({ width: 50, height: 50 });
+    for (const cat of e.cats()) expect({ x: cat.x, y: cat.y }).toEqual({ x: margin, y: margin });
   });
 
   it('nowhere, when the viewport is too small for a cat', () => {

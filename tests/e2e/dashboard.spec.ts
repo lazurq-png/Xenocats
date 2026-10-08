@@ -10,7 +10,7 @@ test('the demo user logs in and the dashboard shows the seeded data', async ({ p
   await page.getByLabel('Password', { exact: true }).fill('123456');
   await page.getByRole('button', { name: /log in/i }).click();
 
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
 
   // Searched, so invoices other tests add (they sort first, by date) cannot push it off page 1.

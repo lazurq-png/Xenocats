@@ -1228,64 +1228,8 @@ input[type='number']::-webkit-outer-spin-button {
   }
 }
 
-/* Cats hitting the page around the pointer (app/ui/xenocats/page-hits.ts). Every
-   rule is keyed on data-xenocat-hit, so removing the attribute ends it. */
-[data-xenocat-hit] {
-  transition:
-    transform 180ms ease-out,
-    filter 180ms ease-out;
-}
-[data-xenocat-hit='shake'] {
-  animation: xenocat-hit-shake 0.12s linear infinite;
-}
-@keyframes xenocat-hit-shake {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  25% {
-    transform: translate(
-      calc(var(--xenocat-hit-amount, 3) * 1px),
-      calc(var(--xenocat-hit-amount, 3) * -1px)
-    );
-  }
-  75% {
-    transform: translate(
-      calc(var(--xenocat-hit-amount, 3) * -1px),
-      calc(var(--xenocat-hit-amount, 3) * 1px)
-    );
-  }
-}
-[data-xenocat-hit='wobble'] {
-  animation: xenocat-hit-wobble 0.9s ease-in-out infinite;
-}
-@keyframes xenocat-hit-wobble {
-  0%,
-  100% {
-    transform: rotate(calc(var(--xenocat-hit-amount, 6) * 1deg));
-  }
-  50% {
-    transform: rotate(calc(var(--xenocat-hit-amount, 6) * -1deg));
-  }
-}
-[data-xenocat-hit='tilt'] {
-  transform: rotate(calc(var(--xenocat-hit-amount, 12) * 1deg)) !important;
-}
-[data-xenocat-hit='blur'] {
-  filter: blur(calc(var(--xenocat-hit-amount, 4) * 1px)) !important;
-}
-[data-xenocat-hit='flip'] {
-  transform: scaleX(-1) !important;
-}
-[data-xenocat-hit='glow'] {
-  filter: drop-shadow(0 0 4px var(--xenocat-hit-color))
-    drop-shadow(0 0 10px var(--xenocat-hit-color)) !important;
-}
-[data-xenocat-hit='push'] {
-  transform: translate(var(--xenocat-hit-dx, 0), var(--xenocat-hit-dy, 0)) !important;
-}
-/* While cats fling page elements about (puppets.ts), the page clips what flies
-   off it rather than growing to hold it. The html element keeps the scrolling (an
+/* While cats move page elements about (puppets.ts), the page clips whatever
+   overflows it (an element grown past the edge) rather than growing to hold it. The html element keeps the scrolling (an
    overflow of its own stops body's from passing to the viewport), and the body
    clips at the page's edges. */
 html[data-xenocat-puppets] {
@@ -1294,22 +1238,6 @@ html[data-xenocat-puppets] {
 html[data-xenocat-puppets] body {
   overflow: clip;
   min-height: 100vh;
-}
-/* Scrambled or swapped text: the real text turns transparent (and stays what
-   assistive technology reads); the shown text is generated content whose alt text
-   is empty, so it is never read out. */
-[data-xenocat-hit='text'] {
-  position: relative;
-  -webkit-text-fill-color: transparent;
-}
-[data-xenocat-hit='text']::after {
-  content: attr(data-xenocat-hit-text) / '';
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  -webkit-text-fill-color: currentcolor;
-  pointer-events: none;
 }
 
 /* A cat clicked awake glows red until it has attacked and gone. */

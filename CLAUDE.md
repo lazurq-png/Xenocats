@@ -269,11 +269,14 @@ instead, which needs an existing `npm run build`. `next dev` also (re-)adds a Ne
 to `AGENTS.md` when it detects an AI agent, and flips `next-env.d.ts` between
 its dev and build variants; neither is part of a task's change.
 
-`npm test` includes `tests/unit/data.test.ts`, which runs every query in
-`app/lib/data.ts` against a real database: it drops and rebuilds its own
+`tests/unit/data.test.ts` runs every query in `app/lib/data.ts` against a real
+database, and is **opt-in**: it runs only with `DATABASE_TESTS=1`
+(`DATABASE_TESTS=1 npx vitest run tests/unit/data`), so a plain `npm test`
+never touches a database. Opted in, it drops and rebuilds its own
 `xenocats_vitest` schema (and a scratch `xenocats_vitest_migrations`) on the
-server `POSTGRES_URL` names, and skips like the browser tests do — no URL, or
-`E2E_NO_DATABASE=1`. In CI it runs in the *build* job, which has a database.
+server `POSTGRES_URL` names, and still skips like the browser tests do — no
+URL, or `E2E_NO_DATABASE=1`. In CI the *build* job's "Database tests" step sets
+it, on that job's database.
 
 `lint` exits non-zero on **errors only**; warnings print without failing, so a
 clean exit does not mean an empty report. Read the output; do not report "lint
@@ -299,9 +302,12 @@ no production database yet: one is built later with `db:migrate`, by a human.
 three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
 over a migrated and seeded `xenocats` schema, then the browser tests against
 `next start` (`E2E_SERVER=start`); and *e2e* — the browser tests against
-`next dev`. The *build* and *e2e* jobs start the PostgreSQL preinstalled on the
-runner (TLS on, throwaway password), so CI needs no repository secret and no
-outside database, and runs the database tests too. Each job that starts Next
+`next dev`. The *build* and *e2e* jobs run inside the Playwright image
+(`mcr.microsoft.com/playwright`, its tag the locked `@playwright/test` version),
+so Chromium is not installed on every run. Each starts a throwaway PostgreSQL
+service container, which `scripts/ci-database.mjs` switches TLS on for and
+points `POSTGRES_URL` at. So CI needs no repository secret and no outside
+database, and runs the database tests too. Each job that starts Next
 makes its own throwaway `AUTH_SECRET`. It runs on GitHub, not on your machine: never
 report a CI result you have not observed.
 The one sanctioned way to observe one is the night-run skill's read-only poll
@@ -321,7 +327,9 @@ Expand verification when the change has broader impact.
 
 `npm run test:affected` compares the tree with `--base` (default `main`) and
 prints the tests to run: `vitest related` over the changed files, and the browser
-specs that visit a route the change reaches. When it cannot place a changed file
+specs that visit a route the change reaches. For a change to a query, the schema
+or the database tests themselves it also prints a `database:` line, naming the
+opt-in database tests that `vitest related` would skip. When it cannot place a changed file
 (configuration, auth, the root layout, seed data, a deletion) it says `FULL`
 and names the file; then run the full suites. Cheap checks go first (prettier,
 lint, type check), the slow ones after, one at a time: the browser tests are
@@ -527,10 +535,11 @@ see §13 for when to run it.
 Use `.claude/skills/night-run/` when this session is running unattended (no
 human available to answer). It executes the tasks of the plan a human wrote in
 `docs/ai/night-<date>/plan.md` until that plan's `## Goal` — a day and time such
-as `Thursday 08:00` — then finishes the task in flight, appends the morning
-report to `progress.md` and stops. It stops if the plan, its tasks or a readable
-goal are missing, and when the tasks run out early it stops rather than
-inventing work. It keeps `progress.md` append-only, one entry per finished
+as `Thursday 08:00` — then finishes the task in flight, writes the morning
+report at the top of `progress.md` and stops. It stops if the plan, its tasks or a readable
+goal are missing. When the tasks are done before the goal it explores
+(small improvements of the kinds the plan names) until the goal; it never
+stops early for lack of work. It keeps `progress.md` append-only, one entry per finished
 task. It defines the
 preflight, the branch-per-task and commit cadence, when a finished task's branch
 may be pushed and to where, the durable state files, the forbidden operations —

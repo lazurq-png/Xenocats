@@ -50,3 +50,15 @@ export const parsePage = (value: string | null | undefined): number => {
   const page = Number(value);
   return Number.isSafeInteger(page) && page >= 1 ? page : 1;
 };
+
+/**
+ * How near an unpaid invoice's due date is, from the whole days until it (negative
+ * once past; the database counts them, by the same day its overdue rule uses):
+ * "Due today", "Due in N days", or "Overdue by N days".
+ */
+export function dueText(daysUntilDue: number): string {
+  if (daysUntilDue === 0) return 'Due today';
+  const n = Math.abs(daysUntilDue);
+  const unit = n === 1 ? 'day' : 'days';
+  return daysUntilDue > 0 ? `Due in ${n} ${unit}` : `Overdue by ${n} ${unit}`;
+}

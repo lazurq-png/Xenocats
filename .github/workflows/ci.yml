@@ -32,25 +32,28 @@ jobs:
           npx vitest run tests/unit/actions tests/unit/schemas tests/unit/utils
           tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
           tests/unit/csv tests/unit/export-route tests/unit/invoice-status
-          tests/unit/login-limit tests/unit/cat-error tests/unit/affected-tests
+          tests/unit/login-limit tests/unit/password-check tests/unit/credentials tests/unit/cat-error tests/unit/affected-tests
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
         run: >-
           npx vitest run tests/unit/xenocats/random tests/unit/xenocats/effects
-          tests/unit/xenocats/cursor-controller tests/unit/xenocats/cat-engine
+          tests/unit/xenocats/cursor-controller tests/unit/xenocats/cat-engine tests/unit/xenocats/cat-engine-invariants
           tests/unit/xenocats/cat-types tests/unit/xenocats/intensity
       - name: Unit tests (cats, jsdom)
         if: ${{ !cancelled() }}
         run: >-
           npx vitest run tests/unit/xenocats/cursor-kind tests/unit/xenocats/fake-cursor
           tests/unit/xenocats/cat-layer tests/unit/xenocats/cat-art tests/unit/xenocats/cat-sprite
+          tests/unit/xenocats/movement-pad-view
       - name: Unit tests (cats, games, page, sound)
         if: ${{ !cancelled() }}
         run: >-
-          npx vitest run tests/unit/xenocats/survival tests/unit/xenocats/locked-pointer
+          npx vitest run tests/unit/xenocats/arena tests/unit/xenocats/arsenal tests/unit/xenocats/varieties tests/unit/xenocats/progression tests/unit/xenocats/coop tests/unit/xenocats/test-hooks
+          tests/unit/xenocats/walking
+          tests/unit/xenocats/locked-pointer
           tests/unit/xenocats/taming tests/unit/xenocats/page-hits tests/unit/xenocats/sounds
           tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat tests/unit/xenocats/combos
-          tests/unit/xenocats/gun tests/unit/xenocats/puppets
+          tests/unit/xenocats/puppets tests/unit/xenocats/movement-pad
       # A test file in no group would never run: each unit test must be named in a
       # group above, each browser test in a group of both browser jobs below.
       - name: Every test file is in a group
@@ -74,11 +77,27 @@ jobs:
     name: Build + browser tests (production)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Chromium and every library it needs come with the image, instead of a
+    # `playwright install --with-deps` (an apt install) on every run. Its tag must
+    # be the @playwright/test version in package-lock.json: the install step below
+    # then finds the browser already there (if not, it downloads the right one).
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    # A throwaway PostgreSQL next to the job, like the AUTH_SECRET: it lives as
+    # long as the job. scripts/ci-database.mjs turns TLS on (the app requires it)
+    # and sets POSTGRES_URL.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 15
     env:
       AUTH_TRUST_HOST: 'true'
-      # The runner's own PostgreSQL (started below). The browser tests derive and
+      # POSTGRES_URL is set by the "PostgreSQL" step. The browser tests derive and
       # rebuild their xenocats_test schema from it.
-      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=require&search_path=xenocats
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -88,22 +107,18 @@ jobs:
       - name: Throwaway AUTH_SECRET
         # Only signs sessions inside this run, so it need not be a repository secret.
         run: |
-          secret="$(openssl rand -base64 32)"
+          secret="$(node -p "require('node:crypto').randomBytes(32).toString('base64')")"
           echo "::add-mask::$secret"
           echo "AUTH_SECRET=$secret" >> "$GITHUB_ENV"
       - run: npm ci
-      - name: Start PostgreSQL
-        # Preinstalled on the runner and stopped; Ubuntu's cluster has TLS on, which
-        # the app requires. Throwaway, like the AUTH_SECRET: it lives as long as the job.
-        run: |
-          sudo systemctl start postgresql.service
-          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
-          test "$(sudo -u postgres psql -Atc 'SHOW ssl')" = on
+      - name: PostgreSQL
+        run: node scripts/ci-database.mjs postgres xenocats
       - id: database
         run: npm run db:migrate && npm run db:seed
       - run: npm run build
       - id: install
-        run: npx playwright install --with-deps chromium
+        # Already in the image: a no-op unless the versions drifted apart.
+        run: npx playwright install chromium
       # The browser tests run in named groups, each even if an earlier one failed,
       # so a failure is identifiable from the job's step names alone (but not when
       # the build or the browser install failed). Each keeps its own report and
@@ -142,9 +157,9 @@ jobs:
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
-      - name: Browser tests against next start (fight)
+      - name: Browser tests against next start (fight games)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/fight --output test-results/fight
+        run: npx playwright test tests/e2e/fight tests/e2e/survival --output test-results/fight
         env:
           E2E_SERVER: start
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/fight
@@ -162,6 +177,8 @@ jobs:
       - name: Database tests
         if: ${{ !cancelled() && steps.database.outcome == 'success' }}
         run: npx vitest run tests/unit/data
+        env:
+          DATABASE_TESTS: '1'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -175,9 +192,25 @@ jobs:
     name: Browser tests (dev server)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Chromium and every library it needs come with the image, instead of a
+    # `playwright install --with-deps` (an apt install) on every run. Its tag must
+    # be the @playwright/test version in package-lock.json: the install step below
+    # then finds the browser already there (if not, it downloads the right one).
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    # A throwaway PostgreSQL next to the job, like the AUTH_SECRET: it lives as
+    # long as the job. scripts/ci-database.mjs turns TLS on (the app requires it)
+    # and sets POSTGRES_URL.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 15
     env:
       AUTH_TRUST_HOST: 'true'
-      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=require&search_path=xenocats
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -186,19 +219,15 @@ jobs:
           cache: npm
       - name: Throwaway AUTH_SECRET
         run: |
-          secret="$(openssl rand -base64 32)"
+          secret="$(node -p "require('node:crypto').randomBytes(32).toString('base64')")"
           echo "::add-mask::$secret"
           echo "AUTH_SECRET=$secret" >> "$GITHUB_ENV"
       - run: npm ci
-      - name: Start PostgreSQL
-        # Preinstalled on the runner and stopped; Ubuntu's cluster has TLS on, which
-        # the app requires. Throwaway, like the AUTH_SECRET: it lives as long as the job.
-        run: |
-          sudo systemctl start postgresql.service
-          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
-          test "$(sudo -u postgres psql -Atc 'SHOW ssl')" = on
+      - name: PostgreSQL
+        run: node scripts/ci-database.mjs postgres xenocats
       - id: install
-        run: npx playwright install --with-deps chromium
+        # Already in the image: a no-op unless the versions drifted apart.
+        run: npx playwright install chromium
       # Needs no db:migrate: the tests rebuild their own xenocats_test schema. Named
       # groups, each with its own report and traces, as in the build job.
       - name: Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)
@@ -231,9 +260,9 @@ jobs:
         run: npx playwright test tests/e2e/cats tests/e2e/cats-link tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
-      - name: Browser tests (fight)
+      - name: Browser tests (fight games)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/fight --output test-results/fight
+        run: npx playwright test tests/e2e/fight tests/e2e/survival --output test-results/fight
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/fight
       - name: Browser tests (sound, field guide)

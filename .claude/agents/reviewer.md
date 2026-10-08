@@ -18,7 +18,7 @@ implementer's assumptions. Do not ask for their justification — read the code.
 2. If the change touches authentication, authorization, sessions, secrets,
    payments, file handling, external requests, or user input, also read
    `.claude/rules/security-review.md`.
-3. If it touches SQL, the schema in `app/seed/route.ts`, or anything that
+3. If it touches SQL, the schema (`db/migrations/*.sql`), or anything that
    writes to the database, also read `.claude/rules/database.md`.
 4. Establish the diff yourself — `git diff`, `git diff --stat`, `git log` — rather
    than trusting a summary you were handed. A description of a change is not the
@@ -64,8 +64,8 @@ A Next.js App Router app (`CLAUDE.md` §2 maps it). Worth checking every time:
   around it swallows the redirect. The existing actions call `revalidatePath`
   and `redirect` after the `try` block — a change that moves them inside is a
   bug.
-- **Leaked errors.** Returning a caught `error` object to the client (as
-  `app/seed/route.ts` and `app/query/route.ts` do) can expose database details.
+- **Leaked errors.** Returning a caught `error` object to the client can expose
+  database details.
   New code should log it server-side and return a generic message, as
   `app/lib/data.ts` does.
 - **Server/client boundary.** A `'use client'` component must not import

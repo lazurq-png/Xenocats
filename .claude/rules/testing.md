@@ -18,7 +18,9 @@ database skip when no `POSTGRES_URL` is configured, or with `E2E_NO_DATABASE=1`
 suite at once drop it under each other. The queries in `app/lib/data.ts` are
 tested in Vitest by `tests/unit/data.test.ts`, against its own schema
 (`xenocats_vitest`, rebuilt when the file runs), so they never meet the browser
-tests' rows; it skips the same way.
+tests' rows. That file is opt-in: it runs only with `DATABASE_TESTS=1` (CI's
+"Database tests" step sets it), so a plain `npm test` never touches a
+database; opted in, it skips the same way.
 
 ---
 
@@ -89,7 +91,8 @@ Use broader validation when the change warrants it.
 
 In this repository the module step is `npm run test:affected -- --base <ref>`
 (`scripts/affected-tests.mjs`): `vitest related` over the changed files, and
-the browser specs that visit a route the change reaches. It prints `FULL` for a
+the browser specs that visit a route the change reaches, plus the opt-in
+database tests (a `database:` line) when a query or the schema changed. It prints `FULL` for a
 change it cannot place; take that, and never shrink its selection by hand. A
 new spec must name the routes it visits as paths (`page.goto('/cats')`, a
 `toHaveURL` regex) so the selector can find it; `tests/unit/affected-tests.test.ts`

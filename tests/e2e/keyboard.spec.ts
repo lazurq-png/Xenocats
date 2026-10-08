@@ -4,6 +4,10 @@ import { type Page, expect, test } from '@playwright/test';
 // ring on everything Tab reaches, and every control named. The cats never touch
 // the keyboard (a plan-wide rule), so these tests do not wait for them to leave.
 
+// After a submit or a link, allow for the next page still compiling under a busy
+// next dev, which builds each route on its first visit (questions.md Q7).
+const NAVIGATION = 15_000;
+
 /**
  * Whether the focused element shows that it has focus the way the app draws it:
  * a solid, opaque outline at least 2px wide (the base :focus-visible rule, or a
@@ -101,7 +105,7 @@ test.describe('logged in', () => {
     await page.getByLabel('Email').fill('user@nextmail.com');
     await page.getByLabel('Password', { exact: true }).fill('123456');
     await page.getByLabel('Password', { exact: true }).press('Enter');
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: NAVIGATION });
     await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
 
@@ -117,13 +121,13 @@ test.describe('logged in', () => {
     await page.waitForLoadState('networkidle');
     await tabTo(page, (f) => f.tag === 'A' && f.text === 'Invoices');
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/dashboard\/invoices$/);
+    await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: NAVIGATION });
     await page.waitForLoadState('networkidle');
 
     // And on to the search, typed into without the mouse.
     await tabTo(page, (f) => f.id === 'search');
     await page.keyboard.type('Amy');
-    await expect(page).toHaveURL(/query=Amy/);
+    await expect(page).toHaveURL(/query=Amy/, { timeout: NAVIGATION });
   });
 
   test('every control on the dashboard pages has a name', async ({ page }) => {
@@ -133,7 +137,7 @@ test.describe('logged in', () => {
     await page.getByLabel('Email').fill('user@nextmail.com');
     await page.getByLabel('Password', { exact: true }).fill('123456');
     await page.getByRole('button', { name: /log in/i }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: NAVIGATION });
     for (const path of [
       '/dashboard',
       '/dashboard/invoices',

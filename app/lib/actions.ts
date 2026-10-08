@@ -6,6 +6,7 @@ import bcryptjs from 'bcryptjs';
 import postgres from 'postgres';
 import { auth, signIn } from '@/auth';
 import { AuthError, type CredentialsSignin } from 'next-auth';
+import { BCRYPT_COST } from '@/app/lib/password-check';
 import { LOCKED, claimAttempt, clearFailures, loginKey, loginLimits } from '@/app/lib/login-limit';
 import {
   ChangePasswordForm,
@@ -14,6 +15,7 @@ import {
   CustomerId,
   InvoiceId,
   UpdateInvoice,
+  dueDateProblem,
 } from '@/app/lib/schemas';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
@@ -30,9 +32,14 @@ export type State = {
     customerId?: string[];
     amount?: string[];
     status?: string[];
+    dueDate?: string[];
   };
   message?: string | null;
 };
+
+/** The database's own check on the due date (db/migrations/0003) refused it. */
+const isDueDateRefused = (error: unknown) =>
+  (error as { constraint_name?: string })?.constraint_name === 'invoices_due_date_check';
 
 export async function createInvoice(prevState: State, formData: FormData) {
   if (!(await isSignedIn())) {
@@ -44,6 +51,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
+    dueDate: formData.get('dueDate'),
   });
 
   // If form validation fails, return errors early. Otherwise, continue.
@@ -55,20 +63,30 @@ export async function createInvoice(prevState: State, formData: FormData) {
   }
 
   // Prepare data for insertion into the database
-  const { customerId, amount, status } = validatedFields.data;
+  const { customerId, amount, status, dueDate } = validatedFields.data;
   // Rounded: amount * 100 is not always a whole number in floating point (10000.37
   // gives 1000037.0000000001), and the column is an integer.
   const amountInCents = Math.round(amount * 100);
   const date = new Date().toISOString().split('T')[0];
-  // Due 30 days after its date: the payment term (db/migrations/0003).
+  // Due when the form says (30 days after its date unless changed), never before it.
+  const problem = dueDateProblem(dueDate, date);
+  if (problem) {
+    return { errors: { dueDate: [problem] }, message: 'Failed to Create Invoice.' };
+  }
 
   // Insert data into the database
   try {
     await sql`
       INSERT INTO invoices (customer_id, amount, status, date, due_date)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date}, ${date}::date + 30)
+      VALUES (${customerId}, ${amountInCents}, ${status}, ${date}, ${dueDate})
     `;
   } catch (error) {
+    if (isDueDateRefused(error)) {
+      return {
+        errors: { dueDate: ['The due date cannot be before the invoice date.'] },
+        message: 'Failed to Create Invoice.',
+      };
+    }
     // Log the database error on the server; return only a generic message.
     console.error('Database Error:', error);
     return {
@@ -86,10 +104,16 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
     return { message: 'You must be logged in to update an invoice.' };
   }
 
+  // The id is the caller's: anything but a UUID names no invoice.
+  if (!InvoiceId.safeParse(id).success) {
+    return { message: 'No such invoice.' };
+  }
+
   const validatedFields = UpdateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
+    dueDate: formData.get('dueDate'),
   });
 
   if (!validatedFields.success) {
@@ -99,18 +123,37 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
     };
   }
 
-  const { customerId, amount, status } = validatedFields.data;
+  const { customerId, amount, status, dueDate } = validatedFields.data;
   // Rounded: amount * 100 is not always a whole number in floating point (10000.37
   // gives 1000037.0000000001), and the column is an integer.
   const amountInCents = Math.round(amount * 100);
 
   try {
-    await sql`
+    // The due date is checked against the invoice's own date, which the form
+    // does not change.
+    const [invoice] = await sql<{ date: string }[]>`
+      SELECT to_char(date, 'YYYY-MM-DD') AS date FROM invoices WHERE id = ${id}
+    `;
+    if (!invoice) return { message: 'No such invoice.' };
+    const problem = dueDateProblem(dueDate, invoice.date);
+    if (problem) {
+      return { errors: { dueDate: [problem] }, message: 'Failed to Update Invoice.' };
+    }
+    const updated = await sql`
       UPDATE invoices
-      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
+      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status},
+        due_date = ${dueDate}
       WHERE id = ${id}
     `;
+    // Deleted between the read and the write: nothing was saved.
+    if (updated.count === 0) return { message: 'No such invoice.' };
   } catch (error) {
+    if (isDueDateRefused(error)) {
+      return {
+        errors: { dueDate: ['The due date cannot be before the invoice date.'] },
+        message: 'Failed to Update Invoice.',
+      };
+    }
     console.error('Database Error:', error);
     return { message: 'Database Error: Failed to Update Invoice.' };
   }
@@ -338,7 +381,7 @@ export async function changePassword(
       };
     }
     await clearFailures(sql, key);
-    const hash = await bcryptjs.hash(newPassword, 10);
+    const hash = await bcryptjs.hash(newPassword, BCRYPT_COST);
     await sql`UPDATE users SET password = ${hash} WHERE id = ${user.id}`;
   } catch (error) {
     console.error('Database Error:', error);

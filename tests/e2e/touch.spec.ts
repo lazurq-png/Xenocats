@@ -26,11 +26,20 @@ test('on a touch screen the fake cursor stays off, and a cat attacks the page ar
   await expect(page.getByTestId('fake-cursor')).toHaveCount(0);
   expect(await page.locator('html').getAttribute('class')).not.toContain('xenocat-cursor-hidden');
 
-  // Once the cat has arrived it attacks: the button that was touched is pushed…
-  const before = await button.evaluate((el) =>
-    el.outerHTML.replace(/ data-xenocat-hit="[^"]*"/, '')
-  );
-  await expect(button).toHaveAttribute('data-xenocat-hit', 'push', { timeout: 5000 });
+  // Once the cat has arrived it attacks: the button that was touched is flung
+  // away, as the knockback flings a pointer… (It has no inline style of its own:
+  // any there now is the attack's.)
+  const before = await button.evaluate((el) => el.outerHTML.replace(/ style="[^"]*"/, ''));
+  await expect
+    .poll(
+      () =>
+        button.evaluate((el) => {
+          const [x, y] = (el as HTMLElement).style.translate.split(' ').map(parseFloat);
+          return Math.hypot(x || 0, y || 0);
+        }),
+      { timeout: 5000 }
+    )
+    .toBeGreaterThan(20);
   // …and a tap meanwhile still goes through: the card's other Summon button
   // summons.
   const status = page.getByTestId('summon-status');
@@ -38,6 +47,5 @@ test('on a touch screen the fake cursor stays off, and a cat attacks the page ar
   await asleep.tap();
   await expect(status).toContainText('Pulsar Siamese is on its way, and will nap');
   // When the effect is over (1.5 s) it is exactly as it was.
-  await expect(button).not.toHaveAttribute('data-xenocat-hit', { timeout: 5000 });
-  expect(await button.evaluate((el) => el.outerHTML)).toBe(before);
+  await expect.poll(() => button.evaluate((el) => el.outerHTML), { timeout: 5000 }).toBe(before);
 });

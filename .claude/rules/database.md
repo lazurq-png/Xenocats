@@ -24,8 +24,9 @@ Open this for schema, migration, and persistence work. Database changes are high
   must never reach a public database. The check reads the URL, not the server:
   a tunnel to a remote server on `localhost` passes it, so never put a
   tunnelled production URL in `.env`.
-- **CI has its own database**: the PostgreSQL preinstalled on the GitHub
-  runner, started per job, migrated and seeded (`.github/workflows/ci.yml`).
+- **CI has its own database**: a PostgreSQL service container per job
+  (`postgres:17`), with TLS switched on by `scripts/ci-database.mjs`, migrated
+  and seeded (`.github/workflows/ci.yml`).
   It is a fresh, empty server every run, so CI proves every migration applies
   from scratch.
 - **A future production database** needs a connection that accepts
