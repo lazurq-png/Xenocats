@@ -150,7 +150,10 @@ test('an invoice is due when the form says: 30 days by default, never before its
 
   // The list shows it, under its own heading.
   await expect(page.getByRole('columnheader', { name: 'Due', exact: true })).toBeVisible();
-  await expect(await rowsFor(page, cents)).toContainText(formatDateToLocal(addDays(today, 45)));
+  // One row (the list streams in, and for a moment can be there twice), then its date.
+  const listed = await rowsFor(page, cents);
+  await expect(listed).toHaveCount(1);
+  await expect(listed).toContainText(formatDateToLocal(addDays(today, 45)));
 
   // Kept: the edit form shows it.
   await (await rowsFor(page, cents)).getByRole('link', { name: 'Edit' }).click();

@@ -654,3 +654,30 @@ This run's Q7 recorded two browser tests that each failed once under the full `n
 - **Why it was added**: plan task 12, an exploration item of the kind "tests". It is this run's Q7.
 - **Reviewer**: approve, four Low findings: the other specs (recorded, Q9), the test timeout (fixed), a comment (left), "four workers" inexact (corrected, D91).
 - **Gate** (the selection), all exit 0: prettier, lint 0 warnings, type check, group check, build; the two specs, 7 passed.
+
+## T12 item 9 — started 06:11: no debug logging of invoice data (kind: security and quality)
+
+`fetchInvoiceById` still printed every invoice it loaded (`console.log(invoice)`: its customer, amount and status) to the server's log each time an invoice's edit page opened — data the logs need not hold (the security rules: never log unnecessary personal information). The line goes, and a lint rule keeps debug logging out of the app's code.
+
+## T12 item 9 — no debug logging of invoice data (completed)
+
+- Branch `night-2026-10-07-t12-9-no-debug-log`, base `93c9524`. Start 06:11 (budget ~13,260,000); completed 06:37 (budget ~13,234,000).
+- **CI of T12 item 8** (`93c9524`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37726072663), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37726072950)).
+- **What the code does** (D92)
+  - `fetchInvoiceById` no longer prints each invoice it loads to the server's log.
+  - ESLint's `no-console` now holds the app's own code to `console.error` and `console.warn`. The rule failed on the leftover line before its removal.
+- **Why it was added**: plan task 12, an exploration item of the kind "security and quality". The security rules forbid unnecessary personal or financial data in logs.
+- **Also fixed: two regressions from item 7's tests**, found by this item's full-suite gate (D93, D94). Both were browser tests meeting `next start`'s streamed pages:
+  - the filter spec's "Due" check matched the list's new column heading;
+  - item 7's own row check did not first wait for exactly one row.
+  - Each was fixed in the test, and each passed repeated runs against `next start` (20 of 20, then 40 of 40).
+  - The first is almost certainly item 7's run-branch CI failure (Q9, now explained).
+  - Item 7's gate had run only `next dev`'s affected specs, which is why it missed them.
+- **Reviewer** (security rules in scope): approve, no findings. It confirmed that the `postgres` library keeps a failed query's text and parameters out of printed errors unless debug is on. One caveat, recorded: a database error's `detail` can quote a refused row's values, and no current path leaks anything sensitive that way. The two test repairs came after the review and were not re-reviewed (small, test-only, D93/D94).
+- **Gate** (FULL: lint configuration changed), on the third run, all exit 0:
+  - Prettier on 4 files, lint 0 warnings, type check, group check.
+  - `npm test`: 43 files, 650 passed (17 skipped).
+  - Build.
+  - `npm run test:e2e`: 130 passed.
+  - `E2E_SERVER=start npm run test:e2e`: 130 passed.
+  - The first two runs each failed one `next start` browser test (the regressions above): repair cycles 1 and 2, on different failures.
