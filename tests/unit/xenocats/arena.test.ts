@@ -490,3 +490,73 @@ describe('balance: positioning is the skill', () => {
     expect(walking.filter((ms) => ms > 120_000).length).toBeGreaterThanOrEqual(6);
   }, 60_000);
 });
+
+describe('the camera on a small screen', () => {
+  const at = (viewport: { width: number; height: number }, coop = false) =>
+    createArena({
+      random: createRandom(1),
+      types: CAT_TYPES,
+      viewport,
+      config: coop
+        ? { secondPlayer: { startingWeapons: ['spray-bottle'], speed: 210, resolve: 100 } }
+        : {},
+    });
+  const narrower = (v: { width: number; height: number }) => Math.min(v.width, v.height);
+
+  it('a desktop or a tablet sees the arena unzoomed', () => {
+    for (const viewport of [
+      { width: 1280, height: 800 },
+      { width: 1920, height: 1080 },
+      { width: 768, height: 1024 },
+      // Browser windows, not screens: a laptop's bars take 80 to 130 px.
+      { width: 1366, height: 650 },
+      { width: 1280, height: 720 },
+      { width: 1536, height: 730 },
+    ]) {
+      expect(at(viewport).camera().zoom, `${viewport.width}×${viewport.height}`).toBe(1);
+    }
+  });
+
+  it('a phone sees at least as much as the rule says, across its narrower side', () => {
+    const { minView, maxZoom } = ARENA_CONFIG.view;
+    // About as much as the smallest common laptop window shows across its narrower
+    // side (1366 × 768 with a browser's bars: about 650): at least 640.
+    expect(minView).toBeGreaterThanOrEqual(640);
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 844, height: 390 },
+      { width: 360, height: 740 },
+    ]) {
+      const { zoom } = at(viewport).camera();
+      expect(zoom).toBeGreaterThan(1);
+      expect(zoom).toBeLessThanOrEqual(maxZoom);
+      // What the screen shows of the arena, across its narrower side.
+      expect(narrower(viewport) * zoom).toBeCloseTo(minView);
+    }
+  });
+
+  it('a very small screen zooms out no further than keeps the cats readable', () => {
+    const { zoom } = at({ width: 280, height: 500 }).camera();
+    expect(zoom).toBe(ARENA_CONFIG.view.maxZoom);
+  });
+
+  it('a resized window changes the zoom with it', () => {
+    const a = at({ width: 1280, height: 800 });
+    a.resize({ width: 390, height: 844 });
+    expect(a.camera().zoom).toBeCloseTo(ARENA_CONFIG.view.minView / 390);
+    a.resize({ width: 1280, height: 800 });
+    expect(a.camera().zoom).toBe(1);
+  });
+
+  it('co-op on a phone: starts at the phone’s zoom, and zooms out on top of it', () => {
+    const viewport = { width: 390, height: 844 };
+    const base = ARENA_CONFIG.view.minView / 390;
+    const a = at(viewport, true);
+    expect(a.camera().zoom).toBeCloseTo(base);
+    // Player 1 walks left, player 2 right: the camera widens, up to its co-op limit.
+    for (let i = 0; i < 600; i++) a.step({ x: -1, y: 0 }, false, { x: 1, y: 0 });
+    const { zoom } = a.camera();
+    expect(zoom).toBeGreaterThan(base);
+    expect(zoom).toBeLessThanOrEqual(base * ARENA_CONFIG.coop.maxZoomOut + 1e-9);
+  });
+});

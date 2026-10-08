@@ -134,3 +134,19 @@ All green, run one after another on `ae34cbc`:
   - `npm run build` exit 0. e2e: 11 specs, 99 passed (next dev), on the final code; the Mega Cat test 3 of 3; one load flake fixed at its cause (D33).
   - Acceptance criteria (D32, D34): by command except how a boss with artwork looks and the notice rules (reading only).
 - **Reviewer**: request changes (notices flooding as "rare" was a share; an upscaled boss), redesigned; re-review approve with two Low, handled (D34, D35). **Tested in a browser, not seen**: a human should look at a boss with a cat's face and the notices.
+
+## T7 — Survival is not too zoomed in on a phone (completed)
+
+- Branch `night-2026-10-08-t7-phone-zoom`, base `4335656`. Start 17:10 (budget ~14,567,000); completed 17:44 (budget ~14,518,000). (T6's entry gives its completion as 17:13; the clock read 17:09.)
+- **CI of T6** (`4335656`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37798434158), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37798430443)).
+- **What the code does**
+  - `arena.ts`: the camera's zoom starts from the screen's own (`baseZoom`, `ARENA_CONFIG.view`): at least 640 arena px across the window's narrower side, up to 1.8; every desktop window of 650 px or more stays at 1, a 390 px phone zooms out 1.64. Co-op zooms out on top of it, and the tether follows.
+  - `arena-view.tsx`: the play area exposes `data-zoom`; a comment.
+  - Tests: unit tests of the camera (desktop windows unzoomed, phones see the minimum, the cap, a resize, co-op on top); e2e: zoom 1 on desktop, the rule's zoom on a Pixel 7. Also: a test that measured a phone's screen unzoomed now uses the zoom (D38); the level-up e2e's poll takes waiting choices (D40); the five-minute arsenal test's time budget (D42).
+- **What it brings**: on a phone the player now sees cats coming from about as far away as on a laptop, instead of meeting them at the screen's edge, while every desktop window plays exactly as before. Decisions: D36–D42; questions.md Q1 asks a human to look.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0.
+  - `vitest related` over 6 files: 183 passed. e2e: 11 specs, 101 passed (next dev) on the final camera rule; the camera tests 2 of 2; the level-up test 3 of 3 after its fix.
+  - `npm run build` exit 0.
+  - Acceptance criteria (D37): by command except readability at the zoom (reading only; Q1).
+- **Reviewer**: request changes (640 reframed the plan's measure); then request changes (768 zoomed out laptop windows); then approve with two Low notes, added to Q1 (D39, D41, D42). **Tested in a browser, not seen**: a human should play it on a phone.

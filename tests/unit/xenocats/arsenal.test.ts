@@ -554,7 +554,8 @@ describe('levels in a run', () => {
     expect(a.state().level).toBeGreaterThan(20);
     // Many attacks alive at once: things in flight, beams, blades.
     expect(most).toBeGreaterThan(30);
-  }, 60_000);
+    // A whole five-minute run: about 40 s alone, more beside other test files.
+  }, 120_000);
 });
 
 describe('evolution', () => {

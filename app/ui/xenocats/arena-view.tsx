@@ -103,6 +103,8 @@ type Hud = {
   weapons: string;
   /** Where the crosshair is on the screen ("x,y"), or "" without one. */
   crosshair: string;
+  /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
+  zoom: number;
   /** Each Keeper's Resolve, and whether he is down (co-op: two). */
   heroes: {
     resolve: number;
@@ -432,7 +434,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
 
     const draw = (time: number) => {
       const state = arena.state();
-      // The shared camera: the screen shows the viewport times its zoom (1 alone).
+      // The shared camera: the screen shows the viewport times its zoom (the screen's
+      // own zoom alone: 1 on a desktop, more on a phone; more again in co-op).
       const cam = arena.camera();
       const width = window.innerWidth * cam.zoom;
       const height = window.innerHeight * cam.zoom;
@@ -788,6 +791,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             aimRef.current === 'crosshair' && pointerRef.current
               ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
               : '',
+          zoom: Math.round(arena.camera().zoom * 100) / 100,
           heroes: state.heroes.map((h) => ({
             resolve: h.resolve,
             maxResolve: h.maxResolve,
@@ -1025,6 +1029,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
           data-aim={aimMode}
           data-crosshair={hud?.crosshair ?? ''}
+          data-zoom={hud?.zoom ?? ''}
           className={`fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none${
             aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
           }`}

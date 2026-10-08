@@ -1,4 +1,5 @@
 import { type Locator, type Page, devices, expect, test } from '@playwright/test';
+import { ARENA_CONFIG } from '@/app/ui/xenocats/arena';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
 import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
 
@@ -139,6 +140,12 @@ test('the retired Taming game is gone: /cats/taming is not found', async ({ page
 
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('on a computer the camera is unzoomed', async ({ page }) => {
+    await openArena(page);
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-zoom')).toBe(1);
+  });
 
   test('the pause menu shows the run so far: the choice taken at its level, free slots, the run', async ({
     page,
@@ -339,6 +346,9 @@ test.describe('on a computer', () => {
     if (kinds[pick] === 'weapon') {
       await expect
         .poll(async () => {
+          // The HUD is only updated while playing: a further level-up waiting
+          // would hold it back, so take it (it can only raise the level).
+          await playOn(page);
           const held = (await area(page).getAttribute('data-weapons')) ?? '';
           const level = new RegExp(`${chosen}:(\\d)`).exec(held)?.[1];
           return Number(level ?? 0);
@@ -557,6 +567,21 @@ test.describe('on a touch screen', () => {
   // A phone's screen and touch input (its browser type cannot change inside a group).
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  test('on a phone the camera zooms out, to show as much of the arena as the rule says', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await startRun(page, true);
+    const size = page.viewportSize()!;
+    const narrower = Math.min(size.width, size.height);
+    const expected =
+      Math.round(
+        Math.min(Math.max(ARENA_CONFIG.view.minView / narrower, 1), ARENA_CONFIG.view.maxZoom) * 100
+      ) / 100;
+    expect(expected).toBeGreaterThan(1);
+    await expect.poll(() => num(page, 'data-zoom')).toBe(expected);
+  });
 
   test('the pause menu shows the run so far on a phone too, after a level-up', async ({ page }) => {
     test.setTimeout(60_000);
