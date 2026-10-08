@@ -166,3 +166,20 @@ All green, run one after another on `ae34cbc`:
   - `npm run build` exit 0. e2e: the selector's 22 specs, 137 passed (next dev), before and after the review fixes; the two new touch tests 2 of 2.
   - Acceptance criteria (D44): by command; a real phone's long-press gestures by nothing (Q2).
 - **Reviewer**: approve with four Low; two fixed (multi-touch, a comment), one kept by rule, one to Q2 (D45). **Tested in a browser, not seen**: a human should hold a finger on a sleeping cat on a phone.
+
+## T9 — Three cats' artwork colours (completed)
+
+- Branch `night-2026-10-08-t9-artwork-colours`, base `7c6b3a5`. Start 18:00 (budget ~14,478,000); completed 18:13 (budget ~14,452,000).
+- **CI of T8** (`7c6b3a5`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37805336453), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37805331786)).
+- **What the code does**
+  - `public/xenocats/cats/laser-ocicat-awake.webp`: fur less pale and yellow (saturation and hue matched to its asleep pose); the visor left as it was.
+  - `public/xenocats/cats/titan-forest-cat-asleep.webp`: fur lightened to its awake pose's lightness.
+  - `public/xenocats/cats/gravi-coon-asleep.webp`: fur turned to its awake pose's colour.
+  - `docs/ai/night-2026-10-08/fur.cjs` (new): measures a cat's fur (hue, saturation, lightness) and adjusts it within a hue band, leaving alpha and other pixels alone; refuses a missing number.
+- **What it brings**: three cats look like the same cat awake and asleep, with no new artwork needed; and the next colour fix is a measured command, not a guess. Decisions: D46–D48.
+- **Verification**
+  - The fur measured before and after against the other pose (D46, D48), reproduced byte for byte by the reviewer; size, format and alpha unchanged.
+  - `tests/unit/xenocats/cat-art.test.tsx`: 9 passed. prettier on the script clean; `npm run lint` exit 0, 0 warnings.
+  - Selector: no unit test; e2e the 22 specs reaching the images' pages, 137 passed (next dev), before and after the review fixes. `npm run build` exit 0.
+  - **Built, not seen**: a human should look at `laser-ocicat-awake.webp`, `titan-forest-cat-asleep.webp` and `gravi-coon-asleep.webp` beside their other poses.
+- **Reviewer**: request changes (the visor recoloured; noses, antenna bulbs, the script's arguments), all handled (D48).
