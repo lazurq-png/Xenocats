@@ -558,3 +558,23 @@ The 2026-10-01 run's Q7 noted that a login for an email with no account skips th
   - Prettier, lint 0 warnings, type check, group check, build.
   - Unit: 5 files, 60 passed.
   - Browser: 129 passed.
+
+## Checkpoint 3 (completed)
+
+- Branch `night-2026-10-07-c3-checkpoint`, base `145ff32`; covers `b9eec4a..145ff32` (T12 items 1–5). Start 02:34 (budget ~13,366,000); completed 05:33 (budget ~13,350,000).
+- **Gap: about 02:35 to 05:20, nothing ran.** The session hit its usage limit again ("resets 5:20am"). The first range reviewer stopped with that error, and the review was redone at 05:20.
+- **CI of T12 item 5** (`145ff32`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37708326382), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37708326018)).
+- **1. Tests.** Every behaviour changed in the range has a test that fails without it; each item's entry names them.
+  - **Added:** `updateInvoice` turning the database's due-date check into the field's error (the create path already had one). It failed with that branch disabled.
+  - **Removed:** nothing. No test is of removed behaviour, a duplicate, or unable to fail.
+  - **Covered by reading only, recorded:** the cats' screen measured from the page's client size (D85).
+- **2. Quality and security.** The reviewer read the whole range with `.claude/rules/security-review.md` in scope: the actions, the sign-in and its timing, the forms and data, the cat engine, the arena, and how the items interact.
+  - **No security or correctness finding.**
+  - Three Low findings, all acted on (D85): the test above; the edit form now names the invoice date it was given but did not use; the reading-only note.
+- **What changed** (code): `app/ui/invoices/edit-form.tsx` (help text) and `tests/unit/actions.test.ts`.
+- **Verification** (a full-suite point; `GATE_FULL=1`), all exit 0:
+  - Prettier, lint 0 warnings, type check, group check.
+  - `npm test`: 43 files, 640 passed (17 skipped).
+  - Build.
+  - `npm run test:e2e`: 129 passed.
+  - `E2E_SERVER=start npm run test:e2e`: 129 passed.

@@ -134,6 +134,23 @@ describe('with a session', () => {
     consoleError.mockRestore();
   });
 
+  it("updateInvoice reports the database's own due-date check as the field's error", async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sql.mockResolvedValueOnce([{ date: '2026-01-10' }]).mockRejectedValueOnce(
+      Object.assign(new Error('violates check constraint'), {
+        constraint_name: 'invoices_due_date_check',
+      })
+    );
+    const result = await updateInvoice(
+      'cc27c14a-0acf-4f4a-a6c9-d45682c144b9',
+      {},
+      invoiceForm({ dueDate: '2026-02-09' })
+    );
+    expect(result.errors?.dueDate).toEqual(['The due date cannot be before the invoice date.']);
+    expect(redirect).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it('createInvoice still validates the form', async () => {
     const result = await createInvoice({}, invoiceForm({ amount: '0' }));
     expect(result.errors?.amount).toEqual(['Please enter an amount greater than $0']);

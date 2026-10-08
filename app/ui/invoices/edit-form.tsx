@@ -99,7 +99,7 @@ export default function EditInvoiceForm({
             <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-aura peer-focus:text-plasma" />
           </div>
           <p id="due-date-help" className="mt-2 text-xs text-aura">
-            Not before the invoice date, and at most a year after it.
+            Not before the invoice date ({invoice.date}), and at most a year after it.
           </p>
           <div id="due-date-error" aria-live="polite" aria-atomic="true">
             {state.errors?.dueDate &&
