@@ -92,3 +92,19 @@ All green, run one after another on `ae34cbc`:
   - `npm run build` exit 0.
   - Acceptance criteria (D19): all by command except how the crosshair looks (reading only).
 - **Reviewer**: request changes (one Medium, two Low), all fixed; re-review approve (D20). **Tested in a browser, not seen**: a human should look at the crosshair and the Aim choice.
+
+## T5 — The pause menu shows the run so far (completed)
+
+- Branch `night-2026-10-08-t5-pause-stats`, base `bd2d94a`. Start 15:38 (budget ~14,728,000); completed 15:56 (budget ~14,680,000). (T4's entry gives its completion as 15:39; the clock read 15:37.)
+- **CI of T4** (`bd2d94a`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37785833828), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37785828899)).
+- **What the code does**
+  - `arsenal.ts`: `loadout(weapons, passives)` and `passiveTotal`: each weapon at its level of its highest (evolved marked) and what its next level adds, each passive and what it gives in all, the free slots, and the evolutions within reach with what is missing, which one the next chest he opens evolves, and none that can no longer come. The secret evolution is never named.
+  - `pause-summary.tsx` (new), `arena-view.tsx`: the pause menu shows the run (time, level and experience, Resolve, cats sent home) and, per Keeper, weapons, passives and evolutions; read from a snapshot taken when the run pauses; the panel scrolls inside itself on a small screen; Resume stays focused.
+  - Tests: unit tests of the loadout (levels, slots, next level in the cards' words, passives' totals, evolution hints against `evolutionFor`, out-of-reach and secret ones, a seeded run after three level-ups); e2e on desktop and touch, each after a level-up, checking the choice taken is listed at its level and the slot counts agree.
+- **What it brings**: a player can stop and see what they are carrying, what each next level would add, how many slots are left and how close an evolution is, so their next choices are informed instead of remembered. Decisions: D21–D26.
+- **Verification**
+  - prettier (staged content) clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0.
+  - `vitest related` over 5 files: 5 files, 176 passed; after the re-review's test change, `arsenal.test.ts` 94 passed. e2e: 11 specs, 99 passed (next dev) before and after the review fixes; the two new tests 2 of 2 each.
+  - `npm run build` exit 0.
+  - Acceptance criteria (D24, D25): by command except co-op's two sections and how the menu looks (reading only).
+- **Reviewer**: request changes (one Medium, four Low), all fixed; re-review approve with one Low, fixed (D25, D26). **Tested in a browser, not seen**: a human should look at the pause menu on a phone and with co-op.

@@ -1,4 +1,4 @@
-import { type Page, devices, expect, test } from '@playwright/test';
+import { type Locator, type Page, devices, expect, test } from '@playwright/test';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
 import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
 
@@ -23,6 +23,48 @@ const num = async (page: Page, name: string) => {
   await playOn(page);
   return Number(await area(page).getAttribute(name));
 };
+
+/**
+ * Takes a choice from the level-up on screen (a weapon if one is offered) with
+ * `press`, and says what was taken: its kind, id and level.
+ */
+async function takeChoice(page: Page, press: (index: number) => Promise<void>) {
+  const buttons = levelUp(page).getByRole('button');
+  const kinds = await buttons.evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
+  const pick = Math.max(kinds.indexOf('weapon'), 0);
+  const taken = {
+    kind: kinds[pick],
+    id: (await buttons.nth(pick).getAttribute('data-choice')) ?? '',
+    level: Number(await buttons.nth(pick).getAttribute('data-level')),
+  };
+  await press(pick);
+  return taken;
+}
+
+/** The pause menu lists what was taken at its level (or higher: a later choice may raise it). */
+async function expectInSummary(
+  summary: Locator,
+  taken: { kind: string | null; id: string; level: number }
+) {
+  await expect(summary).toBeVisible();
+  const weapons = summary.locator('li[data-weapon]');
+  const passives = summary.locator('li[data-passive]');
+  // The slot counts agree with what is listed, out of six each.
+  await expect(summary.getByTestId('survival-pause-weapon-slots')).toHaveText(
+    `Weapons ${await weapons.count()} of 6`
+  );
+  await expect(summary.getByTestId('survival-pause-passive-slots')).toHaveText(
+    `Passives ${await passives.count()} of 6`
+  );
+  if (taken.kind === 'restore') return;
+  const row = summary.locator(
+    taken.kind === 'weapon' ? `li[data-weapon="${taken.id}"]` : `li[data-passive="${taken.id}"]`
+  );
+  await expect(row).toHaveCount(1);
+  const level = Number(await row.getAttribute('data-level'));
+  expect(level).toBeGreaterThanOrEqual(taken.level);
+  await expect(row).toContainText(`${level} / `);
+}
 
 /** Pauses the run with Esc (taking any level-up's choice first). */
 async function pauseRun(page: Page) {
@@ -93,6 +135,26 @@ test('the retired Taming game is gone: /cats/taming is not found', async ({ page
 
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('the pause menu shows the run so far: the choice taken at its level, free slots, the run', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page);
+    // Walk until a level-up, and take a weapon if one is offered.
+    await page.keyboard.down('d');
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await page.keyboard.up('d');
+    const taken = await takeChoice(page, async (i) => page.keyboard.press(String(i + 1)));
+    const paused = await pauseRun(page);
+    await expectInSummary(paused.getByTestId('survival-pause-summary'), taken);
+    await expect(paused.getByTestId('survival-pause-level')).toContainText(/^[2-9]/);
+    await expect(paused.getByTestId('survival-pause-time')).toHaveText(/^\d+:\d\d$/);
+    // Resume is still what the menu puts the focus on.
+    await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
+  });
 
   test('aiming with a crosshair: chosen in the lobby, drawn where the mouse is, put away in the pause menu', async ({
     page,
@@ -487,6 +549,31 @@ test.describe('on a touch screen', () => {
   // A phone's screen and touch input (its browser type cannot change inside a group).
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  test('the pause menu shows the run so far on a phone too, after a level-up', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page, true);
+    const pad = page.getByTestId('movement-pad');
+    const box = (await pad.boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: box.x + box.width / 2 + 50, y: box.y + box.height / 2 }],
+    });
+    await expect(levelUp(page)).toBeVisible({ timeout: 40_000 });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const buttons = levelUp(page).getByRole('button');
+    const taken = await takeChoice(page, (i) => buttons.nth(i).tap());
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    await expectInSummary(paused.getByTestId('survival-pause-summary'), taken);
+    // The menu fits the phone: it scrolls inside itself, and Resume is in it.
+    const resume = paused.getByRole('button', { name: 'Resume' });
+    await resume.scrollIntoViewIfNeeded();
+    await expect(resume).toBeInViewport();
+  });
 
   test('a touch screen is not offered a crosshair: its weapons aim themselves', async ({
     page,

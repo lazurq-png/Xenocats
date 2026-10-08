@@ -22,6 +22,7 @@ import {
   evolutionFor,
   evolutionText,
   levelChanges,
+  loadout,
   modifiers,
   offerChoices,
   passiveChanges,
@@ -955,5 +956,195 @@ describe('aiming with a crosshair (desktop, player 1)', () => {
     a.aimAt(null);
     for (let n = 0; n < 40; n++) a.step(still, false);
     expect(a.beams()).toEqual([]);
+  });
+});
+
+describe('the pause menu: what he carries', () => {
+  it('each weapon at its level of its highest, what its next level adds, and the free slots', () => {
+    const view = loadout(
+      [
+        { id: 'laser-pointer', level: 3 },
+        { id: 'can-opener', level: MAX_WEAPON_LEVEL },
+      ],
+      [{ id: 'scissors', level: 2 }]
+    );
+    expect(view.weapons).toEqual([
+      {
+        id: 'laser-pointer',
+        name: 'Laser Pointer',
+        level: 3,
+        maxLevel: MAX_WEAPON_LEVEL,
+        evolved: false,
+        next: 'Fires 20% sooner.',
+      },
+      {
+        id: 'can-opener',
+        name: 'Can Opener',
+        level: MAX_WEAPON_LEVEL,
+        maxLevel: MAX_WEAPON_LEVEL,
+        evolved: false,
+        next: null,
+      },
+    ]);
+    // The same words as the level-up card for that level.
+    expect(view.weapons[0].next).toBe(
+      describeChoice({ kind: 'weapon', id: 'laser-pointer', level: 4 }).change
+    );
+    expect(view.freeWeaponSlots).toBe(WEAPON_SLOTS - 2);
+    expect(view.freePassiveSlots).toBe(PASSIVE_SLOTS - 1);
+  });
+
+  it('a passive says what it gives in all, at its level', () => {
+    const view = loadout(
+      [],
+      [
+        { id: 'scissors', level: 2 },
+        { id: 'rubber-chicken', level: 3 },
+        { id: 'lucky-bell', level: 1 },
+      ]
+    );
+    expect(view.passives.map((p) => [p.name, p.level, p.maxLevel, p.gives])).toEqual([
+      [
+        'Scissors',
+        2,
+        MAX_PASSIVE_LEVEL,
+        '+2 beam, treat, droplet, ball, blade, piece or jump for each weapon that fires them.',
+      ],
+      ['Rubber Chicken', 3, MAX_PASSIVE_LEVEL, '+30% walking speed.'],
+      ['Lucky Bell', 1, 1, '+1 choice at every level.'],
+    ]);
+    // Equal to what modifiers gives: Scissors 2 adds two to every weapon's count.
+    expect(modifiers(new Map([['scissors', 2]])).count).toBe(2);
+  });
+
+  it('an evolved weapon is marked, grows no further, and its evolution is no longer within reach', () => {
+    const view = loadout(
+      [{ id: 'infinite-laser', level: MAX_WEAPON_LEVEL }],
+      [{ id: 'battery', level: 1 }]
+    );
+    expect(view.weapons[0]).toMatchObject({
+      evolved: true,
+      next: null,
+      maxLevel: MAX_WEAPON_LEVEL,
+    });
+    expect(view.evolutions.find((e) => e.to === 'infinite-laser')).toBeUndefined();
+  });
+
+  it('evolutions within reach say what is missing; none missing, the next chest he opens evolves it', () => {
+    const started = loadout([{ id: 'laser-pointer', level: 5 }], [{ id: 'catnip', level: 1 }]);
+    expect(started.evolutions).toEqual([
+      {
+        from: 'laser-pointer',
+        with: 'battery',
+        to: 'infinite-laser',
+        missing: ['the Laser Pointer at level 8 (now 5)', 'the Battery'],
+        ready: false,
+        after: null,
+      },
+      {
+        from: 'vacuum-cleaner',
+        with: 'catnip',
+        to: 'forbidden-catnip-vacuum',
+        missing: ['the Vacuum Cleaner'],
+        ready: false,
+        after: null,
+      },
+    ]);
+    const ready = loadout(
+      [{ id: 'laser-pointer', level: MAX_WEAPON_LEVEL }],
+      [{ id: 'battery', level: 1 }]
+    );
+    expect(ready.evolutions).toEqual([
+      {
+        from: 'laser-pointer',
+        with: 'battery',
+        to: 'infinite-laser',
+        missing: [],
+        ready: true,
+        after: null,
+      },
+    ]);
+  });
+
+  it('two ready at once: the one a chest evolves first is ready, the other after it', () => {
+    const weapons = [
+      { id: 'laser-pointer' as WeaponId, level: MAX_WEAPON_LEVEL },
+      { id: 'vacuum-cleaner' as WeaponId, level: MAX_WEAPON_LEVEL },
+    ];
+    const passives = [
+      { id: 'battery' as PassiveId, level: 1 },
+      { id: 'catnip' as PassiveId, level: 1 },
+    ];
+    const view = loadout(weapons, passives);
+    // The chest's own rule picks one.
+    const first = evolutionFor(
+      new Map(weapons.map((w) => [w.id, w.level])),
+      new Map(passives.map((p) => [p.id, p.level]))
+    )!;
+    const readyOnes = view.evolutions.filter((e) => e.ready);
+    expect(readyOnes.map((e) => e.to)).toEqual([first.to]);
+    for (const e of view.evolutions.filter((e) => !e.ready && e.missing.length === 0)) {
+      expect(e.after).toBe(first.to);
+    }
+    expect(view.evolutions.filter((e) => e.after !== null)).toHaveLength(1);
+  });
+
+  it('an evolution whose missing piece has no free slot is out of reach, and not listed', () => {
+    // Six passives, none of them the Battery: the Battery can never come.
+    const passives = (
+      ['rubber-chicken', 'catnip', 'scissors', 'wool-sweater', 'warm-milk', 'stern-look'] as const
+    ).map((id) => ({ id, level: 1 }));
+    const view = loadout([{ id: 'laser-pointer', level: 3 }], passives);
+    expect(view.freePassiveSlots).toBe(0);
+    expect(view.evolutions.map((e) => e.to)).not.toContain('infinite-laser');
+    // ...while one whose pieces could still come stays: the Vacuum Cleaner has a slot.
+    expect(view.evolutions.map((e) => e.to)).toContain('forbidden-catnip-vacuum');
+  });
+
+  it('read from a real run: what a seeded arena holds after level-ups is what it lists', () => {
+    const a = arena({ ...steady, gems: ARENA_CONFIG.gems, escalation: [[0, 40]] }, 11);
+    let choices = 0;
+    for (let n = 0; n < 4000 && choices < 3; n++) {
+      if (a.choices()) {
+        a.choose(0);
+        choices++;
+      } else a.step(still);
+    }
+    expect(choices).toBe(3);
+    const hero = a.state().heroes[0];
+    const view = loadout(hero.weapons, hero.passives);
+    expect(view.weapons.map((w) => [w.id, w.level])).toEqual(
+      hero.weapons.map((w) => [w.id, w.level])
+    );
+    expect(view.passives.map((p) => [p.id, p.level])).toEqual(
+      hero.passives.map((p) => [p.id, p.level])
+    );
+    expect(view.freeWeaponSlots).toBe(WEAPON_SLOTS - hero.weapons.length);
+    expect(view.freePassiveSlots).toBe(PASSIVE_SLOTS - hero.passives.length);
+    // Its evolution hints are the held pieces' and agree with the chest's rule.
+    const next = evolutionFor(
+      new Map(hero.weapons.map((w) => [w.id, w.level])),
+      new Map(hero.passives.map((p) => [p.id, p.level]))
+    );
+    for (const e of view.evolutions) {
+      expect(
+        hero.weapons.some((w) => w.id === e.from) || hero.passives.some((p) => p.id === e.with)
+      ).toBe(true);
+      expect(e.ready).toBe(next?.to === e.to);
+    }
+    // One starting weapon at level 1, and three choices, each one more level of something.
+    const levels =
+      hero.weapons.reduce((sum, w) => sum + w.level, 0) +
+      hero.passives.reduce((sum, p) => sum + p.level, 0);
+    expect(levels).toBe(1 + choices);
+  });
+
+  it('never names a secret evolution', () => {
+    const secret = EVOLUTIONS.find((e) => e.secret)!;
+    const view = loadout(
+      [{ id: secret.from, level: MAX_WEAPON_LEVEL }],
+      [{ id: secret.with, level: 1 }]
+    );
+    expect(view.evolutions.map((e) => e.to)).not.toContain(secret.to);
   });
 });

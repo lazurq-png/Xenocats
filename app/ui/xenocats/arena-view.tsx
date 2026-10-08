@@ -35,6 +35,7 @@ import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
 import { parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
+import { PauseSummary } from './pause-summary';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
@@ -181,6 +182,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     aimRef.current = aimMode;
   }, [aimMode]);
   const arenaRef = useRef<Arena | null>(null);
+  const [pausedState, setPausedState] = useState<ReturnType<Arena['state']> | null>(null);
   const screenRef = useRef<Screen>('start');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -200,6 +202,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const show = useCallback((next: Screen) => {
     screenRef.current = next;
     setScreen(next);
+    // The pause menu shows the run as it stood when it paused.
+    if (next === 'paused') setPausedState(arenaRef.current?.state() ?? null);
   }, []);
 
   const finish = useCallback(
@@ -1162,13 +1166,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               role="dialog"
               aria-modal="true"
               aria-labelledby="pause-heading"
-              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60"
+              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60 p-4"
             >
-              <div className="rounded-2xl border border-line bg-panel p-6 text-center">
+              <div className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-center">
                 <h2 id="pause-heading" className="font-display text-xl text-cream">
                   Paused
                 </h2>
                 <p className="mt-2 text-sm text-aura">The cats wait. They are patient.</p>
+                {pausedState && <PauseSummary state={pausedState} />}
                 <GameSettings where="pause" touch={touch} />
                 <div className="mt-4 flex justify-center gap-3">
                   <Button onClick={resume}>Resume</Button>

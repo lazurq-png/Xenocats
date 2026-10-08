@@ -709,6 +709,110 @@ export function describeChoice(choice: Choice): {
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
+/** What a passive at `level` gives in all, read from `modifiers` (e.g. "+20% walking speed"). */
+export function passiveTotal(id: PassiveId, level: number): string[] {
+  if (level < 1) return [];
+  const none = modifiers(new Map());
+  const held = modifiers(new Map([[id, Math.min(level, PASSIVES[id].maxLevel)]]));
+  return (Object.keys(MODIFIER_WORDS) as (keyof Modifiers)[])
+    .filter((key) => Math.abs(held[key] - none[key]) > 1e-9)
+    .map((key) => MODIFIER_WORDS[key](held[key] - none[key]));
+}
+
+/** What a Keeper carries, as the pause menu shows it. */
+export type Loadout = {
+  weapons: {
+    id: WeaponId;
+    name: string;
+    level: number;
+    /** An evolved weapon does not grow: its highest level is the one it has. */
+    maxLevel: number;
+    evolved: boolean;
+    /** What the next level adds (levelChanges), or null at the top or evolved. */
+    next: string | null;
+  }[];
+  freeWeaponSlots: number;
+  passives: { id: PassiveId; name: string; level: number; maxLevel: number; gives: string }[];
+  freePassiveSlots: number;
+  /**
+   * Each evolution he has started (holds its weapon or its passive), not yet made,
+   * and still possible (a missing weapon or passive has a free slot to come into):
+   * what is still missing, or, with nothing missing, `ready` for the one the next
+   * chest he opens evolves (evolutionFor: the first ready, in EVOLUTIONS' order)
+   * and `after` naming it for any other ready one. A secret one is never named
+   * here: the codex keeps it until it is found.
+   */
+  evolutions: {
+    from: WeaponId;
+    with: PassiveId;
+    to: WeaponId;
+    missing: string[];
+    ready: boolean;
+    after: WeaponId | null;
+  }[];
+};
+
+export function loadout(
+  weapons: readonly { id: WeaponId; level: number }[],
+  passives: readonly { id: PassiveId; level: number }[]
+): Loadout {
+  const weaponLevels = new Map(weapons.map((w) => [w.id, w.level] as const));
+  const passiveLevels = new Map(passives.map((p) => [p.id, p.level] as const));
+  const evolvedIds = new Set(EVOLUTIONS.map((e) => e.to));
+  // What the next chest he opens evolves, by the chest's own rule.
+  const first = evolutionFor(weaponLevels, passiveLevels);
+  return {
+    weapons: weapons.map(({ id, level }) => {
+      const evolved = evolvedIds.has(id);
+      const maxLevel = evolved ? level : MAX_WEAPON_LEVEL;
+      const changes = evolved || level >= maxLevel ? [] : levelChanges(id, level + 1);
+      return {
+        id,
+        name: WEAPONS[id].name,
+        level,
+        maxLevel,
+        evolved,
+        next: changes.length > 0 ? `${capitalise(changes.join(', '))}.` : null,
+      };
+    }),
+    freeWeaponSlots: Math.max(WEAPON_SLOTS - weapons.length, 0),
+    passives: passives.map(({ id, level }) => ({
+      id,
+      name: PASSIVES[id].name,
+      level,
+      maxLevel: PASSIVES[id].maxLevel,
+      gives: `${capitalise(passiveTotal(id, level).join(', '))}.`,
+    })),
+    freePassiveSlots: Math.max(PASSIVE_SLOTS - passives.length, 0),
+    evolutions: EVOLUTIONS.filter(
+      (e) =>
+        !e.secret &&
+        !weaponLevels.has(e.to) &&
+        (weaponLevels.has(e.from) || passiveLevels.has(e.with)) &&
+        // A piece he lacks must have a slot to come into, or it is out of reach.
+        (weaponLevels.has(e.from) || weapons.length < WEAPON_SLOTS) &&
+        (passiveLevels.has(e.with) || passives.length < PASSIVE_SLOTS)
+    ).map((e) => {
+      const level = weaponLevels.get(e.from);
+      const missing: string[] = [];
+      if (level === undefined) missing.push(`the ${WEAPONS[e.from].name}`);
+      else if (level < MAX_WEAPON_LEVEL) {
+        missing.push(`the ${WEAPONS[e.from].name} at level ${MAX_WEAPON_LEVEL} (now ${level})`);
+      }
+      if (!passiveLevels.has(e.with)) missing.push(`the ${PASSIVES[e.with].name}`);
+      const done = missing.length === 0;
+      return {
+        from: e.from,
+        with: e.with,
+        to: e.to,
+        missing,
+        ready: done && first?.to === e.to,
+        after: done && first && first.to !== e.to ? first.to : null,
+      };
+    }),
+  };
+}
+
 /** An evolution, announced with due gravity. */
 export function evolutionText(from: WeaponId, to: WeaponId): string {
   return `${the(WEAPONS[from].name, 'The')} is no more. In its place: ${the(WEAPONS[to].name, 'the')}.`;
