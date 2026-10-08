@@ -73,6 +73,23 @@ async function startRun(page: Page, tap = false) {
   await expect(area(page)).toHaveAttribute('data-screen', 'playing');
 }
 
+test('/cats has one Play link, and it opens Survival', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/cats');
+  const fight = page.getByRole('region', { name: 'Fight a cat' });
+  await expect(fight.getByRole('link')).toHaveCount(1);
+  await fight.getByRole('link', { name: 'Play' }).click();
+  await expect(page).toHaveURL(/\/cats\/survival$/, { timeout: 15_000 });
+  await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
+  await expect(page.getByTestId('survival-start')).toBeVisible();
+});
+
+test('the retired Taming game is gone: /cats/taming is not found', async ({ page }) => {
+  const response = await page.goto('/cats/taming');
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole('heading', { level: 1, name: '404 Not Found' })).toBeVisible();
+});
+
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 

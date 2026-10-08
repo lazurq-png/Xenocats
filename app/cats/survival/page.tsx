@@ -29,7 +29,7 @@ export default function Page() {
           </Link>
         </header>
         <div id="main-content" tabIndex={-1} className="focus-visible:outline-none">
-          <FightPage kind="survival" />
+          <FightPage />
         </div>
       </main>
     </div>

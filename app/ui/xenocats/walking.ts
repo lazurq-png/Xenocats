@@ -1,6 +1,5 @@
-// Walking a game character with the keyboard, which way it faces, and a game clock
-// that stands still while a game is paused. Shared by the fight games (fight.tsx,
-// arena-view.tsx) and the movement pad (movement-pad.ts).
+// Walking a game character with the keyboard. Shared by the arena (arena-view.tsx)
+// and the movement pad (movement-pad.ts).
 
 import type { Vec } from './effects';
 
@@ -44,39 +43,4 @@ export function walkDirection(held: Iterable<string>, only?: ReadonlySet<string>
   y = Math.sign(y);
   const length = Math.hypot(x, y);
   return length === 0 ? { x: 0, y: 0 } : { x: x / length, y: y / length };
-}
-
-export const FACINGS = ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'] as const;
-export type Facing = (typeof FACINGS)[number];
-
-/** Which of eight ways the character at `from` faces to look at `to` (screen y grows down). */
-export function facingTowards(from: Vec, to: Vec): Facing {
-  const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const eighth = Math.round(angle / (Math.PI / 4));
-  return FACINGS[((eighth % 8) + 8) % 8];
-}
-
-/**
- * Time that stops while the game is paused. `real` is any monotonic clock
- * (performance.now()); `now` returns the game time it maps to.
- */
-export function createGameClock(start: number) {
-  let offset = start;
-  let pausedAt: number | null = null;
-  return {
-    now(real: number): number {
-      return (pausedAt ?? real) - offset;
-    },
-    pause(real: number) {
-      pausedAt ??= real;
-    },
-    resume(real: number) {
-      if (pausedAt === null) return;
-      offset += real - pausedAt;
-      pausedAt = null;
-    },
-    isPaused(): boolean {
-      return pausedAt !== null;
-    },
-  };
 }

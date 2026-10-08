@@ -2,11 +2,6 @@
 
 import { useSyncExternalStore } from 'react';
 import ArenaGame from './arena-view';
-import { XenocatCatsProvider } from './cat-layer';
-import { XenocatCursorProvider } from './fake-cursor';
-import Fight from './fight';
-
-export type Kind = 'survival' | 'taming';
 
 const FINE_POINTER = '(pointer: fine)';
 
@@ -22,20 +17,12 @@ const hasFinePointer = () =>
   typeof window.matchMedia !== 'function' || window.matchMedia(FINE_POINTER).matches;
 
 /**
- * A fight game's page. Survival (/cats/survival) is the arena (arena-view.tsx): it
- * needs neither the page's cats nor its fake cursor, so neither runs there. Taming
- * (/cats/taming) plays with both, with no cat coming on its own. On a touch screen
- * (no precise pointer) either game is walked with the movement pad.
+ * The game's page, /cats/survival: the arena (arena-view.tsx). It needs neither the
+ * page's cats nor its fake cursor, so neither runs there. On a touch screen (no
+ * precise pointer) it is walked with the movement pad.
  */
-export default function FightPage({ kind }: { kind: Kind }) {
+export default function FightPage() {
   // The server cannot know: it renders the desktop game, and a touch screen swaps it.
   const fine = useSyncExternalStore(subscribePointer, hasFinePointer, () => true);
-  if (kind === 'survival') return <ArenaGame touch={!fine} />;
-  return (
-    <XenocatCursorProvider>
-      <XenocatCatsProvider autoSpawn={false}>
-        <Fight touch={!fine} />
-      </XenocatCatsProvider>
-    </XenocatCursorProvider>
-  );
+  return <ArenaGame touch={!fine} />;
 }
