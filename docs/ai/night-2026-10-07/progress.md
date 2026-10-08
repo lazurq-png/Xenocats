@@ -501,3 +501,34 @@ Checkpoint 2 recorded three Survival behaviours covered by reading only: the URL
   - Build.
   - `npm run test:e2e`: 128 passed.
   - `E2E_SERVER=start npm run test:e2e`: 128 passed.
+
+## T12 item 4 — started 01:56: an unknown email takes as long as a wrong password (kind: security and quality)
+
+The 2026-10-01 run's Q7 noted that a login for an email with no account skips the bcrypt comparison, so it answers measurably faster than a wrong password for a real one, which tells an attacker which emails have accounts. The sign-in will compare against a hash of an unknown string in that case too.
+
+## T12 item 4 — an unknown email takes as long as a wrong password (completed)
+
+- Branch `night-2026-10-07-t12-4-login-timing`, base `59bc71b`. Start 01:56 (budget ~13,451,000); completed 02:12 (budget ~13,422,000).
+- **CI of T12 item 2** (`1af4360`): **CI passed** on both branches ([task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37704078471), [run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37704078436)). This includes the build job's "Database tests" step, so `data.test.ts`'s new `fetchInvoiceById` expectation, which this run could not run, passed on CI's database.
+- **CI of T12 item 3** (`59bc71b`): **CI passed** on both branches ([run-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37704925232), [task-branch run](https://github.com/lazurq-png/Xenocats/actions/runs/37704925983)).
+- **What the code does** (D80, D81)
+  - A login for an email with no account now makes the same one bcrypt comparison as a wrong password. It compares against a hash of a random string, made when the server starts, at the stored hashes' cost. The response time therefore no longer tells which emails have accounts.
+  - The sign-in's decision moved from `auth.ts` into `app/lib/credentials.ts` (`checkCredentials`), unchanged in behaviour.
+  - `app/lib/password-check.ts` (new) holds `passwordMatches` and `BCRYPT_COST`. The password change uses the constant.
+- **Why it was added**: plan task 12, an exploration item of the kind "security and quality". It is the 2026-10-01 run's Q7, last point. Left from that Q7: a limit per client address, and pruning `login_failures`.
+- **Tests**
+  - `password-check.test.ts` (new, 3): right and wrong passwords; an unknown email still makes one comparison at the stored cost; the seed's cost.
+  - `credentials.test.ts` (new, 4), against a fake database with real bcrypt:
+    - the right password signs in and clears failures;
+    - a wrong password and an unknown email each cost exactly one comparison;
+    - a locked email is refused before any comparison;
+    - malformed credentials reach nothing.
+  - Both are in CI's unit group. Each failed with the fix it guards removed: the comparison skipped, or the call site changed to skip unknown users.
+  - The timing itself is not measured, since a timing assertion would be flaky. The tests pin the work done instead.
+- **Reviewer** (security rules in scope): approve, two Low findings, both acted on (D81): the first unknown email in a process did twice the work, and no test guarded the sign-in's call site. Re-review: approve, no findings.
+- **Gate** (FULL: `ci.yml` and the sign-in changed), all exit 0:
+  - Actionlint 0, prettier on 7 files, lint 0 warnings, type check, group check.
+  - `npm test`: 43 files, 637 passed (17 skipped).
+  - Build.
+  - `npm run test:e2e`: 128 passed, the login and lockout browser tests included.
+  - `E2E_SERVER=start npm run test:e2e`: 128 passed.

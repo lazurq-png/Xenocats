@@ -6,6 +6,7 @@ import bcryptjs from 'bcryptjs';
 import postgres from 'postgres';
 import { auth, signIn } from '@/auth';
 import { AuthError, type CredentialsSignin } from 'next-auth';
+import { BCRYPT_COST } from '@/app/lib/password-check';
 import { LOCKED, claimAttempt, clearFailures, loginKey, loginLimits } from '@/app/lib/login-limit';
 import {
   ChangePasswordForm,
@@ -380,7 +381,7 @@ export async function changePassword(
       };
     }
     await clearFailures(sql, key);
-    const hash = await bcryptjs.hash(newPassword, 10);
+    const hash = await bcryptjs.hash(newPassword, BCRYPT_COST);
     await sql`UPDATE users SET password = ${hash} WHERE id = ${user.id}`;
   } catch (error) {
     console.error('Database Error:', error);
