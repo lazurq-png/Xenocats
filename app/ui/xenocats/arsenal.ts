@@ -38,7 +38,12 @@ export type WeaponId =
   | 'squeak-symphony'
   | 'cardboard-castle'
   | 'scorch-dryer'
-  | 'jacuzzi';
+  | 'jacuzzi'
+  // Fused: two evolved weapons made one at a chest (FUSIONS); never offered.
+  | 'thunderstorm'
+  | 'scorching-maw'
+  | 'yarn-feast'
+  | 'milk-symphony';
 
 export type PassiveId =
   | 'rubber-chicken'
@@ -133,7 +138,9 @@ export type WeaponKind =
   /** A box set down on the cats: whichever cats it takes are held in it, and hurt. */
   | 'trap'
   /** A jet of hot air the way he faces: cats in it are pushed back, and hurt, all the time. */
-  | 'blow';
+  | 'blow'
+  /** Two evolved weapons in one: both fire, and something of its own besides. */
+  | 'fused';
 
 export type WeaponInfo = {
   name: string;
@@ -145,7 +152,81 @@ export type WeaponInfo = {
   levels: readonly WeaponStats[];
 };
 
+/**
+ * The stats of a fused weapon are its own extra, not its parents' (they keep firing
+ * as they did): every `cooldownMs`, `count` of its own things of `damage`.
+ */
+const FUSED_WEAPONS: Readonly<
+  Record<'thunderstorm' | 'scorching-maw' | 'yarn-feast' | 'milk-symphony', WeaponInfo>
+> = {
+  thunderstorm: {
+    name: 'Thunderstorm',
+    description: 'The laser web and the monsoon, together. Lightning finds the wet cats first.',
+    kind: 'fused',
+    unit: 'strike',
+    levels: fixed({
+      cooldownMs: 2000,
+      damage: 120,
+      area: 450,
+      count: 6,
+      speed: 0,
+      durationMs: 180,
+      pierce: 99,
+    }),
+  },
+  'scorching-maw': {
+    name: 'Scorching Maw',
+    description:
+      'It draws in every cat for a long way, hot air at its back. Whatever it draws in is scorched.',
+    kind: 'fused',
+    unit: 'scorch',
+    levels: fixed({
+      cooldownMs: 4000,
+      damage: 0,
+      area: 560,
+      count: 1,
+      speed: 0,
+      // How long a scorched cat stays so, ms.
+      durationMs: 3000,
+      pierce: 99,
+    }),
+  },
+  'yarn-feast': {
+    name: 'Yarn Feast',
+    description:
+      'Yarn that tangles, treats that chase. Now and then the whole table goes after the cats.',
+    kind: 'fused',
+    unit: 'crumb',
+    levels: fixed({
+      cooldownMs: 3000,
+      damage: 300,
+      area: 16,
+      count: 24,
+      speed: 380,
+      durationMs: 900,
+      pierce: 2,
+    }),
+  },
+  'milk-symphony': {
+    name: 'Milk Symphony',
+    description:
+      'Saucers that circle, toys that squeak. Every toy in earshot spills a little milk on the cats.',
+    kind: 'fused',
+    unit: 'wave',
+    levels: fixed({
+      cooldownMs: 3000,
+      damage: 90,
+      area: 16,
+      count: 6,
+      speed: 380,
+      durationMs: 800,
+      pierce: 6,
+    }),
+  },
+};
+
 export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
+  ...FUSED_WEAPONS,
   'laser-pointer': {
     name: 'Laser Pointer',
     description: 'A red dot no cat can ignore. Whatever it touches grows homesick.',
@@ -626,10 +707,40 @@ export const EVOLUTIONS: readonly Evolution[] = [
   { from: 'bath-tub', with: 'fish-bowl', to: 'jacuzzi' },
 ];
 
-/** The weapons a level-up may offer: all but the evolved ones. */
+/**
+ * Two evolved weapons, held together, become one at a chest (before an evolution
+ * is made): it fires what both fired, and something of its own, and takes one
+ * weapon slot instead of two. Never offered at a level-up.
+ */
+export type Fusion = { from: readonly [WeaponId, WeaponId]; to: WeaponId };
+
+export const FUSIONS: readonly Fusion[] = [
+  { from: ['infinite-laser', 'monsoon'], to: 'thunderstorm' },
+  { from: ['forbidden-catnip-vacuum', 'scorch-dryer'], to: 'scorching-maw' },
+  { from: ['yarn-apocalypse', 'banquet'], to: 'yarn-feast' },
+  { from: ['bottomless-saucer', 'squeak-symphony'], to: 'milk-symphony' },
+];
+
+/** The weapons a level-up may offer: all but the evolved and the fused ones. */
 export const BASE_WEAPONS: readonly WeaponId[] = (Object.keys(WEAPONS) as WeaponId[]).filter(
-  (id) => !EVOLUTIONS.some((e) => e.to === id)
+  (id) => !EVOLUTIONS.some((e) => e.to === id) && !FUSIONS.some((f) => f.to === id)
 );
+
+/** The fusion a chest opened now would make, if any: the first whose two are held. */
+export function fusionFor(weapons: ReadonlyMap<WeaponId, number>): Fusion | null {
+  for (const fusion of FUSIONS) {
+    if (fusion.from.every((id) => weapons.has(id)) && !weapons.has(fusion.to)) return fusion;
+  }
+  return null;
+}
+
+/** The evolved weapons the fused ones held have absorbed. */
+function absorbedBy(weapons: ReadonlyMap<WeaponId, number>): Set<WeaponId> {
+  const absorbed = new Set<WeaponId>();
+  for (const fusion of FUSIONS)
+    if (weapons.has(fusion.to)) for (const id of fusion.from) absorbed.add(id);
+  return absorbed;
+}
 
 /** The evolution a chest opened now would bring, if any: the first that is ready. */
 export function evolutionFor(
@@ -812,9 +923,13 @@ export function offerChoices(
   available: readonly WeaponId[] = BASE_WEAPONS
 ): Choice[] {
   const pool: Choice[] = [];
+  const absorbed = absorbedBy(weapons);
   for (const id of available) {
-    // A weapon that has evolved is gone for good: its evolution holds its place.
-    if (EVOLUTIONS.some((e) => e.from === id && weapons.has(e.to))) continue;
+    // A weapon that has evolved is gone for good: its evolution holds its place, or a
+    // fused weapon that took the evolution up.
+    if (EVOLUTIONS.some((e) => e.from === id && (weapons.has(e.to) || absorbed.has(e.to)))) {
+      continue;
+    }
     const level = weapons.get(id);
     if (level === undefined) {
       if (weapons.size < WEAPON_SLOTS) pool.push({ kind: 'weapon', id, level: 1 });
@@ -853,6 +968,7 @@ const AREA_WORD: Readonly<Record<WeaponKind, string>> = {
   lure: 'size',
   trap: 'size',
   blow: 'reach',
+  fused: 'reach',
 };
 
 /** What a weapon's speed is, in its level-up card's words. */
@@ -1022,6 +1138,16 @@ export type Loadout = {
     ready: boolean;
     after: WeaponId | null;
   }[];
+  /**
+   * Each fusion he has started (holds one of its two evolved weapons), not yet made:
+   * what is still missing, or `ready` when both are held (the next chest fuses them).
+   */
+  fusions: {
+    from: readonly [WeaponId, WeaponId];
+    to: WeaponId;
+    missing: string[];
+    ready: boolean;
+  }[];
 };
 
 export function loadout(
@@ -1030,7 +1156,10 @@ export function loadout(
 ): Loadout {
   const weaponLevels = new Map(weapons.map((w) => [w.id, w.level] as const));
   const passiveLevels = new Map(passives.map((p) => [p.id, p.level] as const));
-  const evolvedIds = new Set(EVOLUTIONS.map((e) => e.to));
+  const evolvedIds = new Set<WeaponId>([
+    ...EVOLUTIONS.map((e) => e.to),
+    ...FUSIONS.map((f) => f.to),
+  ]);
   // What the next chest he opens evolves, by the chest's own rule.
   const first = evolutionFor(weaponLevels, passiveLevels);
   return {
@@ -1056,6 +1185,14 @@ export function loadout(
       gives: `${capitalise(passiveTotal(id, level).join(', '))}.`,
     })),
     freePassiveSlots: Math.max(PASSIVE_SLOTS - passives.length, 0),
+    fusions: FUSIONS.filter(
+      (f) => !weaponLevels.has(f.to) && f.from.some((id) => weaponLevels.has(id))
+    ).map((f) => {
+      const missing = f.from
+        .filter((id) => !weaponLevels.has(id))
+        .map((id) => `the ${WEAPONS[id].name}`);
+      return { from: f.from, to: f.to, missing, ready: missing.length === 0 };
+    }),
     evolutions: EVOLUTIONS.filter(
       (e) =>
         !e.secret &&
@@ -1083,6 +1220,11 @@ export function loadout(
       };
     }),
   };
+}
+
+/** A fusion, announced with due gravity. */
+export function fusionText(from: readonly [WeaponId, WeaponId], to: WeaponId): string {
+  return `${the(WEAPONS[from[0]].name, 'The')} and ${the(WEAPONS[from[1]].name, 'the')} are one. In their place: ${the(WEAPONS[to].name, 'the')}.`;
 }
 
 /** An evolution, announced with due gravity. */

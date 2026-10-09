@@ -4,7 +4,7 @@
 // live in (localStorage, one versioned key; anything unreadable is a fresh start).
 
 import type { ArenaConfig } from './arena';
-import { BASE_WEAPONS, EVOLUTIONS, WEAPONS, type WeaponId } from './arsenal';
+import { BASE_WEAPONS, EVOLUTIONS, FUSIONS, WEAPONS, type WeaponId } from './arsenal';
 import { VARIETIES } from './varieties';
 
 export const PROGRESS_KEY = 'xenocats:survival:v1:progress';
@@ -159,9 +159,10 @@ export const CHARACTERS: Readonly<Record<CharacterId, Character>> = {
 /** The secret cat: comes only to a Keeper who stands still (decisions.md, D60). */
 export const SECRET_CAT = 'neighbour';
 
-/** The codex's entries, in order: every evolution (one of them hidden) and the secret cat. */
+/** The codex's entries, in order: every evolution (one of them hidden), every fusion and the secret cat. */
 export const CODEX: readonly { id: string; name: string }[] = [
   ...EVOLUTIONS.map((e) => ({ id: e.to, name: WEAPONS[e.to].name })),
+  ...FUSIONS.map((f) => ({ id: f.to, name: WEAPONS[f.to].name })),
   { id: SECRET_CAT, name: VARIETIES[SECRET_CAT].name },
 ];
 

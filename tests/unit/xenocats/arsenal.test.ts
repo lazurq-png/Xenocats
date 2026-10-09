@@ -10,6 +10,7 @@ import {
 import {
   BASE_WEAPONS,
   EVOLUTIONS,
+  FUSIONS,
   MAX_PASSIVE_LEVEL,
   MAX_WEAPON_LEVEL,
   PASSIVES,
@@ -21,6 +22,8 @@ import {
   describeChoice,
   evolutionFor,
   evolutionText,
+  fusionFor,
+  fusionText,
   levelChanges,
   loadout,
   modifiers,
@@ -1678,5 +1681,191 @@ describe('every evolved weapon has an effect of its own, and outdeals its base',
     expect(saucer.most).toBe(stats8('bottomless-saucer').count);
     expect(saucer.outward).toBe(true);
     expect(waves('can-opener').most).toBe(0);
+  });
+});
+
+describe('fusion: two evolved weapons made one at a chest', () => {
+  const evolved = new Set(EVOLUTIONS.map((e) => e.to));
+  const level8 = (...ids: WeaponId[]) => new Map(ids.map((id) => [id, MAX_WEAPON_LEVEL] as const));
+
+  /** A run that starts holding `weapons` at their top level with `chests` at his feet. */
+  function start(weapons: WeaponId[], chests: number, config: Partial<ArenaConfig> = {}) {
+    return arena({
+      ...steady,
+      chestReach: ARENA_CONFIG.chestReach,
+      startingWeapons: weapons,
+      startingLevel: MAX_WEAPON_LEVEL,
+      startingChests: chests,
+      escalation: [[0, 60]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+      ...config,
+    });
+  }
+  const held = (a: ReturnType<typeof start>) => a.state().weapons.map((w) => w.id);
+
+  it('there are at least four fusions, of evolved weapons, covering at least eight of the eleven', () => {
+    expect(FUSIONS.length).toBeGreaterThanOrEqual(4);
+    const used = new Set<WeaponId>();
+    for (const fusion of FUSIONS) {
+      for (const id of fusion.from) {
+        expect(evolved.has(id), id).toBe(true);
+        used.add(id);
+      }
+      expect(evolved.has(fusion.to)).toBe(false);
+      expect(fusion.from[0]).not.toBe(fusion.from[1]);
+    }
+    expect(used.size).toBeGreaterThanOrEqual(8);
+    // One fused weapon for each pair.
+    expect(new Set(FUSIONS.map((f) => f.to)).size).toBe(FUSIONS.length);
+    expect(new Set(FUSIONS.map((f) => [...f.from].sort().join('+'))).size).toBe(FUSIONS.length);
+  });
+
+  it('is made only when both are held, and never offered at a level-up', () => {
+    expect(fusionFor(level8('infinite-laser'))).toBeNull();
+    expect(fusionFor(level8('infinite-laser', 'banquet'))).toBeNull();
+    expect(fusionFor(level8('infinite-laser', 'monsoon'))?.to).toBe('thunderstorm');
+    expect(fusionFor(level8('infinite-laser', 'monsoon', 'thunderstorm'))).toBeNull();
+    for (const { to } of FUSIONS) {
+      expect(BASE_WEAPONS).not.toContain(to);
+      for (let seed = 1; seed < 40; seed++) {
+        const picks = offerChoices(new Map(), new Map(), 3, createRandom(seed));
+        expect(picks.some((c) => c.kind === 'weapon' && c.id === to)).toBe(false);
+      }
+    }
+    // The base weapon whose evolution a fused weapon took up is not offered again.
+    const offered = (held: Map<WeaponId, number>) => {
+      const ids = new Set<WeaponId>();
+      for (let seed = 1; seed < 80; seed++) {
+        for (const c of offerChoices(held, new Map(), 20, createRandom(seed))) {
+          if (c.kind === 'weapon') ids.add(c.id);
+        }
+      }
+      return ids;
+    };
+    expect(offered(new Map()).has('laser-pointer')).toBe(true);
+    expect(offered(level8('thunderstorm')).has('laser-pointer')).toBe(false);
+    expect(offered(level8('thunderstorm')).has('spray-bottle')).toBe(false);
+    expect(offered(level8('thunderstorm')).has('cat-treats')).toBe(true);
+  });
+
+  for (const fusion of FUSIONS) {
+    describe(`${WEAPONS[fusion.from[0]].name} + ${WEAPONS[fusion.from[1]].name} → ${WEAPONS[fusion.to].name}`, () => {
+      it('a chest fuses the two into one, and frees a slot', () => {
+        const a = start([...fusion.from], 1);
+        expect(held(a)).toEqual([...fusion.from]);
+        a.step(still);
+        const events = a.drainEvents();
+        expect(events).toContainEqual({ kind: 'fusion', from: fusion.from, to: fusion.to });
+        expect(held(a)).toEqual([fusion.to]);
+        expect(a.state().weapons[0].level).toBe(MAX_WEAPON_LEVEL);
+        // The chest went to the fusion: no level-up waits.
+        expect(a.choices()).toBeNull();
+        // Two slots were used, now one.
+        const view = loadout(a.state().weapons, a.state().passives);
+        expect(view.freeWeaponSlots).toBe(WEAPON_SLOTS - 1);
+        expect(view.weapons[0].evolved).toBe(true);
+      });
+
+      it('with only one of them, the chest is a level-up instead', () => {
+        const a = start([fusion.from[0]], 1);
+        a.step(still);
+        expect(a.drainEvents().some((e) => e.kind === 'fusion')).toBe(false);
+        expect(held(a)).toEqual([fusion.from[0]]);
+        expect(a.choices()).not.toBeNull();
+      });
+
+      it('both parents go on doing what they did, and the fused weapon deals more than either alone', () => {
+        const dealt = (weapons: WeaponId[], chests: number) => {
+          const a = start(weapons, chests);
+          while (a.state().time < 20_000) a.step(still);
+          return a.cats().reduce((sum, cat) => sum + cat.homesickness, 0) / (a.state().time / 1000);
+        };
+        const fused = dealt([...fusion.from], 1);
+        // The extra itself adds: more than the same two weapons held apart.
+        expect(fused, `${fusion.to} against the pair unfused`).toBeGreaterThan(
+          dealt([...fusion.from], 0)
+        );
+        expect(fused, `${fusion.to} against ${fusion.from[0]}`).toBeGreaterThan(
+          dealt([fusion.from[0]], 0)
+        );
+        expect(fused, `${fusion.to} against ${fusion.from[1]}`).toBeGreaterThan(
+          dealt([fusion.from[1]], 0)
+        );
+      });
+    });
+  }
+
+  it('a fusion comes before an evolution at the same chests: the first chest fuses, the next evolves', () => {
+    const a = start(['infinite-laser', 'monsoon', 'cat-treats'], 2, {
+      startingPassives: ['long-whiskers'],
+    });
+    a.step(still);
+    const kinds = a.drainEvents().filter((e) => e.kind === 'fusion' || e.kind === 'evolution');
+    expect(kinds.map((e) => e.kind)).toEqual(['fusion', 'evolution']);
+    expect(held(a).sort()).toEqual(['banquet', 'thunderstorm']);
+  });
+
+  it('the Thunderstorm draws lightning from him to the cats', () => {
+    const a = start(['infinite-laser', 'monsoon'], 1);
+    let struck = 0;
+    while (a.state().time < 12_000) {
+      a.step(still);
+      struck += a.beams().length;
+    }
+    expect(struck).toBeGreaterThan(0);
+  });
+
+  it('the Scorching Maw scorches the cats it draws in; the Milk Symphony spills milk from the toys; the Yarn Feast sends a ring of crumbs', () => {
+    const maw = start(['forbidden-catnip-vacuum', 'scorch-dryer'], 1);
+    while (maw.state().time < 9_000) maw.step(still);
+    expect(maw.cats().some((c) => c.vulnUntil > maw.state().time)).toBe(true);
+
+    const feast = start(['yarn-apocalypse', 'banquet'], 1);
+    let crumbs = 0;
+    while (feast.state().time < 9_000) {
+      feast.step(still);
+      crumbs = Math.max(
+        crumbs,
+        feast.projectiles().filter((p) => p.bit && p.weapon === 'banquet').length
+      );
+    }
+    expect(crumbs).toBeGreaterThanOrEqual(WEAPONS['yarn-feast'].levels[0].count);
+
+    const milk = start(['bottomless-saucer', 'squeak-symphony'], 1);
+    let waves = 0;
+    while (milk.state().time < 12_000) {
+      milk.step(still);
+      const out = milk
+        .projectiles()
+        .filter((p) => p.bit && p.weapon === 'bottomless-saucer').length;
+      waves = Math.max(waves, out);
+    }
+    // More than the saucers' own waves alone (one per saucer).
+    expect(waves).toBeGreaterThan(weaponStats('bottomless-saucer', MAX_WEAPON_LEVEL, none).count);
+  });
+
+  it('the pause menu names the fused weapon, and says what a fusion still needs', () => {
+    const view = loadout([{ id: 'infinite-laser', level: MAX_WEAPON_LEVEL }], []);
+    expect(view.fusions).toEqual([
+      {
+        from: ['infinite-laser', 'monsoon'],
+        to: 'thunderstorm',
+        missing: ['the Monsoon'],
+        ready: false,
+      },
+    ]);
+    const both = loadout(
+      [
+        { id: 'infinite-laser', level: MAX_WEAPON_LEVEL },
+        { id: 'monsoon', level: MAX_WEAPON_LEVEL },
+      ],
+      []
+    );
+    expect(both.fusions[0]).toMatchObject({ to: 'thunderstorm', missing: [], ready: true });
+    expect(loadout([{ id: 'laser-pointer', level: 3 }], []).fusions).toEqual([]);
+    const done = loadout([{ id: 'thunderstorm', level: MAX_WEAPON_LEVEL }], []);
+    expect(done.fusions).toEqual([]);
+    expect(done.weapons[0]).toMatchObject({ name: 'Thunderstorm', evolved: true });
+    expect(fusionText(['infinite-laser', 'monsoon'], 'thunderstorm')).toContain('Thunderstorm');
   });
 });

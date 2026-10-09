@@ -90,6 +90,21 @@ function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; titl
           ))}
         </ul>
       )}
+      {view.fusions.length > 0 && (
+        <>
+          <h4 className="mt-3 font-semibold text-cream">Fusions within reach</h4>
+          <ul className="mt-1 grid gap-1">
+            {view.fusions.map((f) => (
+              <li key={f.to} data-fusion={f.to} data-ready={f.ready}>
+                <span className="font-semibold text-white">{WEAPONS[f.to].name}</span>:{' '}
+                {f.ready
+                  ? 'ready. The next chest he opens fuses them, and frees a slot.'
+                  : `needs ${f.missing.join(' and ')}, then a chest he opens.`}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {view.evolutions.length > 0 && (
         <>
           <h4 className="mt-3 font-semibold text-cream">Evolutions within reach</h4>

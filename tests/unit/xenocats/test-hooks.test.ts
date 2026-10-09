@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { WEAPONS } from '@/app/ui/xenocats/arsenal';
-import { CROWD_ARSENAL, MAX_CROWD, parseTestHooks } from '@/app/ui/xenocats/test-hooks';
+import {
+  CROWD_ARSENAL,
+  FUSION_START,
+  MAX_CROWD,
+  parseTestHooks,
+} from '@/app/ui/xenocats/test-hooks';
 
 const fresh = () => 777;
 const hooks = (search: string) => parseTestHooks(search, fresh);
@@ -14,6 +19,7 @@ describe('the URL test hooks', () => {
       fps: false,
       crowd: null,
       elite: false,
+      fusion: false,
     });
   });
 
@@ -25,6 +31,7 @@ describe('the URL test hooks', () => {
       fps: false,
       crowd: null,
       elite: false,
+      fusion: false,
     });
     expect(hooks('?boss=0')).toEqual({
       seed: 777,
@@ -33,6 +40,7 @@ describe('the URL test hooks', () => {
       fps: false,
       crowd: null,
       elite: false,
+      fusion: false,
     });
   });
 
@@ -62,6 +70,13 @@ describe('the URL test hooks', () => {
     expect(hooks('?elite=1').elite).toBe(true);
     for (const value of ['0', '', 'true', '2'])
       expect(hooks(`?elite=${value}`).elite, value).toBe(false);
+  });
+
+  it('the fusion start is on only for fusion=1', () => {
+    expect(hooks('?fusion=1').fusion).toBe(true);
+    for (const value of ['0', '', 'true', '2'])
+      expect(hooks(`?fusion=${value}`).fusion, value).toBe(false);
+    expect(FUSION_START).toHaveLength(2);
   });
 
   it('a crowd is a whole number of cats from 1, at most 6000', () => {

@@ -246,6 +246,20 @@ test.describe('on a computer', () => {
     await expect(paused.locator(`li[data-weapon="${taken}"]`)).toBeVisible();
   });
 
+  test('two evolved weapons held at a chest fuse into one, named in the pause menu', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&fusion=1');
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-weapons', 'thunderstorm:8');
+    const paused = await pauseRun(page);
+    await expect(paused.locator('li[data-weapon="thunderstorm"]')).toBeVisible();
+    await expect(paused.locator('li[data-weapon="infinite-laser"]')).toHaveCount(0);
+    await expect(paused.locator('li[data-weapon="monsoon"]')).toHaveCount(0);
+    // One slot where there were two.
+    await expect(paused.getByTestId('survival-pause-weapon-slots')).toHaveText('Weapons 1 of 6');
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);
@@ -625,8 +639,8 @@ test.describe('on a computer', () => {
       .toBe(true);
     const codex = page.getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
-    // Eleven evolutions and the secret cat: one found, the rest unknown.
-    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(11);
+    // Eleven evolutions, four fusions and the secret cat: one found, the rest unknown.
+    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(15);
     // Kept after a reload; he goes out as the Night Porter, with the Spray Bottle.
     await page.reload();
     await expect(porter).toBeChecked();

@@ -18,6 +18,7 @@ import {
   type WeaponId,
   describeChoice,
   evolutionText,
+  fusionText,
 } from './arsenal';
 import {
   type AimMode,
@@ -52,7 +53,7 @@ import {
 } from './progression';
 import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
-import { CROWD_ARSENAL, parseTestHooks } from './test-hooks';
+import { CROWD_ARSENAL, FUSION_START, parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
@@ -284,7 +285,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   );
 
   const start = () => {
-    const { seed, speed, boss, fps, crowd, elite } = parseTestHooks(
+    const { seed, speed, boss, fps, crowd, elite, fusion } = parseTestHooks(
       window.location.search,
       freshSeed
     );
@@ -317,6 +318,13 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         ...runConfig(stored, ARENA_CONFIG, secondRef.current),
         ...lengthed,
         ...(elite ? { cats: { ...ARENA_CONFIG.cats, eliteShare: 1 } } : {}),
+        ...(fusion
+          ? {
+              startingWeapons: FUSION_START,
+              startingLevel: MAX_WEAPON_LEVEL,
+              startingChests: 1,
+            }
+          : {}),
         ...(boss === null
           ? {}
           : {
@@ -906,6 +914,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         } else if (event.kind === 'evolution') {
           foundRef.current.add(event.to);
           important(evolutionText(event.from, event.to));
+          if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
+        } else if (event.kind === 'fusion') {
+          foundRef.current.add(event.to);
+          important(fusionText(event.from, event.to));
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'secret') {
           // Nothing is said: it is simply there. The codex remembers.

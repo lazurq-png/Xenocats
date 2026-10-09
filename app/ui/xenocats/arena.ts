@@ -31,7 +31,9 @@ import {
   type WeaponId,
   type WeaponKind,
   type WeaponStats,
+  FUSIONS,
   evolutionFor,
+  fusionFor,
   modifiers,
   offerChoices,
   weaponStats,
@@ -143,6 +145,8 @@ export type ArenaConfig = {
     lineLength: number;
     lineWidth: number;
   };
+  /** Chests lying on the Keepers' start (a test's way to reach a chest at once). */
+  startingChests: number;
   /** Which cats come when (varieties.ts). */
   schedule: Schedule;
   laserCat: {
@@ -242,6 +246,7 @@ export const ARENA_CONFIG: ArenaConfig = {
     lineLength: 330,
     lineWidth: 44,
   },
+  startingChests: 0,
   schedule: SCHEDULE,
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
@@ -476,6 +481,17 @@ export const GULP_BURST_RADIUS = 170;
 
 export type Gem = { x: number; y: number; value: number };
 
+/**
+ * A weapon held: its level and when it next fires. A fused weapon also keeps its
+ * parents', which go on firing as they did (each its own clock), with its own
+ * `readyAt` for what it adds.
+ */
+type Held = {
+  level: number;
+  readyAt: number;
+  parts?: Map<WeaponId, { level: number; readyAt: number }>;
+};
+
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
   /** When the Bottomless Saucer sends out its next milk waves. */
@@ -500,7 +516,7 @@ type Keeper = {
   aim: Vec | null;
   /** An elite's effect on him, while it lasts. */
   effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null;
-  weapons: Map<WeaponId, { level: number; readyAt: number }>;
+  weapons: Map<WeaponId, Held>;
   passives: Map<PassiveId, number>;
   mods: Modifiers;
   revivals: number;
@@ -508,6 +524,8 @@ type Keeper = {
   downedAt: number | null;
   /** The Forbidden Catnip Vacuum's burst, when it comes (after its pull). */
   gulpAt: number;
+  /** What the burst after the Forbidden Catnip Vacuum's pull does. */
+  gulpDamage: number;
 };
 
 export type ArenaEvent =
@@ -531,6 +549,8 @@ export type ArenaEvent =
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
   | { kind: 'evolution'; from: WeaponId; to: WeaponId }
+  /** Two evolved weapons became one at a chest. */
+  | { kind: 'fusion'; from: readonly [WeaponId, WeaponId]; to: WeaponId }
   /** The secret cat has come. */
   | { kind: 'secret'; id: 'neighbour' }
   /** His Resolve was spent, and half of it returned (Second Wind, or the other lasted). */
@@ -581,7 +601,7 @@ export function createArena(options: {
     own: { startingWeapons: readonly WeaponId[]; speed: number; resolve: number },
     startingPassives: readonly PassiveId[]
   ): Keeper {
-    const weapons = new Map<WeaponId, { level: number; readyAt: number }>();
+    const weapons = new Map<WeaponId, Held>();
     for (const id of own.startingWeapons) {
       weapons.set(id, { level: config.startingLevel, readyAt: config.firstShotMs });
     }
@@ -606,6 +626,7 @@ export function createArena(options: {
       revivals: config.boost.revivals,
       downedAt: null,
       gulpAt: Infinity,
+      gulpDamage: 0,
     };
   }
 
@@ -648,7 +669,7 @@ export function createArena(options: {
   let nextXenocat = config.schedule.xenocats?.from ?? Infinity;
   const swarms = new Map<number, number>();
   let bossesCome = 0;
-  const chests: Vec[] = [];
+  const chests: Vec[] = Array.from({ length: config.startingChests }, () => ({ x: 0, y: 0 }));
   // The Laser Cats' shots.
   type Shot = { x: number; y: number; vx: number; vy: number; until: number; drain: number };
   const shots: Shot[] = [];
@@ -1413,6 +1434,7 @@ export function createArena(options: {
         }
       }
       hero.gulpAt = time + s.durationMs;
+      hero.gulpDamage = s.damage;
       return true;
     }
     if (kind === 'pull') {
@@ -1692,51 +1714,131 @@ export function createArena(options: {
     }
   }
 
+  /** One weapon, this step: blades and zones all the time, the rest when they are ready. */
+  function runWeapon(id: WeaponId, held: { level: number; readyAt: number }, dt: number) {
+    const s = weaponStats(id, held.level, hero.mods);
+    const kind = WEAPONS[id].kind;
+    if (kind === 'orbit') {
+      // Each blade, all the time, to every cat it passes through.
+      for (const blade of bladesOf(s)) {
+        for (const i of within(blade, BLADE_RADIUS)) hurt(cats[i], s.damage * dt, 'orbit');
+      }
+      // The Bottomless Saucer also spills: a wave of milk from each saucer, outward.
+      if (id === 'bottomless-saucer' && time >= hero.waveAt) {
+        hero.waveAt = time + MILK_WAVE_EVERY_MS;
+        for (const saucer of bladesOf(s)) {
+          const out = Math.atan2(saucer.y - hero.y, saucer.x - hero.x);
+          launch({
+            weapon: id,
+            bit: true,
+            x: saucer.x,
+            y: saucer.y,
+            vx: Math.cos(out) * MILK_WAVE_SPEED,
+            vy: Math.sin(out) * MILK_WAVE_SPEED,
+            radius: 16,
+            damage: s.damage * 0.5,
+            pierce: 6,
+            until: time + 800,
+          });
+        }
+      }
+    } else if (kind === 'zone') {
+      for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
+    } else if (kind === 'blow') {
+      blowAir(id, s, dt);
+    } else if (time >= held.readyAt && fire(id, s)) {
+      held.readyAt = time + s.cooldownMs;
+      events.push({ kind: 'fired', weapon: id });
+    }
+  }
+
+  /** What a fused weapon adds to what its two parents go on doing. */
+  function fusedExtra(id: WeaponId, held: Held) {
+    if (time < held.readyAt) return;
+    const s = weaponStats(id, held.level, hero.mods);
+    if (id === 'thunderstorm') {
+      // Lightning: the wet (slowed) cats first, then the nearest.
+      const near = nearest(hero, s.area, Infinity);
+      if (near.length === 0) return;
+      const wet = near.filter((i) => cats[i].slowUntil > time);
+      const dry = near.filter((i) => cats[i].slowUntil <= time);
+      for (const i of [...wet, ...dry].slice(0, s.count)) {
+        // Lightning is still a laser's: whatever refuses lasers refuses it.
+        hurt(cats[i], s.damage, 'beam');
+        beams.push({
+          from: { x: hero.x, y: hero.y },
+          to: { x: cats[i].x, y: cats[i].y },
+          until: time + s.durationMs,
+        });
+      }
+    } else if (id === 'scorching-maw') {
+      // Everything the pull reaches is scorched.
+      const reached = within(hero, s.area);
+      if (reached.length === 0) return;
+      for (const i of reached) cats[i].vulnUntil = Math.max(cats[i].vulnUntil, time + s.durationMs);
+    } else if (id === 'yarn-feast') {
+      // The whole table goes after the cats: a ring of crumbs that chase.
+      if (nearest(hero, 650, 1).length === 0) return;
+      for (let k = 0; k < s.count; k++) {
+        const turn = (k * 2 * Math.PI) / s.count;
+        launch({
+          weapon: 'banquet',
+          bit: true,
+          x: hero.x,
+          y: hero.y,
+          vx: Math.cos(turn) * s.speed,
+          vy: Math.sin(turn) * s.speed,
+          radius: s.area,
+          damage: s.damage,
+          pierce: s.pierce,
+          until: time + s.durationMs,
+        });
+      }
+    } else if (id === 'milk-symphony') {
+      // Every toy in earshot spills milk, outward.
+      const toys = patches.filter((p) => p.kind === 'toy');
+      if (toys.length === 0) return;
+      for (const toy of toys) {
+        for (let k = 0; k < s.count; k++) {
+          const turn = (k * 2 * Math.PI) / s.count;
+          launch({
+            weapon: 'bottomless-saucer',
+            bit: true,
+            x: toy.x,
+            y: toy.y,
+            vx: Math.cos(turn) * s.speed,
+            vy: Math.sin(turn) * s.speed,
+            radius: s.area,
+            damage: s.damage,
+            pierce: s.pierce,
+            until: time + s.durationMs,
+          });
+        }
+      }
+    }
+    held.readyAt = time + s.cooldownMs;
+  }
+
+  /** Every weapon he holds that works by itself, a fused one as its two parents. */
+  function* activeWeapons(k: Keeper): Generator<[WeaponId, { level: number; readyAt: number }]> {
+    for (const [id, held] of k.weapons) {
+      if (held.parts) yield* held.parts;
+      else yield [id, held];
+    }
+  }
+
   function swingWeapons(dt: number) {
     if (time >= hero.gulpAt) {
       hero.gulpAt = Infinity;
-      const gulp = hero.weapons.get('forbidden-catnip-vacuum');
-      if (gulp) {
-        const s = weaponStats('forbidden-catnip-vacuum', gulp.level, hero.mods);
-        for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area))
-          hurt(cats[i], s.damage, 'gulp');
+      for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area)) {
+        hurt(cats[i], hero.gulpDamage, 'gulp');
       }
     }
     for (const [id, held] of hero.weapons) {
-      const s = weaponStats(id, held.level, hero.mods);
-      const kind = WEAPONS[id].kind;
-      if (kind === 'orbit') {
-        // Each blade, all the time, to every cat it passes through.
-        for (const blade of bladesOf(s)) {
-          for (const i of within(blade, BLADE_RADIUS)) hurt(cats[i], s.damage * dt, 'orbit');
-        }
-        // The Bottomless Saucer also spills: a wave of milk from each saucer, outward.
-        if (id === 'bottomless-saucer' && time >= hero.waveAt) {
-          hero.waveAt = time + MILK_WAVE_EVERY_MS;
-          for (const saucer of bladesOf(s)) {
-            const out = Math.atan2(saucer.y - hero.y, saucer.x - hero.x);
-            launch({
-              weapon: id,
-              bit: true,
-              x: saucer.x,
-              y: saucer.y,
-              vx: Math.cos(out) * MILK_WAVE_SPEED,
-              vy: Math.sin(out) * MILK_WAVE_SPEED,
-              radius: 16,
-              damage: s.damage * 0.5,
-              pierce: 6,
-              until: time + 800,
-            });
-          }
-        }
-      } else if (kind === 'zone') {
-        for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
-      } else if (kind === 'blow') {
-        blowAir(id, s, dt);
-      } else if (time >= held.readyAt && fire(id, s)) {
-        held.readyAt = time + s.cooldownMs;
-        events.push({ kind: 'fired', weapon: id });
-      }
+      if (held.parts) {
+        for (const [part, partHeld] of held.parts) runWeapon(part, partHeld, dt);
+        fusedExtra(id, held);
+      } else runWeapon(id, held, dt);
     }
   }
 
@@ -1942,12 +2044,19 @@ export function createArena(options: {
       hero = opener;
       chests.splice(i, 1);
       events.push({ kind: 'chest', x: chest.x, y: chest.y });
-      // A weapon ready to evolve does, in its place; otherwise a level-up.
-      const evolution = evolutionFor(
-        new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const)),
-        hero.passives
-      );
-      if (evolution) {
+      // Two evolved weapons that fuse do, in their place; else a weapon ready to
+      // evolve does; otherwise a level-up.
+      const carried = new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const));
+      const fusion = fusionFor(carried);
+      const evolution = fusion ? null : evolutionFor(carried, hero.passives);
+      if (fusion) {
+        const parts = new Map(
+          fusion.from.map((id) => [id, { level: MAX_WEAPON_LEVEL, readyAt: time }] as const)
+        );
+        for (const id of fusion.from) hero.weapons.delete(id);
+        hero.weapons.set(fusion.to, { level: MAX_WEAPON_LEVEL, readyAt: time, parts });
+        events.push({ kind: 'fusion', from: fusion.from, to: fusion.to });
+      } else if (evolution) {
         hero.weapons.delete(evolution.from);
         hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
         events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
@@ -2199,7 +2308,7 @@ export function createArena(options: {
       for (const k of keepers) {
         if (!standing(k)) continue;
         hero = k;
-        for (const [id, held] of k.weapons) {
+        for (const [id, held] of activeWeapons(k)) {
           if (WEAPONS[id].kind === 'orbit')
             all.push(...bladesOf(weaponStats(id, held.level, k.mods)));
         }
