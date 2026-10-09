@@ -20,8 +20,13 @@ export const AUTO_JUDGE_FROM_MS = 1500;
 export const AUTO_WINDOW_MS = 2000;
 /** ...and only until this long into the run. */
 export const AUTO_JUDGE_UNTIL_MS = 9000;
-/** Frames the mean needs behind it before it is believed. */
-export const AUTO_MIN_FRAMES = 30;
+/**
+ * Frames the mean needs behind it before it is believed. Few: a frame counts at most
+ * 250 ms, so a two-second window of the slowest machine still holds eight, and asking
+ * for more would let the slowest machines escape the judgement (they would not make
+ * the frames in time).
+ */
+export const AUTO_MIN_FRAMES = 8;
 
 /**
  * Whether a run should switch itself to light graphics now: full is set, it has not

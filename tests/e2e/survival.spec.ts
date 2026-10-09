@@ -369,22 +369,33 @@ test.describe('on a computer', () => {
   test('a screen too slow for the frame floor is switched to light graphics, once, with a notice', async ({
     page,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(90_000);
     await openArena(page, '?seed=7');
     await expect(area(page)).toHaveCount(0);
-    // Six times slower than this machine: well under 40 frames a second.
+    // Slower than this machine: well under 40 frames a second (a CI runner, drawing in
+    // software, is slow to begin with and only more so).
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     await startRun(page);
-    await expect(area(page)).toHaveAttribute('data-graphics', 'light', { timeout: 30_000 });
-    await expect(page.getByTestId('survival-notice')).toContainText('struggling');
+    // Watched from inside the page, every frame: the notice lasts a few seconds, and a
+    // slow machine is slow to ask about it from outside.
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="survival-area"]')?.getAttribute('data-graphics') ===
+          'light' &&
+        (document.querySelector('[data-testid="survival-notice"]')?.textContent ?? '').includes(
+          'struggling'
+        ),
+      undefined,
+      { timeout: 40_000 }
+    );
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     expect(
       await page.evaluate(() => localStorage.getItem('xenocats:survival:v1:graphics-auto'))
     ).toBe('1');
     expect(await page.evaluate(() => localStorage.getItem('xenocats:survival:v1:graphics'))).toBe(
       'light'
     );
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     // The player changes it back: it does not switch again.
     const paused = await pauseRun(page);
     await paused.getByTestId('survival-pause-graphics-full').check();
