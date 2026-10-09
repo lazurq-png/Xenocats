@@ -10,7 +10,7 @@ const authorized = authConfig.callbacks.authorized as unknown as Authorized;
 
 function visit(path: string, loggedIn: boolean) {
   return authorized({
-    auth: loggedIn ? { user: { email: 'user@example.com' } } : null,
+    auth: loggedIn ? { user: { id: 'u1', email: 'user@example.com' } } : null,
     request: { nextUrl: new URL(path, 'http://localhost:3000') },
   });
 }
@@ -20,6 +20,13 @@ function redirectTarget(result: boolean | Response) {
 }
 
 describe('authorized', () => {
+  it("counts a session without its user's id (an older login) as signed out", () => {
+    const nextUrl = new URL('/dashboard', 'http://localhost:3000');
+    expect(
+      authorized({ auth: { user: { email: 'user@example.com' } }, request: { nextUrl } })
+    ).toBe(false);
+  });
+
   it('keeps the dashboard for signed-in users only', () => {
     expect(visit('/dashboard', true)).toBe(true);
     expect(visit('/dashboard/invoices', true)).toBe(true);
@@ -46,5 +53,26 @@ describe('authorized', () => {
   it('does not open look-alike paths', () => {
     expect(redirectTarget(visit('/catsuit', true))).toBe('/dashboard');
     expect(redirectTarget(visit('/cats-admin', true))).toBe('/dashboard');
+  });
+});
+
+describe('session', () => {
+  type SessionCallback = (params: {
+    session: { user?: { id?: string; email?: string }; expires: string };
+    token: { sub?: string };
+  }) => { user?: { id?: string } };
+  const session = authConfig.callbacks.session as unknown as SessionCallback;
+
+  it("carries the user's id from the token", () => {
+    const result = session({
+      session: { user: { email: 'user@example.com' }, expires: '' },
+      token: { sub: 'u1' },
+    });
+    expect(result.user?.id).toBe('u1');
+  });
+
+  it('a token without one gives a session without one', () => {
+    const result = session({ session: { user: { email: 'a@b.c' }, expires: '' }, token: {} });
+    expect(result.user?.id).toBeUndefined();
   });
 });

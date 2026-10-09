@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { fetchInvoiceDetail } from '@/app/lib/data';
+import { currentUserId } from '@/app/lib/session';
 import { InvoiceId } from '@/app/lib/schemas';
 import { dueText, formatCurrency, formatDateToLocal } from '@/app/lib/utils';
 import CustomerAvatar from '@/app/ui/customer-avatar';
@@ -14,8 +15,10 @@ export const metadata: Metadata = {
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
-  // Anything but a UUID names no invoice (and would be a database error).
-  const invoice = InvoiceId.safeParse(id).success ? await fetchInvoiceDetail(id) : undefined;
+  const owner = await currentUserId();
+  // Anything but a UUID names no invoice (and would be a database error); another
+  // account's is as unknown as one that does not exist.
+  const invoice = InvoiceId.safeParse(id).success ? await fetchInvoiceDetail(owner, id) : undefined;
   if (!invoice) notFound();
 
   const amount = formatCurrency(invoice.amount);

@@ -60,10 +60,16 @@ describe('without a session', () => {
     expect((await GET(request())).status).toBe(401);
     expect(fetchInvoicesForExport).not.toHaveBeenCalled();
   });
+
+  it("treats a session without its user's id (an older login) as none", async () => {
+    auth.mockResolvedValue({ user: { email: 'user@nextmail.com' } });
+    expect((await GET(request())).status).toBe(401);
+    expect(fetchInvoicesForExport).not.toHaveBeenCalled();
+  });
 });
 
 describe('with a session', () => {
-  beforeEach(() => auth.mockResolvedValue({ user: { email: 'user@nextmail.com' } }));
+  beforeEach(() => auth.mockResolvedValue({ user: { id: 'u1', email: 'user@nextmail.com' } }));
 
   it('sends a CSV download of the filtered list, safe for spreadsheets', async () => {
     const response = await GET(request('?query=rabbit&status=pending'));
@@ -71,7 +77,8 @@ describe('with a session', () => {
     expect(response.headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
     expect(response.headers.get('Content-Disposition')).toBe('attachment; filename="invoices.csv"');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
-    expect(fetchInvoicesForExport).toHaveBeenCalledWith('rabbit', 'pending');
+    // The session's user's own invoices, never anyone the request names.
+    expect(fetchInvoicesForExport).toHaveBeenCalledWith('u1', 'rabbit', 'pending');
 
     // A UTF-8 byte-order mark first (text() would drop it, so read the bytes).
     const bytes = new Uint8Array(await response.clone().arrayBuffer());
@@ -105,6 +112,6 @@ describe('with a session', () => {
 
   it('ignores an unknown status, as the list does', async () => {
     await GET(request('?status=bogus'));
-    expect(fetchInvoicesForExport).toHaveBeenCalledWith('', null);
+    expect(fetchInvoicesForExport).toHaveBeenCalledWith('u1', '', null);
   });
 });

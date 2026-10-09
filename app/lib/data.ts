@@ -16,6 +16,11 @@ import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard'
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
+// Every read is one account's: `owner` is the signed-in user's id (from the
+// session, never from the browser), and a customer, and through it each of its
+// invoices, is read only by its owner (migration 0005). Another account's rows
+// are as if they did not exist.
+
 /** Unpaid and past its due date: worked out when read, never stored. */
 const isOverdue = () => sql`(invoices.status = 'pending' AND invoices.due_date < CURRENT_DATE)`;
 
@@ -30,12 +35,13 @@ const matchesStatus = (status: InvoiceStatusFilter | null) => {
   return sql`TRUE`;
 };
 
-export async function fetchLatestInvoices() {
+export async function fetchLatestInvoices(owner: string) {
   try {
     const data = await sql<LatestInvoiceRaw[]>`
       SELECT invoices.amount, invoices.date, invoices.status, ${isOverdue()} AS overdue, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
+      WHERE customers.owner_id = ${owner}
       ORDER BY invoices.date DESC
       LIMIT 5`;
 
@@ -52,16 +58,18 @@ export async function fetchLatestInvoices() {
 }
 
 /** Paid and pending totals, invoice count and invoiced customers for invoices dated in [from, to). */
-async function invoiceTotals(from: string | null, to: string | null) {
+async function invoiceTotals(owner: string, from: string | null, to: string | null) {
   const [row] = await sql<{ paid: string; pending: string; invoices: number; customers: number }[]>`
     SELECT
-      COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) AS paid,
-      COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS pending,
+      COALESCE(SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END), 0) AS paid,
+      COALESCE(SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END), 0) AS pending,
       COUNT(*)::int AS invoices,
-      COUNT(DISTINCT customer_id)::int AS customers
+      COUNT(DISTINCT invoices.customer_id)::int AS customers
     FROM invoices
-    WHERE (${from}::date IS NULL OR date >= ${from}::date)
-      AND (${to}::date IS NULL OR date < ${to}::date)`;
+    JOIN customers ON invoices.customer_id = customers.id
+    WHERE customers.owner_id = ${owner}
+      AND (${from}::date IS NULL OR invoices.date >= ${from}::date)
+      AND (${to}::date IS NULL OR invoices.date < ${to}::date)`;
   return {
     paid: Number(row.paid),
     pending: Number(row.pending),
@@ -75,12 +83,12 @@ async function invoiceTotals(from: string | null, to: string | null) {
  * with its change from the 12 months before; all time has nothing to compare with.
  * Customers are those invoiced in the range, or every customer for all time.
  */
-export async function fetchCardData(range: Range, now = new Date()) {
+export async function fetchCardData(owner: string, range: Range, now = new Date()) {
   try {
     if (range === 'all') {
       const [totals, [customers]] = await Promise.all([
-        invoiceTotals(null, null),
-        sql<{ count: string }[]>`SELECT COUNT(*) FROM customers`,
+        invoiceTotals(owner, null, null),
+        sql<{ count: string }[]>`SELECT COUNT(*) FROM customers WHERE owner_id = ${owner}`,
       ]);
       const stat = (value: number): CardStat => ({ value, change: null });
       return {
@@ -93,8 +101,8 @@ export async function fetchCardData(range: Range, now = new Date()) {
 
     const start = monthStart(now, 11);
     const [current, previous] = await Promise.all([
-      invoiceTotals(start, null),
-      invoiceTotals(monthStart(now, 23), start),
+      invoiceTotals(owner, start, null),
+      invoiceTotals(owner, monthStart(now, 23), start),
     ]);
     const stat = (key: keyof typeof current): CardStat => ({
       value: current[key],
@@ -116,16 +124,22 @@ export async function fetchCardData(range: Range, now = new Date()) {
  * Paid and pending invoice totals per month: every one of the last 12 months
  * (empty ones included), or every month that has invoices for all time.
  */
-export async function fetchMonthlyTotals(range: Range, now = new Date()): Promise<MonthTotals[]> {
+export async function fetchMonthlyTotals(
+  owner: string,
+  range: Range,
+  now = new Date()
+): Promise<MonthTotals[]> {
   try {
     const from = range === '12m' ? monthStart(now, 11) : null;
     const rows = await sql<{ month: string; paid: string; pending: string }[]>`
       SELECT
-        to_char(date, 'YYYY-MM') AS month,
-        SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS paid,
-        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS pending
+        to_char(invoices.date, 'YYYY-MM') AS month,
+        SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS paid,
+        SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END) AS pending
       FROM invoices
-      WHERE ${from}::date IS NULL OR date >= ${from}::date
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE customers.owner_id = ${owner}
+        AND (${from}::date IS NULL OR invoices.date >= ${from}::date)
       GROUP BY 1
       ORDER BY 1`;
     const byMonth = new Map(
@@ -150,6 +164,7 @@ const ITEMS_PER_PAGE = 6;
  * The search and the status combine (both must match).
  */
 export async function fetchFilteredInvoices(
+  owner: string,
   query: string,
   currentPage: number,
   status: InvoiceStatusFilter | null = null
@@ -170,7 +185,8 @@ export async function fetchFilteredInvoices(
         customers.image_url
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE (
+      WHERE customers.owner_id = ${owner}
+      AND (
         customers.name ILIKE ${`%${query}%`} OR
         customers.email ILIKE ${`%${query}%`} OR
         invoices.amount::text ILIKE ${`%${query}%`} OR
@@ -197,6 +213,7 @@ export const EXPORT_LIMIT = 10_000;
  * EXPORT_LIMIT + 1 rows, so a caller can tell there were more than it may export.
  */
 export async function fetchInvoicesForExport(
+  owner: string,
   query: string,
   status: InvoiceStatusFilter | null = null
 ) {
@@ -222,7 +239,8 @@ export async function fetchInvoicesForExport(
         ${isOverdue()} AS overdue
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE (
+      WHERE customers.owner_id = ${owner}
+      AND (
         customers.name ILIKE ${`%${query}%`} OR
         customers.email ILIKE ${`%${query}%`} OR
         invoices.amount::text ILIKE ${`%${query}%`} OR
@@ -239,12 +257,17 @@ export async function fetchInvoicesForExport(
   }
 }
 
-export async function fetchInvoicesPages(query: string, status: InvoiceStatusFilter | null = null) {
+export async function fetchInvoicesPages(
+  owner: string,
+  query: string,
+  status: InvoiceStatusFilter | null = null
+) {
   try {
     const data = await sql`SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
-    WHERE (
+    WHERE customers.owner_id = ${owner}
+    AND (
       customers.name ILIKE ${`%${query}%`} OR
       customers.email ILIKE ${`%${query}%`} OR
       invoices.amount::text ILIKE ${`%${query}%`} OR
@@ -262,7 +285,7 @@ export async function fetchInvoicesPages(query: string, status: InvoiceStatusFil
   }
 }
 
-export async function fetchInvoiceById(id: string) {
+export async function fetchInvoiceById(owner: string, id: string) {
   try {
     const data = await sql<InvoiceForm[]>`
       SELECT
@@ -273,7 +296,8 @@ export async function fetchInvoiceById(id: string) {
         to_char(invoices.date, 'YYYY-MM-DD') AS date,
         to_char(invoices.due_date, 'YYYY-MM-DD') AS due_date
       FROM invoices
-      WHERE invoices.id = ${id};
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE invoices.id = ${id} AND customers.owner_id = ${owner};
     `;
 
     const invoice = data.map((invoice) => ({
@@ -290,7 +314,7 @@ export async function fetchInvoiceById(id: string) {
 }
 
 /** One invoice with its customer, for the detail page; undefined if there is none. */
-export async function fetchInvoiceDetail(id: string) {
+export async function fetchInvoiceDetail(owner: string, id: string) {
   try {
     const data = await sql<InvoiceDetail[]>`
       SELECT
@@ -307,7 +331,7 @@ export async function fetchInvoiceDetail(id: string) {
         customers.email
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE invoices.id = ${id}
+      WHERE invoices.id = ${id} AND customers.owner_id = ${owner}
     `;
     return data[0];
   } catch (error) {
@@ -316,13 +340,14 @@ export async function fetchInvoiceDetail(id: string) {
   }
 }
 
-export async function fetchCustomers() {
+export async function fetchCustomers(owner: string) {
   try {
     const customers = await sql<CustomerField[]>`
       SELECT
         id,
         name
       FROM customers
+      WHERE owner_id = ${owner}
       ORDER BY name ASC
     `;
 
@@ -334,10 +359,10 @@ export async function fetchCustomers() {
 }
 
 /** A customer for the edit form, or undefined if there is none with that id. */
-export async function fetchCustomerById(id: string) {
+export async function fetchCustomerById(owner: string, id: string) {
   try {
     const data = await sql<CustomerEdit[]>`
-      SELECT id, name, email FROM customers WHERE id = ${id}
+      SELECT id, name, email FROM customers WHERE id = ${id} AND owner_id = ${owner}
     `;
     return data[0];
   } catch (error) {
@@ -346,7 +371,7 @@ export async function fetchCustomerById(id: string) {
   }
 }
 
-export async function fetchFilteredCustomers(query: string) {
+export async function fetchFilteredCustomers(owner: string, query: string) {
   try {
     const data = await sql<CustomersTableType[]>`
 		SELECT
@@ -359,9 +384,8 @@ export async function fetchFilteredCustomers(query: string) {
 		  SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid
 		FROM customers
 		LEFT JOIN invoices ON customers.id = invoices.customer_id
-		WHERE
-		  customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`}
+		WHERE customers.owner_id = ${owner}
+		  AND (customers.name ILIKE ${`%${query}%`} OR customers.email ILIKE ${`%${query}%`})
 		GROUP BY customers.id, customers.name, customers.email, customers.image_url
 		ORDER BY customers.name ASC
 	  `;

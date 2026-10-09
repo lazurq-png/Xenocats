@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { fetchMonthlyTotals } from '@/app/lib/data';
+import { currentUserId } from '@/app/lib/session';
 import { RANGES, Range, chartScale, formatAxis, monthLabel } from '@/app/lib/dashboard';
 import { formatCurrency } from '@/app/lib/utils';
 
@@ -7,7 +8,7 @@ const CHART_HEIGHT = 225;
 
 /** Collected (lime) under pending (violet) invoice totals per month, as in the mockup. */
 export default async function RevenueChart({ range }: { range: Range }) {
-  const months = await fetchMonthlyTotals(range);
+  const months = await fetchMonthlyTotals(await currentUserId(), range);
   const { top, ticks } = chartScale(Math.max(0, ...months.map((m) => m.paid + m.pending)));
   // All time can span years; the last 12 months read fine as month names, as in the mockup.
   const withYear = range === 'all' && new Set(months.map((m) => m.month.slice(0, 4))).size > 1;

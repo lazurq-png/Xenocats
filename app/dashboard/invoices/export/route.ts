@@ -8,7 +8,9 @@ import { parseStatusFilter } from '@/app/lib/schemas';
 // endpoint anyone can call directly.
 export async function GET(request: Request) {
   const session = await auth();
-  if (!session?.user) {
+  // The user's own invoices only: the id is the session's, never the request's.
+  const owner = session?.user?.id;
+  if (!owner) {
     return new Response('You must be logged in to export invoices.', {
       status: 401,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
@@ -18,7 +20,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const query = params.get('query') ?? '';
   const status = parseStatusFilter(params.get('status') ?? undefined);
-  const invoices = await fetchInvoicesForExport(query, status);
+  const invoices = await fetchInvoicesForExport(owner, query, status);
   // Never a file that looks complete but is not.
   if (invoices.length > EXPORT_LIMIT) {
     return new Response(

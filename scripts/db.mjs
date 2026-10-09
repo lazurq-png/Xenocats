@@ -72,10 +72,13 @@ async function seed(sql, schema) {
         VALUES (${user.id}, ${user.name}, ${user.email}, ${password})
         ON CONFLICT (id) DO NOTHING`;
     }
+    // The seed's customers (and so its invoices) are the demo user's (migration 0005).
+    const [owner] = users;
     for (const customer of customers) {
       await tx`
-        INSERT INTO customers (id, name, email, image_url)
-        VALUES (${customer.id}, ${customer.name}, ${customer.email}, ${customer.image_url})
+        INSERT INTO customers (id, name, email, image_url, owner_id)
+        VALUES (${customer.id}, ${customer.name}, ${customer.email}, ${customer.image_url},
+                ${owner.id})
         ON CONFLICT (id) DO NOTHING`;
     }
     // Invoices have no fixed ids, so only an empty table is filled: seeding twice

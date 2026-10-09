@@ -197,3 +197,43 @@ All green, run one after another on `ae34cbc`:
   - Selector: no unit test relates; e2e the 3 specs reaching `/`: 17 passed (next dev), twice. `npm run build` exit 0.
   - Acceptance criteria: by command. **Tested in a browser, not seen**: a human should look at `/`'s header with only the logo.
 - **Reviewer**: approve, no findings.
+
+## Session 2 — resumed 2026-10-09 09:12
+
+- **Gap**: session 1 stopped on the account's usage limit on 2026-10-08 at about 18:24 (its message: "resets 8:20pm"), two minutes into T11. Its `/loop 20m` timer (`ffa0ab35`) never resumed it: per that session's own transcript, no firing came between 18:21 and 09:30, and its process ended and was restarted at some point (it reported a "previous session ended" notice). A human started this session with `/night-run` at 09:12. Time lost: about 14 h 50 min, of which about 12 h 35 min were before the goal time (07:00): T11, T12 and the exploration the plan scheduled for the night were never started in it.
+- Clock 2026-10-09 09:12, budget 14,909,198 (this session's own denominator). **Deadline: 2026-10-09 07:00** (unchanged; already past), so under §8.4 only the task in flight, T11, is finished, then the morning report. T12 and exploration do not start.
+- §9.2: remote branches match the local ones (`origin/night-2026-10-08` = `3973479`). T10's CI was re-polled (below). Timer re-armed: `760fdd62` (`7,27,47 * * * *`).
+- **Baseline re-run** (§1.5), 09:12–09:27 on `3973479`, T11's uncommitted work stashed: lint exit 0, 0 warnings (= `lint-baseline.txt`), 113 s; `next typegen && tsc --noEmit` exit 0, 58 s; `npm test` 685 passed, 17 skipped, 126 s; database tests 17 passed, 6 s; `npm run build` exit 0, 43 s; `npm run test:e2e` 138 passed, 4.5 min; `E2E_SERVER=start` 138 passed, 2.6 min.
+- **Session 1 woke at 09:30.** Its timer fired at 09:30 (why then, and not after the limit reset at 20:20, its transcript does not show), and it ran read-only checks and staged T11's files (`git add`, no content changed), then saw this session's state, stopped and deleted its timer. Nothing else it did reached the tree. Its checks ran beside this session's gate (whose first steps it overlapped): the gate's later steps were judged accordingly (below).
+
+## T11 — Each account has its own customers and invoices (completed)
+
+- Branch `night-2026-10-08-t11-own-data`, base `3973479`. Start 2026-10-08 18:22 (session 1, budget ~14,425,000), cut off at about 18:24; resumed 2026-10-09 09:12 (budget 14,909,198); completed 09:57 (budget ~14,743,000).
+- **CI of T10** (`3973479`): **CI passed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37808190533), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37808186098)).
+- **What the code does**
+  - `db/migrations/0005_customer_owners.sql` (new): each customer has an owner, a user (required, kept from deletion while they own customers, indexed). Existing customers go to the only user. With customers and not exactly one user it stops, changing nothing, and says how to assign them by hand and run it again.
+  - `scripts/db.mjs`: the seeded customers are the demo user's.
+  - `auth.config.ts`: the session carries the user's id. A session without one (a login from before this change) is signed out.
+  - `app/lib/session.ts` (new) and every dashboard page and panel: data is read for the signed-in user's id, taken from the session.
+  - `app/lib/data.ts`: every query is the owner's: lists, search, counts, totals, the chart, single invoices and customers, the export.
+  - `app/lib/actions.ts`: creating, changing and deleting invoices and customers touch only the user's own. An invoice is created for, or moved to, only the user's own customers. Another account's rows get the same reply as unknown ones.
+  - `app/dashboard/invoices/export/route.ts`: the CSV holds only the user's invoices.
+  - `app/dashboard/invoices/[id]/edit/page.tsx`: a malformed id is not-found, as on the other id pages.
+  - Tests:
+    - database tests: two accounts never see each other's rows, and the real actions refuse the other's and change nothing; migration 0005 on existing rows, one user, two users and empty;
+    - unit tests: the session's id, the owner passed by every action and the export, the refusals;
+    - `tests/e2e/own-data.spec.ts` (new): a second user gets not-found for the demo user's invoice and customer, and empty lists, overview, export and invoice form.
+  - CI: the new spec is in the invoices group of both browser jobs.
+- **What it brings**: each account now has its own customers and invoices. A user can no longer see, search, export or change anyone else's, even by guessing an id or posting to an action directly. That is the prerequisite for letting people sign up (task 12). Decisions: D50–D57. Questions: Q3 (a human runs `npm run db:migrate` on `xenocats` before the development dashboard works again), Q5.
+- **Verification** (the selector printed FULL for `auth.config.ts`, and the plan asked for every suite)
+  - prettier on the staged content of the 22 changed code files: clean (the `.sql` has no Prettier parser). `npm run lint` exit 0, **0 warnings** (= baseline). `next typegen && tsc --noEmit` exit 0. `actionlint` (with shellcheck and pyflakes) exit 0. CI's "every test file is in a group" loop, run locally: none missing.
+  - `npm test`: 691 passed, 24 skipped. `DATABASE_TESTS=1 npx vitest run tests/unit/data`: **24 passed**, none skipped (17 before, plus 4 two-account and 3 migration tests).
+  - `npm run build` exit 0, twice. No page reads the database at build time any more: each now reads the session.
+  - `npm run test:e2e` (next dev): **139 passed**. The new spec: 3 of 3 alone (dev), 3 of 3 (start).
+  - `E2E_SERVER=start npm run test:e2e`:
+    - First run: 137 passed, 2 failed. Survival's "a level-up stops the run for a choice…" then passed 5 of 5 alone; nothing it touches changed, so it is recorded as a flake under load. Login-limit's "a successful login starts the count again" failed 1 of 5 alone, and **3 of 10 on the base commit without T11**: an older flake, its cause and fix in Q5.
+    - After the reviewer's fix and a rebuild, the full suite again: **139 passed**.
+  - `next-env.d.ts` and `AGENTS.md` unchanged.
+  - Acceptance criteria (D57): by command, except "no other code path touches customers or invoices", checked by reading and `grep`.
+- **Reviewer**: approve, one Low: the spec's demo invoice could be one another spec deletes mid-run, making the not-found check prove nothing. Fixed: it picks the oldest invoice, a seeded one, and passed 3 of 3 on each server. The reviewer could not run the database or browser tests (the gate was using them); both ran here, as above.
+- **Not seen**: nobody looked at a page. A human should log in as a second user (none exists in `xenocats`; Q3) and look at the empty dashboard.

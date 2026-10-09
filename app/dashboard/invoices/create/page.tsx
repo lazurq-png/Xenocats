@@ -1,6 +1,7 @@
 import Form from '@/app/ui/invoices/create-form';
 import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
 import { fetchCustomers } from '@/app/lib/data';
+import { currentUserId } from '@/app/lib/session';
 import { PAYMENT_DAYS, addDays } from '@/app/lib/schemas';
 import { Metadata } from 'next';
 import { connection } from 'next/server';
@@ -13,7 +14,7 @@ export default async function Page() {
   // Rendered per request, not once at build time: the customer list changes
   // whenever a customer is created, renamed or deleted.
   await connection();
-  const customers = await fetchCustomers();
+  const customers = await fetchCustomers(await currentUserId());
   // Dated today as the action dates it (UTC), due after the usual term.
   const today = new Date().toISOString().slice(0, 10);
 

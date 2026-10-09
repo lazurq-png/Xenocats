@@ -21,10 +21,13 @@ import {
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 // Server Actions are public POST endpoints: proxy.ts only gates page navigation,
-// so every action that changes data checks the session itself.
-async function isSignedIn() {
+// so every action that changes data checks the session itself, and changes only
+// the signed-in user's own customers and their invoices (migration 0005). Another
+// account's are refused exactly as an id that names nothing.
+/** The signed-in user's id, from the session; undefined when there is none. */
+async function signedInUser() {
   const session = await auth();
-  return !!session?.user;
+  return session?.user?.id;
 }
 
 export type State = {
@@ -37,12 +40,16 @@ export type State = {
   message?: string | null;
 };
 
+/** An invoice's customer that is not one of the user's own: unknown, or another account's. */
+const NO_CUSTOMER = 'That customer does not exist.';
+
 /** The database's own check on the due date (db/migrations/0003) refused it. */
 const isDueDateRefused = (error: unknown) =>
   (error as { constraint_name?: string })?.constraint_name === 'invoices_due_date_check';
 
 export async function createInvoice(prevState: State, formData: FormData) {
-  if (!(await isSignedIn())) {
+  const owner = await signedInUser();
+  if (!owner) {
     return { message: 'You must be logged in to create an invoice.' };
   }
 
@@ -73,13 +80,21 @@ export async function createInvoice(prevState: State, formData: FormData) {
   if (problem) {
     return { errors: { dueDate: [problem] }, message: 'Failed to Create Invoice.' };
   }
+  const noCustomer: State = {
+    errors: { customerId: [NO_CUSTOMER] },
+    message: 'Failed to Create Invoice.',
+  };
+  if (!CustomerId.safeParse(customerId).success) return noCustomer;
 
-  // Insert data into the database
+  // Insert data into the database: only for one of the user's own customers.
   try {
-    await sql`
+    const inserted = await sql`
       INSERT INTO invoices (customer_id, amount, status, date, due_date)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date}, ${dueDate})
+      SELECT id, ${amountInCents}::int, ${status}, ${date}::date, ${dueDate}::date
+      FROM customers
+      WHERE id = ${customerId} AND owner_id = ${owner}
     `;
+    if (inserted.count === 0) return noCustomer;
   } catch (error) {
     if (isDueDateRefused(error)) {
       return {
@@ -100,7 +115,8 @@ export async function createInvoice(prevState: State, formData: FormData) {
 }
 
 export async function updateInvoice(id: string, prevState: State, formData: FormData) {
-  if (!(await isSignedIn())) {
+  const owner = await signedInUser();
+  if (!owner) {
     return { message: 'You must be logged in to update an invoice.' };
   }
 
@@ -127,23 +143,45 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
   // Rounded: amount * 100 is not always a whole number in floating point (10000.37
   // gives 1000037.0000000001), and the column is an integer.
   const amountInCents = Math.round(amount * 100);
+  const noCustomer: State = {
+    errors: { customerId: [NO_CUSTOMER] },
+    message: 'Failed to Update Invoice.',
+  };
+  if (!CustomerId.safeParse(customerId).success) return noCustomer;
 
   try {
-    // The due date is checked against the invoice's own date, which the form
-    // does not change.
-    const [invoice] = await sql<{ date: string }[]>`
-      SELECT to_char(date, 'YYYY-MM-DD') AS date FROM invoices WHERE id = ${id}
+    // The user's own invoice (through its customer), moved only to one of the
+    // user's own customers. The due date is checked against the invoice's own
+    // date, which the form does not change.
+    const [invoice] = await sql<{ date: string; own_customer: boolean }[]>`
+      SELECT
+        to_char(invoices.date, 'YYYY-MM-DD') AS date,
+        EXISTS (
+          SELECT 1 FROM customers AS target
+          WHERE target.id = ${customerId} AND target.owner_id = ${owner}
+        ) AS own_customer
+      FROM invoices
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE invoices.id = ${id} AND customers.owner_id = ${owner}
     `;
     if (!invoice) return { message: 'No such invoice.' };
+    if (!invoice.own_customer) return noCustomer;
     const problem = dueDateProblem(dueDate, invoice.date);
     if (problem) {
       return { errors: { dueDate: [problem] }, message: 'Failed to Update Invoice.' };
     }
+    // Both conditions again, so a change between the read and the write cannot
+    // slip through.
     const updated = await sql`
       UPDATE invoices
       SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status},
         due_date = ${dueDate}
       WHERE id = ${id}
+        AND customer_id IN (SELECT owned.id FROM customers AS owned WHERE owned.owner_id = ${owner})
+        AND EXISTS (
+          SELECT 1 FROM customers AS target
+          WHERE target.id = ${customerId} AND target.owner_id = ${owner}
+        )
     `;
     // Deleted between the read and the write: nothing was saved.
     if (updated.count === 0) return { message: 'No such invoice.' };
@@ -163,7 +201,8 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
 }
 
 export async function deleteInvoice(id: string) {
-  if (!(await isSignedIn())) {
+  const owner = await signedInUser();
+  if (!owner) {
     throw new Error('Unauthorized');
   }
   // The id is the caller's: anything but a UUID names no invoice.
@@ -172,7 +211,13 @@ export async function deleteInvoice(id: string) {
   }
 
   try {
-    await sql`DELETE FROM invoices WHERE id = ${id}`;
+    // Only the user's own: another account's invoice, like an unknown one, is
+    // left alone without a word.
+    await sql`
+      DELETE FROM invoices
+      WHERE id = ${id}
+        AND customer_id IN (SELECT id FROM customers WHERE owner_id = ${owner})
+    `;
   } catch (error) {
     // Log the database error on the server; send the client only a generic message.
     console.error('Database Error:', error);
@@ -208,7 +253,8 @@ function revalidateCustomers() {
 }
 
 export async function createCustomer(prevState: CustomerState, formData: FormData) {
-  if (!(await isSignedIn())) {
+  const owner = await signedInUser();
+  if (!owner) {
     return { message: 'You must be logged in to create a customer.' };
   }
 
@@ -226,8 +272,8 @@ export async function createCustomer(prevState: CustomerState, formData: FormDat
   const { name, email } = validatedFields.data;
   try {
     await sql`
-      INSERT INTO customers (name, email, image_url)
-      VALUES (${name}, ${email}, ${CUSTOMER_IMAGE})
+      INSERT INTO customers (name, email, image_url, owner_id)
+      VALUES (${name}, ${email}, ${CUSTOMER_IMAGE}, ${owner})
     `;
   } catch (error) {
     console.error('Database Error:', error);
@@ -239,7 +285,8 @@ export async function createCustomer(prevState: CustomerState, formData: FormDat
 }
 
 export async function updateCustomer(id: string, prevState: CustomerState, formData: FormData) {
-  if (!(await isSignedIn())) {
+  const owner = await signedInUser();
+  if (!owner) {
     return { message: 'You must be logged in to update a customer.' };
   }
   if (!CustomerId.safeParse(id).success) {
@@ -260,7 +307,8 @@ export async function updateCustomer(id: string, prevState: CustomerState, formD
   const { name, email } = validatedFields.data;
   try {
     const updated = await sql`
-      UPDATE customers SET name = ${name}, email = ${email} WHERE id = ${id}
+      UPDATE customers SET name = ${name}, email = ${email}
+      WHERE id = ${id} AND owner_id = ${owner}
     `;
     if (updated.count === 0) return { message: 'That customer does not exist.' };
   } catch (error) {
@@ -277,7 +325,8 @@ const hasInvoices = (error: unknown) =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23503';
 
 export async function deleteCustomer(id: string, prevState: CustomerState): Promise<CustomerState> {
-  if (!(await isSignedIn())) {
+  const owner = await signedInUser();
+  if (!owner) {
     return { message: 'You must be logged in to delete a customer.' };
   }
   if (!CustomerId.safeParse(id).success) {
@@ -292,10 +341,11 @@ export async function deleteCustomer(id: string, prevState: CustomerState): Prom
     // foreign key (migration 0002) has not reached yet; the key covers the race.
     const deleted = await sql`
       DELETE FROM customers
-      WHERE id = ${id} AND NOT EXISTS (SELECT 1 FROM invoices WHERE customer_id = ${id})
+      WHERE id = ${id} AND owner_id = ${owner}
+        AND NOT EXISTS (SELECT 1 FROM invoices WHERE customer_id = ${id})
     `;
     if (deleted.count === 0) {
-      const [exists] = await sql`SELECT 1 FROM customers WHERE id = ${id}`;
+      const [exists] = await sql`SELECT 1 FROM customers WHERE id = ${id} AND owner_id = ${owner}`;
       return exists ? stillInvoiced : { message: 'That customer does not exist.' };
     }
   } catch (error) {

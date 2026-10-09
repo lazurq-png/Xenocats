@@ -145,7 +145,7 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/invoices-filter tests/e2e/invoice-detail tests/e2e/invoice-export
-          tests/e2e/invoices
+          tests/e2e/invoices tests/e2e/own-data
           --output test-results/invoices
         env:
           E2E_SERVER: start
@@ -250,7 +250,7 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           npx playwright test tests/e2e/invoices-filter tests/e2e/invoice-detail tests/e2e/invoice-export
-          tests/e2e/invoices
+          tests/e2e/invoices tests/e2e/own-data
           --output test-results/invoices
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/invoices

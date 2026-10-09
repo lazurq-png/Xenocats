@@ -4,6 +4,7 @@ import { DeleteInvoice, UpdateInvoice, ViewInvoice } from '@/app/ui/invoices/but
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
 import { fetchFilteredInvoices } from '@/app/lib/data';
+import { currentUserId } from '@/app/lib/session';
 import type { InvoiceStatusFilter } from '@/app/lib/schemas';
 
 /** How an invoice is named to a screen reader: "invoice for Evil Rabbit, $666.00". */
@@ -19,7 +20,7 @@ export default async function InvoicesTable({
   currentPage: number;
   status?: InvoiceStatusFilter | null;
 }) {
-  const invoices = await fetchFilteredInvoices(query, currentPage, status);
+  const invoices = await fetchFilteredInvoices(await currentUserId(), query, currentPage, status);
 
   return (
     // Its own sideways scroll where the columns need more room than there is (as the

@@ -20,3 +20,26 @@ Built and tested in Chromium's touch emulation: a press held a second on a sleep
 - (b) If iOS cancels it, the cats' layer could take `-webkit-touch-callout: none` / `user-select: none` on the cat's own element during a hold, or the hold could be shorter than the system's long press (about 500 ms): both are small, separate changes.
 
 Recommendation: (a) first.
+
+## Q3 — The development database needs migration 0005 before the dashboard works (T11)
+
+The run never writes to `xenocats` (the plan and the skill forbid it). Until a human runs `npm run db:migrate` there, the development app's dashboard fails: every query now filters on `customers.owner_id`, which that schema does not have yet. The browser tests, the database tests and CI build their own schemas and are not affected.
+
+- `xenocats` has exactly one user (the demo login, unless someone added one): `npm run db:migrate` gives every customer to that user and is done.
+- It has more than one user: the migration stops and changes nothing. Its comment (`db/migrations/0005_customer_owners.sql`) gives the two statements to assign owners by hand; then run `npm run db:migrate` again.
+
+Also: every existing login is signed out once (the session must now carry the user's id; D52).
+
+Recommendation: run `npm run db:migrate` this morning.
+
+## Q4 — Task 12 (sign-up) was not started
+
+The goal time (2026-10-09 07:00) had passed when the run resumed at 09:12, after the usage limit had stopped the first session at 18:24. T11 was in flight and was finished (§8.4). T12 is still to do, and its proposals (a limit on sign-ups, email verification, deleting an account) were never written. T11 is the prerequisite it needed; it is merged.
+
+Recommendation: put task 12 in the next plan as written.
+
+## Q5 — `login-limit.spec.ts` "a successful login starts the count again" fails about 1 run in 4 under `next start` (found at T11's gate)
+
+Against `next start` it failed in T11's full gate run, 1 of 5 runs alone, and **3 of 10 runs on the base commit without T11** (`3973479`), so it is older than tonight's work. Under `next dev` it passed every time. The failure: after the first successful login the test calls `page.context().clearCookies()`, and its next `/login` lands on the dashboard (the test user's own, empty), so the next `fill` waits for an Email field that is not there until the 90 s timeout. The likely cause is a response still in flight from the dashboard (the session is refreshed on requests that pass `proxy.ts`), which sets the session cookie again after the clear. The fix is in the test: wait for the dashboard to settle (`waitForLoadState('networkidle')`) before clearing, or sign out with the button rather than clearing cookies. Not done tonight (past the goal, and outside task 11).
+
+Recommendation: a small task in the next plan; confirm it with `E2E_SERVER=start npx playwright test tests/e2e/login-limit -g "starts the count again" --repeat-each 10`.
