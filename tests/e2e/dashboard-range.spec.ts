@@ -1,18 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The home page's period picker: all time unless the URL asks for the last 12 months.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
-
-test.beforeEach(async ({ page }) => {
-  await page.goto('/login');
-  await page.waitForLoadState('networkidle');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-});
+test.use({ storageState: DEMO_USER });
 
 test('the home page shows all time by default', async ({ page }) => {
+  await page.goto('/dashboard');
   const period = page.getByLabel('Period');
   await expect(period).toHaveValue('all');
   await expect(period.locator('option:checked')).toHaveText('All time');

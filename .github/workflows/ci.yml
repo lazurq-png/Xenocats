@@ -37,6 +37,7 @@ jobs:
           tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
           tests/unit/csv tests/unit/export-route tests/unit/invoice-status
           tests/unit/login-limit tests/unit/password-check tests/unit/credentials tests/unit/cat-error tests/unit/affected-tests
+          tests/unit/forms
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
         run: >-
@@ -58,19 +59,24 @@ jobs:
           tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat tests/unit/xenocats/combos
           tests/unit/xenocats/puppets tests/unit/xenocats/movement-pad
       # A test file in no group would never run: each unit test must be named in a
-      # group above, each browser test in a group of both browser jobs below.
+      # group above, each browser test in a group of playwright.config.ts (GROUPS).
       - name: Every test file is in a group
         if: ${{ !cancelled() }}
         run: |
           missing=0
-          for file in tests/unit/*.test.ts* tests/unit/xenocats/*.test.ts* tests/e2e/*.spec.ts; do
+          for file in tests/unit/*.test.ts* tests/unit/xenocats/*.test.ts*; do
             name="${file%.test.ts*}"
-            name="${name%.spec.ts}"
-            need=1
-            case "$file" in tests/e2e/*) need=2 ;; esac
-            found=$(grep -cE "(^|[[:space:]])${name}([[:space:]]|$)" .github/workflows/ci.yml || true)
-            if [ "$found" -lt "$need" ]; then
-              echo "::error file=$file::$file is in no test group in ci.yml (named $found times, needs $need)"
+            if ! grep -qE "(^|[[:space:]])${name}([[:space:]]|$)" .github/workflows/ci.yml; then
+              echo "::error file=$file::$file is in no unit test group in ci.yml"
+              missing=1
+            fi
+          done
+          groups="$(sed -n '/^const GROUPS/,/^};/p' playwright.config.ts)"
+          for file in tests/e2e/*.spec.ts; do
+            name="$(basename "$file" .spec.ts)"
+            found=$(grep -oF "'${name}'" <<< "$groups" | wc -l)
+            if [ "$found" -ne 1 ]; then
+              echo "::error file=$file::$file is in $found groups in playwright.config.ts (GROUPS), not 1"
               missing=1
             fi
           done
@@ -122,58 +128,14 @@ jobs:
       - id: install
         # Already in the image: a no-op unless the versions drifted apart.
         run: npx playwright install chromium
-      # The browser tests run in named groups, each even if an earlier one failed,
-      # so a failure is identifiable from the job's step names alone (but not when
-      # the build or the browser install failed). Each keeps its own report and
-      # traces: a Playwright run clears the previous run's.
-      - name: Browser tests against next start (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)
+      # Every browser test, in one run on one server: playwright.config.ts names the
+      # groups (smoke, customers, invoices, cats, survival, sound) as projects, so the
+      # list and the report say which group a failure is in.
+      - name: Browser tests against next start
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
-          tests/e2e/change-password
-          tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
-          tests/e2e/intensity tests/e2e/dashboard-range
-          --output test-results/smoke
+        run: npx playwright test
         env:
           E2E_SERVER: start
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
-      - name: Browser tests against next start (customers)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/customers
-          --output test-results/customers
-        env:
-          E2E_SERVER: start
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/customers
-      - name: Browser tests against next start (invoices)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/invoices-filter tests/e2e/invoice-detail tests/e2e/invoice-export
-          tests/e2e/invoices tests/e2e/own-data
-          --output test-results/invoices
-        env:
-          E2E_SERVER: start
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/invoices
-      - name: Browser tests against next start (cats, petting, touch)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats tests/e2e/cats-link tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
-        env:
-          E2E_SERVER: start
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
-      - name: Browser tests against next start (Survival)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/survival --output test-results/fight
-        env:
-          E2E_SERVER: start
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/fight
-      - name: Browser tests against next start (sound, field guide)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/sound tests/e2e/field-guide
-          --output test-results/sound
-        env:
-          E2E_SERVER: start
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/sound
       # Only this job has a database for them (the checks job skips this file),
       # whether or not the build and browser tests passed. The tests rebuild
       # their own schema, xenocats_vitest, on this job's server.
@@ -231,50 +193,14 @@ jobs:
       - id: install
         # Already in the image: a no-op unless the versions drifted apart.
         run: npx playwright install chromium
-      # Needs no db:migrate: the tests rebuild their own xenocats_test schema. Named
-      # groups, each with its own report and traces, as in the build job.
-      - name: Browser tests (smoke, branding, dashboard, login, settings, headers, states, keyboard, intensity)
+      # The build job runs every browser test against the production server. This
+      # one runs, against `next dev`, the specs for what differs there: the pages
+      # boot and hydrate, the dev content security policy (next.config.ts) lets them
+      # run, and the login works. Needs no db:migrate: the tests rebuild their own
+      # xenocats_test schema.
+      - name: Browser tests (smoke, security headers, dashboard login)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/smoke tests/e2e/branding tests/e2e/dashboard tests/e2e/login-limit
-          tests/e2e/change-password
-          tests/e2e/security-headers tests/e2e/cat-states tests/e2e/keyboard
-          tests/e2e/intensity tests/e2e/dashboard-range
-          --output test-results/smoke
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/smoke
-      - name: Browser tests (customers)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/customers
-          --output test-results/customers
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/customers
-      - name: Browser tests (invoices)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/invoices-filter tests/e2e/invoice-detail tests/e2e/invoice-export
-          tests/e2e/invoices tests/e2e/own-data
-          --output test-results/invoices
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/invoices
-      - name: Browser tests (cats, petting, touch)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/cats tests/e2e/cats-link tests/e2e/pet-cat tests/e2e/touch --output test-results/cats
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/cats
-      - name: Browser tests (Survival)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npx playwright test tests/e2e/survival --output test-results/fight
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/fight
-      - name: Browser tests (sound, field guide)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: >-
-          npx playwright test tests/e2e/sound tests/e2e/field-guide
-          --output test-results/sound
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/sound
+        run: npx playwright test tests/e2e/smoke.spec tests/e2e/security-headers.spec tests/e2e/dashboard.spec
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

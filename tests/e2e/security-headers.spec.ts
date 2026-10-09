@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The security headers from next.config.ts: present on every page, and strict
 // enough to matter, yet the pages still work under them. The rest of the suite
@@ -59,29 +60,28 @@ test('the public pages run under the policy: scripts and styles', async ({ page 
   expect(violations).toEqual([]);
 });
 
-test('logged in, the dashboard pages run under the policy', async ({ page }) => {
+test.describe('logged in', () => {
   test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
-  const violations = await watchForViolations(page);
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-  for (const [path, heading] of [
-    ['/dashboard', /captain/i],
-    ['/dashboard/invoices', /^invoices$/i],
-    ['/dashboard/customers', /^customers$/i],
-  ] as const) {
-    await page.goto(path);
-    await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
-    // The cats' layer: client code that draws with inline styles.
-    await expect(page.getByTestId('xenocat-page')).toBeAttached();
-    await page.waitForLoadState('networkidle');
-  }
-  // A client-side interaction: the search box updates the URL.
-  await page.getByPlaceholder(/search/i).fill('Amy');
-  await expect(page).toHaveURL(/query=Amy/);
-  expect(violations).toEqual([]);
+  test.use({ storageState: DEMO_USER });
+
+  test('the dashboard pages run under the policy', async ({ page }) => {
+    const violations = await watchForViolations(page);
+    for (const [path, heading] of [
+      ['/dashboard', /captain/i],
+      ['/dashboard/invoices', /^invoices$/i],
+      ['/dashboard/customers', /^customers$/i],
+    ] as const) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+      // The cats' layer: client code that draws with inline styles.
+      await expect(page.getByTestId('xenocat-page')).toBeAttached();
+      await page.waitForLoadState('networkidle');
+    }
+    // A client-side interaction: the search box updates the URL.
+    await page.getByPlaceholder(/search/i).fill('Amy');
+    await expect(page).toHaveURL(/query=Amy/);
+    expect(violations).toEqual([]);
+  });
 });
 
 test('the cats run under the policy: a summoned cat appears, drawn with inline styles', async ({

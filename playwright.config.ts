@@ -30,6 +30,30 @@ const server =
     ? `npx next start -p ${PORT}`
     : `npx next dev --turbopack -p ${PORT}`;
 
+// Each spec (its name without .spec.ts) in exactly one group.
+const GROUPS: Record<string, string[]> = {
+  smoke: [
+    'smoke',
+    'branding',
+    'dashboard',
+    'login-limit',
+    'change-password',
+    'security-headers',
+    'cat-states',
+    'keyboard',
+    'intensity',
+    'dashboard-range',
+  ],
+  customers: ['customers'],
+  invoices: ['invoices-filter', 'invoice-detail', 'invoice-export', 'invoices', 'own-data'],
+  cats: ['cats', 'cats-link', 'pet-cat', 'touch'],
+  survival: ['survival'],
+  sound: ['sound', 'field-guide'],
+};
+
+// The groups with a spec that uses DEMO_USER (cats: cats-link).
+const LOGGED_IN = ['smoke', 'customers', 'invoices', 'cats'];
+
 export default defineConfig({
   testDir: 'tests/e2e',
   globalSetup: './tests/e2e/global-setup.ts',
@@ -41,7 +65,21 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    // Logs the demo user in once and saves the session (tests/e2e/demo-user.ts).
+    { name: 'setup', testMatch: /auth\.setup\.ts$/ },
+    // The specs in named groups, all run by one `playwright test` on one server; the
+    // report names the group a failure is in. A spec in no group never runs: CI's
+    // "Every test file is in a group" step checks each is named here.
+    ...Object.entries(GROUPS).map(([name, specs]) => ({
+      name,
+      testMatch: specs.map((spec) => `**/${spec}.spec.ts`),
+      // Only the groups with a spec that starts from the saved session: a failed
+      // login then holds back those, not every group.
+      dependencies: LOGGED_IN.includes(name) ? ['setup'] : [],
+      use: { ...devices['Desktop Chrome'] },
+    })),
+  ],
   webServer: {
     command: server,
     url: `http://localhost:${PORT}`,

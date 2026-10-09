@@ -1,21 +1,15 @@
 import { type Page, expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The invoice detail page and the delete confirmation dialog, logged in as the
 // demo user against the test schema global-setup.ts rebuilds. Each test makes its
 // own pending invoice (an amount no other test uses) and asserts only on it.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
+test.use({ storageState: DEMO_USER });
 
 // Several page changes per test, each allowed 15 s under a busy next dev: more
 // than the default 30 s in all.
 test.describe.configure({ timeout: 60_000 });
-
-async function logIn(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-}
 
 /** Creates a pending invoice for Amy Burns with a unique amount; returns its cents. */
 async function createInvoice(page: Page) {
@@ -41,7 +35,6 @@ async function findInvoice(page: Page, cents: number) {
 }
 
 test('an invoice has a detail page, reached from the list', async ({ page }) => {
-  await logIn(page);
   const cents = await createInvoice(page);
   const row = await findInvoice(page, cents);
   await row.getByRole('link', { name: `View invoice for Amy Burns, ${dollars(cents)}` }).click();
@@ -62,7 +55,6 @@ test('an invoice has a detail page, reached from the list', async ({ page }) => 
 });
 
 test('an overdue invoice says by how long; a paid one says nothing of it', async ({ page }) => {
-  await logIn(page);
   // The seed's unpaid invoices are long past due.
   await page.goto('/dashboard/invoices?status=overdue');
   await page.locator('table tbody tr').first().getByRole('link', { name: /^View/ }).click();
@@ -79,7 +71,6 @@ test('an overdue invoice says by how long; a paid one says nothing of it', async
 test('deleting asks first, in a dialog that keeps focus, cancels on Esc and gives focus back', async ({
   page,
 }) => {
-  await logIn(page);
   const cents = await createInvoice(page);
   const row = await findInvoice(page, cents);
   const trash = row.getByRole('button', {
@@ -123,7 +114,6 @@ test('deleting asks first, in a dialog that keeps focus, cancels on Esc and give
 });
 
 test('deleting from the detail page goes back to the list', async ({ page }) => {
-  await logIn(page);
   const cents = await createInvoice(page);
   const row = await findInvoice(page, cents);
   await row.getByRole('link', { name: /^View invoice/ }).click();
@@ -151,10 +141,4 @@ test('deleting from the detail page goes back to the list', async ({ page }) => 
   await expect(page.getByText('Could not find the requested invoice.')).toBeVisible();
 });
 
-test('an invoice that does not exist shows not found', async ({ page }) => {
-  await logIn(page);
-  for (const id of ['00000000-0000-4000-8000-000000000000', 'not-a-uuid']) {
-    await page.goto(`/dashboard/invoices/${id}`);
-    await expect(page.getByText('Could not find the requested invoice.')).toBeVisible();
-  }
-});
+// An invoice that does not exist, or an id that is not one: cat-states.spec.ts.

@@ -1,19 +1,14 @@
 import { type Page, expect, test } from '@playwright/test';
 import { addDays } from '@/app/lib/schemas';
 import { formatDateToLocal } from '@/app/lib/utils';
+import { DEMO_USER } from './demo-user';
 
 // Invoice create, edit and delete through the forms, logged in as the demo user,
 // against the test schema global-setup.ts rebuilds. Each test makes its own
-// invoice, with an amount no other invoice has, and asserts only on it.
+// invoice, with an amount no other invoice has, and asserts only on it. A form
+// the action refuses, error by error, is tests/unit/forms.test.tsx.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
-
-async function logIn(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-}
+test.use({ storageState: DEMO_USER });
 
 /** An amount in cents that no seeded or other test's invoice has. */
 const uniqueCents = () => 1_000_000 + Math.floor(Math.random() * 8_999_999);
@@ -43,52 +38,8 @@ async function rowsFor(page: Page, cents: number) {
   return page.locator('table tbody tr').filter({ hasText: dollars(cents) });
 }
 
-test('an incomplete create form is refused with an error per field, and nothing is created', async ({
-  page,
-}) => {
-  await logIn(page);
-  await openCreateForm(page);
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
-
-  // Each error is in the region its field names with aria-describedby.
-  await expect(page.locator('#customer-error')).toHaveText('Please select a customer.');
-  await expect(page.locator('#amount-error')).toHaveText('Please enter an amount greater than $0');
-  await expect(page.locator('#status-error')).toHaveText('Please select an invoice status.');
-  await expect(page.getByLabel('Choose an amount')).toHaveAttribute(
-    'aria-describedby',
-    'amount-error'
-  );
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/create$/);
-
-  // Valid but for the missing status: refused for that alone, and no invoice
-  // with that (unique) amount exists afterwards.
-  const cents = uniqueCents();
-  await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
-  await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
-  await expect(page.locator('#status-error')).toHaveText('Please select an invoice status.');
-  await expect(page.locator('#customer-error')).toBeEmpty();
-  await expect(page.locator('#amount-error')).toBeEmpty();
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/create$/);
-  await expect(await rowsFor(page, cents)).toHaveCount(0);
-});
-
 test('an invoice is created and listed', async ({ page }) => {
-  test.setTimeout(60_000);
-  await logIn(page);
   const cents = uniqueCents();
-  await openCreateForm(page);
-
-  // A zero amount is refused first; the other fields' choices are not errors.
-  await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
-  await page.getByLabel('Choose an amount').fill('0');
-  await page.getByLabel('Paid').check();
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
-  await expect(page.locator('#amount-error')).toHaveText('Please enter an amount greater than $0');
-  await expect(page.locator('#customer-error')).toBeEmpty();
-  await expect(page.locator('#status-error')).toBeEmpty();
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/create$/);
-
   await createInvoice(page, cents);
   const row = await rowsFor(page, cents);
   await expect(row).toHaveCount(1);
@@ -96,11 +47,8 @@ test('an invoice is created and listed', async ({ page }) => {
   await expect(row).toContainText('Pending');
 });
 
-test('an invoice is edited: a bad amount is refused, then the change is saved', async ({
-  page,
-}) => {
+test('an invoice is edited, and the change is saved', async ({ page }) => {
   test.setTimeout(60_000);
-  await logIn(page);
   const cents = uniqueCents();
   await createInvoice(page, cents);
 
@@ -109,12 +57,6 @@ test('an invoice is edited: a bad amount is refused, then the change is saved', 
   await page.waitForLoadState('networkidle');
   const amount = page.getByLabel('Choose an amount');
   expect(Number(await amount.inputValue())).toBe(cents / 100);
-  const editUrl = page.url();
-
-  await amount.fill('-5');
-  await page.getByRole('button', { name: 'Edit Invoice' }).click();
-  await expect(page.locator('#amount-error')).toHaveText('Please enter an amount greater than $0');
-  await expect(page).toHaveURL(editUrl);
 
   // Saved: a new amount and paid; the old amount is gone from the list.
   const newCents = uniqueCents();
@@ -133,7 +75,6 @@ test('an invoice is due when the form says: 30 days by default, never before its
   page,
 }) => {
   test.setTimeout(60_000);
-  await logIn(page);
   const cents = uniqueCents();
   // Dated today (the server's date, in UTC, as here).
   const today = new Date().toISOString().slice(0, 10);
@@ -182,7 +123,6 @@ test('an invoice is due when the form says: 30 days by default, never before its
 
 test('an invoice is deleted, and stays deleted after a reload', async ({ page }) => {
   test.setTimeout(60_000);
-  await logIn(page);
   const cents = uniqueCents();
   await createInvoice(page, cents);
 
@@ -203,7 +143,6 @@ test.describe('on a phone', () => {
 
   test('an invoice card shows its own due date under its date', async ({ page }) => {
     test.setTimeout(60_000);
-    await logIn(page);
     // An invoice due 45 days on: not the default, so the card must show its due date.
     const cents = uniqueCents();
     const today = new Date().toISOString().slice(0, 10);

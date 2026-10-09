@@ -1,25 +1,24 @@
 import { expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The dashboard's "Meet the cats" link leads out of the dashboard's layout to
 // /cats, where cats come only when summoned: the dashboard's cats stop coming
 // there, and start again on the way back. Links are followed by keyboard, which
 // the cats never touch, so no cat on the page can get in the way.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
+test.use({ storageState: DEMO_USER });
 
 // Several page changes per test, each allowed 15 s under a busy next dev: more
 // than the default 30 s in all.
 test.describe.configure({ timeout: 60_000 });
 
 test('cats stop coming on /cats and start again back on the dashboard', async ({ page }) => {
-  // Chaos (a first cat within 3 s) keeps the waits short. Before the login, so the
-  // dashboard runs at chaos from its first render.
+  // Chaos (a first cat within 3 s) keeps the waits short, and they are in page time,
+  // on a fake clock the test moves on (clock.runFor) rather than waits through.
+  // Before the first page, so the dashboard runs at chaos from its first render.
+  await page.clock.install();
   await page.addInitScript(() => localStorage.setItem('xenocats:intensity', 'chaos'));
-  await page.goto('/login');
-  await page.waitForLoadState('networkidle');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+  await page.goto('/dashboard');
   await expect(page.getByTestId('xenocat-page')).toHaveAttribute('data-cat-intensity', 'chaos');
 
   await page.getByRole('link', { name: 'Meet the cats' }).focus();
@@ -30,7 +29,7 @@ test('cats stop coming on /cats and start again back on the dashboard', async ({
   // arriving in longer than chaos ever takes to bring one.
   await expect(page.getByTestId('xenocat-page')).not.toHaveAttribute('data-cat-intensity');
   await expect(page.getByTestId('xenocat')).toHaveCount(0);
-  await page.waitForTimeout(4_000);
+  await page.clock.runFor(4_000);
   await expect(page.getByTestId('xenocat')).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Back to the dashboard' }).focus();
@@ -38,6 +37,9 @@ test('cats stop coming on /cats and start again back on the dashboard', async ({
   await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
   await expect(page.getByTestId('xenocat-page')).toHaveAttribute('data-cat-intensity', 'chaos');
   await expect
-    .poll(() => page.getByTestId('xenocat').count(), { timeout: 4_000 })
+    .poll(async () => {
+      await page.clock.runFor(500);
+      return page.getByTestId('xenocat').count();
+    })
     .toBeGreaterThanOrEqual(1);
 });
