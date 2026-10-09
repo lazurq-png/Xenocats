@@ -66,3 +66,11 @@ All green, nothing red: lint exit 0 (0 warnings, saved in `lint-baseline.txt`); 
 - **Verification (observed).** prettier clean on changed files; lint exit 0, 0 warnings; tsc exit 0; `tests/unit/xenocats` 28 files / 594 tests passed; `npm run build` exit 0; the 12 affected specs (`E2E_NO_CAT_DEPS=1`) 110 passed, 2 skipped, 0 failed (after two test expectations that the new wording and pace outgrew were updated: the level-up card regex, and the phone pause-menu test now takes any second level-up that follows at once). Not run in full: `npm test`, the full e2e suites (checkpoint 1 follows).
 - **Reviewer:** Request Changes — two Medium (a stun on bosses and on an elite mid-wind-up; the dryer's nearest-cat search every step) and four Low; all fixed or recorded (D29, D27).
 - Previous task CI (T8, merge `5c01900`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37954726690
+
+## Checkpoint 1 (after T1, T9, T7, T8, T3)
+
+- Branch `2026-10-09-c1-checkpoint`, base `2cd6c58`. 18:22 – 18:44. Budget 14.48M → 14.45M tokens.
+- **Tests.** Reviewed since the run began; two gaps filled (D31): the winding-up count's two decrements, and the run length with blocked storage. Full suites, observed: `npm run lint` exit 0 (0 warnings); `tsc` exit 0; `npm test` 44 files passed / 1 skipped, 766 passed / 24 skipped, 1m15s; database tests 24 passed; `npm run build` exit 0; `npm run test:e2e` (next dev) 139 passed, 2 skipped (the benchmarks), 3m25s; `E2E_SERVER=start` 139 passed, 2 skipped, 2m15s.
+- **Quality and security.** Reviewer over the range `903da06..2cd6c58` with `.claude/rules/security-review.md` in scope: Approve, no security finding (the test-only switches are client-side and bounded and reach nothing server-side; the new storage keys are parsed strictly; CI change is a comment and a static env var; no dependency change). Two Low test notes, both fixed.
+- **Speed.** D30: the first benchmark run found the render benchmark at −12% (2000 cats); the cause was found and fixed within the checkpoint (a per-frame O(cats) count in `state()`); after the fix all numbers are within 10% of the baseline.
+- Previous task CI (T3, merge `2cd6c58`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37958609500

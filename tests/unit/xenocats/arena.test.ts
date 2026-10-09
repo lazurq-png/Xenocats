@@ -18,7 +18,10 @@ import {
   parseBest,
   parseLength,
   readBest,
+  readLength,
+  subscribeLength,
   writeBest,
+  writeLength,
 } from '@/app/ui/xenocats/arena-storage';
 import { SCHEDULE } from '@/app/ui/xenocats/varieties';
 import { CAT_TYPES, catTypeById } from '@/app/ui/xenocats/cat-types';
@@ -711,6 +714,34 @@ describe('the best time per run length', () => {
     expect(readBest(10)).toBeNull();
   });
 
+  it('with storage blocked, the length chosen lasts until the page is left', () => {
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: () => {
+          throw new Error('blocked');
+        },
+        setItem: () => {
+          throw new Error('blocked');
+        },
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    expect(readLength()).toBe(5);
+    let told = 0;
+    const stop = subscribeLength(() => told++);
+    writeLength(15);
+    expect(readLength()).toBe(15);
+    expect(told).toBe(1);
+    stop();
+    writeLength(5);
+    expect(told).toBe(1);
+    expect(readLength()).toBe(5);
+    // And no best time is kept, but nothing throws.
+    expect(() => writeBest(100_000, 10)).not.toThrow();
+    expect(readBest(10)).toBeNull();
+  });
+
   it('each length keeps its own best', () => {
     stubStorage();
     writeBest(400_000, 10);
@@ -905,6 +936,28 @@ describe('an elite attack', () => {
     // Across the line from the elite to him.
     const sideways = { x: -(h.y - wind.y) / len, y: (h.x - wind.x) / len };
     expect(until(aside, 'elite-attack', sideways)).toMatchObject({ hits: 0 });
+  });
+
+  it('the count of elites winding up falls when one is held still, or sent home, mid-wind-up', () => {
+    // The cats are the arena's own objects: held and made homesick here by hand.
+    const held = lone('pulsar-siamese');
+    until(held, 'wind-up');
+    expect(held.state().windUps).toBe(1);
+    const winding = held.cats().find((c) => c.windUntil > 0)!;
+    winding.stunUntil = held.state().time + 2000;
+    held.step(still);
+    expect(winding.windUntil).toBe(0);
+    expect(held.state().windUps).toBe(0);
+    expect(held.telegraphs()).toEqual([]);
+
+    const home = lone('pulsar-siamese');
+    until(home, 'wind-up');
+    const going = home.cats().find((c) => c.windUntil > 0)!;
+    going.homesickness = going.limit;
+    home.step(still);
+    expect(home.cats().some((c) => c.id === going.id)).toBe(false);
+    expect(home.state().windUps).toBe(0);
+    expect(home.state().windUpsBegun).toBe(1);
   });
 
   it('rests between attacks, and an ordinary cat never attacks', () => {

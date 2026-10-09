@@ -612,6 +612,8 @@ export function createArena(options: {
   let hero = keepers[0];
   let sentHome = 0;
   let windUpsBegun = 0;
+  /** How many elites are winding up an attack now (kept, not counted: state() is read every frame). */
+  let windingUp = 0;
   let nextId = 1;
   // How long he has stood still; whether the secret cat has come.
   let stillFor = 0;
@@ -905,6 +907,7 @@ export function createArena(options: {
         variety: cat.variety,
       });
       sentHome++;
+      if (cat.windUntil > 0) windingUp--;
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
       // A boss, an elite, a visiting xenocat, or the last kitten of a swarm
       // leaves a chest.
@@ -1009,6 +1012,7 @@ export function createArena(options: {
     if (cat.windUntil > 0) {
       if (time < cat.windUntil) return true;
       cat.windUntil = 0;
+      windingUp--;
       cat.nextAttackAt = time + a.cooldownMs;
       let hits = 0;
       for (const k of keepers) {
@@ -1025,6 +1029,7 @@ export function createArena(options: {
       cat.aimX = target.x;
       cat.aimY = target.y;
       windUpsBegun++;
+      windingUp++;
       events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape: attack.shape });
       return true;
     }
@@ -1077,6 +1082,7 @@ export function createArena(options: {
       // Held still, an elite loses its wind-up: it must begin again.
       if (cat.windUntil > 0) {
         cat.windUntil = 0;
+        windingUp--;
         cat.nextAttackAt = time + config.eliteAttack.cooldownMs;
       }
       return;
@@ -2108,6 +2114,7 @@ export function createArena(options: {
     /** Every elite's attack winding up now, for the view to warn with. */
     telegraphs: (): Telegraph[] => {
       const all: Telegraph[] = [];
+      if (windingUp === 0) return all;
       for (const cat of cats) {
         if (cat.windUntil <= 0) continue;
         const attack = attackOf(cat);
@@ -2178,7 +2185,7 @@ export function createArena(options: {
         chooser,
         cats: cats.length,
         /** How many elites are winding up an attack now. */
-        windUps: cats.reduce((n, cat) => n + (cat.windUntil > 0 ? 1 : 0), 0),
+        windUps: windingUp,
         windUpsBegun,
         sentHome,
         level,
