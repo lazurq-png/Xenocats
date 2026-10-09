@@ -382,7 +382,54 @@ export type ArenaCat = {
   aimX: number;
   aimY: number;
   nextAttackAt: number;
+  /** Held still until (a Peacock Tail's touch, a box), slowed until (a puddle), scorched until. */
+  stunUntil: number;
+  slowUntil: number;
+  vulnUntil: number;
 };
+
+/** Something a weapon set down that stays a while: a toy, a box, a puddle. */
+export type Patch = {
+  kind: 'toy' | 'box' | 'puddle';
+  weapon: WeaponId;
+  x: number;
+  y: number;
+  /** Where it hurts or holds, px. */
+  radius: number;
+  /** A toy's squeak carries this far, px. */
+  reach: number;
+  until: number;
+  /** Homesickness a second, to each cat in it. */
+  damage: number;
+  /** A box takes at most this many cats. */
+  capacity: number;
+  /** A Squeak Symphony's last note, and a Cardboard Castle's slow field. */
+  finale: number;
+  moat: boolean;
+};
+
+/** A swing of the Feather Wand: from him, this way, this far, this wide (half-angle). */
+export type Sweep = {
+  x: number;
+  y: number;
+  angle: number;
+  reach: number;
+  half: number;
+  until: number;
+};
+
+/** A Hair Dryer's jet this step. */
+export type Jet = { x: number; y: number; angle: number; reach: number; half: number };
+
+/** A scorched cat takes this much more from every weapon. */
+export const SCORCH_FACTOR = 1.5;
+/** A puddle, or a castle's moat, slows the cats in it to this share of their speed. */
+export const SLOW_FACTOR = 0.5;
+/** Most patches on the field at once; the oldest give way. */
+export const PATCH_CAP = 48;
+/** A Jacuzzi's puddle: how wide, and how long it lasts, ms. */
+export const PUDDLE_RADIUS = 90;
+export const PUDDLE_MS = 4000;
 
 /** Something a weapon fired, in flight. */
 export type Projectile = {
@@ -416,6 +463,9 @@ export type Gem = { x: number; y: number; value: number };
 
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
+  /** The Hair Dryer's way between two looks for a cat, and when it looks next. */
+  jetAngle: number;
+  jetAt: number;
   /** 0 for player 1, 1 for player 2. */
   index: number;
   x: number;
@@ -533,6 +583,8 @@ export function createArena(options: {
       weapons,
       passives,
       mods: boosted(modifiers(passives)),
+      jetAngle: 0,
+      jetAt: 0,
       revivals: config.boost.revivals,
       downedAt: null,
       gulpAt: Infinity,
@@ -586,6 +638,9 @@ export function createArena(options: {
   const projectiles: Projectile[] = [];
   const spareProjectiles: Projectile[] = [];
   const beams: { from: Vec; to: Vec; until: number }[] = [];
+  const patches: Patch[] = [];
+  const sweeps: Sweep[] = [];
+  const jets: Jet[] = [];
   // Experience.
   const gems: Gem[] = [];
   let xp = 0;
@@ -697,6 +752,9 @@ export function createArena(options: {
     cat.aimX = 0;
     cat.aimY = 0;
     cat.nextAttackAt = 0;
+    cat.stunUntil = 0;
+    cat.slowUntil = 0;
+    cat.vulnUntil = 0;
     cats.push(cat);
     return cat;
   }
@@ -886,7 +944,8 @@ export function createArena(options: {
     const type = types[cat.type];
     const kind = HERO_EFFECTS[type.effect.id];
     if (!kind) return false;
-    const until = time + Math.min(type.effect.durationMs, config.cats.effectMaxMs);
+    const until =
+      time + Math.min(type.effect.durationMs, config.cats.effectMaxMs) * (1 - hero.mods.guard);
     const away = { x: hero.x - cat.x, y: hero.y - cat.y };
     const length = Math.hypot(away.x, away.y) || 1;
     const angle = random.next() * 2 * Math.PI;
@@ -996,8 +1055,41 @@ export function createArena(options: {
     if (x !== 0) hero.facing = Math.sign(x);
   }
 
-  /** A cat's step, its own way. */
+  /** The toy that calls this cat, if one is near enough: where it goes instead. */
+  function lureOf(cat: ArenaCat): Patch | null {
+    if (patches.length === 0 || cat.variety === 'mega') return null;
+    let best: Patch | null = null;
+    let bestD = Infinity;
+    for (const p of patches) {
+      if (p.kind !== 'toy') continue;
+      const d = (p.x - cat.x) ** 2 + (p.y - cat.y) ** 2;
+      if (d <= p.reach * p.reach && d < bestD) {
+        best = p;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** A cat's step: held still, slowed or called away by what his weapons set down, or its own way. */
   function moveCat(cat: ArenaCat, dt: number) {
+    if (time < cat.stunUntil) {
+      // Held still, an elite loses its wind-up: it must begin again.
+      if (cat.windUntil > 0) {
+        cat.windUntil = 0;
+        cat.nextAttackAt = time + config.eliteAttack.cooldownMs;
+      }
+      return;
+    }
+    const slowed = time < cat.slowUntil;
+    const speed = cat.speed;
+    if (slowed) cat.speed = speed * SLOW_FACTOR;
+    walkCat(cat, dt);
+    cat.speed = speed;
+  }
+
+  /** A cat's step, its own way. */
+  function walkCat(cat: ArenaCat, dt: number) {
     const target = nearestKeeper(cat.x, cat.y);
     const dx = target.x - cat.x;
     const dy = target.y - cat.y;
@@ -1005,6 +1097,19 @@ export function createArena(options: {
     const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
     if (gait === 'sit') return;
     if (cat.elite && eliteAttacks(cat, target, d)) return;
+    const toy = lureOf(cat);
+    if (toy) {
+      const tx = toy.x - cat.x;
+      const ty = toy.y - cat.y;
+      const td = Math.hypot(tx, ty);
+      // It comes for the toy and mills about it.
+      if (td > 8) {
+        const stepLength = Math.min(cat.speed * 1.2 * dt, td);
+        cat.x += (tx / td) * stepLength;
+        cat.y += (ty / td) * stepLength;
+      }
+      return;
+    }
     if (gait === 'zoom') {
       // A new way now and then: roughly at him, give or take a right angle.
       if (time >= cat.turnAt) {
@@ -1078,7 +1183,7 @@ export function createArena(options: {
         hit = true;
         if (time >= k.untouchableUntil) {
           k.resolve = Math.max(k.resolve - shot.drain, 0);
-          k.untouchableUntil = time + config.hero.untouchableMs;
+          k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
             type: -1,
@@ -1102,7 +1207,7 @@ export function createArena(options: {
   /** Homesickness from a weapon of `kind`: nothing, to a cat it passes through. */
   function hurt(cat: ArenaCat, amount: number, kind: WeaponKind) {
     if (cat.variety && VARIETIES[cat.variety].immuneTo?.includes(kind)) return;
-    cat.homesickness += amount;
+    cat.homesickness += time < cat.vulnUntil ? amount * SCORCH_FACTOR : amount;
   }
 
   /** Indices of this step's cats bigger than the cats' size (not in the grid). */
@@ -1298,6 +1403,97 @@ export function createArena(options: {
       }
       return true;
     }
+    if (kind === 'sweep') {
+      let base: number;
+      if (aimed) base = Math.atan2(towards(aimed).y, towards(aimed).x);
+      else {
+        const [i] = nearest(hero, s.area, 1);
+        if (i === undefined) return false;
+        base = Math.atan2(aim(cats[i]).y, aim(cats[i]).x);
+      }
+      // So many sectors, evenly round him; from four they tile the circle.
+      const half = Math.min(0.95, Math.PI / s.count);
+      for (let k = 0; k < s.count; k++) {
+        sweeps.push({
+          x: hero.x,
+          y: hero.y,
+          angle: base + (k * 2 * Math.PI) / s.count,
+          reach: s.area,
+          half,
+          until: time + 240,
+        });
+      }
+      for (const i of within(hero, s.area)) {
+        const cat = cats[i];
+        const toCat = Math.atan2(cat.y - hero.y, cat.x - hero.x);
+        let struck = false;
+        for (let k = 0; k < s.count && !struck; k++) {
+          const turn = base + (k * 2 * Math.PI) / s.count;
+          const apart = Math.abs(Math.atan2(Math.sin(toCat - turn), Math.cos(toCat - turn)));
+          struck = apart <= half;
+        }
+        if (!struck) continue;
+        hurt(cat, s.damage, 'sweep');
+        // Knocked back, but not the big ones.
+        if (cat.radius <= config.cats.radius * 1.5) {
+          const d = Math.hypot(cat.x - hero.x, cat.y - hero.y) || 1;
+          cat.x += ((cat.x - hero.x) / d) * s.speed;
+          cat.y += ((cat.y - hero.y) / d) * s.speed;
+        }
+        if (id === 'peacock-tail' && cat.radius <= config.cats.radius * 1.5) {
+          cat.stunUntil = Math.max(cat.stunUntil, time + s.durationMs);
+        }
+      }
+      return true;
+    }
+    if (kind === 'lure') {
+      let at: Vec;
+      if (aimed && Math.hypot(aimed.x - hero.x, aimed.y - hero.y) <= 650) at = aimed;
+      else {
+        const [i] = nearest(hero, 450, 1);
+        if (i === undefined) return false;
+        at = { x: cats[i].x, y: cats[i].y };
+      }
+      for (let k = 0; k < s.count; k++) {
+        // The first on the spot, the rest in a ring round it.
+        const turn = (k * 2 * Math.PI) / s.count;
+        const ring = k === 0 ? 0 : 50;
+        addPatch({
+          kind: 'toy',
+          weapon: id,
+          x: at.x + Math.cos(turn) * ring,
+          y: at.y + Math.sin(turn) * ring,
+          radius: s.area,
+          reach: s.speed,
+          until: time + s.durationMs,
+          damage: s.damage,
+          capacity: 0,
+          finale: id === 'squeak-symphony' ? s.damage * 8 : 0,
+          moat: false,
+        });
+      }
+      return true;
+    }
+    if (kind === 'trap') {
+      const targets = nearest(hero, 520, s.count);
+      if (targets.length === 0) return false;
+      for (const i of targets) {
+        addPatch({
+          kind: 'box',
+          weapon: id,
+          x: cats[i].x,
+          y: cats[i].y,
+          radius: s.area,
+          reach: 0,
+          until: time + s.durationMs,
+          damage: s.damage,
+          capacity: s.pierce,
+          finale: 0,
+          moat: id === 'cardboard-castle',
+        });
+      }
+      return true;
+    }
     const base = { weapon: id, bit: false, x: hero.x, y: hero.y, radius: s.area, damage: s.damage };
     if (kind === 'spread' || kind === 'burst') {
       let way: Vec;
@@ -1371,6 +1567,101 @@ export function createArena(options: {
     });
   }
 
+  function addPatch(patch: Patch) {
+    if (patches.length >= PATCH_CAP) patches.shift();
+    patches.push(patch);
+  }
+
+  /** The Hair Dryer's jets this step: cats in them are blown back, and hurt, all the time. */
+  function blowAir(id: WeaponId, s: WeaponStats, dt: number) {
+    let base: number;
+    if (hero.aim) base = Math.atan2(towards(hero.aim).y, towards(hero.aim).x);
+    else {
+      // The nearest cat is looked for five times a second; between, the jet holds its way.
+      if (time >= hero.jetAt) {
+        hero.jetAt = time + 200;
+        const [i] = nearest(hero, s.area * 1.4, 1);
+        hero.jetAngle =
+          i === undefined
+            ? hero.facing > 0
+              ? 0
+              : Math.PI
+            : Math.atan2(aim(cats[i]).y, aim(cats[i]).x);
+      }
+      base = hero.jetAngle;
+    }
+    const first = jets.length;
+    for (let k = 0; k < s.count; k++) {
+      jets.push({
+        x: hero.x,
+        y: hero.y,
+        angle: base + (k * 2 * Math.PI) / s.count,
+        reach: s.area,
+        half: 0.5,
+      });
+    }
+    for (const i of within(hero, s.area)) {
+      const cat = cats[i];
+      const toCat = Math.atan2(cat.y - hero.y, cat.x - hero.x);
+      let inside = false;
+      for (let k = first; k < jets.length && !inside; k++) {
+        const apart = Math.abs(
+          Math.atan2(Math.sin(toCat - jets[k].angle), Math.cos(toCat - jets[k].angle))
+        );
+        inside = apart <= jets[k].half;
+      }
+      if (!inside) continue;
+      hurt(cat, s.damage * dt, 'blow');
+      if (cat.radius <= config.cats.radius * 1.5) {
+        const d = Math.hypot(cat.x - hero.x, cat.y - hero.y) || 1;
+        cat.x += ((cat.x - hero.x) / d) * s.speed * dt;
+        cat.y += ((cat.y - hero.y) / d) * s.speed * dt;
+      }
+      if (id === 'scorch-dryer') cat.vulnUntil = time + 2500;
+    }
+  }
+
+  /** What his weapons set down works, and gives out. */
+  function updatePatches(dt: number) {
+    for (let n = patches.length - 1; n >= 0; n--) {
+      const p = patches[n];
+      if (time >= p.until) {
+        if (p.finale > 0) {
+          for (const i of within(p, p.radius * 1.6)) hurt(cats[i], p.finale, 'lure');
+        }
+        patches.splice(n, 1);
+        continue;
+      }
+      if (p.kind === 'toy') {
+        for (const i of within(p, p.radius)) hurt(cats[i], p.damage * dt, 'lure');
+      } else if (p.kind === 'puddle') {
+        for (const i of within(p, p.radius)) {
+          hurt(cats[i], p.damage * dt, 'burst');
+          cats[i].slowUntil = Math.max(cats[i].slowUntil, time + 100);
+        }
+      } else {
+        // A box takes the cats in it, up to its capacity, and keeps them.
+        let held = 0;
+        for (const i of within(p, p.radius)) {
+          const cat = cats[i];
+          if (held >= p.capacity) break;
+          if (cat.radius > config.cats.radius * 1.5) continue;
+          held++;
+          cat.stunUntil = Math.max(cat.stunUntil, time + 100);
+          hurt(cat, p.damage * dt, 'trap');
+        }
+        if (p.moat) {
+          for (const i of within(p, p.radius * 2)) {
+            cats[i].slowUntil = Math.max(cats[i].slowUntil, time + 100);
+          }
+        }
+      }
+    }
+    for (let n = sweeps.length - 1; n >= 0; n--) {
+      if (time >= sweeps[n].until) sweeps.splice(n, 1);
+    }
+  }
+
   function swingWeapons(dt: number) {
     if (time >= hero.gulpAt) {
       hero.gulpAt = Infinity;
@@ -1391,6 +1682,8 @@ export function createArena(options: {
         }
       } else if (kind === 'zone') {
         for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
+      } else if (kind === 'blow') {
+        blowAir(id, s, dt);
       } else if (time >= held.readyAt && fire(id, s)) {
         held.readyAt = time + s.cooldownMs;
         events.push({ kind: 'fired', weapon: id });
@@ -1457,14 +1750,29 @@ export function createArena(options: {
         p.pierce--;
       }
       if (p.pierce <= 0 || time >= p.until) {
-        // A hairball bursts into smaller ones where it ends.
-        if (p.weapon === 'hairball' && !p.bit) {
+        // A hairball (or a tub) bursts into smaller ones where it ends.
+        if (WEAPONS[p.weapon].kind === 'burst' && !p.bit) {
           const owner = keepers[p.owner];
-          const s = weaponStats('hairball', owner.weapons.get('hairball')?.level ?? 1, owner.mods);
+          const s = weaponStats(p.weapon, owner.weapons.get(p.weapon)?.level ?? 1, owner.mods);
+          if (p.weapon === 'jacuzzi') {
+            addPatch({
+              kind: 'puddle',
+              weapon: p.weapon,
+              x: p.x,
+              y: p.y,
+              radius: PUDDLE_RADIUS,
+              reach: 0,
+              until: time + PUDDLE_MS,
+              damage: s.damage / 3,
+              capacity: 0,
+              finale: 0,
+              moat: false,
+            });
+          }
           for (let k = 0; k < s.count; k++) {
             const turn = (k * 2 * Math.PI) / s.count;
             launch({
-              weapon: 'hairball',
+              weapon: p.weapon,
               owner: p.owner,
               bit: true,
               x: p.x,
@@ -1496,7 +1804,7 @@ export function createArena(options: {
       const dy = k.y - gem.y;
       const d = Math.hypot(dx, dy);
       if (d <= 14) {
-        xp += gem.value;
+        xp += gem.value * k.mods.xp;
         gems[i] = gems[gems.length - 1];
         gems.pop();
       } else if (d <= reach) {
@@ -1639,7 +1947,7 @@ export function createArena(options: {
           if (cat.drain === 0) continue;
           if ((cat.x - k.x) ** 2 + (cat.y - k.y) ** 2 > reachOf(cat) ** 2) continue;
           k.resolve = Math.max(k.resolve - cat.drain, 0);
-          k.untouchableUntil = time + config.hero.untouchableMs;
+          k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
             type: cat.type,
@@ -1683,12 +1991,14 @@ export function createArena(options: {
       }
 
       // Their weapons; what flies; then every cat homesick enough goes home.
+      jets.length = 0;
       for (const k of keepers) {
         if (!standing(k)) continue;
         hero = k;
         swingWeapons(dt);
       }
       hero = keepers[0];
+      updatePatches(dt);
       moveProjectiles(dt);
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
@@ -1823,6 +2133,10 @@ export function createArena(options: {
       }
       return all;
     },
+    /** What his weapons have set down (toys, boxes, puddles), and this step's swings and jets. */
+    patches: (): readonly Patch[] => patches,
+    sweeps: (): readonly Sweep[] => sweeps,
+    jets: (): readonly Jet[] => jets,
     matriarch: (): Vec | null => matriarch,
     chests: (): readonly Vec[] => chests,
     shots: (): readonly { x: number; y: number }[] => shots,

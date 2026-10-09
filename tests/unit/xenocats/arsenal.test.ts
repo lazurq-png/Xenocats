@@ -32,6 +32,8 @@ import {
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 
+const config = (a: { config: ArenaConfig }) => a.config;
+
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
 const ALL_WEAPONS = Object.keys(WEAPONS) as WeaponId[];
@@ -150,9 +152,9 @@ describe('every upgrade says what it does, and does it', () => {
     damage: /^\+\d+% homesickness$/,
     cooldownMs: /^fires \d+% sooner$/,
     area: /^\+\d+% (reach|size|range)$/,
-    speed: /^\+\d+% (speed|pull|turning speed)$/,
+    speed: /^\+\d+% (speed|pull|turning speed|knockback|squeak range|push)$/,
     durationMs: /^lasts \d+% longer$/,
-    pierce: /^passes through \d+ more cats?$/,
+    pierce: /^(passes through|holds) \d+ more cats?$/,
   };
 
   for (const id of BASE_WEAPONS) {
@@ -207,7 +209,7 @@ describe('every upgrade says what it does, and does it', () => {
     expect(describeChoice({ kind: 'weapon', id: 'laser-pointer', level: 1 }).change).toBeNull();
     // Scissors names what it adds to: the vacuums pull and hum as one, whatever it says.
     expect(describeChoice({ kind: 'passive', id: 'scissors', level: 1 }).change).toBe(
-      '+1 beam, treat, droplet, ball, blade, piece or jump for each weapon that fires them.'
+      '+1 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet or bubble for each weapon that fires them.'
     );
     expect(describeChoice({ kind: 'restore' }).change).toBeNull();
   });
@@ -547,7 +549,17 @@ describe('levels in a run', () => {
       const t = a.state().time / 1500;
       a.step({ x: -Math.sin(t), y: Math.cos(t) });
       if (a.state().time > 240_000) {
-        most = Math.max(most, a.state().projectiles + a.beams().length + a.blades().length);
+        // Things in flight, beams, blades, and what the household weapons make: jets,
+        // swings, toys, boxes and puddles.
+        most = Math.max(
+          most,
+          a.state().projectiles +
+            a.beams().length +
+            a.blades().length +
+            a.jets().length +
+            a.sweeps().length +
+            a.patches().length
+        );
       }
     }
     expect(a.state().weapons.length).toBe(6);
@@ -1010,7 +1022,7 @@ describe('the pause menu: what he carries', () => {
         'Scissors',
         2,
         MAX_PASSIVE_LEVEL,
-        '+2 beam, treat, droplet, ball, blade, piece or jump for each weapon that fires them.',
+        '+2 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet or bubble for each weapon that fires them.',
       ],
       ['Rubber Chicken', 3, MAX_PASSIVE_LEVEL, '+30% walking speed.'],
       ['Lucky Bell', 1, 1, '+1 choice at every level.'],
@@ -1148,5 +1160,389 @@ describe('the pause menu: what he carries', () => {
       [{ id: secret.with, level: 1 }]
     );
     expect(view.evolutions.map((e) => e.to)).not.toContain(secret.to);
+  });
+});
+
+describe('the household arsenal: five weapons and five passives, each its own way', () => {
+  /** A run with only `id` at `level`, cats all round, a hero nothing wears down. */
+  function lab(id: WeaponId, level = MAX_WEAPON_LEVEL, config: Partial<ArenaConfig> = {}) {
+    return arena({
+      ...steady,
+      startingWeapons: [id],
+      startingLevel: level,
+      escalation: [[0, 40]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
+      ...config,
+    });
+  }
+  type Run = ReturnType<typeof lab>;
+  /** Cats nothing sends home, so what a weapon does to them can be seen. */
+  const tough: Partial<ArenaConfig> = {
+    cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+  };
+
+  /** Steps until the weapon has fired; whether it did within `ms`. */
+  function untilFired(a: Run, id: WeaponId, ms = 60_000) {
+    while (a.state().time < ms) {
+      a.step(still);
+      if (a.drainEvents().some((e) => e.kind === 'fired' && e.weapon === id)) return true;
+    }
+    return false;
+  }
+  const stats = (id: WeaponId) => weaponStats(id, MAX_WEAPON_LEVEL, none);
+
+  it('fourteen base weapons and five evolved ones are carried; each new one has a name, a unit and a line', () => {
+    for (const id of [
+      'feather-wand',
+      'squeaky-toy',
+      'cardboard-box',
+      'hair-dryer',
+      'bath-tub',
+    ] as const) {
+      expect(BASE_WEAPONS).toContain(id);
+      expect(WEAPONS[id].name.length).toBeGreaterThan(3);
+      expect(WEAPONS[id].description.length).toBeGreaterThan(20);
+    }
+    for (const id of [
+      'peacock-tail',
+      'squeak-symphony',
+      'cardboard-castle',
+      'scorch-dryer',
+      'jacuzzi',
+    ] as const) {
+      expect(BASE_WEAPONS).not.toContain(id);
+      expect(EVOLUTIONS.some((e) => e.to === id)).toBe(true);
+    }
+    expect(EVOLUTIONS).toHaveLength(11);
+  });
+
+  it('four of the five have a way of working no earlier weapon has: sweep, lure, trap and blow', () => {
+    const old = new Set(
+      (Object.keys(WEAPONS) as WeaponId[])
+        .filter(
+          (id) =>
+            ![
+              'feather-wand',
+              'squeaky-toy',
+              'cardboard-box',
+              'hair-dryer',
+              'peacock-tail',
+              'squeak-symphony',
+              'cardboard-castle',
+              'scorch-dryer',
+            ].includes(id)
+        )
+        .map((id) => WEAPONS[id].kind)
+    );
+    for (const id of ['feather-wand', 'squeaky-toy', 'cardboard-box', 'hair-dryer'] as const) {
+      expect(old.has(WEAPONS[id].kind), id).toBe(false);
+    }
+    expect(WEAPONS['feather-wand'].kind).toBe('sweep');
+    expect(WEAPONS['squeaky-toy'].kind).toBe('lure');
+    expect(WEAPONS['cardboard-box'].kind).toBe('trap');
+    expect(WEAPONS['hair-dryer'].kind).toBe('blow');
+  });
+
+  it('Feather Wand: a swing of sectors round him, as many as its count; Peacock Tail also holds the cats it brushes still', () => {
+    const wand = lab('feather-wand');
+    expect(untilFired(wand, 'feather-wand')).toBe(true);
+    expect(wand.sweeps()).toHaveLength(stats('feather-wand').count);
+    expect(wand.cats().some((c) => c.stunUntil > wand.state().time)).toBe(false);
+
+    const tail = lab('peacock-tail', MAX_WEAPON_LEVEL, tough);
+    expect(untilFired(tail, 'peacock-tail')).toBe(true);
+    expect(tail.sweeps()).toHaveLength(6);
+    const held = tail.cats().filter((c) => c.stunUntil > tail.state().time);
+    expect(held.length).toBeGreaterThan(0);
+    // Held still for the time it says, then free.
+    const heldAt = held.map((c) => ({ id: c.id, x: c.x, y: c.y }));
+    tail.step(still);
+    for (const before of heldAt) {
+      const now = tail.cats().find((c) => c.id === before.id);
+      if (now && now.stunUntil > tail.state().time) {
+        expect({ x: now.x, y: now.y }).toEqual({ x: before.x, y: before.y });
+      }
+    }
+  });
+
+  it('Feather Wand: the cats it strikes are knocked back, away from him', () => {
+    const a = lab('feather-wand', MAX_WEAPON_LEVEL, {
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+    });
+    const before = new Map<number, number>();
+    let moved = 0;
+    while (a.state().time < 40_000 && moved === 0) {
+      for (const c of a.cats())
+        before.set(c.id, Math.hypot(c.x - a.state().hero.x, c.y - a.state().hero.y));
+      a.step(still);
+      if (a.sweeps().length > 0) {
+        for (const c of a.cats()) {
+          const was = before.get(c.id);
+          const d = Math.hypot(c.x - a.state().hero.x, c.y - a.state().hero.y);
+          // A cat walks in at most ~2 px a step; a knock-back is far more.
+          if (was !== undefined && d - was > stats('feather-wand').speed * 0.5) moved++;
+        }
+      }
+    }
+    expect(moved).toBeGreaterThan(0);
+  });
+
+  it('Squeaky Toy: toys set down among the cats call them over; the Symphony’s last note is its own', () => {
+    const toys = lab('squeaky-toy', MAX_WEAPON_LEVEL, tough);
+    expect(untilFired(toys, 'squeaky-toy')).toBe(true);
+    const set = toys.patches().filter((p) => p.kind === 'toy');
+    expect(set).toHaveLength(stats('squeaky-toy').count);
+    expect(set.every((p) => p.finale === 0)).toBe(true);
+    const near = () =>
+      toys.cats().filter((c) => set.some((p) => Math.hypot(c.x - p.x, c.y - p.y) <= p.radius))
+        .length;
+    const first = near();
+    for (let i = 0; i < 150; i++) toys.step(still);
+    expect(near()).toBeGreaterThan(first);
+
+    const band = lab('squeak-symphony');
+    expect(untilFired(band, 'squeak-symphony')).toBe(true);
+    expect(band.patches().filter((p) => p.kind === 'toy')).toHaveLength(3);
+    expect(band.patches().every((p) => p.finale > 0)).toBe(true);
+  });
+
+  it('Squeaky Toy: a cat within its squeak walks to it instead of to him', () => {
+    const a = lab('squeaky-toy', MAX_WEAPON_LEVEL, { escalation: [[0, 15]] });
+    expect(untilFired(a, 'squeaky-toy')).toBe(true);
+    const toy = a.patches().find((p) => p.kind === 'toy')!;
+    const called = a
+      .cats()
+      .filter(
+        (c) =>
+          Math.hypot(c.x - toy.x, c.y - toy.y) <= toy.reach &&
+          Math.hypot(c.x - toy.x, c.y - toy.y) > 40
+      );
+    expect(called.length).toBeGreaterThan(0);
+    const gap = (c: { id: number }) => {
+      const now = a.cats().find((x) => x.id === c.id);
+      return now ? Math.hypot(now.x - toy.x, now.y - toy.y) : null;
+    };
+    const before = new Map(called.map((c) => [c.id, gap(c)!]));
+    for (let i = 0; i < 40; i++) a.step(still);
+    let closer = 0;
+    for (const c of called) {
+      const now = gap(c);
+      if (now !== null && now < before.get(c.id)! - 20) closer++;
+    }
+    expect(closer).toBeGreaterThan(0);
+  });
+
+  it('Cardboard Box: boxes set on the cats hold the cats in them still; the Castle also slows the cats round it', () => {
+    const box = lab('cardboard-box', MAX_WEAPON_LEVEL, {
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+    });
+    expect(untilFired(box, 'cardboard-box')).toBe(true);
+    const boxes = box.patches().filter((p) => p.kind === 'box');
+    expect(boxes.length).toBeGreaterThan(0);
+    expect(boxes.length).toBeLessThanOrEqual(stats('cardboard-box').count);
+    box.step(still);
+    const held = box.cats().filter((c) => c.stunUntil > box.state().time);
+    expect(held.length).toBeGreaterThan(0);
+    expect(held.length).toBeLessThanOrEqual(boxes.length * stats('cardboard-box').pierce);
+    const spots = held.map((c) => ({ id: c.id, x: c.x, y: c.y }));
+    for (let i = 0; i < 5; i++) box.step(still);
+    for (const spot of spots) {
+      const now = box.cats().find((c) => c.id === spot.id);
+      if (now && now.stunUntil > box.state().time)
+        expect({ x: now.x, y: now.y }).toEqual({ x: spot.x, y: spot.y });
+    }
+    expect(box.cats().some((c) => c.slowUntil > box.state().time)).toBe(false);
+
+    const castle = lab('cardboard-castle', MAX_WEAPON_LEVEL, {
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+    });
+    expect(untilFired(castle, 'cardboard-castle')).toBe(true);
+    for (let i = 0; i < 20; i++) castle.step(still);
+    expect(castle.cats().some((c) => c.slowUntil > castle.state().time)).toBe(true);
+  });
+
+  it('Hair Dryer: a jet the way he faces for each of its count, always; Scorch Dryer also leaves cats scorched', () => {
+    const dryer = lab('hair-dryer', MAX_WEAPON_LEVEL, {
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+    });
+    for (let i = 0; i < 400; i++) dryer.step(still);
+    expect(dryer.jets()).toHaveLength(stats('hair-dryer').count);
+    expect(dryer.cats().some((c) => c.vulnUntil > dryer.state().time)).toBe(false);
+
+    const scorch = lab('scorch-dryer', MAX_WEAPON_LEVEL, {
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+    });
+    for (let i = 0; i < 400; i++) scorch.step(still);
+    expect(scorch.jets()).toHaveLength(3);
+    expect(scorch.cats().some((c) => c.vulnUntil > scorch.state().time)).toBe(true);
+    // A scorched cat in the jet takes half again what the jet alone does.
+    const damage = stats('scorch-dryer').damage;
+    const dt = ARENA_CONFIG.stepMs / 1000;
+    const inJet = () => {
+      const h = scorch.state().hero;
+      return scorch.cats().filter((c) => {
+        const turn = Math.atan2(c.y - h.y, c.x - h.x);
+        return scorch
+          .jets()
+          .some(
+            (j) =>
+              Math.hypot(c.x - h.x, c.y - h.y) < j.reach * 0.8 &&
+              Math.abs(Math.atan2(Math.sin(turn - j.angle), Math.cos(turn - j.angle))) <
+                j.half * 0.8
+          );
+      });
+    };
+    let target = inJet().find((c) => c.vulnUntil > scorch.state().time + 100);
+    for (let i = 0; i < 3000 && !target; i++) {
+      scorch.step(still);
+      target = inJet().find((c) => c.vulnUntil > scorch.state().time + 100);
+    }
+    expect(target).toBeDefined();
+    const before = target!.homesickness;
+    scorch.step(still);
+    const after = scorch.cats().find((c) => c.id === target!.id)!;
+    expect(after.homesickness - before).toBeCloseTo(damage * dt * 1.5, 4);
+  });
+
+  it('Peacock Tail does not stun a boss, and a box does not hold one', () => {
+    const bosses = {
+      ...tough,
+      schedule: {
+        arrivals: [{ from: 0, who: 'xenocat' as const, weight: 1 }],
+        swarms: { from: Infinity, everyMs: 1, size: [0, 0] as [number, number] },
+        bosses: [0],
+      },
+    };
+    for (const id of ['peacock-tail', 'cardboard-castle'] as const) {
+      const a = lab(id, MAX_WEAPON_LEVEL, bosses);
+      expect(untilFired(a, id)).toBe(true);
+      for (let i = 0; i < 30; i++) a.step(still);
+      const mega = a.cats().filter((c) => c.variety === 'mega');
+      expect(mega.length, id).toBeGreaterThan(0);
+      expect(
+        mega.every((c) => c.stunUntil <= a.state().time),
+        id
+      ).toBe(true);
+    }
+  });
+
+  it('a cat held still loses its wind-up, if it was an elite', () => {
+    const a = lab('peacock-tail', MAX_WEAPON_LEVEL, {
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 1, homesickness: [1e9, 1e9] },
+    });
+    let seen = false;
+    for (let i = 0; i < 3000 && !seen; i++) {
+      a.step(still);
+      const held = a.cats().find((c) => c.stunUntil > a.state().time && c.elite);
+      if (held) {
+        seen = true;
+        expect(held.windUntil).toBe(0);
+      }
+    }
+    expect(seen).toBe(true);
+  });
+
+  it('Hair Dryer: cats in the jet are blown back, away from him', () => {
+    const a = lab('hair-dryer', MAX_WEAPON_LEVEL, {
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+      escalation: [[0, 25]],
+    });
+    // They gather round him; with the jet on them, none stays on top of him.
+    for (let i = 0; i < 1200; i++) a.step(still);
+    const h = a.state().hero;
+    const inJet = a.cats().filter((c) => {
+      const turn = Math.atan2(c.y - h.y, c.x - h.x);
+      return a
+        .jets()
+        .some(
+          (j) => Math.abs(Math.atan2(Math.sin(turn - j.angle), Math.cos(turn - j.angle))) <= j.half
+        );
+    });
+    expect(inJet.length).toBeGreaterThan(0);
+    const nearest = Math.min(...inJet.map((c) => Math.hypot(c.x - h.x, c.y - h.y)));
+    // The jet holds cats back from him; without it they would be on him (reach 30 px).
+    expect(nearest).toBeGreaterThan(config(a).hero.reach);
+  });
+
+  it('Bath Tub bursts into bubbles; the Jacuzzi leaves a puddle that slows the cats in it', () => {
+    const tub = lab('bath-tub');
+    expect(untilFired(tub, 'bath-tub')).toBe(true);
+    let bits = 0;
+    while (tub.state().time < 60_000 && bits === 0) {
+      tub.step(still);
+      bits = tub.projectiles().filter((p) => p.bit).length;
+    }
+    expect(bits).toBeGreaterThan(0);
+    expect(tub.patches().some((p) => p.kind === 'puddle')).toBe(false);
+
+    const jac = lab('jacuzzi', MAX_WEAPON_LEVEL, tough);
+    let puddle = false;
+    while (jac.state().time < 60_000 && !puddle) {
+      jac.step(still);
+      puddle = jac.patches().some((p) => p.kind === 'puddle');
+    }
+    expect(puddle).toBe(true);
+    for (let i = 0; i < 60; i++) jac.step(still);
+    expect(jac.cats().some((c) => c.slowUntil > jac.state().time)).toBe(true);
+  });
+
+  it('each passive adds its step, level by level, and the weapons feel it', () => {
+    const at = (id: PassiveId, level: number) => modifiers(new Map([[id, level]]));
+    expect(at('egg-timer', 3).duration).toBeCloseTo(1.36, 6);
+    expect(weaponStats('squeaky-toy', 1, at('egg-timer', 3)).durationMs).toBeCloseTo(
+      3200 * 1.36,
+      3
+    );
+    // What lasts only for a flash is not stretched; nothing from nothing.
+    expect(weaponStats('thunderous-vacuum', 1, at('egg-timer', 5)).durationMs).toBe(0);
+    expect(at('slippers', 2).pierce).toBe(2);
+    expect(weaponStats('cat-treats', 1, at('slippers', 2)).pierce).toBe(
+      WEAPONS['cat-treats'].levels[0].pierce + 2
+    );
+    expect(weaponStats('cardboard-box', 1, at('slippers', 2)).pierce).toBe(6);
+    // Unlimited stays unlimited.
+    expect(weaponStats('laser-pointer', 1, at('slippers', 5)).pierce).toBe(99);
+    expect(at('cushion', 4).grace).toBe(480);
+    expect(at('fish-bowl', 5).xp).toBeCloseTo(1.6, 6);
+    expect(at('tin-foil', 4).guard).toBeCloseTo(0.6, 6);
+    for (const id of ['egg-timer', 'slippers', 'cushion', 'fish-bowl', 'tin-foil'] as const) {
+      expect(PASSIVES[id].maxLevel).toBe(MAX_PASSIVE_LEVEL);
+      expect(passiveChanges(id, 1).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('Fish Bowl makes gems worth more, and Cushion keeps him untouchable longer', () => {
+    const levelUpTime = (passives: PassiveId[]) => {
+      const a = arena(
+        {
+          ...xenocatsOnly,
+          hero: { ...ARENA_CONFIG.hero, resolve: 1e12 },
+          // Three gems for the first level, or two with a Fish Bowl.
+          gems: { ...ARENA_CONFIG.gems, value: 2.4, eliteValue: 2.4 },
+          startingPassives: passives,
+          startingWeapons: ['laser-pointer'],
+        },
+        5
+      );
+      while (!a.choices() && a.state().time < 120_000) a.step(still);
+      return a.state().time;
+    };
+    expect(levelUpTime(['fish-bowl'])).toBeLessThan(levelUpTime([]));
+
+    // Cats keep coming, so he is hit again the step his grace ends: the shortest gap
+    // between two hits is how long he was untouchable.
+    const grace = (passives: PassiveId[]) => {
+      const a = arena(
+        { ...xenocatsOnly, startingPassives: passives, startingWeapons: [], escalation: [[0, 30]] },
+        3
+      );
+      const hits: number[] = [];
+      while (a.state().time < 30_000 && hits.length < 8) {
+        a.step(still);
+        if (a.drainEvents().some((e) => e.kind === 'hero-hit')) hits.push(a.state().time);
+      }
+      return Math.min(...hits.slice(1).map((t, i) => t - hits[i]));
+    };
+    expect(grace(['cushion']) - grace([])).toBeGreaterThanOrEqual(100);
   });
 });

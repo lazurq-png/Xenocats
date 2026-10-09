@@ -210,6 +210,42 @@ test.describe('on a computer', () => {
     );
   });
 
+  test('a new household weapon, taken at a level-up of a seeded run, is in the pause menu', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const household = ['feather-wand', 'squeaky-toy', 'cardboard-box', 'hair-dryer', 'bath-tub'];
+    await openArena(page, '?seed=7&speed=4');
+    await startRun(page);
+    let taken = '';
+    const walk = ['d', 's', 'a', 'w'];
+    for (let turn = 0; turn < 400 && !taken; turn++) {
+      if ((await area(page).count()) === 0) break;
+      const dialog = levelUp(page);
+      if ((await dialog.count()) > 0) {
+        const ids = await dialog
+          .getByRole('button')
+          .evaluateAll((all) => all.map((b) => b.getAttribute('data-choice') ?? ''));
+        const at = ids.findIndex((id) => household.includes(id));
+        if (at >= 0) {
+          taken = ids[at];
+          await page.keyboard.press(String(at + 1));
+        } else {
+          await page.keyboard.press('1');
+        }
+      }
+      // He walks a square, to last as long as he can.
+      const key = walk[turn % 4];
+      await page.keyboard.down(key);
+      await page.waitForTimeout(350);
+      await page.keyboard.up(key);
+    }
+    expect(household).toContain(taken);
+    await expect(area(page)).toHaveAttribute('data-weapons', new RegExp(taken));
+    const paused = await pauseRun(page);
+    await expect(paused.locator(`li[data-weapon="${taken}"]`)).toBeVisible();
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);
@@ -395,7 +431,9 @@ test.describe('on a computer', () => {
       const level = Number(await button.getAttribute('data-level'));
       const change = button.getByTestId('choice-change');
       if (kind === 'passive' || (kind === 'weapon' && level > 1)) {
-        await expect(change).toHaveText(/^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes)/);
+        await expect(change).toHaveText(
+          /^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes|Holds|What his weapons|Untouchable|Elite effects)/
+        );
         named++;
       } else {
         await expect(change).toHaveCount(0);
@@ -587,8 +625,8 @@ test.describe('on a computer', () => {
       .toBe(true);
     const codex = page.getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
-    // Six evolutions and the secret cat: one found, the rest unknown.
-    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(6);
+    // Eleven evolutions and the secret cat: one found, the rest unknown.
+    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(11);
     // Kept after a reload; he goes out as the Night Porter, with the Spray Bottle.
     await page.reload();
     await expect(porter).toBeChecked();
@@ -671,7 +709,13 @@ test.describe('on a touch screen', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     const buttons = levelUp(page).getByRole('button');
     const taken = await takeChoice(page, (i) => buttons.nth(i).tap());
-    await playOn(page, true);
+    // Another level may follow at once: take choices until the run is playing.
+    await expect
+      .poll(async () => {
+        await playOn(page, true);
+        return levelUp(page).count();
+      })
+      .toBe(0);
     await area(page).getByRole('button', { name: 'Pause' }).tap();
     const paused = page.getByRole('dialog', { name: 'Paused' });
     await expectInSummary(paused.getByTestId('survival-pause-summary'), taken);

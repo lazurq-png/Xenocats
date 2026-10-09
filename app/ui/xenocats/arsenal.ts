@@ -1,4 +1,4 @@
-// What the Keeper can carry in Survival (arena.ts): nine weapons that fire on their
+// What the Keeper can carry in Survival (arena.ts): fourteen weapons that fire on their
 // own, up to level 8, and passives that make him or his weapons better, up to level
 // 5; at most six of each. Each level-up offers three choices (four with the Lucky
 // Bell), drawn from what he does not yet have at its highest level. A weapon at its
@@ -22,13 +22,23 @@ export type WeaponId =
   | 'hairball'
   | 'thunderous-vacuum'
   | 'laser-pointer-deluxe'
+  | 'feather-wand'
+  | 'squeaky-toy'
+  | 'cardboard-box'
+  | 'hair-dryer'
+  | 'bath-tub'
   // Evolved: never offered, only reached by evolution.
   | 'infinite-laser'
   | 'forbidden-catnip-vacuum'
   | 'yarn-apocalypse'
   | 'banquet'
   | 'monsoon'
-  | 'bottomless-saucer';
+  | 'bottomless-saucer'
+  | 'peacock-tail'
+  | 'squeak-symphony'
+  | 'cardboard-castle'
+  | 'scorch-dryer'
+  | 'jacuzzi';
 
 export type PassiveId =
   | 'rubber-chicken'
@@ -39,7 +49,12 @@ export type PassiveId =
   | 'warm-milk'
   | 'long-whiskers'
   | 'stern-look'
-  | 'lucky-bell';
+  | 'lucky-bell'
+  | 'egg-timer'
+  | 'slippers'
+  | 'cushion'
+  | 'fish-bowl'
+  | 'tin-foil';
 
 /** A weapon at one level, before the passives. */
 export type WeaponStats = {
@@ -110,7 +125,15 @@ export type WeaponKind =
   /** Beams at every cat near him, joined to one another, all the time. */
   | 'web'
   /** Pulls every cat far round him in, then sends those close home at once. */
-  | 'gulp';
+  | 'gulp'
+  /** A swing of feathers across a sector round him: damage, and cats knocked back. */
+  | 'sweep'
+  /** A toy set down among the cats: every cat near it comes for it, and is hurt there. */
+  | 'lure'
+  /** A box set down on the cats: whichever cats it takes are held in it, and hurt. */
+  | 'trap'
+  /** A jet of hot air the way he faces: cats in it are pushed back, and hurt, all the time. */
+  | 'blow';
 
 export type WeaponInfo = {
   name: string;
@@ -301,6 +324,107 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       ]
     ),
   },
+  'feather-wand': {
+    name: 'Feather Wand',
+    description: 'A swish of feathers. Every cat in the swing forgets what it came for.',
+    kind: 'sweep',
+    unit: 'swing',
+    levels: ladder(
+      { cooldownMs: 1400, damage: 16, area: 150, count: 1, speed: 90, durationMs: 200, pierce: 99 },
+      [
+        { count: 1 },
+        { damage: 6 },
+        { cooldownMs: -250 },
+        { area: 30 },
+        { count: 1, damage: 5 },
+        { speed: 40 },
+        { cooldownMs: -250, damage: 6 },
+      ]
+    ),
+  },
+  'squeaky-toy': {
+    name: 'Squeaky Toy',
+    description: 'Set down among the cats. Every cat nearby comes to see, and stays to squeak.',
+    kind: 'lure',
+    unit: 'toy',
+    levels: ladder(
+      // Damage is a second's worth, to every cat at the toy; speed is how far the squeak carries.
+      {
+        cooldownMs: 3800,
+        damage: 14,
+        area: 55,
+        count: 1,
+        speed: 260,
+        durationMs: 3200,
+        pierce: 99,
+      },
+      [
+        { count: 1 },
+        { damage: 6 },
+        { durationMs: 700 },
+        { speed: 60 },
+        { count: 1, cooldownMs: -500 },
+        { damage: 6, area: 15 },
+        { count: 1, durationMs: 800 },
+      ]
+    ),
+  },
+  'cardboard-box': {
+    name: 'Cardboard Box',
+    description: 'If it fits, it sits. A cat taken by a box stays in it until the box gives out.',
+    kind: 'trap',
+    unit: 'carton',
+    levels: ladder(
+      // Damage is a second's worth, to each cat held; pierce is how many a box can hold.
+      { cooldownMs: 4200, damage: 12, area: 38, count: 1, speed: 0, durationMs: 4000, pierce: 4 },
+      [
+        { count: 1 },
+        { damage: 6 },
+        { pierce: 2 },
+        { durationMs: 800, area: 8 },
+        { count: 1, damage: 5 },
+        { cooldownMs: -700, pierce: 2 },
+        { count: 1, damage: 6, area: 8 },
+      ]
+    ),
+  },
+  'hair-dryer': {
+    name: 'Hair Dryer',
+    description: 'A gale of warm air. Nothing with fur has ever stood in it for long.',
+    kind: 'blow',
+    unit: 'jet',
+    levels: ladder(
+      // Continuous: damage a second, and speed is how fast the cats are blown back, px/s.
+      { cooldownMs: 0, damage: 16, area: 190, count: 1, speed: 140, durationMs: 0, pierce: 99 },
+      [
+        { count: 1 },
+        { damage: 8 },
+        { area: 30 },
+        { speed: 60 },
+        { count: 1, damage: 6 },
+        { area: 30 },
+        { damage: 8, speed: 60 },
+      ]
+    ),
+  },
+  'bath-tub': {
+    name: 'Bath Tub',
+    description: 'Thrown at a cat. It bursts, and what is in it goes everywhere.',
+    kind: 'burst',
+    unit: 'bubble',
+    levels: ladder(
+      { cooldownMs: 3000, damage: 30, area: 18, count: 6, speed: 260, durationMs: 1100, pierce: 1 },
+      [
+        { count: 2 },
+        { damage: 10 },
+        { cooldownMs: -500 },
+        { area: 4, speed: 40 },
+        { count: 2, damage: 10 },
+        { cooldownMs: -500, durationMs: 300 },
+        { count: 2, damage: 12, area: 4 },
+      ]
+    ),
+  },
   'infinite-laser': {
     name: 'Infinite Laser',
     description: 'The red dot, without end. The screen is a web of it.',
@@ -400,6 +524,83 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       pierce: 99,
     }),
   },
+  'peacock-tail': {
+    name: 'Peacock Tail',
+    description: 'A fan of eyes, all the way round. Every cat it brushes is struck still.',
+    kind: 'sweep',
+    unit: 'swing',
+    levels: fixed({
+      cooldownMs: 700,
+      damage: 34,
+      area: 260,
+      // Six sectors: nearly all the way round him.
+      count: 6,
+      speed: 160,
+      // How long a cat it touches is held still, ms.
+      durationMs: 1500,
+      pierce: 99,
+    }),
+  },
+  'squeak-symphony': {
+    name: 'Squeak Symphony',
+    description: 'Three toys, a crescendo, and a last note that no cat nearby survives.',
+    kind: 'lure',
+    unit: 'toy',
+    levels: fixed({
+      cooldownMs: 2600,
+      damage: 40,
+      area: 90,
+      count: 3,
+      speed: 420,
+      durationMs: 3800,
+      pierce: 99,
+    }),
+  },
+  'cardboard-castle': {
+    name: 'Cardboard Castle',
+    description: 'Towers, a moat, a drawbridge. Cats near it slow to a crawl; those in it stay.',
+    kind: 'trap',
+    unit: 'carton',
+    levels: fixed({
+      cooldownMs: 3000,
+      damage: 40,
+      area: 70,
+      count: 4,
+      speed: 0,
+      durationMs: 7000,
+      pierce: 12,
+    }),
+  },
+  'scorch-dryer': {
+    name: 'Scorch Dryer',
+    description: 'Hot enough to singe. A scorched cat takes half again from everything else.',
+    kind: 'blow',
+    unit: 'jet',
+    levels: fixed({
+      cooldownMs: 0,
+      damage: 50,
+      area: 300,
+      count: 3,
+      speed: 240,
+      durationMs: 0,
+      pierce: 99,
+    }),
+  },
+  jacuzzi: {
+    name: 'Jacuzzi',
+    description: 'The tub, but much more of it. Every splash leaves a puddle cats cannot cross.',
+    kind: 'burst',
+    unit: 'bubble',
+    levels: fixed({
+      cooldownMs: 1800,
+      damage: 60,
+      area: 22,
+      count: 10,
+      speed: 300,
+      durationMs: 1300,
+      pierce: 1,
+    }),
+  },
 };
 
 /**
@@ -415,6 +616,11 @@ export const EVOLUTIONS: readonly Evolution[] = [
   { from: 'cat-treats', with: 'long-whiskers', to: 'banquet' },
   { from: 'spray-bottle', with: 'wool-sweater', to: 'monsoon' },
   { from: 'can-opener', with: 'warm-milk', to: 'bottomless-saucer', secret: true },
+  { from: 'feather-wand', with: 'cushion', to: 'peacock-tail' },
+  { from: 'squeaky-toy', with: 'egg-timer', to: 'squeak-symphony' },
+  { from: 'cardboard-box', with: 'slippers', to: 'cardboard-castle' },
+  { from: 'hair-dryer', with: 'tin-foil', to: 'scorch-dryer' },
+  { from: 'bath-tub', with: 'fish-bowl', to: 'jacuzzi' },
 ];
 
 /** The weapons a level-up may offer: all but the evolved ones. */
@@ -492,6 +698,31 @@ export const PASSIVES: Readonly<Record<PassiveId, PassiveInfo>> = {
     description: 'A small brass bell. One more choice at every level.',
     maxLevel: 1,
   },
+  'egg-timer': {
+    name: 'Egg Timer',
+    description: 'It ticks louder than it should. What his weapons make lasts longer.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  slippers: {
+    name: 'Slippers',
+    description: 'Soft, and silent on any floor. What his weapons fire goes through more cats.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  cushion: {
+    name: 'Cushion',
+    description: 'Somewhere soft to land. He stays untouchable a little longer after a hit.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'fish-bowl': {
+    name: 'Fish Bowl',
+    description: 'Something to stare at, and learn from. Gems are worth more.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'tin-foil': {
+    name: 'Tin Foil',
+    description: 'A hat, for reasons. The tricks of the elite cats wear off sooner.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
 };
 
 /** What the passives held add up to. */
@@ -507,6 +738,16 @@ export type Modifiers = {
   pickup: number;
   might: number;
   choices: number;
+  /** Multiplies how long what a weapon makes lasts. */
+  duration: number;
+  /** Added to how many cats one thing a weapon fires or places can take. */
+  pierce: number;
+  /** Added to the moment he is untouchable after a hit, ms. */
+  grace: number;
+  /** Multiplies the experience a gem gives. */
+  xp: number;
+  /** The share an elite's effect on him is cut by. */
+  guard: number;
 };
 
 export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
@@ -521,6 +762,11 @@ export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
     pickup: 1 + 0.25 * level('long-whiskers'),
     might: 1 + 0.1 * level('stern-look'),
     choices: 3 + level('lucky-bell'),
+    duration: 1 + 0.12 * level('egg-timer'),
+    pierce: level('slippers'),
+    grace: 120 * level('cushion'),
+    xp: 1 + 0.12 * level('fish-bowl'),
+    guard: 0.15 * level('tin-foil'),
   };
 }
 
@@ -533,6 +779,9 @@ export function weaponStats(id: WeaponId, level: number, mods: Modifiers): Weapo
     damage: base.damage * mods.might,
     area: base.area * mods.area,
     count: base.count + mods.count,
+    // What lasts, lasts longer; what passes through cats (not the unlimited) passes through more.
+    durationMs: base.durationMs * mods.duration,
+    pierce: base.pierce < 99 ? base.pierce + mods.pierce : base.pierce,
   };
 }
 
@@ -597,6 +846,19 @@ const AREA_WORD: Readonly<Record<WeaponKind, string>> = {
   bounce: 'size',
   burst: 'size',
   arc: 'range',
+  sweep: 'reach',
+  lure: 'size',
+  trap: 'size',
+  blow: 'reach',
+};
+
+/** What a weapon's speed is, in its level-up card's words. */
+const SPEED_WORD: Partial<Record<WeaponKind, string>> = {
+  pull: 'pull',
+  orbit: 'turning speed',
+  sweep: 'knockback',
+  lure: 'squeak range',
+  blow: 'push',
 };
 
 /**
@@ -623,7 +885,7 @@ export function levelChanges(id: WeaponId, level: number): string[] {
     changes.push(`+${percent(after.area, before.area)}% ${AREA_WORD[kind]}`);
   }
   if (after.speed !== before.speed) {
-    const word = kind === 'pull' ? 'pull' : kind === 'orbit' ? 'turning speed' : 'speed';
+    const word = SPEED_WORD[kind] ?? 'speed';
     changes.push(`+${percent(after.speed, before.speed)}% ${word}`);
   }
   if (after.durationMs !== before.durationMs) {
@@ -631,7 +893,9 @@ export function levelChanges(id: WeaponId, level: number): string[] {
   }
   if (after.pierce !== before.pierce) {
     const n = after.pierce - before.pierce;
-    changes.push(`passes through ${n} more cat${n === 1 ? '' : 's'}`);
+    changes.push(
+      `${kind === 'trap' ? 'holds' : 'passes through'} ${n} more cat${n === 1 ? '' : 's'}`
+    );
   }
   return changes;
 }
@@ -664,6 +928,11 @@ const MODIFIER_WORDS: { [K in keyof Modifiers]: (step: number) => string } = {
   pickup: (step) => `+${Math.round(step * 100)}% pickup reach`,
   might: (step) => `+${Math.round(step * 100)}% homesickness`,
   choices: (step) => `+${step} choice at every level`,
+  duration: (step) => `what his weapons make lasts ${Math.round(step * 100)}% longer`,
+  pierce: (step) => `+${step} cat through each shot, and in each carton`,
+  grace: (step) => `untouchable ${Math.round(step)} ms longer after a hit`,
+  xp: (step) => `+${Math.round(step * 100)}% experience from gems`,
+  guard: (step) => `elite effects on him last ${Math.round(step * 100)}% shorter`,
 };
 
 /**

@@ -136,3 +136,27 @@ export const VARIETY_SVG: Readonly<Record<VarietyId, string>> = {
     extra: `<path d="M24 16 L26 21 M32 14 V20 M40 16 L38 21 M20 42 Q24 40 22 46 M44 42 Q40 40 42 46" stroke="#a24e12" stroke-width="2.2" stroke-linecap="round" fill="none"/>`,
   }),
 };
+
+/**
+ * What the household weapons set down: a squeaky toy (a mouse that has seen things)
+ * and a cardboard box (the open end up). Placeholders, as the rest of this file.
+ */
+export const PATCH_SVG = {
+  toy: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="54" rx="18" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M46 44 Q58 40 56 28" stroke="${PLASMA}" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <ellipse cx="30" cy="40" rx="18" ry="13" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="18" cy="28" r="6" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="30" cy="27" r="6" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="16" cy="40" r="2.2" fill="${VOID}"/>
+  <circle cx="11" cy="43" r="2" fill="${AURA}"/>
+</svg>`,
+  box: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="56" rx="24" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M8 26 L32 18 L56 26 L56 50 L32 58 L8 50 Z" fill="#b8874f" stroke="${LINE}" stroke-width="2"/>
+  <path d="M8 26 L32 34 L56 26" fill="none" stroke="${LINE}" stroke-width="2"/>
+  <path d="M32 34 L32 58" stroke="${LINE}" stroke-width="2"/>
+  <path d="M8 26 L32 18 L56 26 L32 34 Z" fill="#1a1308" opacity="0.55"/>
+  <rect x="26" y="40" width="12" height="6" fill="${CREAM}" opacity="0.8"/>
+</svg>`,
+} as const;

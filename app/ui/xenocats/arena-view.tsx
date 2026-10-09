@@ -10,7 +10,7 @@ import {
   createArena,
   runLengthConfig,
 } from './arena';
-import { HERO_SVGS, VARIETY_SVG } from './arena-art';
+import { HERO_SVGS, VARIETY_SVG, PATCH_SVG } from './arena-art';
 import {
   type Choice,
   MAX_WEAPON_LEVEL,
@@ -86,6 +86,8 @@ const SHOT_COLOR: Record<string, string> = {
   'yarn-ball': '#f472b6',
   'yarn-apocalypse': '#ec4899',
   hairball: '#a8865b',
+  'bath-tub': '#7dd3fc',
+  jacuzzi: '#38bdf8',
 };
 
 /** How long an evolution's announcement stays, ms. */
@@ -471,6 +473,18 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       ])
     ) as Record<VarietyId, () => HTMLCanvasElement | null>;
 
+    const patchSprites = {
+      toy: bitmapOf(
+        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PATCH_SVG.toy)}`,
+        64,
+        redraw
+      ),
+      box: bitmapOf(
+        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PATCH_SVG.box)}`,
+        64,
+        redraw
+      ),
+    };
     const guard = createFrameGuard(FRAME_GUARD);
     const held = new Set<string>();
     const flashes: Flash[] = [];
@@ -559,6 +573,71 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         context.lineTo(x, y + 6);
         context.lineTo(x - 4, y);
         context.fill();
+      }
+
+      // What the household weapons set down: puddles under, then the toys and boxes.
+      for (const patch of arena.patches()) {
+        const x = patch.x - camX;
+        const y = patch.y - camY;
+        if (
+          x < -patch.radius * 2 ||
+          y < -patch.radius * 2 ||
+          x > width + patch.radius * 2 ||
+          y > height + patch.radius * 2
+        ) {
+          continue;
+        }
+        if (patch.kind === 'puddle') {
+          context.fillStyle = 'rgba(125, 211, 252, 0.22)';
+          context.beginPath();
+          context.ellipse(x, y, patch.radius, patch.radius * 0.7, 0, 0, 2 * Math.PI);
+          context.fill();
+          continue;
+        }
+        // A toy's squeak, faint: how far it carries; a box's own size.
+        if (patch.kind === 'toy') {
+          context.strokeStyle = `rgba(224, 224, 179, ${0.18 + 0.08 * Math.sin(time / 120)})`;
+          context.lineWidth = 2;
+          context.beginPath();
+          context.arc(x, y, patch.radius, 0, 2 * Math.PI);
+          context.stroke();
+        }
+        const bitmap = patchSprites[patch.kind]();
+        const size = Math.max(patch.radius * 1.6, 36);
+        if (bitmap) context.drawImage(bitmap, x - size / 2, y - size / 2, size, size);
+      }
+      // The Feather Wand's swings, fading, and the Hair Dryer's jets.
+      for (const swing of arena.sweeps()) {
+        const left = Math.max(swing.until - state.time, 0) / 240;
+        context.fillStyle = `rgba(224, 224, 179, ${0.1 + 0.3 * left})`;
+        context.beginPath();
+        context.moveTo(swing.x - camX, swing.y - camY);
+        context.arc(
+          swing.x - camX,
+          swing.y - camY,
+          swing.reach,
+          swing.angle - swing.half,
+          swing.angle + swing.half
+        );
+        context.closePath();
+        context.fill();
+      }
+      for (const jet of arena.jets()) {
+        context.fillStyle = 'rgba(253, 186, 116, 0.13)';
+        context.strokeStyle = 'rgba(253, 186, 116, 0.35)';
+        context.lineWidth = 1.5;
+        context.beginPath();
+        context.moveTo(jet.x - camX, jet.y - camY);
+        context.arc(
+          jet.x - camX,
+          jet.y - camY,
+          jet.reach,
+          jet.angle - jet.half,
+          jet.angle + jet.half
+        );
+        context.closePath();
+        context.fill();
+        context.stroke();
       }
 
       // An elite's attack winding up: where it will land, filling as the moment nears.
