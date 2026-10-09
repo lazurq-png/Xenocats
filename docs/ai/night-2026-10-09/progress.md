@@ -124,3 +124,11 @@ All green, nothing red: lint exit 0 (0 warnings, saved in `lint-baseline.txt`); 
 - **Verification (observed).** prettier clean; lint exit 0, 0 warnings; tsc exit 0; `tests/unit/xenocats` 28 files / 650 tests passed; `npm run build` exit 0; the 12 affected specs 114 passed, 2 skipped, 0 failed (before the reviewer's change to the automatic switch; `survival.spec.ts` alone 30 passed after it). Not run in full: `npm test`, the full e2e suites (checkpoint 2 is next).
 - **Reviewer:** Request Changes — one Medium (a single stalled frame could switch a good machine to light for good: it is now a mean over a window) and two Low (fixed).
 - Previous task CI (T2, merge `0c86a92`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37967857988
+
+## Checkpoint 2 (after T4, T5, T6, T2, T10)
+
+- Branch `2026-10-09-c2-checkpoint`, base `8378fd5`. 19:56 – 20:15 (real clock).
+- **Tests.** D54: reviewed; one wiring gap filled (an e2e of the automatic switch to light graphics) and one dead export removed. Full suites, observed: `npm run lint` exit 0 (0 warnings); `tsc` exit 0; `npm test` 44 files passed / 1 skipped, 822 passed / 24 skipped, 1m6s; database tests 24 passed; `npm run build` exit 0; `npm run test:e2e` (next dev) 144 passed, 2 skipped, 3m34s; `E2E_SERVER=start` 144 passed, 2 skipped, 2m32s.
+- **Quality and security.** Reviewer over `f77d42e..HEAD` with the security rules: Approve, no finding above Low (D55).
+- **Speed.** D53: simulation unchanged; render −7% to −8% against the code of two tasks ago measured alongside (under the 10% line).
+- Previous task CI (T10, merge `8378fd5`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37969782208

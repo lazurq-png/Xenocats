@@ -366,6 +366,32 @@ test.describe('on a computer', () => {
     await context.close();
   });
 
+  test('a screen too slow for the frame floor is switched to light graphics, once, with a notice', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7');
+    await expect(area(page)).toHaveCount(0);
+    // Six times slower than this machine: well under 40 frames a second.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-graphics', 'light', { timeout: 30_000 });
+    await expect(page.getByTestId('survival-notice')).toContainText('struggling');
+    expect(
+      await page.evaluate(() => localStorage.getItem('xenocats:survival:v1:graphics-auto'))
+    ).toBe('1');
+    expect(await page.evaluate(() => localStorage.getItem('xenocats:survival:v1:graphics'))).toBe(
+      'light'
+    );
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    // The player changes it back: it does not switch again.
+    const paused = await pauseRun(page);
+    await paused.getByTestId('survival-pause-graphics-full').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-graphics', 'full');
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);

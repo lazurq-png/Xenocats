@@ -1,5 +1,5 @@
 // The Survival arena's own artwork, drawn by the run as SVG in the site's palette
-// (tailwind.config.ts): the heroes (the Keeper and the characters re-dressed) and
+// (tailwind.config.ts): the heroes (the Keeper and the characters re-dressed, in five directions) and
 // the varieties of cat. Placeholders until a Superdesign pass. The twenty xenocat
 // types keep their own artwork (cat-art.ts), unchanged.
 
@@ -12,45 +12,7 @@ const AURA = '#9d86ff';
 const PLASMA = '#c1e838';
 const CREAM = '#e0e0b3';
 
-/**
- * A hero: a long coat, a pale face under a hood, an arm held out with `tool` at
- * its end. The Keeper and the characters (progression.ts) are this one, re-dressed.
- */
-function heroSvg(o: { coat: string; trim: string; tool: string }): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <ellipse cx="32" cy="58" rx="16" ry="4" fill="${VOID}" opacity="0.6"/>
-  <path d="M20 54 L24 26 Q32 18 40 26 L44 54 Q32 58 20 54 Z" fill="${o.coat}" stroke="${o.trim}" stroke-width="2"/>
-  <path d="M32 30 L32 54" stroke="${o.trim}" stroke-width="1.5" opacity="0.7"/>
-  <path d="M21 26 Q32 6 43 26 Q32 20 21 26 Z" fill="${o.coat}" stroke="${o.trim}" stroke-width="2"/>
-  <ellipse cx="32" cy="24" rx="7" ry="6" fill="${CREAM}"/>
-  <rect x="27" y="22.5" width="10" height="3" rx="1.5" fill="${VOID}"/>
-  <path d="M41 36 L52 33" stroke="${CREAM}" stroke-width="3.5" stroke-linecap="round"/>
-  ${o.tool}
-</svg>`;
-}
-
-/** The heroes, by character (progression.ts): the Keeper, the Night Porter, the Housekeeper. */
-export const HERO_SVGS = {
-  keeper: heroSvg({
-    coat: LINE,
-    trim: AURA,
-    tool: `<rect x="50" y="30.5" width="9" height="4" rx="1.5" fill="${AURA}"/><circle cx="59.5" cy="32.5" r="2" fill="${PLASMA}"/>`,
-  }),
-  // A shorter, brighter-trimmed coat, and a spray bottle.
-  'night-porter': heroSvg({
-    coat: '#12162b',
-    trim: PLASMA,
-    tool: `<rect x="51" y="27" width="7" height="11" rx="2" fill="#7dd3fc"/><rect x="52.5" y="23" width="4" height="4" fill="${CREAM}"/><path d="M56.5 24 H61" stroke="${CREAM}" stroke-width="2"/>`,
-  }),
-  // A pale apron over the coat, and the vacuum's nozzle.
-  housekeeper: heroSvg({
-    coat: '#4b4f6b',
-    trim: CREAM,
-    tool: `<path d="M28 34 H36 L38 52 H26 Z" fill="${CREAM}" opacity="0.85"/><path d="M52 33 Q58 40 56 50" stroke="${AURA}" stroke-width="3" fill="none"/><rect x="51" y="49" width="10" height="5" rx="2" fill="${LINE}" stroke="${AURA}" stroke-width="1.5"/>`,
-  }),
-} as const;
-
-/** How each character is dressed (the same coat and trim as HERO_SVGS). */
+/** How each character is dressed: the Keeper, the Night Porter and the Housekeeper. */
 const LOOKS = {
   keeper: { coat: LINE, trim: AURA },
   'night-porter': { coat: '#12162b', trim: PLASMA },
