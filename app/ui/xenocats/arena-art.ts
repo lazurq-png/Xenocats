@@ -3,6 +3,7 @@
 // the varieties of cat. Placeholders until a Superdesign pass. The twenty xenocat
 // types keep their own artwork (cat-art.ts), unchanged.
 
+import type { DrawnDirection } from './hero-direction';
 import type { VarietyId } from './varieties';
 
 const VOID = '#070b14';
@@ -48,6 +49,89 @@ export const HERO_SVGS = {
     tool: `<path d="M28 34 H36 L38 52 H26 Z" fill="${CREAM}" opacity="0.85"/><path d="M52 33 Q58 40 56 50" stroke="${AURA}" stroke-width="3" fill="none"/><rect x="51" y="49" width="10" height="5" rx="2" fill="${LINE}" stroke="${AURA}" stroke-width="1.5"/>`,
   }),
 } as const;
+
+/** How each character is dressed (the same coat and trim as HERO_SVGS). */
+const LOOKS = {
+  keeper: { coat: LINE, trim: AURA },
+  'night-porter': { coat: '#12162b', trim: PLASMA },
+  housekeeper: { coat: '#4b4f6b', trim: CREAM },
+} as const;
+
+/** How each of the five drawn directions turns the face and leans the coat. */
+const TURNS: Record<
+  DrawnDirection,
+  { lean: number; face: number; visor: number; seen: boolean; seam: number }
+> = {
+  // Front on.
+  S: { lean: 0, face: 32, visor: 32, seen: true, seam: 32 },
+  // Front, turned right.
+  SE: { lean: 2, face: 35, visor: 36, seen: true, seam: 35 },
+  // Side on, facing right.
+  E: { lean: 3, face: 38, visor: 40, seen: true, seam: 36 },
+  // Back, turned right: a sliver of cheek.
+  NE: { lean: 2, face: 40, visor: 43, seen: true, seam: 34 },
+  // Back to us: the hood, nothing of the face.
+  N: { lean: 0, face: 32, visor: 32, seen: false, seam: 32 },
+};
+
+/**
+ * A hero's body facing one of the five drawn directions (the other three are these
+ * mirrored), without the tool: that is drawn apart and turned to the aim.
+ */
+function heroBodySvg(look: { coat: string; trim: string }, direction: DrawnDirection): string {
+  const t = TURNS[direction];
+  const l = t.lean;
+  const sliver = direction === 'NE';
+  const face = t.seen
+    ? `<ellipse cx="${t.face}" cy="24" rx="${sliver ? 3 : 7}" ry="6" fill="${CREAM}"/>
+  ${sliver ? '' : `<rect x="${t.visor - 5}" y="22.5" width="10" height="3" rx="1.5" fill="${VOID}"/>`}`
+    : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="58" rx="16" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M${20 + l} 54 L${24 + l} 26 Q${32 + l} 18 ${40 + l} 26 L${44 + l} 54 Q${32 + l} 58 ${20 + l} 54 Z" fill="${look.coat}" stroke="${look.trim}" stroke-width="2"/>
+  <path d="M${t.seam} 30 L${t.seam} 54" stroke="${look.trim}" stroke-width="1.5" opacity="0.7"/>
+  <path d="M${21 + l} 26 Q${32 + l} 6 ${43 + l} 26 Q${32 + l} 20 ${21 + l} 26 Z" fill="${look.coat}" stroke="${look.trim}" stroke-width="2"/>
+  ${face}
+</svg>`;
+}
+
+/** The bodies, by character, then by the five drawn directions. */
+export const HERO_BODY_SVGS: Readonly<
+  Record<keyof typeof LOOKS, Readonly<Record<DrawnDirection, string>>>
+> = Object.fromEntries(
+  (Object.keys(LOOKS) as (keyof typeof LOOKS)[]).map((id) => [
+    id,
+    Object.fromEntries(
+      (['N', 'NE', 'E', 'SE', 'S'] as const).map((d) => [d, heroBodySvg(LOOKS[id], d)])
+    ),
+  ])
+) as Record<keyof typeof LOOKS, Record<DrawnDirection, string>>;
+
+/**
+ * A starting weapon, drawn pointing right from the hand at (10, 32) of a 64×64 box;
+ * the view turns it to point exactly at the aim, whatever the eight directions say.
+ */
+export const HERO_TOOL_SVGS: Readonly<Record<keyof typeof LOOKS, string>> = {
+  // The Laser Pointer: a slim pen, and its dot.
+  keeper: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <rect x="10" y="29" width="30" height="6" rx="3" fill="${AURA}" stroke="${LINE}" stroke-width="1"/>
+  <circle cx="45" cy="32" r="3.5" fill="${PLASMA}"/>
+</svg>`,
+  // The Spray Bottle: a bottle in the hand, a nozzle ahead of it.
+  'night-porter': `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <rect x="12" y="26" width="16" height="12" rx="3" fill="#7dd3fc" stroke="${LINE}" stroke-width="1"/>
+  <rect x="28" y="28" width="12" height="5" rx="2" fill="${CREAM}"/>
+  <path d="M40 30.5 H47" stroke="${CREAM}" stroke-width="3" stroke-linecap="round"/>
+</svg>`,
+  // The Vacuum Cleaner: a hose from the hand, and the nozzle.
+  housekeeper: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <path d="M12 32 Q24 40 34 32" stroke="${AURA}" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <rect x="34" y="27" width="14" height="10" rx="3" fill="${LINE}" stroke="${AURA}" stroke-width="1.5"/>
+</svg>`,
+};
 
 /**
  * A sitting cat, front on, in a 64×64 box: body, head, ears, eyes, a tail; `extra`

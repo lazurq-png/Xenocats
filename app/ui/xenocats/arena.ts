@@ -494,6 +494,14 @@ type Held = {
 
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
+  /**
+   * Where he looks, radians (the screen's): at the crosshair, else at the cat his first
+   * aiming weapon targets now (looked for five times a second), else null.
+   */
+  aimAngle: number | null;
+  lookAt: number;
+  /** The way he last walked, radians. */
+  walkAngle: number;
   /** When the Bottomless Saucer sends out its next milk waves. */
   waveAt: number;
   /** The Hair Dryer's way between two looks for a cat, and when it looks next. */
@@ -623,6 +631,9 @@ export function createArena(options: {
       jetAngle: 0,
       jetAt: 0,
       waveAt: 0,
+      aimAngle: null,
+      lookAt: 0,
+      walkAngle: 0,
       revivals: config.boost.revivals,
       downedAt: null,
       gulpAt: Infinity,
@@ -1097,6 +1108,8 @@ export function createArena(options: {
     hero.x += x * speed * dt;
     hero.y += y * speed * dt;
     if (x !== 0) hero.facing = Math.sign(x);
+    // Frozen, he turns no way: the stick moves nothing.
+    if ((x !== 0 || y !== 0) && speed > 0) hero.walkAngle = Math.atan2(y, x);
   }
 
   /** The toy that calls this cat, if one is near enough: where it goes instead. */
@@ -1714,6 +1727,47 @@ export function createArena(options: {
     }
   }
 
+  /** How far the weapons that go for the nearest cat look for it, px, by kind (null: they do not aim). */
+  function lookRange(id: WeaponId, s: WeaponStats): number | null {
+    switch (WEAPONS[id].kind) {
+      case 'beam':
+      case 'chain':
+      case 'web':
+      case 'sweep':
+        return s.area;
+      case 'spread':
+      case 'burst':
+        return 650;
+      case 'lure':
+        return 450;
+      case 'trap':
+        return 520;
+      default:
+        return null;
+    }
+  }
+
+  /** Where this Keeper looks: the crosshair, else the cat his first aiming weapon would fire at. */
+  function updateAim() {
+    if (hero.aim) {
+      hero.aimAngle = Math.atan2(towards(hero.aim).y, towards(hero.aim).x);
+      return;
+    }
+    if (time < hero.lookAt) return;
+    hero.lookAt = time + 200;
+    hero.aimAngle = null;
+    for (const [id, held] of activeWeapons(hero)) {
+      const range = lookRange(id, weaponStats(id, held.level, hero.mods));
+      if (range === null) continue;
+      const [i] = nearest(hero, range, 1);
+      if (i !== undefined) {
+        const way = aim(cats[i]);
+        hero.aimAngle = Math.atan2(way.y, way.x);
+      }
+      return;
+    }
+  }
+
   /** One weapon, this step: blades and zones all the time, the rest when they are ready. */
   function runWeapon(id: WeaponId, held: { level: number; readyAt: number }, dt: number) {
     const s = weaponStats(id, held.level, hero.mods);
@@ -1828,6 +1882,7 @@ export function createArena(options: {
   }
 
   function swingWeapons(dt: number) {
+    updateAim();
     if (time >= hero.gulpAt) {
       hero.gulpAt = Infinity;
       for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area)) {
@@ -2390,6 +2445,8 @@ export function createArena(options: {
           resolve: k.resolve,
           maxResolve: maxResolveOf(k),
           facing: k.facing,
+          /** The way he looks, radians (the screen's): his aim, else the way he walks. */
+          lookAngle: k.aimAngle ?? k.walkAngle,
           untouchable: time < k.untouchableUntil,
           effect: k.effect && time < k.effect.until ? k.effect.effect.kind : null,
           down: !standing(k),

@@ -10,7 +10,8 @@ import {
   createArena,
   runLengthConfig,
 } from './arena';
-import { HERO_SVGS, VARIETY_SVG, PATCH_SVG } from './arena-art';
+import { HERO_BODY_SVGS, HERO_TOOL_SVGS, VARIETY_SVG, PATCH_SVG } from './arena-art';
+import { DRAWN_DIRECTIONS, directionOfAngle, facesAway, spriteOf } from './hero-direction';
 import {
   type Choice,
   MAX_WEAPON_LEVEL,
@@ -137,6 +138,8 @@ type Hud = {
   zoom: number;
   /** Each Keeper's Resolve, and whether he is down (co-op: two). */
   heroes: {
+    /** Which of the eight directions he faces. */
+    facing: string;
     resolve: number;
     maxResolve: number;
     down: boolean;
@@ -156,6 +159,10 @@ const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
 
 /** A sound for a cat of any kind: a variety sounds like the first xenocat type. */
 const typeOf = (type: number) => CAT_TYPES[type] ?? CAT_TYPES[0];
+
+/** The direction a Keeper is drawn facing: his aim; a downed one lies on his side, as ever. */
+const viewDirection = (h: { down: boolean; facing: number; lookAngle: number }) =>
+  h.down ? (h.facing < 0 ? 'W' : 'E') : directionOfAngle(h.lookAngle);
 
 /** A bitmap of `src`, `size` px square, drawn once; null until it has loaded. */
 function bitmapOf(src: string, size: number, onReady: () => void): () => HTMLCanvasElement | null {
@@ -467,13 +474,17 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       importantUntil = performance.now() + NOTICE_MS;
       setNotice(text);
     };
-    const heroSprites = [characterRef.current, secondRef.current ?? 'keeper'].map((id) =>
-      bitmapOf(
-        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVGS[id])}`,
-        HERO_SIZE * 2,
-        redraw
-      )
-    );
+    // Each Keeper: his body in the five directions the art draws, and his tool.
+    const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    const heroSprites = [characterRef.current, secondRef.current ?? 'keeper'].map((id) => ({
+      bodies: Object.fromEntries(
+        DRAWN_DIRECTIONS.map((d) => [
+          d,
+          bitmapOf(svgUrl(HERO_BODY_SVGS[id][d]), HERO_SIZE * 2, redraw),
+        ])
+      ) as Record<(typeof DRAWN_DIRECTIONS)[number], () => HTMLCanvasElement | null>,
+      tool: bitmapOf(svgUrl(HERO_TOOL_SVGS[id]), HERO_SIZE * 2, redraw),
+    }));
     const twoPlayers = secondRef.current !== null;
     const titan = CAT_TYPES.findIndex((type) => type.id === 'titan-forest-cat');
     const varietySprites = Object.fromEntries(
@@ -806,7 +817,12 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       // The Keepers, flickering while untouchable, faint under a veil; a downed one
       // lies on his side, pale. In co-op each is marked with his number.
       state.heroes.forEach((h, i) => {
-        const keeper = heroSprites[i]();
+        // He faces his aim (the crosshair, else the cat his weapon would fire at, else the
+        // way he walks) in the nearest of eight directions; his tool points exactly at it.
+        const direction = viewDirection(h);
+        const { drawn, mirrored } = spriteOf(direction);
+        const keeper = heroSprites[i].bodies[drawn]();
+        const tool = heroSprites[i].tool();
         const x = h.x - camX;
         const y = h.y - camY;
         if (keeper && !(h.untouchable && !h.down && Math.floor(time / 90) % 2 === 0)) {
@@ -814,12 +830,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           context.globalAlpha = h.down ? 0.35 : h.effect === 'veil' ? 0.35 : 1;
           context.translate(x, y);
           if (h.down) context.rotate(Math.PI / 2);
-          if (h.facing < 0) context.scale(-1, 1);
           if (h.effect === 'freeze' && !h.down) {
             context.shadowColor = '#7dd3fc';
             context.shadowBlur = 16;
           }
+          const drawTool = () => {
+            if (!tool || h.down) return;
+            // The tool turns about his hand, pointing at the aim to the degree.
+            context.save();
+            context.translate(0, HERO_SIZE * 0.08);
+            context.rotate(h.lookAngle);
+            const k = (HERO_SIZE * 1.1) / 64;
+            context.drawImage(tool, -10 * k, -32 * k, 64 * k, 64 * k);
+            context.restore();
+          };
+          // Facing away, the tool is behind him.
+          if (facesAway(direction)) drawTool();
+          context.save();
+          if (mirrored) context.scale(-1, 1);
           context.drawImage(keeper, -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
+          context.restore();
+          if (!facesAway(direction)) drawTool();
           context.restore();
         }
         if (twoPlayers) {
@@ -986,6 +1017,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               : '',
           zoom: Math.round(arena.camera().zoom * 100) / 100,
           heroes: state.heroes.map((h) => ({
+            facing: viewDirection(h),
             resolve: h.resolve,
             maxResolve: h.maxResolve,
             down: h.down,
@@ -1248,6 +1280,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-windups={hud?.windUps ?? 0}
           data-windups-begun={hud?.windUpsBegun ?? 0}
           data-sent-home={hud?.sentHome ?? 0}
+          data-hero-facing={hud?.heroes[0]?.facing ?? ''}
+          data-hero2-facing={hud?.heroes[1]?.facing ?? ''}
           data-hero-x={hud?.heroX ?? 0}
           data-hero-y={hud?.heroY ?? 0}
           data-effect={hud?.effect ?? ''}

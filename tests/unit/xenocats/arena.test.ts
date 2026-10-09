@@ -9,7 +9,7 @@ import {
   runLengthConfig,
 } from '@/app/ui/xenocats/arena';
 import { createArenaGrid } from '@/app/ui/xenocats/arena-grid';
-import { WEAPONS } from '@/app/ui/xenocats/arsenal';
+import { WEAPONS, type WeaponId } from '@/app/ui/xenocats/arsenal';
 import {
   SURVIVAL_BEST_KEY,
   bestKey,
@@ -24,6 +24,14 @@ import {
   writeLength,
 } from '@/app/ui/xenocats/arena-storage';
 import { SCHEDULE } from '@/app/ui/xenocats/varieties';
+import {
+  type Direction,
+  DRAWN_DIRECTIONS,
+  directionOf,
+  directionOfAngle,
+  facesAway,
+  spriteOf,
+} from '@/app/ui/xenocats/hero-direction';
 import { CAT_TYPES, catTypeById } from '@/app/ui/xenocats/cat-types';
 import { createFrameGuard } from '@/app/ui/xenocats/frame-guard';
 import { createRandom } from '@/app/ui/xenocats/random';
@@ -977,5 +985,149 @@ describe('an elite attack', () => {
       for (const e of plain.drainEvents())
         expect(['wind-up', 'elite-attack']).not.toContain(e.kind);
     }
+  });
+});
+
+describe('which way a Keeper faces', () => {
+  // East, clockwise on the screen (y grows downward), 45° apart.
+  const ORDER: Direction[] = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+  const eighth = Math.PI / 4;
+
+  it('each of the eight directions is the 45° sector centred on it', () => {
+    ORDER.forEach((direction, k) => {
+      const centre = k * eighth;
+      expect(directionOfAngle(centre), direction).toBe(direction);
+      // Well inside its sector, either side.
+      expect(directionOfAngle(centre + eighth * 0.4), direction).toBe(direction);
+      expect(directionOfAngle(centre - eighth * 0.4), direction).toBe(direction);
+      // Full turns, either way, change nothing.
+      expect(directionOfAngle(centre + 2 * Math.PI), direction).toBe(direction);
+      expect(directionOfAngle(centre - 4 * Math.PI), direction).toBe(direction);
+    });
+  });
+
+  it('at every boundary the way tips over just past it, and an exact boundary goes clockwise', () => {
+    ORDER.forEach((direction, k) => {
+      const next = ORDER[(k + 1) % 8];
+      const boundary = k * eighth + eighth / 2;
+      expect(directionOfAngle(boundary - 1e-9), `just before ${next}`).toBe(direction);
+      expect(directionOfAngle(boundary + 1e-9), `just past ${direction}`).toBe(next);
+    });
+    // Exactly between east and south-east.
+    expect(directionOfAngle(Math.PI / 8)).toBe('SE');
+  });
+
+  it('a way (dx right, dy down) names the same direction; no way at all is east', () => {
+    expect(directionOf(1, 0)).toBe('E');
+    expect(directionOf(1, 1)).toBe('SE');
+    expect(directionOf(0, 1)).toBe('S');
+    expect(directionOf(-1, 1)).toBe('SW');
+    expect(directionOf(-1, 0)).toBe('W');
+    expect(directionOf(-1, -1)).toBe('NW');
+    expect(directionOf(0, -1)).toBe('N');
+    expect(directionOf(1, -1)).toBe('NE');
+    expect(directionOf(0, 0)).toBe('E');
+    expect(directionOfAngle(Number.NaN)).toBe('E');
+    expect(directionOfAngle(Infinity)).toBe('E');
+  });
+
+  it('five are drawn; the other three are those mirrored', () => {
+    expect(DRAWN_DIRECTIONS).toEqual(['N', 'NE', 'E', 'SE', 'S']);
+    for (const d of DRAWN_DIRECTIONS) expect(spriteOf(d)).toEqual({ drawn: d, mirrored: false });
+    expect(spriteOf('SW')).toEqual({ drawn: 'SE', mirrored: true });
+    expect(spriteOf('W')).toEqual({ drawn: 'E', mirrored: true });
+    expect(spriteOf('NW')).toEqual({ drawn: 'NE', mirrored: true });
+    // He holds his tool behind him when he faces away.
+    expect(ORDER.filter(facesAway)).toEqual(['NW', 'N', 'NE']);
+  });
+
+  /** One Keeper with the Laser Pointer, cats coming one at a time (none: a quiet arena). */
+  function look(cats: number, config: Partial<ArenaConfig> = {}) {
+    return arena({ ...unbreakable, stepMs: 50, escalation: [[0, cats]], ...config });
+  }
+  const lookAngle = (a: ReturnType<typeof look>) => a.state().heroes[0].lookAngle;
+
+  it('with nothing to aim at he looks the way he walked last', () => {
+    const a = look(0);
+    expect(lookAngle(a)).toBe(0);
+    a.step({ x: 0, y: -1 });
+    expect(directionOfAngle(lookAngle(a))).toBe('N');
+    a.step({ x: -1, y: 1 });
+    expect(directionOfAngle(lookAngle(a))).toBe('SW');
+    // Standing still, he keeps looking where he was.
+    for (let i = 0; i < 20; i++) a.step(still);
+    expect(directionOfAngle(lookAngle(a))).toBe('SW');
+  });
+
+  it('with the crosshair he looks at it, the moment it moves', () => {
+    const a = look(0);
+    for (let k = 0; k < 8; k++) {
+      const angle = k * eighth;
+      a.aimAt({ x: Math.cos(angle) * 300, y: Math.sin(angle) * 300 });
+      a.step(still);
+      expect(lookAngle(a)).toBeCloseTo(angle > Math.PI ? angle - 2 * Math.PI : angle, 6);
+      expect(directionOfAngle(lookAngle(a))).toBe(ORDER[k]);
+    }
+    // Put away, he goes back to the way he walked.
+    a.aimAt(null);
+    a.step({ x: 1, y: 0 });
+    expect(directionOfAngle(lookAngle(a))).toBe('E');
+  });
+
+  it('with automatic aim he looks at the cat his first aiming weapon would fire at', () => {
+    const a = look(1, { cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9] } });
+    let checked = 0;
+    for (let i = 0; i < 4000 && checked < 3; i++) {
+      a.step(still);
+      const h = a.state().hero;
+      const near = a
+        .cats()
+        .filter((c) => Math.hypot(c.x - h.x, c.y - h.y) < 280)
+        .sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0];
+      // Only a cat well away from east, where he looks before he has a cat to look at.
+      if (!near || Math.abs(Math.atan2(near.y - h.y, near.x - h.x)) < 1.2) continue;
+      // He looks for a cat five times a second, so give him a moment to have seen it.
+      for (let j = 0; j < 6; j++) a.step(still);
+      const now = a.cats()[0];
+      const toCat = Math.atan2(now.y - h.y, now.x - h.x);
+      const apart = Math.abs(
+        Math.atan2(Math.sin(lookAngle(a) - toCat), Math.cos(lookAngle(a) - toCat))
+      );
+      expect(apart).toBeLessThan(0.6);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('he looks for a cat with his first weapon that aims, and skips those that do not', () => {
+    const quiet = { cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9] as [number, number] } };
+    const faced = (weapons: WeaponId[]) => {
+      const a = look(1, { startingWeapons: weapons, ...quiet });
+      const seen = new Set<string>();
+      for (let i = 0; i < 4000; i++) {
+        a.step(still);
+        seen.add(directionOfAngle(lookAngle(a)));
+      }
+      return seen;
+    };
+    // The vacuum's hum aims at nothing: he never turns from the way he walked (east).
+    expect([...faced(['thunderous-vacuum'])]).toEqual(['E']);
+    // With a laser behind it he turns to the cats, though the vacuum comes first.
+    expect(faced(['thunderous-vacuum', 'laser-pointer']).size).toBeGreaterThan(1);
+    expect(faced(['laser-pointer']).size).toBeGreaterThan(1);
+  });
+
+  it('in co-op each Keeper looks his own way: the crosshair is player 1’s alone', () => {
+    const a = arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      secondPlayer: { startingWeapons: ['spray-bottle'], speed: 210, resolve: 1e12 },
+    });
+    a.aimAt({ x: 300, y: 0 });
+    a.step(still, true, { x: 0, y: -1 });
+    const [first, second] = a.state().heroes;
+    expect(directionOfAngle(first.lookAngle)).toBe('E');
+    expect(directionOfAngle(second.lookAngle)).toBe('N');
   });
 });

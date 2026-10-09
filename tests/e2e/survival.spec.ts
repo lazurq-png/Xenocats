@@ -301,6 +301,33 @@ test.describe('on a computer', () => {
     await expect(fresh.getByTestId('survival-pause-tier')).toHaveText('(Basic)');
   });
 
+  test('the Keeper faces the crosshair in all eight directions; automatic, he faces a cat or the way he walks', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openArena(page, '?seed=7');
+    await page.getByTestId('survival-lobby-aim-crosshair').check();
+    await startRun(page);
+    // The Keeper stands in the middle of the screen: the mouse goes round him.
+    const centre = { x: 640, y: 400 };
+    const eight = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+    for (let k = 0; k < 8; k++) {
+      const angle = (k * Math.PI) / 4;
+      await page.mouse.move(centre.x + Math.cos(angle) * 250, centre.y + Math.sin(angle) * 250);
+      await expect(area(page)).toHaveAttribute('data-hero-facing', eight[k]);
+    }
+    // Put the crosshair away. He stands still, so the way he walked last is east (he has
+    // not walked); facing anything else means he turned to a cat.
+    const paused = await pauseRun(page);
+    await paused.getByTestId('survival-pause-aim-auto').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-aim', 'auto');
+    await expect
+      .poll(() => area(page).getAttribute('data-hero-facing'), { timeout: 30_000 })
+      .not.toBe('E');
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);
