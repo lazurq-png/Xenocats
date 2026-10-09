@@ -5,7 +5,10 @@ import { type Page, expect, test } from '@playwright/test';
 // Each account sees only its own customers and invoices (migration 0005). A
 // second user of the test's own, written straight into the test schema
 // global-setup.ts rebuilds, opens the demo user's invoice and customer and gets
-// the same not-found an unknown id gets; its lists and its export are empty.
+// the same not-found an unknown id gets. That every list, count, total, search and
+// export holds only the account's own rows is data.test.ts ("two accounts"); the
+// pages showing them are not walked here as the other user: each passes the
+// session's user to those queries, whose owner argument TypeScript requires.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 
 const PASSWORD = 'own-data-password-1';
@@ -51,7 +54,7 @@ async function logIn(page: Page, email: string) {
 }
 
 test("another account's invoices and customers are as if they did not exist", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(60_000);
   const { email, invoice, customer } = await setUp();
   await logIn(page, email);
 
@@ -63,26 +66,4 @@ test("another account's invoices and customers are as if they did not exist", as
   await expect(seen(page, 'Could not find the requested invoice.')).toHaveCount(1);
   await page.goto(`/dashboard/customers/${customer}/edit`);
   await expect(seen(page, 'Could not find the requested customer.')).toHaveCount(1);
-
-  // Lists: nothing, not even with a search that matches the demo user's rows.
-  await page.goto('/dashboard/invoices');
-  await expect(seen(page, 'No invoices found')).toHaveCount(1);
-  await page.goto('/dashboard/invoices?query=paid');
-  await expect(seen(page, 'No invoices found')).toHaveCount(1);
-  await page.goto('/dashboard/customers');
-  await expect(seen(page, 'No customers found')).toHaveCount(1);
-
-  // The overview: no invoices, and nothing collected.
-  await page.goto('/dashboard');
-  await expect(seen(page, 'No invoices yet')).toHaveCount(1);
-
-  // The export: the header row and nothing else.
-  const response = await page.request.get('/dashboard/invoices/export');
-  expect(response.status()).toBe(200);
-  const lines = (await response.text()).replace(/^﻿/, '').split('\r\n').filter(Boolean);
-  expect(lines).toEqual(['Date,Due,Customer,Email,Amount,Status']);
-
-  // The invoice form offers none of the demo user's customers.
-  await page.goto('/dashboard/invoices/create');
-  await expect(page.getByLabel('Choose customer').locator('option')).toHaveCount(1);
 });

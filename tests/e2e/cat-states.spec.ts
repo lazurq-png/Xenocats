@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The cat-themed not-found and empty states. Each shows its cat (decorative, so
 // hidden from assistive technology), a heading, what happened, and a way on.
@@ -24,17 +25,13 @@ test('an address the app does not have gets the cat 404, with a way home', async
 
 test.describe('logged in', () => {
   test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
-
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.waitForLoadState('networkidle');
-    await page.getByLabel('Email').fill('user@nextmail.com');
-    await page.getByLabel('Password', { exact: true }).fill('123456');
-    await page.getByRole('button', { name: /log in/i }).click();
-    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-  });
+  test.use({ storageState: DEMO_USER });
 
   test('an invoice that does not exist gets the cat 404, with a way back', async ({ page }) => {
+    // An id that is not one gets the same.
+    await page.goto('/dashboard/invoices/not-a-uuid');
+    await expect(page.getByText('Could not find the requested invoice.')).toBeVisible();
+
     await page.goto('/dashboard/invoices/00000000-0000-4000-8000-000000000000');
     await expect(page.getByText('Could not find the requested invoice.')).toBeVisible();
     // The state is the whole page: its heading is the page's h1.

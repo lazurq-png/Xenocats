@@ -1,17 +1,11 @@
 import { type Page, expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The invoice list's status filter, logged in as the demo user against the test
 // schema global-setup.ts rebuilds. It only reads: tests that run alongside may add
 // invoices, so it asserts on what each row says, never on counts beyond the seed.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
-
-async function logIn(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-}
+test.use({ storageState: DEMO_USER });
 
 /** The desktop table's rows (the phone list is hidden at this width). */
 const rows = (page: Page) => page.locator('table tbody tr');
@@ -49,8 +43,9 @@ test('the status filter lives in the URL, combines with search and survives pagi
   page,
 }) => {
   test.setTimeout(60_000);
-  await logIn(page);
-  await page.goto('/dashboard/invoices');
+  // A status it does not know: the filter shows every status (the list does the
+  // same, parseStatusFilter in schemas.test.ts).
+  await page.goto('/dashboard/invoices?status=bogus');
   const filter = page.getByLabel('Status');
   await expect(filter).toHaveValue('');
 
@@ -104,70 +99,6 @@ test('the status filter lives in the URL, combines with search and survives pagi
   await expect(rows(page).filter({ hasText: 'Overdue' }).first()).toBeVisible();
 });
 
-test('an unknown status in the URL shows every invoice', async ({ page }) => {
-  await logIn(page);
-  // Searched, so invoices other tests add cannot push the seeded ones off page 1.
-  await page.goto('/dashboard/invoices?status=bogus&query=Balazs+Orban');
-  await expect(page.getByLabel('Status')).toHaveValue('');
-  await expect(rows(page).filter({ hasText: 'Paid' }).first()).toBeVisible();
-  await expect(rows(page).filter({ hasText: 'Overdue' }).first()).toBeVisible();
-});
-
-test('a new unpaid invoice is due in 30 days: pending, not overdue', async ({ page }) => {
-  test.setTimeout(60_000);
-  await logIn(page);
-  const tag = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const name = `Due Date ${tag}`;
-
-  await page.goto('/dashboard/customers/create');
-  await page.waitForLoadState('networkidle');
-  await page.getByLabel('Name').fill(name);
-  await page.getByLabel('Email').fill(`${tag}@example.com`);
-  await page.getByRole('button', { name: 'Create Customer' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/customers$/, { timeout: 15_000 });
-
-  await page.goto('/dashboard/invoices/create');
-  await page.waitForLoadState('networkidle');
-  await page.getByLabel('Choose customer').selectOption({ label: name });
-  await page.getByLabel('Choose an amount').fill('40.00');
-  await page.getByLabel('Pending').check();
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
-
-  // Listed as pending, under the pending filter and not under overdue.
-  await page.goto(`/dashboard/invoices?query=${tag}&status=pending`);
-  await expectEveryRow(page, 'Pending', name);
-  await page.goto(`/dashboard/invoices?query=${tag}&status=overdue`);
-  // A page load waits for the whole streamed list, so an empty table is final.
-  await expect(page.getByLabel('Status')).toHaveValue('overdue');
-  await expect(rows(page)).toHaveCount(0);
-
-  // The detail page gives its due date: 30 days after today.
-  await page.goto(`/dashboard/invoices?query=${tag}`);
-  await rows(page).first().getByRole('link', { name: /view/i }).click();
-  // On the invoice's own page (the list has a "Due" column too: the check below must
-  // not run on the list it is leaving).
-  await expect(page).toHaveURL(/\/dashboard\/invoices\/[0-9a-f-]{36}$/, { timeout: 15_000 });
-  const due = new Date(Date.now() + 30 * 86_400_000);
-  const shown = due.toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-  // The invoice's own "Due" (a term in its details), not the list's column heading.
-  await expect(page.locator('dt').filter({ hasText: /^Due$/ })).toBeVisible();
-  await expect(page.getByText(shown)).toHaveCount(1);
-});
-
-test('a page number that makes no sense shows the first page, not an error', async ({ page }) => {
-  await logIn(page);
-  for (const value of ['-1', '0', '2.5', 'abc']) {
-    await page.goto(`/dashboard/invoices?page=${value}`);
-    // Real rows (they show amounts; the loading skeleton does not), then no error:
-    // the list streams in after the page, and so would an error.
-    await expect(rows(page).filter({ hasText: '$' }).first()).toBeVisible();
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: 'Something went wrong!' })).toHaveCount(0);
-  }
-});
+// What the list does with a status or page number it does not know, and when a new
+// invoice is due, are unit tests: parseStatusFilter (schemas.test.ts), parsePage
+// (utils.test.ts), and the status filter and due dates in data.test.ts.

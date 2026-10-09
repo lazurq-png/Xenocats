@@ -302,9 +302,12 @@ no production database yet: one is built later with `db:migrate`, by a human.
 to `Nightrun` and `main` and on pull requests into either. A push of any other
 branch, a night run's task branches included, runs nothing; those are checked
 locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
-over a migrated and seeded `xenocats` schema, then the browser tests against
-`next start` (`E2E_SERVER=start`); and *e2e* — the browser tests against
-`next dev`. The *build* and *e2e* jobs run inside the Playwright image
+over a migrated and seeded `xenocats` schema, then every browser test against
+`next start` (`E2E_SERVER=start`), in one `playwright test`; and *e2e* — the
+specs for what differs under `next dev` (smoke, security headers, the dashboard
+login) against it. The browser specs' groups are projects in
+`playwright.config.ts` (`GROUPS`); a new spec goes in one, which the *checks*
+job verifies. The *build* and *e2e* jobs run inside the Playwright image
 (`mcr.microsoft.com/playwright`, its tag the locked `@playwright/test` version),
 so Chromium is not installed on every run. Each starts a throwaway PostgreSQL
 service container, which `scripts/ci-database.mjs` switches TLS on for and

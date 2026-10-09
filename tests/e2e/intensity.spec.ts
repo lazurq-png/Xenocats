@@ -1,17 +1,16 @@
 import { expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The cat intensity setting on the settings page: chosen there, remembered in this
 // browser (localStorage), and applied to the dashboard's cats. Each test has a
 // browser context of its own, so its choice reaches no other test.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
+test.use({ storageState: DEMO_USER });
 
+// The cats' timers run on a fake clock, which keeps real time until a test moves it
+// on (clock.runFor) rather than wait for cats to come.
 test.beforeEach(async ({ page }) => {
-  await page.goto('/login');
-  await page.waitForLoadState('networkidle');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+  await page.clock.install();
 });
 
 test('chaos is chosen on the settings page, remembered, and brings cats at once', async ({
@@ -35,9 +34,12 @@ test('chaos is chosen on the settings page, remembered, and brings cats at once'
   // The engine runs at chaos, not just the setting: chaos always has two cats
   // within 9 s (the first by 3 s, the next at most 6 s later); normal never does
   // (3 s + 7 s at the earliest), calm never (at most one before 35 s).
-  await expect
-    .poll(() => page.getByTestId('xenocat').count(), { timeout: 9_500 })
-    .toBeGreaterThanOrEqual(2);
+  const cats = page.getByTestId('xenocat');
+  for (let waited = 0; waited < 9_500 && (await cats.count()) < 2; waited += 500) {
+    await page.clock.runFor(500);
+  }
+  // A brief retry, for the page to draw the last step: the clock runs on meanwhile.
+  await expect.poll(() => cats.count(), { timeout: 1000 }).toBeGreaterThanOrEqual(2);
 
   await page.goto('/dashboard/settings');
   await expect(

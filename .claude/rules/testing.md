@@ -10,7 +10,13 @@ modules that do not open a connection (`app/lib/schemas.ts`, not
 `app/lib/actions.ts`). Browser tests run against the `xenocats_test` schema,
 rebuilt from the migrations and seed data before every run
 (`tests/e2e/global-setup.ts`), so they may log in (`user@nextmail.com` /
-`123456`) and submit forms that write. The tests run in parallel against that
+`123456`) and submit forms that write. A spec that needs a session, not the
+login form, starts with the one `tests/e2e/auth.setup.ts` saves once per run
+(`test.use({ storageState: DEMO_USER })`, `tests/e2e/demo-user.ts`). A wait for
+something the page does in its own time (a cat's attack, a nap) runs the page's
+clock on (`page.clock.install()`, then `clock.runFor`) instead of sitting
+through it, as `cats.spec.ts` does. A form's validation errors, field by field,
+are a jsdom test (`tests/unit/forms.test.tsx`), not a browser one. The tests run in parallel against that
 one schema: a test that writes creates its own rows and asserts only on them,
 never on counts or on seed rows another test may change. Tests that need the
 database skip when no `POSTGRES_URL` is configured, or with `E2E_NO_DATABASE=1`

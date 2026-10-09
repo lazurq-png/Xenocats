@@ -1,21 +1,16 @@
 import { type Page, expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // Customer create, edit and delete, logged in as the demo user, against the test
 // schema global-setup.ts rebuilds. Each test makes its own customer and asserts
-// only on it, since the tests run in parallel on one schema.
+// only on it, since the tests run in parallel on one schema. A form the action
+// refuses, error by error, is tests/unit/forms.test.tsx.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
+test.use({ storageState: DEMO_USER });
 
 // After a submit or a link, allow for the next page still compiling under a busy
 // next dev, which builds each route on its first visit (questions.md Q7).
 const NAVIGATION = 15_000;
-
-async function logIn(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('user@nextmail.com');
-  await page.getByLabel('Password', { exact: true }).fill('123456');
-  await page.getByRole('button', { name: /log in/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: NAVIGATION });
-}
 
 /** A customer name no other test (or run) uses. */
 const unique = (what: string) =>
@@ -38,7 +33,6 @@ async function findCustomer(page: Page, name: string) {
 test('a customer is created, edited and deleted', async ({ page }) => {
   // Five page changes, each allowed NAVIGATION: more than the default 30 s in all.
   test.setTimeout(60_000);
-  await logIn(page);
   const name = unique('Orbital Snacks');
   const email = `${name.split(' ').pop()}@example.com`;
   await createCustomer(page, name, email);
@@ -64,23 +58,9 @@ test('a customer is created, edited and deleted', async ({ page }) => {
   await expect(page.getByRole('row').filter({ hasText: renamed })).toHaveCount(0);
 });
 
-test('the form says what is missing or wrong, next to each field', async ({ page }) => {
-  await logIn(page);
-  await page.goto('/dashboard/customers/create');
-  // The browser's own check (type=email) lets this through; the server's does not.
-  await page.getByLabel('Email').fill('zorg@nowhere');
-  await page.getByRole('button', { name: 'Create Customer' }).click();
-  await expect(page.locator('#name-error')).toHaveText('Please enter a name.');
-  await expect(page.locator('#email-error')).toHaveText('Please enter a valid email address.');
-  await expect(page.getByLabel('Name')).toHaveAttribute('aria-describedby', 'name-error');
-  await expect(page.getByLabel('Email')).toHaveAttribute('aria-describedby', 'email-error');
-  await expect(page).toHaveURL(/\/dashboard\/customers\/create$/);
-});
-
 test('a customer who still has invoices cannot be deleted, and the list says why', async ({
   page,
 }) => {
-  await logIn(page);
   const name = unique('Nebula Freight');
   await createCustomer(page, name, `${name.split(' ').pop()}@example.com`);
 
@@ -106,7 +86,6 @@ test('a customer who still has invoices cannot be deleted, and the list says why
 });
 
 test('editing a customer that does not exist shows not found', async ({ page }) => {
-  await logIn(page);
   await page.goto('/dashboard/customers/00000000-0000-4000-8000-000000000000/edit');
   await expect(page.getByText('Could not find the requested customer.')).toBeVisible();
   await page.goto('/dashboard/customers/not-a-uuid/edit');

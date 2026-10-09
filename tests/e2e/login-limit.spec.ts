@@ -4,7 +4,8 @@ import { type Page, expect, test } from '@playwright/test';
 
 // The login lockout, against the test schema global-setup.ts rebuilds. Each test
 // makes a user of its own (written straight into the test schema: there is no
-// sign-up page), so the demo user others log in as is never locked.
+// sign-up page), so the demo user others log in as is never locked. That a
+// successful login starts the count again is credentials.test.ts and data.test.ts.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 
 // LOGIN_MAX_FAILURES, as playwright.config.ts gives it to the test server.
@@ -51,18 +52,4 @@ test(`after ${maxFailures} failed logins the email is refused, even with the rig
     page.getByText('Too many failed logins for this email. Try again later.')
   ).toBeVisible();
   await expect(page).toHaveURL(/\/login/);
-});
-
-test('a successful login starts the count again', async ({ page }) => {
-  test.setTimeout(90_000);
-  const email = await createUser();
-  for (let i = 0; i < maxFailures - 1; i++) await failLogIn(page, email);
-  await logIn(page, email, PASSWORD);
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-
-  // As many failures again would have locked it, had the count not started over.
-  await page.context().clearCookies();
-  for (let i = 0; i < maxFailures - 1; i++) await failLogIn(page, email);
-  await logIn(page, email, PASSWORD);
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
 });
