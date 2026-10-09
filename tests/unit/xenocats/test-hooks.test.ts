@@ -7,7 +7,14 @@ const hooks = (search: string) => parseTestHooks(search, fresh);
 
 describe('the URL test hooks', () => {
   it('none set: a fresh seed, time at its own pace, no early boss', () => {
-    expect(hooks('')).toEqual({ seed: 777, speed: 1, boss: null, fps: false, crowd: null });
+    expect(hooks('')).toEqual({
+      seed: 777,
+      speed: 1,
+      boss: null,
+      fps: false,
+      crowd: null,
+      elite: false,
+    });
   });
 
   it('read as set', () => {
@@ -17,8 +24,16 @@ describe('the URL test hooks', () => {
       boss: 2500,
       fps: false,
       crowd: null,
+      elite: false,
     });
-    expect(hooks('?boss=0')).toEqual({ seed: 777, speed: 1, boss: 0, fps: false, crowd: null });
+    expect(hooks('?boss=0')).toEqual({
+      seed: 777,
+      speed: 1,
+      boss: 0,
+      fps: false,
+      crowd: null,
+      elite: false,
+    });
   });
 
   it('a seed that is not a whole number above 0 is no seed', () => {
@@ -41,6 +56,12 @@ describe('the URL test hooks', () => {
     for (const value of ['0', '', 'true', '2', 'yes']) {
       expect(hooks(`?fps=${value}`).fps, value).toBe(false);
     }
+  });
+
+  it('every xenocat is an elite only for elite=1', () => {
+    expect(hooks('?elite=1').elite).toBe(true);
+    for (const value of ['0', '', 'true', '2'])
+      expect(hooks(`?elite=${value}`).elite, value).toBe(false);
   });
 
   it('a crowd is a whole number of cats from 1, at most 6000', () => {

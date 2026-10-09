@@ -15,6 +15,8 @@ export type TestHooks = {
   boss: number | null;
   fps: boolean;
   crowd: number | null;
+  /** Every xenocat is an elite (the elites' attacks are otherwise rare to see). */
+  elite: boolean;
 };
 
 /** What `?crowd=` arms the Keeper with, each at the highest level: the evolved weapons. */
@@ -41,6 +43,7 @@ export function parseTestHooks(search: string, freshSeed: () => number): TestHoo
     speed: Number.isFinite(speed) && speed >= 1 ? Math.min(speed, 50) : 1,
     boss: Number.isFinite(boss) && boss >= 0 ? boss * 1000 : null,
     fps: params.get('fps') === '1',
+    elite: params.get('elite') === '1',
     crowd: Number.isInteger(crowd) && crowd >= 1 ? Math.min(crowd, MAX_CROWD) : null,
   };
 }

@@ -3,6 +3,7 @@ import {
   ARENA_CONFIG,
   type ArenaConfig,
   HERO_EFFECTS,
+  attackShapeOf,
   catsWanted,
   createArena,
   runLengthConfig,
@@ -717,5 +718,211 @@ describe('the best time per run length', () => {
     expect(readBest(10)).toBe(400_000);
     expect(readBest(5)).toBe(120_000);
     expect(readBest(15)).toBeNull();
+  });
+});
+
+describe('elites', () => {
+  it('are about a third as common as they were: 13% of the xenocats', () => {
+    expect(ARENA_CONFIG.cats.eliteShare).toBe(0.13);
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 150]] }, 11);
+    let xenocats = 0;
+    let elites = 0;
+    while (a.state().time < 180_000) {
+      a.step(still);
+      for (const e of a.drainEvents()) {
+        if (e.kind !== 'xenocat') continue;
+        xenocats++;
+        if (e.elite) elites++;
+      }
+    }
+    expect(xenocats).toBeGreaterThan(300);
+    expect(elites / xenocats).toBeGreaterThan(0.09);
+    expect(elites / xenocats).toBeLessThan(0.17);
+  });
+});
+
+describe('an elite attack', () => {
+  /** One elite of this type at a time, no weapons, a Keeper nothing can wear down. */
+  const lone = (id: string, config: Partial<ArenaConfig> = {}) =>
+    arena(
+      {
+        ...unbreakable,
+        stepMs: 50,
+        escalation: [[0, 1]],
+        startingWeapons: [],
+        secretCat: { afterMs: Infinity, stillMs: Infinity },
+        cats: { ...ARENA_CONFIG.cats, eliteShare: 1 },
+        ...config,
+      },
+      1,
+      [catTypeById(id)!]
+    );
+  type Event = ReturnType<ReturnType<typeof lone>['drainEvents']>[number];
+
+  /** Steps (the Keeper still, or walking) until an event of this kind, and says it. */
+  function until(a: ReturnType<typeof lone>, kind: Event['kind'], input = still) {
+    for (let i = 0; i < 4000; i++) {
+      a.step(input);
+      for (const e of a.drainEvents()) if (e.kind === kind) return e;
+    }
+    throw new Error(`no ${kind}`);
+  }
+  const heroAt = (a: ReturnType<typeof lone>) => a.state().hero;
+
+  it('draws its shape from the effect: a ring for the freezes and pulls, a blast for the pushes, a line for the rest', () => {
+    expect(attackShapeOf(HERO_EFFECTS.freeze)).toBe('ring');
+    expect(attackShapeOf(HERO_EFFECTS.heavy)).toBe('ring');
+    expect(attackShapeOf(HERO_EFFECTS.magnet)).toBe('ring');
+    expect(attackShapeOf(HERO_EFFECTS.knockback)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.fall)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.teleport)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.jitter)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.reverse)).toBe('line');
+    expect(attackShapeOf(HERO_EFFECTS['axis-lock'])).toBe('line');
+    expect(attackShapeOf(HERO_EFFECTS.vanish)).toBe('line');
+  });
+
+  it('never begins out of range: a blast winds up only once the elite is within range of the Keeper', () => {
+    const a = lone('pulsar-siamese');
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(a);
+    expect(Math.hypot(wind.x - h.x, wind.y - h.y)).toBeLessThanOrEqual(
+      ARENA_CONFIG.eliteAttack.range + 5
+    );
+    expect(wind.shape).toBe('blast');
+    // And it came from outside that range: nothing attacked before it was near.
+    expect(a.state().time).toBeGreaterThan(2000);
+  });
+
+  it('a ring begins only when the Keeper is inside it', () => {
+    const a = lone('cryo-persian');
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(a);
+    expect(wind.shape).toBe('ring');
+    expect(Math.hypot(wind.x - h.x, wind.y - h.y)).toBeLessThanOrEqual(
+      ARENA_CONFIG.eliteAttack.ringRadius + 5
+    );
+    expect(ARENA_CONFIG.eliteAttack.ringWindUpMs).toBeGreaterThan(
+      ARENA_CONFIG.eliteAttack.windUpMs
+    );
+  });
+
+  it('winds up for its time, standing still, warning where it will land; then lands', () => {
+    const a = lone('pulsar-siamese');
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const began = a.state().time;
+    const aimed = { x: heroAt(a).x, y: heroAt(a).y };
+    expect(a.state().windUps).toBe(1);
+    const [warning] = a.telegraphs();
+    expect(warning).toMatchObject({
+      shape: 'blast',
+      x: wind.x,
+      y: wind.y,
+      aimX: aimed.x,
+      aimY: aimed.y,
+    });
+    expect(warning.progress).toBeLessThan(0.2);
+    const cat = () => a.cats().find((c) => c.elite)!;
+    const place = { x: cat().x, y: cat().y };
+    const strike = until(a, 'elite-attack');
+    expect(a.state().time - began).toBeGreaterThanOrEqual(ARENA_CONFIG.eliteAttack.windUpMs - 1);
+    expect(a.state().time - began).toBeLessThanOrEqual(ARENA_CONFIG.eliteAttack.windUpMs + 100);
+    expect({ x: cat().x, y: cat().y }).toEqual(place);
+    expect(strike).toMatchObject({ kind: 'elite-attack', hits: 1 });
+    expect(heroAt(a).effect).not.toBeNull();
+    expect(a.state().windUps).toBe(0);
+    expect(a.telegraphs()).toEqual([]);
+  });
+
+  it('a Keeper who stays where he was is hit; one who walks out of the shape during the wind-up is not', () => {
+    const stay = lone('pulsar-siamese');
+    until(stay, 'wind-up');
+    expect(until(stay, 'elite-attack')).toMatchObject({ hits: 1 });
+
+    const away = lone('pulsar-siamese');
+    const wind = until(away, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    // Straight away from the elite: the blast lands where he was.
+    const h = heroAt(away);
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y);
+    const outward = { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len };
+    const strike = until(away, 'elite-attack', outward);
+    expect(strike).toMatchObject({ hits: 0 });
+    expect(heroAt(away).effect).toBeNull();
+  });
+
+  it('a ring is dodged by stepping out of it', () => {
+    const stay = lone('cryo-persian');
+    until(stay, 'wind-up');
+    expect(until(stay, 'elite-attack')).toMatchObject({ hits: 1 });
+    expect(heroAt(stay).effect).toBe('freeze');
+
+    const away = lone('cryo-persian');
+    const wind = until(away, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(away);
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    const strike = until(away, 'elite-attack', {
+      x: (h.x - wind.x) / len,
+      y: (h.y - wind.y) / len,
+    });
+    expect(strike).toMatchObject({ hits: 0 });
+    expect(heroAt(away).effect).toBeNull();
+  });
+
+  it('a ring is dodged even from beside the elite, with a moment to react', () => {
+    for (const id of ['cryo-persian', 'magneto-bengal']) {
+      const a = lone(id);
+      until(a, 'wind-up');
+      until(a, 'elite-attack');
+      // He stood; the elite walked up and touched him, and the next ring begins beside him.
+      const wind = until(a, 'wind-up');
+      if (wind.kind !== 'wind-up') throw new Error('x');
+      const h = heroAt(a);
+      const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+      expect(len, id).toBeLessThan(60);
+      const outward = { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len };
+      // A third of a second to notice, then straight out.
+      for (let i = 0; i < 6; i++) a.step(still);
+      const strike = until(a, 'elite-attack', outward);
+      expect(strike, id).toMatchObject({ kind: 'elite-attack', hits: 0 });
+    }
+  });
+
+  it('a line is dodged by stepping aside', () => {
+    const stay = lone('laser-ocicat');
+    until(stay, 'wind-up');
+    expect(until(stay, 'elite-attack')).toMatchObject({ hits: 1 });
+
+    const aside = lone('laser-ocicat');
+    const wind = until(aside, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(aside);
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    // Across the line from the elite to him.
+    const sideways = { x: -(h.y - wind.y) / len, y: (h.x - wind.x) / len };
+    expect(until(aside, 'elite-attack', sideways)).toMatchObject({ hits: 0 });
+  });
+
+  it('rests between attacks, and an ordinary cat never attacks', () => {
+    const a = lone('pulsar-siamese');
+    until(a, 'wind-up');
+    until(a, 'elite-attack');
+    const landed = a.state().time;
+    const again = until(a, 'wind-up');
+    expect(again.kind).toBe('wind-up');
+    expect(a.state().time - landed).toBeGreaterThanOrEqual(
+      ARENA_CONFIG.eliteAttack.cooldownMs - 100
+    );
+
+    const plain = lone('pulsar-siamese', { cats: { ...ARENA_CONFIG.cats, eliteShare: 0 } });
+    for (let i = 0; i < 1200; i++) {
+      plain.step(still);
+      for (const e of plain.drainEvents())
+        expect(['wind-up', 'elite-attack']).not.toContain(e.kind);
+    }
   });
 });

@@ -192,6 +192,24 @@ test.describe('on a computer', () => {
     );
   });
 
+  test('an elite near the Keeper winds up an attack the HUD data shows', async ({ page }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=8&elite=1');
+    await startRun(page);
+    // The run is over in under a minute: watch from inside the page, every frame,
+    // rather than poll from here.
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[data-testid="survival-area"]')
+            ?.getAttribute('data-windups-begun')
+        ) > 0,
+      undefined,
+      { timeout: 60_000 }
+    );
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);

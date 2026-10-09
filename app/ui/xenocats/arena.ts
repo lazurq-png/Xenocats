@@ -122,6 +122,27 @@ export type ArenaConfig = {
     speed: number;
     reach: number;
   };
+  /**
+   * An elite xenocat near a Keeper winds up an attack (shaped by its effect), stands
+   * still while it does, then lands it where the Keeper was when it began; a Keeper
+   * who has moved out of the shape is not hit. Then it rests for `cooldownMs`.
+   */
+  eliteAttack: {
+    /** A blast or a line begins within this of a Keeper, px (well inside the smallest screen). */
+    range: number;
+    windUpMs: number;
+    /** A ring starts with the Keeper inside it, even beside the elite: a longer wind-up to leave it. */
+    ringWindUpMs: number;
+    cooldownMs: number;
+    /** Rings round the elite (Cryo and the slows; the pulls), px. */
+    ringRadius: number;
+    pullRadius: number;
+    /** A blast at the aim, px. */
+    blastRadius: number;
+    /** A line from the elite through the aim: its length and width, px. */
+    lineLength: number;
+    lineWidth: number;
+  };
   /** Which cats come when (varieties.ts). */
   schedule: Schedule;
   laserCat: {
@@ -185,7 +206,8 @@ export const ARENA_CONFIG: ArenaConfig = {
     speed: [45, 95],
     homesickness: [16, 34],
     drain: [4, 11],
-    eliteShare: 0.4,
+    // About a third of what it was (0.4): an elite is an event, and it now attacks.
+    eliteShare: 0.13,
     effectMaxMs: 2500,
     spawnMargin: 60,
     hardCap: 6000,
@@ -209,6 +231,17 @@ export const ARENA_CONFIG: ArenaConfig = {
   startingPassives: [],
   gems: { pickup: 100, speed: 520, value: 1, eliteValue: 6, cap: 1500 },
   matriarch: { speed: 330, reach: 70 },
+  eliteAttack: {
+    range: 300,
+    windUpMs: 900,
+    ringWindUpMs: 1100,
+    cooldownMs: 3500,
+    ringRadius: 110,
+    pullRadius: 140,
+    blastRadius: 70,
+    lineLength: 330,
+    lineWidth: 44,
+  },
   schedule: SCHEDULE,
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
@@ -284,6 +317,42 @@ export const HERO_EFFECTS: Readonly<Record<string, HeroEffect>> = {
   tiny: { kind: 'veil' },
 };
 
+/** What an elite's attack looks like and where it lands. */
+export type AttackShape = 'ring' | 'blast' | 'line';
+
+/** The shape of the attack drawn from an effect (the hero effect's kind). */
+export function attackShapeOf(effect: HeroEffect): AttackShape {
+  switch (effect.kind) {
+    case 'freeze':
+    case 'slow':
+      return 'ring';
+    case 'push':
+      return effect.way === 'toward' ? 'ring' : 'blast';
+    case 'jump':
+    case 'jitter':
+      return 'blast';
+    default:
+      return 'line';
+  }
+}
+
+/** An elite's attack winding up, for the view to warn with. */
+export type Telegraph = {
+  shape: AttackShape;
+  /** The elite. */
+  x: number;
+  y: number;
+  /** Where the Keeper was when it began. */
+  aimX: number;
+  aimY: number;
+  /** A ring's or a blast's radius; a line's length and width. */
+  radius: number;
+  length: number;
+  width: number;
+  /** 0 as it begins, 1 as it lands. */
+  progress: number;
+};
+
 export type ArenaCat = {
   id: number;
   /** A variety (varieties.ts), or null for one of the twenty xenocat types. */
@@ -308,6 +377,11 @@ export type ArenaCat = {
   limit: number;
   drain: number;
   elite: boolean;
+  /** An elite's attack: when it lands (0 while none winds up), where it aimed, and when it may begin next. */
+  windUntil: number;
+  aimX: number;
+  aimY: number;
+  nextAttackAt: number;
 };
 
 /** Something a weapon fired, in flight. */
@@ -383,6 +457,9 @@ export type ArenaEvent =
   | { kind: 'boss'; x: number; y: number; type: number }
   /** A xenocat (one with artwork) has come: rare, and an elite as often as not. */
   | { kind: 'xenocat'; type: number; elite: boolean }
+  /** An elite begins to wind up an attack, and when it lands (hit or not). */
+  | { kind: 'wind-up'; x: number; y: number; type: number; shape: AttackShape }
+  | { kind: 'elite-attack'; x: number; y: number; type: number; hits: number }
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
@@ -482,6 +559,7 @@ export function createArena(options: {
   /** The Keeper being dealt with now: whose walk, weapons and touch. */
   let hero = keepers[0];
   let sentHome = 0;
+  let windUpsBegun = 0;
   let nextId = 1;
   // How long he has stood still; whether the secret cat has come.
   let stillFor = 0;
@@ -615,6 +693,10 @@ export function createArena(options: {
     cat.shotAt = time + config.laserCat.everyMs;
     cat.swarm = 0;
     cat.visitor = false;
+    cat.windUntil = 0;
+    cat.aimX = 0;
+    cat.aimY = 0;
+    cat.nextAttackAt = 0;
     cats.push(cat);
     return cat;
   }
@@ -797,13 +879,13 @@ export function createArena(options: {
     events.push({ kind: 'over', outcome });
   }
 
-  /** Lays an elite's effect on the hero, if none is on him. */
-  function afflict(cat: ArenaCat) {
-    if (hero.effect && time < hero.effect.until) return;
-    if (cat.variety !== null) return;
+  /** Lays an elite's effect on the hero, if none is on him; whether it did. */
+  function afflict(cat: ArenaCat): boolean {
+    if (hero.effect && time < hero.effect.until) return false;
+    if (cat.variety !== null) return false;
     const type = types[cat.type];
     const kind = HERO_EFFECTS[type.effect.id];
-    if (!kind) return;
+    if (!kind) return false;
     const until = time + Math.min(type.effect.durationMs, config.cats.effectMaxMs);
     const away = { x: hero.x - cat.x, y: hero.y - cat.y };
     const length = Math.hypot(away.x, away.y) || 1;
@@ -822,6 +904,72 @@ export function createArena(options: {
       tether(hero, from);
     }
     hero.effect = { effect: kind, until, from: { x: cat.x, y: cat.y }, way };
+    return true;
+  }
+
+  /** The attack an elite xenocat winds up, or null for a cat that has none. */
+  function attackOf(cat: ArenaCat): { shape: AttackShape; radius: number; begins: number } | null {
+    if (!cat.elite || cat.variety !== null || cat.type < 0) return null;
+    const kind = HERO_EFFECTS[types[cat.type].effect.id];
+    if (!kind) return null;
+    const a = config.eliteAttack;
+    const shape = attackShapeOf(kind);
+    // A ring is round the elite itself, so it begins only once a Keeper is inside it;
+    // a blast or a line reaches out to him from `range`.
+    if (shape === 'line') return { shape, radius: a.lineLength, begins: a.range };
+    if (shape === 'blast') return { shape, radius: a.blastRadius, begins: a.range };
+    const radius = kind.kind === 'push' ? a.pullRadius : a.ringRadius;
+    return { shape, radius, begins: radius };
+  }
+
+  /** Whether a Keeper stands in the shape an elite aimed at `aim` (where he was). */
+  function struck(cat: ArenaCat, k: Keeper, shape: AttackShape, radius: number): boolean {
+    const reach = config.hero.reach / 2;
+    if (shape === 'ring') return Math.hypot(k.x - cat.x, k.y - cat.y) <= radius + reach;
+    if (shape === 'blast') return Math.hypot(k.x - cat.aimX, k.y - cat.aimY) <= radius + reach;
+    // A line from the elite through the aim, as long as it is, as wide as it is.
+    const dx = cat.aimX - cat.x;
+    const dy = cat.aimY - cat.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const ux = dx / length;
+    const uy = dy / length;
+    const along = (k.x - cat.x) * ux + (k.y - cat.y) * uy;
+    const across = Math.abs((k.x - cat.x) * uy - (k.y - cat.y) * ux);
+    return along >= 0 && along <= radius && across <= config.eliteAttack.lineWidth / 2 + reach;
+  }
+
+  /**
+   * An elite near a Keeper winds up, standing still, and then lands its attack
+   * where he was. Returns whether the elite spends this step on it (no walking).
+   */
+  function eliteAttacks(cat: ArenaCat, target: Keeper, d: number): boolean {
+    const attack = attackOf(cat);
+    if (!attack) return false;
+    const a = config.eliteAttack;
+    const windUp = attack.shape === 'ring' ? a.ringWindUpMs : a.windUpMs;
+    if (cat.windUntil > 0) {
+      if (time < cat.windUntil) return true;
+      cat.windUntil = 0;
+      cat.nextAttackAt = time + a.cooldownMs;
+      let hits = 0;
+      for (const k of keepers) {
+        if (!standing(k) || !struck(cat, k, attack.shape, attack.radius)) continue;
+        hero = k;
+        if (afflict(cat)) hits++;
+      }
+      hero = keepers[0];
+      events.push({ kind: 'elite-attack', x: cat.x, y: cat.y, type: cat.type, hits });
+      return true;
+    }
+    if (time >= cat.nextAttackAt && d <= attack.begins) {
+      cat.windUntil = time + windUp;
+      cat.aimX = target.x;
+      cat.aimY = target.y;
+      windUpsBegun++;
+      events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape: attack.shape });
+      return true;
+    }
+    return false;
   }
 
   /** The hero's walk this step, after any effect on him. */
@@ -856,6 +1004,7 @@ export function createArena(options: {
     const d = Math.hypot(dx, dy) || 1;
     const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
     if (gait === 'sit') return;
+    if (cat.elite && eliteAttacks(cat, target, d)) return;
     if (gait === 'zoom') {
       // A new way now and then: roughly at him, give or take a right angle.
       if (time >= cat.turnAt) {
@@ -1646,6 +1795,34 @@ export function createArena(options: {
       }),
     /** The shared camera (one Keeper: on him, at the screen's own zoom). */
     camera,
+    /** Every elite's attack winding up now, for the view to warn with. */
+    telegraphs: (): Telegraph[] => {
+      const all: Telegraph[] = [];
+      for (const cat of cats) {
+        if (cat.windUntil <= 0) continue;
+        const attack = attackOf(cat);
+        if (!attack) continue;
+        const a = config.eliteAttack;
+        all.push({
+          shape: attack.shape,
+          x: cat.x,
+          y: cat.y,
+          aimX: cat.aimX,
+          aimY: cat.aimY,
+          radius: attack.shape === 'line' ? 0 : attack.radius,
+          length: attack.shape === 'line' ? attack.radius : 0,
+          width: a.lineWidth,
+          progress: Math.min(
+            1,
+            Math.max(
+              0,
+              1 - (cat.windUntil - time) / (attack.shape === 'ring' ? a.ringWindUpMs : a.windUpMs)
+            )
+          ),
+        });
+      }
+      return all;
+    },
     matriarch: (): Vec | null => matriarch,
     chests: (): readonly Vec[] => chests,
     shots: (): readonly { x: number; y: number }[] => shots,
@@ -1686,6 +1863,9 @@ export function createArena(options: {
         })),
         chooser,
         cats: cats.length,
+        /** How many elites are winding up an attack now. */
+        windUps: cats.reduce((n, cat) => n + (cat.windUntil > 0 ? 1 : 0), 0),
+        windUpsBegun,
         sentHome,
         level,
         xp,

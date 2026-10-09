@@ -123,6 +123,9 @@ type Hud = {
   weapons: string;
   /** The frame time, ms (smoothed), for `?fps=1`. */
   frameMs: number;
+  /** How many elites are winding up an attack, and how many have begun in the run. */
+  windUps: number;
+  windUpsBegun: number;
   /** Where the crosshair is on the screen ("x,y"), or "" without one. */
   crosshair: string;
   /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
@@ -226,7 +229,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const resultsRef = useRef<HTMLElement>(null);
   const padRef = useRef<Vec>({ x: 0, y: 0 });
   const speedRef = useRef(1);
-  // `?crowd=`: the benchmarks' crowd comes whatever the frame rate (the frame guard is off).
+  // `?crowd=` and `?elite=`: the cats come whatever the frame rate (the frame guard is off), so a
+  // test's run does not depend on how busy the machine is.
   const crowdRef = useRef(false);
   // Who went out, and what the run found for the codex.
   const characterRef = useRef<CharacterId>('keeper');
@@ -277,13 +281,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   );
 
   const start = () => {
-    const { seed, speed, boss, fps, crowd } = parseTestHooks(window.location.search, freshSeed);
+    const { seed, speed, boss, fps, crowd, elite } = parseTestHooks(
+      window.location.search,
+      freshSeed
+    );
     const chosen = readLength();
     lengthRef.current = chosen;
     setRunLength(chosen);
     const lengthed = runLengthConfig(chosen);
     speedRef.current = speed;
-    crowdRef.current = crowd !== null;
+    crowdRef.current = crowd !== null || elite;
     setShowFps(fps);
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
@@ -306,6 +313,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         // His character, what the Tailor sold him, the weapons unlocked.
         ...runConfig(stored, ARENA_CONFIG, secondRef.current),
         ...lengthed,
+        ...(elite ? { cats: { ...ARENA_CONFIG.cats, eliteShare: 1 } } : {}),
         ...(boss === null
           ? {}
           : {
@@ -551,6 +559,32 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         context.lineTo(x, y + 6);
         context.lineTo(x - 4, y);
         context.fill();
+      }
+
+      // An elite's attack winding up: where it will land, filling as the moment nears.
+      for (const warning of arena.telegraphs()) {
+        const ex = warning.x - camX;
+        const ey = warning.y - camY;
+        const fill = 0.08 + 0.22 * warning.progress;
+        context.fillStyle = `rgba(255, 99, 99, ${fill})`;
+        context.strokeStyle = 'rgba(255, 99, 99, 0.85)';
+        context.lineWidth = 2;
+        if (warning.shape === 'line') {
+          const angle = Math.atan2(warning.aimY - warning.y, warning.aimX - warning.x);
+          context.save();
+          context.translate(ex, ey);
+          context.rotate(angle);
+          context.fillRect(0, -warning.width / 2, warning.length, warning.width);
+          context.strokeRect(0, -warning.width / 2, warning.length, warning.width);
+          context.restore();
+        } else {
+          const cx = (warning.shape === 'ring' ? warning.x : warning.aimX) - camX;
+          const cy = (warning.shape === 'ring' ? warning.y : warning.aimY) - camY;
+          context.beginPath();
+          context.arc(cx, cy, warning.radius, 0, 2 * Math.PI);
+          context.fill();
+          context.stroke();
+        }
       }
 
       // The beams.
@@ -847,6 +881,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           xpToNext: state.xpToNext,
           weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
           frameMs: Math.round(10000 / (guard.fps() ?? 60)) / 10,
+          windUps: state.windUps,
+          windUpsBegun: state.windUpsBegun,
           crosshair:
             aimRef.current === 'crosshair' && pointerRef.current
               ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
@@ -1097,6 +1133,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-time={hud?.time ?? 0}
           data-resolve={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
           data-cats={hud?.cats ?? 0}
+          data-windups={hud?.windUps ?? 0}
+          data-windups-begun={hud?.windUpsBegun ?? 0}
           data-sent-home={hud?.sentHome ?? 0}
           data-hero-x={hud?.heroX ?? 0}
           data-hero-y={hud?.heroY ?? 0}
