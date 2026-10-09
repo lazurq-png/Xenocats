@@ -80,7 +80,14 @@ export function unlockedBy(id: MilestoneId): string {
 
 // ------------------------------------------------------------------ the Tailor
 
-export type UpgradeId = 'stubbornness' | 'sternness' | 'brisk-step' | 'long-arms' | 'second-wind';
+export type UpgradeId =
+  | 'stubbornness'
+  | 'sternness'
+  | 'brisk-step'
+  | 'long-arms'
+  | 'second-wind'
+  | 'second-opinion'
+  | 'shrug';
 
 export const UPGRADES: Readonly<
   Record<UpgradeId, { name: string; description: string; maxLevel: number; baseCost: number }>
@@ -114,6 +121,18 @@ export const UPGRADES: Readonly<
     description: 'Once a run, when his Resolve is spent, half of it returns.',
     maxLevel: 1,
     baseCost: 80,
+  },
+  'second-opinion': {
+    name: 'Second Opinion',
+    description: 'One more reroll at the level-ups of every run.',
+    maxLevel: 3,
+    baseCost: 20,
+  },
+  shrug: {
+    name: 'Shrug',
+    description: 'One more skip at the level-ups of every run.',
+    maxLevel: 3,
+    baseCost: 15,
   },
 };
 
@@ -357,6 +376,8 @@ export function runConfig(
       might: 1 + 0.05 * level('sternness'),
       pickup: 1 + 0.1 * level('long-arms'),
       revivals: level('second-wind'),
+      rerolls: level('second-opinion'),
+      skips: level('shrug'),
     },
     secondPlayer:
       second === null

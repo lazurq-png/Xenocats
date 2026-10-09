@@ -1620,3 +1620,132 @@ describe('pickups', () => {
     expect(a.cats().some((c) => c.stunUntil > a.state().time)).toBe(false);
   });
 });
+
+describe('reroll and skip at a level-up', () => {
+  /** A run with gems worth a level each, the laser sending cats home all round. */
+  function levelling(config: Partial<ArenaConfig> = {}, seed = 3) {
+    return createArena({
+      random: createRandom(seed),
+      types: CAT_TYPES,
+      viewport,
+      config: {
+        ...unbreakable,
+        stepMs: 50,
+        escalation: [[0, 30]],
+        schedule: xenocatsOnly.schedule,
+        gems: { ...ARENA_CONFIG.gems, value: 40, eliteValue: 40 },
+        ...config,
+      },
+    });
+  }
+  type Run = ReturnType<typeof levelling>;
+  const untilChoosing = (a: Run) => {
+    for (let i = 0; i < 4000 && !a.choices(); i++) a.step(still);
+    expect(a.choices()).not.toBeNull();
+  };
+  const ids = (a: Run) =>
+    a
+      .choices()!
+      .map((c) => (c.kind === 'restore' ? 'restore' : `${c.kind}:${c.id}`))
+      .join(' ');
+
+  it('each Keeper has one reroll and one skip a run, and the Tailor’s upgrades add to them', () => {
+    expect(ARENA_CONFIG.levelUp).toEqual({ rerolls: 1, skips: 1, skipXpShare: 0.3 });
+    expect(levelling().levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
+    const more = levelling({ boost: { ...ARENA_CONFIG.boost, rerolls: 2, skips: 3 } });
+    expect(more.levelUpUses()).toEqual({ rerolls: 3, skips: 4 });
+  });
+
+  it('a reroll asks for new choices, spends a use, and the level-up waits for a choice as before', () => {
+    const a = levelling();
+    untilChoosing(a);
+    const level = a.state().level;
+    const before = ids(a);
+    expect(a.reroll()).toBe(true);
+    expect(ids(a)).not.toBe(before);
+    expect(a.levelUpUses()).toEqual({ rerolls: 0, skips: 1 });
+    // None left: refused, and the choices stay.
+    const now = ids(a);
+    expect(a.reroll()).toBe(false);
+    expect(ids(a)).toBe(now);
+    // Nothing else moved: the same level, still waiting, a choice goes on as usual.
+    expect(a.state().level).toBe(level);
+    a.choose(0);
+    expect(a.state().level).toBe(level);
+  });
+
+  it('a reroll is not offered when nothing waits', () => {
+    const a = levelling();
+    expect(a.reroll()).toBe(false);
+    expect(a.skip()).toBe(false);
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
+  });
+
+  it('a skip takes no choice and 30% of the experience the next level needs instead', () => {
+    const a = levelling({ gems: { ...ARENA_CONFIG.gems, value: 8, eliteValue: 8 } });
+    untilChoosing(a);
+    const { xp, xpToNext, level } = a.state();
+    const held = a
+      .state()
+      .weapons.map((w) => `${w.id}${w.level}`)
+      .join();
+    expect(a.skip()).toBe(true);
+    // No choice was taken; the level-up is over (or the next waits).
+    expect(
+      a
+        .state()
+        .weapons.map((w) => `${w.id}${w.level}`)
+        .join()
+    ).toBe(held);
+    expect(a.state().xp).toBeCloseTo(xp + xpToNext * 0.3, 6);
+    expect(a.state().level).toBe(level);
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 0 });
+    // None left: refused, and a choice that waits stays.
+    if (a.choices()) {
+      const waiting = ids(a);
+      expect(a.skip()).toBe(false);
+      expect(ids(a)).toBe(waiting);
+    }
+  });
+
+  it('a skip lets the run go on', () => {
+    const a = levelling();
+    untilChoosing(a);
+    const pending = a.state().level;
+    expect(a.skip()).toBe(true);
+    // More level-ups may wait behind this one (the gems here are worth a level each): choose
+    // them, and the run goes on.
+    for (let i = 0; i < 50 && a.choices(); i++) a.choose(0);
+    expect(a.choices()).toBeNull();
+    const time = a.state().time;
+    a.step(still);
+    expect(a.state().time).toBeGreaterThan(time);
+    expect(a.state().level).toBeGreaterThanOrEqual(pending);
+  });
+
+  it('in co-op each Keeper has his own, and they go on to the other player’s choice', () => {
+    const a = levelling({
+      secondPlayer: { startingWeapons: ['spray-bottle'], speed: 210, resolve: 1e12 },
+    });
+    untilChoosing(a);
+    expect(a.chooser()).toBe(0);
+    expect(a.skip()).toBe(true);
+    // Player 1 has used his skip; now player 2 chooses, with his own to spend.
+    expect(a.chooser()).toBe(1);
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
+    expect(a.reroll()).toBe(true);
+    const [first, second] = a.state().heroes;
+    expect([first.rerollsLeft, first.skipsLeft]).toEqual([1, 0]);
+    expect([second.rerollsLeft, second.skipsLeft]).toEqual([0, 1]);
+  });
+
+  it('rerolls give choices that differ from the last, whatever the seed', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const a = levelling({}, seed);
+      untilChoosing(a);
+      const before = ids(a);
+      a.reroll();
+      expect(ids(a), `seed ${seed}`).not.toBe(before);
+    }
+  });
+});

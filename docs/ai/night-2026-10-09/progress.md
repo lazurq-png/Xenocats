@@ -172,3 +172,13 @@ All green, nothing red: lint exit 0 (0 warnings, saved in `lint-baseline.txt`); 
 - **Verification (observed).** prettier clean; lint exit 0, 0 warnings; tsc exit 0; `tests/unit/xenocats` 28 files / 668 passed; `npm run build` exit 0; the 12 affected specs 118 passed, 2 skipped, 0 failed; the dev-server CI specs (smoke, security headers, dashboard) with `CI=1` 15 passed. Not run in full: `npm test`, the full e2e suites (checkpoint 3).
 - **Reviewer:** Request Changes — one Low (a tracked test artefact: restored) and a request to run the full unit suite (done), the fish test hardened (D70).
 - Previous task CI (T13, merge `3f86468`): production job and unit job passed, **the dev-server job failed** (smoke, security-headers, dashboard login), not reproduced locally (15 passed with `CI=1`); its log needs authentication; recorded in D67. The earlier T12 build failure (D62) did not repeat: it was a flake.
+
+## T15 — Reroll and skip at a level-up (completed)
+
+- Branch `2026-10-09-t15-reroll-skip`, base `a06864b`. Started 2026-10-09 22:51, completed 22:55 (clock as read; the work had run from about 22:10).
+- **What the code does.** `arena.ts` (`ARENA_CONFIG.levelUp`: 1 reroll, 1 skip a Keeper a run, a skip worth 30% of the next level's experience): `reroll()`, `skip()`, `levelUpUses()`; each Keeper has his own uses (co-op passes on to the other player). `progression.ts`: Tailor upgrades Second Opinion (+1 reroll, 3 levels) and Shrug (+1 skip, 3 levels). `arena-view.tsx`: "Reroll (n left)" and "Skip, for some experience (n left)" under the choices (`survival-reroll`, `survival-skip`, `data-uses`), keys R and X, digits pick only among the choices, arrow keys move among the enabled buttons. Tests: the rules (uses, refusal when none left or nothing waits, XP of a skip, co-op, rerolls differ over six seeds), the Tailor's upgrades; two e2e (reroll and skip by click; by key).
+- **What it brings.** A bad set of level-up choices is no longer forced on the player; the Tailor sells more of both.
+- Decisions: D71–D73. Built, not seen: the two buttons' look.
+- **Verification (observed).** prettier clean on changed files; lint exit 0; tsc exit 0; `tests/unit/xenocats` 28 files / 676 passed; `npm run build` exit 0 (before the reviewer's fixes); the 12 affected specs 120 passed, 2 skipped, 0 failed (before the fixes); after them `survival.spec.ts` 36 passed. Not run in full: `npm test`, the full e2e suites (checkpoint 3).
+- **Reviewer:** Request Changes — one Medium (arrow keys on disabled buttons) and two fragile e2e tests, all fixed (D73); Low items fixed.
+- Previous task CI (T14, merge `a06864b`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37986994424

@@ -222,6 +222,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
+  // What the Keeper whose choice waits has left to reroll and to skip.
+  const [uses, setUses] = useState({ rerolls: 0, skips: 0 });
   // The level the waiting choice is for (several can wait after one gem).
   const [choiceLevel, setChoiceLevel] = useState(2);
   // One Keeper, or two at one keyboard; player 2's character; whose choice it is.
@@ -417,6 +419,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         setChoices([...next]);
         setChoiceLevel(arena.choiceLevel());
         setChooser(arena.chooser());
+        setUses(arena.levelUpUses());
       } else {
         setChoices(null);
         show('playing');
@@ -424,6 +427,30 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     },
     [show]
   );
+
+  /** After a reroll, new choices; after a skip, the next choice or the run. */
+  const refresh = useCallback(() => {
+    const arena = arenaRef.current;
+    if (!arena) return;
+    const next = arena.choices();
+    if (next) {
+      setChoices([...next]);
+      setChoiceLevel(arena.choiceLevel());
+      setChooser(arena.chooser());
+      setUses(arena.levelUpUses());
+    } else {
+      setChoices(null);
+      show('playing');
+    }
+  }, [show]);
+  const reroll = useCallback(() => {
+    if (screenRef.current !== 'choosing' || !arenaRef.current?.reroll()) return;
+    refresh();
+  }, [refresh]);
+  const skip = useCallback(() => {
+    if (screenRef.current !== 'choosing' || !arenaRef.current?.skip()) return;
+    refresh();
+  }, [refresh]);
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
 
@@ -1132,6 +1159,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         setChoices([...arena.choices()!]);
         setChoiceLevel(arena.choiceLevel());
         setChooser(arena.chooser());
+        setUses(arena.levelUpUses());
         show('choosing');
       }
     };
@@ -1144,14 +1172,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         const buttons = Array.from(
           choiceRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? []
         );
-        if (Number.isInteger(number) && number >= 1 && number <= buttons.length) {
+        const picks = buttons.filter((b) => b.hasAttribute('data-choice'));
+        if (Number.isInteger(number) && number >= 1 && number <= picks.length) {
           event.preventDefault();
           choose(number - 1);
+        } else if (
+          event.key === 'r' ||
+          event.key === 'R' ||
+          event.key === 'x' ||
+          event.key === 'X'
+        ) {
+          // Not a held key, nor a browser shortcut (Ctrl+R reloads).
+          if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+          event.preventDefault();
+          if (event.key === 'r' || event.key === 'R') reroll();
+          else skip();
         } else if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)) {
           event.preventDefault();
-          const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const enabled = buttons.filter((b) => !b.disabled);
+          const at = enabled.indexOf(document.activeElement as HTMLButtonElement);
           const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
-          buttons[(at + step + buttons.length) % buttons.length]?.focus();
+          enabled[(at + step + enabled.length) % enabled.length]?.focus();
         }
         return;
       }
@@ -1191,7 +1232,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onHidden);
     };
-  }, [running, finish, pause, show, choose]);
+  }, [running, finish, pause, show, choose, reroll, skip]);
 
   return (
     <div>
@@ -1525,7 +1566,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                 <p id="level-up-help" className="mt-1 text-sm text-aura">
                   {touch
                     ? 'Tap a choice.'
-                    : `Press 1 to ${choices.length}, or use the arrow keys and Enter.`}
+                    : `Press 1 to ${choices.length}, or use the arrow keys and Enter. R rerolls, X skips.`}
                 </p>
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
@@ -1576,6 +1617,28 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                     );
                   })}
                 </ol>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    data-testid="survival-reroll"
+                    data-uses={uses.rerolls}
+                    disabled={uses.rerolls <= 0}
+                    onClick={reroll}
+                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
+                  >
+                    Reroll ({uses.rerolls} left)
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="survival-skip"
+                    data-uses={uses.skips}
+                    disabled={uses.skips <= 0}
+                    onClick={skip}
+                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
+                  >
+                    Skip, for some experience ({uses.skips} left)
+                  </button>
+                </div>
               </div>
             </div>
           )}

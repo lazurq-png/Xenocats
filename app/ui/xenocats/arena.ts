@@ -201,8 +201,14 @@ export type ArenaConfig = {
   chestReach: number;
   /** The base weapons a level-up may offer (the progression keeps some back). */
   availableWeapons: readonly WeaponId[];
-  /** What the run brings from before (progression.ts): multipliers, and revivals. */
-  boost: { might: number; pickup: number; revivals: number };
+  /** What the run brings from before (progression.ts): multipliers, revivals, and more rerolls and skips. */
+  boost: { might: number; pickup: number; revivals: number; rerolls: number; skips: number };
+  /**
+   * At a level-up a Keeper may ask for new choices (a reroll) or take a little experience
+   * and no choice (a skip): so many of each a run, and a skip is worth this share of the
+   * experience the next level needs.
+   */
+  levelUp: { rerolls: number; skips: number; skipXpShare: number };
   /**
    * The secret cat (decisions.md): once a run, from `afterMs` into it, when he has
    * stood still for `stillMs`, it comes and sits by him.
@@ -310,7 +316,8 @@ export const ARENA_CONFIG: ArenaConfig = {
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
   availableWeapons: BASE_WEAPONS,
-  boost: { might: 1, pickup: 1, revivals: 0 },
+  boost: { might: 1, pickup: 1, revivals: 0, rerolls: 0, skips: 0 },
+  levelUp: { rerolls: 1, skips: 1, skipXpShare: 0.3 },
   secretCat: { afterMs: 60_000, stillMs: 20_000 },
   secondPlayer: null,
   coop: { startGap: 80, maxZoomOut: 1.6, margin: 80, reviveMs: 30_000 },
@@ -568,6 +575,9 @@ type Held = {
 
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
+  /** Rerolls and skips he has left this run. */
+  rerollsLeft: number;
+  skipsLeft: number;
   /**
    * Where he looks, radians (the screen's): at the crosshair, else at the cat his first
    * aiming weapon targets now (looked for five times a second), else null.
@@ -711,6 +721,8 @@ export function createArena(options: {
       jetAngle: 0,
       jetAt: 0,
       waveAt: 0,
+      rerollsLeft: config.levelUp.rerolls + config.boost.rerolls,
+      skipsLeft: config.levelUp.skips + config.boost.skips,
       aimAngle: null,
       lookAt: 0,
       walkAngle: 0,
@@ -2318,6 +2330,18 @@ export function createArena(options: {
     if (pending > 0 && !choosing) offer();
   }
 
+  /** After a Keeper's choice or skip: the next player chooses for the same level, then the next level. */
+  function nextChooser() {
+    if (chooser + 1 < keepers.length) {
+      chooser++;
+      offer();
+    } else {
+      chooser = 0;
+      pending--;
+      if (pending > 0) offer();
+    }
+  }
+
   /** The waiting level-up's choices, for the Keeper whose turn it is. */
   function offer() {
     const k = keepers[chooser];
@@ -2569,16 +2593,45 @@ export function createArena(options: {
       }
       hero = keepers[0];
       choosing = null;
-      // In co-op the next player chooses for the same level; then the next level.
-      if (chooser + 1 < keepers.length) {
-        chooser++;
-        offer();
-      } else {
-        chooser = 0;
-        pending--;
-        if (pending > 0) offer();
-      }
+      nextChooser();
     },
+
+    /**
+     * Asks for new choices instead of these, if he has a reroll left: false if not. The
+     * new ones are not the same as the old, when the pool allows.
+     */
+    reroll(): boolean {
+      const k = keepers[chooser];
+      if (!choosing || k.rerollsLeft <= 0) return false;
+      k.rerollsLeft--;
+      const before = choosing.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+      for (let tries = 0; tries < 6; tries++) {
+        offer();
+        const now = choosing!.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+        if (now !== before) break;
+      }
+      return true;
+    },
+
+    /**
+     * Takes no choice and a little experience instead (a share of what the next level
+     * needs), if he has a skip left: false if not.
+     */
+    skip(): boolean {
+      const k = keepers[chooser];
+      if (!choosing || k.skipsLeft <= 0) return false;
+      k.skipsLeft--;
+      xp += xpToNext(level) * config.levelUp.skipXpShare;
+      choosing = null;
+      nextChooser();
+      return true;
+    },
+
+    /** What the Keeper whose choice waits has left to ask for. */
+    levelUpUses: (): { rerolls: number; skips: number } => ({
+      rerolls: keepers[chooser].rerollsLeft,
+      skips: keepers[chooser].skipsLeft,
+    }),
 
     /** Whose choice the waiting level-up is: 0 for player 1, 1 for player 2. */
     chooser: (): number => chooser,
@@ -2723,6 +2776,8 @@ export function createArena(options: {
           resolve: k.resolve,
           maxResolve: maxResolveOf(k),
           facing: k.facing,
+          rerollsLeft: k.rerollsLeft,
+          skipsLeft: k.skipsLeft,
           /** The way he looks, radians (the screen's): his aim, else the way he walks. */
           lookAngle: k.aimAngle ?? k.walkAngle,
           untouchable: time < k.untouchableUntil,

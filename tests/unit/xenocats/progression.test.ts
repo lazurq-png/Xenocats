@@ -62,6 +62,24 @@ describe('tufts', () => {
     );
   });
 
+  it('the Tailor sells more rerolls and more skips, and a run begins with them', () => {
+    expect(UPGRADES['second-opinion'].maxLevel).toBe(3);
+    expect(UPGRADES.shrug.maxLevel).toBe(3);
+    const bought = buyUpgrade(buyUpgrade(rich(500), 'second-opinion')!, 'shrug')!;
+    expect(bought.upgrades).toEqual({ 'second-opinion': 1, shrug: 1 });
+    const boost = runConfig(bought, ARENA_CONFIG).boost!;
+    expect(boost).toMatchObject({ rerolls: 1, skips: 1 });
+    const run = createArena({
+      random: createRandom(1),
+      types: CAT_TYPES,
+      viewport: { width: 1280, height: 800 },
+      config: { ...runConfig(bought, ARENA_CONFIG) },
+    });
+    expect(run.levelUpUses()).toEqual({ rerolls: 2, skips: 2 });
+    // A fresh store buys none.
+    expect(runConfig(freshProgress(), ARENA_CONFIG).boost).toMatchObject({ rerolls: 0, skips: 0 });
+  });
+
   it('a run adds its tufts to what he had', () => {
     const after = applyRun(rich(7), run({ timeMs: 30_000, sentHome: 40 }));
     expect(after.earned).toBe(8);
@@ -196,7 +214,13 @@ describe('the Tailor', () => {
     const config = runConfig(progress, ARENA_CONFIG);
     expect(config.hero!.resolve).toBe(ARENA_CONFIG.hero.resolve + 20);
     expect(config.hero!.speed).toBeCloseTo(ARENA_CONFIG.hero.speed * 1.2);
-    expect(config.boost).toEqual({ might: 1.15, pickup: 1.1, revivals: 1 });
+    expect(config.boost).toEqual({
+      might: 1.15,
+      pickup: 1.1,
+      revivals: 1,
+      rerolls: 0,
+      skips: 0,
+    });
   });
 });
 
@@ -429,7 +453,7 @@ describe('Second Wind', () => {
       config: {
         startingWeapons: [],
         escalation: [[0, 60]],
-        boost: { might: 1, pickup: 1, revivals: 1 },
+        boost: { might: 1, pickup: 1, revivals: 1, rerolls: 0, skips: 0 },
       },
     });
     const kinds: string[] = [];
