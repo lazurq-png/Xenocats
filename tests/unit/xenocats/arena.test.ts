@@ -678,6 +678,11 @@ describe('the run length', () => {
       ...plain,
       timeGoalMs: 300_000,
       matriarch: { ...ARENA_CONFIG.matriarch, speed: 0 },
+      // Not the kittens she calls: they are weaker cats of their own.
+      bossAttack: {
+        ...ARENA_CONFIG.bossAttack,
+        summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: Infinity },
+      },
     });
     runTo(a, 300_000);
     const [limit] = new Set(a.cats().map((cat) => cat.limit));
@@ -1262,5 +1267,195 @@ describe('the Graphics setting', () => {
     expect(fresh.readGraphics()).toBe('light');
     expect(() => fresh.writeGraphicsAuto()).not.toThrow();
     expect(fresh.readGraphicsAuto()).toBe(true);
+  });
+});
+
+describe('the bosses attack', () => {
+  const noCats = { startingWeapons: [], secretCat: { afterMs: Infinity, stillMs: Infinity } };
+  const MEGA_DRAIN = 25;
+
+  /** The Mega Cat alone, from the start, and a Keeper with Resolve to lose. */
+  const mega = () =>
+    arena({
+      ...noCats,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      schedule: { ...xenocatsOnly.schedule!, bosses: [0] },
+    });
+  type Run = ReturnType<typeof mega>;
+  type Ev = ReturnType<Run['drainEvents']>[number];
+
+  function until(a: Run, kind: Ev['kind'], input = still) {
+    for (let i = 0; i < 6000; i++) {
+      a.step(input);
+      for (const e of a.drainEvents()) if (e.kind === kind) return e;
+    }
+    throw new Error(`no ${kind}`);
+  }
+  const bigOne = (a: Run) => a.cats().find((c) => c.variety === 'mega')!;
+
+  it('the Mega Cat near a Keeper stands still and winds up, warning where it will land', () => {
+    const a = mega();
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    expect(wind.shape).toBe('blast');
+    const h = a.state().hero;
+    expect(Math.hypot(wind.x - h.x, wind.y - h.y)).toBeLessThanOrEqual(
+      ARENA_CONFIG.bossAttack.pounce.range + 5
+    );
+    expect(a.state().bossWindUp).toBe('pounce');
+    expect(a.state().windUps).toBe(1);
+    const [warning] = a.telegraphs();
+    expect(warning).toMatchObject({
+      shape: 'blast',
+      aimX: h.x,
+      aimY: h.y,
+      radius: ARENA_CONFIG.bossAttack.pounce.radius,
+    });
+    const place = { x: bigOne(a).x, y: bigOne(a).y };
+    for (let i = 0; i < 10; i++) a.step(still);
+    expect({ x: bigOne(a).x, y: bigOne(a).y }).toEqual(place);
+  });
+
+  it('it lands where the Keeper stood: a Keeper who stayed loses Resolve, one who walked away does not', () => {
+    const stay = mega();
+    until(stay, 'wind-up');
+    const before = stay.state().hero.resolve;
+    const strike = until(stay, 'boss-pounce');
+    expect(strike).toMatchObject({ kind: 'boss-pounce', hits: 1 });
+    expect(stay.state().hero.resolve).toBe(before - MEGA_DRAIN);
+    // It is where he stood now.
+    const there = bigOne(stay);
+    const him = stay.state().hero;
+    expect(Math.hypot(there.x - him.x, there.y - him.y)).toBeLessThan(5);
+    expect(stay.state().bossWindUp).toBeNull();
+
+    const away = mega();
+    const wind = until(away, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = away.state().hero;
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    // Out from the Mega Cat, after a third of a second to notice.
+    for (let i = 0; i < 6; i++) away.step(still);
+    const full = away.state().hero.resolve;
+    const dodge = until(away, 'boss-pounce', { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len });
+    expect(dodge).toMatchObject({ hits: 0 });
+    expect(away.state().hero.resolve).toBe(full);
+  });
+
+  it('a Mega Cat sent home mid-wind-up leaves no wind-up behind', () => {
+    const a = mega();
+    until(a, 'wind-up');
+    expect(a.state().bossWindUp).toBe('pounce');
+    expect(a.state().bossWindUpsBegun).toBe(1);
+    const big = bigOne(a);
+    big.homesickness = big.limit;
+    a.step(still);
+    expect(a.cats().some((c) => c.variety === 'mega')).toBe(false);
+    expect(a.state().windUps).toBe(0);
+    expect(a.state().bossWindUp).toBeNull();
+    expect(a.telegraphs()).toEqual([]);
+  });
+
+  it('it rests between pounces', () => {
+    const a = mega();
+    until(a, 'wind-up');
+    until(a, 'boss-pounce');
+    const landed = a.state().time;
+    // It lands on him and will not pounce at one it is already on: he walks off, and it follows.
+    for (let i = 0; i < 60; i++) a.step({ x: 1, y: 0 });
+    until(a, 'wind-up');
+    expect(a.state().time - landed).toBeGreaterThanOrEqual(
+      ARENA_CONFIG.bossAttack.pounce.cooldownMs - 100
+    );
+  });
+
+  /** The Matriarch alone: her goal soon, and she is slow, so the call comes first. */
+  const matriarch = () =>
+    arena({
+      ...noCats,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      timeGoalMs: 5_000,
+      matriarch: { ...ARENA_CONFIG.matriarch, speed: 40 },
+    });
+
+  it('the Matriarch stops and winds up a call, and a ring of kittens comes where the Keeper stood', () => {
+    const a = matriarch();
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    expect(wind.type).toBe(-1);
+    expect(a.state().bossWindUp).toBe('summon');
+    const h = { x: a.state().hero.x, y: a.state().hero.y };
+    const [warning] = a.telegraphs();
+    expect(warning).toMatchObject({
+      shape: 'blast',
+      aimX: h.x,
+      aimY: h.y,
+      radius: ARENA_CONFIG.bossAttack.summon.ringRadius,
+    });
+    // She stands still while she calls.
+    const place = { ...a.matriarch()! };
+    for (let i = 0; i < 10; i++) a.step(still);
+    expect(a.matriarch()).toEqual(place);
+    const call = until(a, 'boss-summon');
+    expect(call).toMatchObject({
+      kind: 'boss-summon',
+      kittens: ARENA_CONFIG.bossAttack.summon.kittens,
+    });
+    const kittens = a.cats().filter((c) => c.variety === 'kitten');
+    expect(kittens).toHaveLength(ARENA_CONFIG.bossAttack.summon.kittens);
+    for (const k of kittens) {
+      expect(Math.hypot(k.x - h.x, k.y - h.y)).toBeCloseTo(
+        ARENA_CONFIG.bossAttack.summon.ringRadius,
+        0
+      );
+    }
+    expect(a.state().bossWindUp).toBeNull();
+  });
+
+  it('a Keeper who walks away is not in the ring when it closes', () => {
+    const a = matriarch();
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = { ...a.state().hero };
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    until(a, 'boss-summon', { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len });
+    const now = a.state().hero;
+    // Well outside the ring's reach of where he stood; the kittens are still gathering.
+    expect(Math.hypot(now.x - h.x, now.y - h.y)).toBeGreaterThan(
+      ARENA_CONFIG.bossAttack.summon.ringRadius
+    );
+    expect(
+      a.cats().filter((c) => c.variety === 'kitten' && Math.hypot(c.x - now.x, c.y - now.y) < 40)
+    ).toHaveLength(0);
+  });
+
+  it('the Matriarch calls again after her rest, and never once she is on him', () => {
+    const a = matriarch();
+    until(a, 'wind-up');
+    until(a, 'boss-summon');
+    const first = a.state().time;
+    until(a, 'wind-up');
+    expect(a.state().time - first).toBeGreaterThanOrEqual(
+      ARENA_CONFIG.bossAttack.summon.everyMs - 100
+    );
+    // She calls only from afar: with a minimum distance beyond any she has, she never does.
+    const near = arena({
+      ...noCats,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      timeGoalMs: 1_000,
+      matriarch: { ...ARENA_CONFIG.matriarch, speed: 300 },
+      bossAttack: {
+        ...ARENA_CONFIG.bossAttack,
+        summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: 0, minDistance: 5000 },
+      },
+    });
+    while (near.state().status === 'playing' && near.state().time < 10_000) {
+      near.step(still);
+      for (const e of near.drainEvents()) expect(e.kind).not.toBe('boss-summon');
+    }
+    expect(near.state().outcome).toBe('goal');
   });
 });

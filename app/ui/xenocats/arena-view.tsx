@@ -144,6 +144,8 @@ type Hud = {
   /** How many elites are winding up an attack, and how many have begun in the run. */
   windUps: number;
   windUpsBegun: number;
+  bossWindUp: string;
+  bossWindUpsBegun: number;
   /** Where the crosshair is on the screen ("x,y"), or "" without one. */
   crosshair: string;
   /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
@@ -1068,6 +1070,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           frameMs: Math.round(10000 / (guard.fps() ?? 60)) / 10,
           windUps: state.windUps,
           windUpsBegun: state.windUpsBegun,
+          bossWindUp: state.bossWindUp ?? '',
+          bossWindUpsBegun: state.bossWindUpsBegun,
           crosshair:
             aimRef.current === 'crosshair' && pointerRef.current
               ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
@@ -1336,6 +1340,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-cats={hud?.cats ?? 0}
           data-windups={hud?.windUps ?? 0}
           data-windups-begun={hud?.windUpsBegun ?? 0}
+          data-boss-windup={hud?.bossWindUp ?? ''}
+          data-boss-windups-begun={hud?.bossWindUpsBegun ?? 0}
           data-sent-home={hud?.sentHome ?? 0}
           data-hero-facing={hud?.heroes[0]?.facing ?? ''}
           data-hero2-facing={hud?.heroes[1]?.facing ?? ''}

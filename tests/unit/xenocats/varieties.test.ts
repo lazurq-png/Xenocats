@@ -339,6 +339,8 @@ describe('the Mega Cat', () => {
       escalation: [[0, 0]],
       startingWeapons: ['thunderous-vacuum', 'can-opener', 'cat-treats'],
       startingLevel: 8,
+      // The Mega Cat pounces now: a Keeper who is not worn down, or the run ends under the loop below.
+      hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
     });
     let arrived = false;
     while (a.state().time < 4900) a.step(still);
@@ -366,18 +368,25 @@ describe('the Mega Cat', () => {
       startingWeapons: ['thunderous-vacuum', 'can-opener', 'cat-treats'],
       startingLevel: 8,
       chestReach: ARENA_CONFIG.chestReach,
+      hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
     });
-    while (a.state().chests === 0 && a.state().time < 300_000) a.step(still);
-    const chest = a.chests()[0];
-    const level = a.state().level;
-    // Walk to it.
-    while (!a.choices() && a.state().time < 400_000) {
-      const { x, y } = a.state().hero;
-      const d = Math.hypot(chest.x - x, chest.y - y) || 1;
-      a.step({ x: (chest.x - x) / d, y: (chest.y - y) / d });
+    // The Mega Cat pounces onto him now, so it is sent home where he stands and its chest
+    // is under his feet: he opens it at once. A level-up on the way (a gem) stops the run
+    // until it is chosen, so the loop chooses and goes on until a chest has been opened.
+    let opened = false;
+    for (let i = 0; i < 40_000 && !opened; i++) {
+      if (a.choices()) {
+        a.choose(0);
+        continue;
+      }
+      a.step(still);
+      if (a.drainEvents().some((e) => e.kind === 'chest')) opened = true;
     }
+    expect(opened).toBe(true);
+    // The chest was a level-up (until weapons evolve): a choice waits, no chest is left.
     expect(a.choices()).not.toBeNull();
     expect(a.state().chests).toBe(0);
+    const level = a.state().level;
     a.choose(0);
     expect(a.state().level).toBe(level);
   }, 60_000);

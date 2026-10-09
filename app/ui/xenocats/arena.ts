@@ -145,6 +145,32 @@ export type ArenaConfig = {
     lineLength: number;
     lineWidth: number;
   };
+  /**
+   * The bosses attack too, wound up and dodgeable like an elite's: the Mega Cat
+   * pounces where the Keeper stood; the Matriarch calls a ring of kittens round where
+   * he stood. Each stands still for its wind-up.
+   */
+  bossAttack: {
+    pounce: {
+      /** It begins within this of a Keeper (and not already on him), px. */
+      range: number;
+      windUpMs: number;
+      cooldownMs: number;
+      /** What it lands on, px, round where he was. */
+      radius: number;
+    };
+    summon: {
+      /** The Matriarch's first call, and then one this often, ms after she comes. */
+      firstMs: number;
+      everyMs: number;
+      windUpMs: number;
+      /** The ring of kittens is this wide, round where he was, px; this many. */
+      ringRadius: number;
+      kittens: number;
+      /** She calls only from this far off, px: not once she is on him. */
+      minDistance: number;
+    };
+  };
   /** Chests lying on the Keepers' start (a test's way to reach a chest at once). */
   startingChests: number;
   /** Which cats come when (varieties.ts). */
@@ -245,6 +271,17 @@ export const ARENA_CONFIG: ArenaConfig = {
     blastRadius: 70,
     lineLength: 330,
     lineWidth: 44,
+  },
+  bossAttack: {
+    pounce: { range: 420, windUpMs: 1100, cooldownMs: 6000, radius: 120 },
+    summon: {
+      firstMs: 3000,
+      everyMs: 8000,
+      windUpMs: 1300,
+      ringRadius: 150,
+      kittens: 10,
+      minDistance: 260,
+    },
   },
   startingChests: 0,
   schedule: SCHEDULE,
@@ -553,6 +590,9 @@ export type ArenaEvent =
   /** An elite begins to wind up an attack, and when it lands (hit or not). */
   | { kind: 'wind-up'; x: number; y: number; type: number; shape: AttackShape }
   | { kind: 'elite-attack'; x: number; y: number; type: number; hits: number }
+  /** The Mega Cat pounced, or the Matriarch's kittens came. */
+  | { kind: 'boss-pounce'; x: number; y: number; hits: number }
+  | { kind: 'boss-summon'; x: number; y: number; kittens: number }
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
@@ -664,6 +704,18 @@ export function createArena(options: {
   let windUpsBegun = 0;
   /** How many elites are winding up an attack now (kept, not counted: state() is read every frame). */
   let windingUp = 0;
+  /** Of them, the Mega Cats; and the Matriarch's call, if she is making one. */
+  let megaWinding = 0;
+  /** How many boss wind-ups have begun in the run (the HUD data and the tests read it). */
+  let bossWindUpsBegun = 0;
+  let matriarchWind = 0;
+  let matriarchAim: Vec = { x: 0, y: 0 };
+  let matriarchNextAt = Infinity;
+  /** One wind-up ended, wherever it was: landed, held still, or the cat went home. */
+  function stopWinding(cat: ArenaCat) {
+    windingUp--;
+    if (cat.variety === 'mega') megaWinding--;
+  }
   let nextId = 1;
   // How long he has stood still; whether the secret cat has come.
   let stillFor = 0;
@@ -957,7 +1009,7 @@ export function createArena(options: {
         variety: cat.variety,
       });
       sentHome++;
-      if (cat.windUntil > 0) windingUp--;
+      if (cat.windUntil > 0) stopWinding(cat);
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
       // A boss, an elite, a visiting xenocat, or the last kitten of a swarm
       // leaves a chest.
@@ -1019,6 +1071,52 @@ export function createArena(options: {
     return true;
   }
 
+  /**
+   * The Mega Cat near a Keeper stands still, then pounces where he stood: it lands
+   * there (a Keeper still within the radius loses Resolve), and goes on from there.
+   * Returns whether it spends this step on it.
+   */
+  function megaPounces(cat: ArenaCat, target: Keeper, d: number): boolean {
+    const a = config.bossAttack.pounce;
+    if (cat.windUntil > 0) {
+      if (time < cat.windUntil) return true;
+      cat.windUntil = 0;
+      stopWinding(cat);
+      cat.nextAttackAt = time + a.cooldownMs;
+      cat.x = cat.aimX;
+      cat.y = cat.aimY;
+      let hits = 0;
+      for (const k of keepers) {
+        if (!standing(k) || time < k.untouchableUntil) continue;
+        if (Math.hypot(k.x - cat.aimX, k.y - cat.aimY) > a.radius + config.hero.reach / 2) continue;
+        k.resolve = Math.max(k.resolve - cat.drain, 0);
+        k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
+        events.push({
+          kind: 'hero-hit',
+          type: cat.type,
+          variety: cat.variety,
+          elite: false,
+          player: k.index,
+        });
+        hits++;
+      }
+      events.push({ kind: 'boss-pounce', x: cat.x, y: cat.y, hits });
+      return true;
+    }
+    if (time >= cat.nextAttackAt && d <= a.range && d > a.radius) {
+      cat.windUntil = time + a.windUpMs;
+      cat.aimX = target.x;
+      cat.aimY = target.y;
+      windUpsBegun++;
+      windingUp++;
+      megaWinding++;
+      bossWindUpsBegun++;
+      events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape: 'blast' });
+      return true;
+    }
+    return false;
+  }
+
   /** The attack an elite xenocat winds up, or null for a cat that has none. */
   function attackOf(cat: ArenaCat): { shape: AttackShape; radius: number; begins: number } | null {
     if (!cat.elite || cat.variety !== null || cat.type < 0) return null;
@@ -1062,7 +1160,7 @@ export function createArena(options: {
     if (cat.windUntil > 0) {
       if (time < cat.windUntil) return true;
       cat.windUntil = 0;
-      windingUp--;
+      stopWinding(cat);
       cat.nextAttackAt = time + a.cooldownMs;
       let hits = 0;
       for (const k of keepers) {
@@ -1134,7 +1232,7 @@ export function createArena(options: {
       // Held still, an elite loses its wind-up: it must begin again.
       if (cat.windUntil > 0) {
         cat.windUntil = 0;
-        windingUp--;
+        stopWinding(cat);
         cat.nextAttackAt = time + config.eliteAttack.cooldownMs;
       }
       return;
@@ -1155,6 +1253,7 @@ export function createArena(options: {
     const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
     if (gait === 'sit') return;
     if (cat.elite && eliteAttacks(cat, target, d)) return;
+    if (cat.variety === 'mega' && megaPounces(cat, target, d)) return;
     const toy = lureOf(cat);
     if (toy) {
       const tx = toy.x - cat.x;
@@ -2291,15 +2390,60 @@ export function createArena(options: {
           const reach =
             (Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin;
           matriarch = { x: cam.x - reach, y: cam.y };
+          matriarchNextAt = time + config.bossAttack.summon.firstMs;
           events.push({ kind: 'matriarch' });
         }
         const target = nearestKeeper(matriarch.x, matriarch.y);
         const dx = target.x - matriarch.x;
         const dy = target.y - matriarch.y;
         const d = Math.hypot(dx, dy) || 1;
-        const move = Math.min(config.matriarch.speed * dt, d);
-        matriarch.x += (dx / d) * move;
-        matriarch.y += (dy / d) * move;
+        const call = config.bossAttack.summon;
+        let calling = false;
+        if (matriarchWind > 0) {
+          calling = true;
+          if (time >= matriarchWind) {
+            // The kittens come, in a ring round where he stood.
+            matriarchWind = 0;
+            windingUp--;
+            matriarchNextAt = time + call.everyMs;
+            let came = 0;
+            for (let k = 0; k < call.kittens && cats.length < config.cats.hardCap; k++) {
+              const turn = (k * 2 * Math.PI) / call.kittens;
+              spawnVariety('kitten', {
+                x: matriarchAim.x + Math.cos(turn) * call.ringRadius,
+                y: matriarchAim.y + Math.sin(turn) * call.ringRadius,
+              });
+              came++;
+            }
+            events.push({
+              kind: 'boss-summon',
+              x: matriarchAim.x,
+              y: matriarchAim.y,
+              kittens: came,
+            });
+            calling = false;
+          }
+        } else if (time >= matriarchNextAt && d > call.minDistance) {
+          matriarchWind = time + call.windUpMs;
+          matriarchAim = { x: target.x, y: target.y };
+          windUpsBegun++;
+          bossWindUpsBegun++;
+          windingUp++;
+          calling = true;
+          events.push({
+            kind: 'wind-up',
+            x: matriarch.x,
+            y: matriarch.y,
+            type: -1,
+            shape: 'blast',
+          });
+        }
+        // She stands still while she calls.
+        if (!calling) {
+          const move = Math.min(config.matriarch.speed * dt, d);
+          matriarch.x += (dx / d) * move;
+          matriarch.y += (dy / d) * move;
+        }
         if (d <= config.matriarch.reach) end('goal');
       }
     },
@@ -2389,8 +2533,37 @@ export function createArena(options: {
     telegraphs: (): Telegraph[] => {
       const all: Telegraph[] = [];
       if (windingUp === 0) return all;
+      if (matriarchWind > 0 && matriarch) {
+        const call = config.bossAttack.summon;
+        all.push({
+          shape: 'blast',
+          x: matriarch.x,
+          y: matriarch.y,
+          aimX: matriarchAim.x,
+          aimY: matriarchAim.y,
+          radius: call.ringRadius,
+          length: 0,
+          width: 0,
+          progress: Math.min(1, Math.max(0, 1 - (matriarchWind - time) / call.windUpMs)),
+        });
+      }
       for (const cat of cats) {
         if (cat.windUntil <= 0) continue;
+        if (cat.variety === 'mega') {
+          const a = config.bossAttack.pounce;
+          all.push({
+            shape: 'blast',
+            x: cat.x,
+            y: cat.y,
+            aimX: cat.aimX,
+            aimY: cat.aimY,
+            radius: a.radius,
+            length: 0,
+            width: 0,
+            progress: Math.min(1, Math.max(0, 1 - (cat.windUntil - time) / a.windUpMs)),
+          });
+          continue;
+        }
         const attack = attackOf(cat);
         if (!attack) continue;
         const a = config.eliteAttack;
@@ -2462,6 +2635,10 @@ export function createArena(options: {
         cats: cats.length,
         /** How many elites are winding up an attack now. */
         windUps: windingUp,
+        bossWindUpsBegun,
+        /** The boss that is winding up an attack: the Mega Cat's pounce, or the Matriarch's call. */
+        bossWindUp:
+          matriarchWind > 0 ? ('summon' as const) : megaWinding > 0 ? ('pounce' as const) : null,
         windUpsBegun,
         sentHome,
         level,

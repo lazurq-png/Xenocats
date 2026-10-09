@@ -408,6 +408,24 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-graphics', 'full');
   });
 
+  test('a Mega Cat near the Keeper winds up a pounce the HUD data shows', async ({ page }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=4&boss=0');
+    await startRun(page);
+    // A count of boss wind-ups begun, not the wind-up itself: the HUD data is refreshed a few
+    // times a second, and a wind-up lasts about a quarter of a second here.
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[data-testid="survival-area"]')
+            ?.getAttribute('data-boss-windups-begun')
+        ) > 0,
+      undefined,
+      { timeout: 60_000 }
+    );
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);

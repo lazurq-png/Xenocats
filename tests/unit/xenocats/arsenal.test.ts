@@ -554,7 +554,9 @@ describe('levels in a run', () => {
       // He walks a wide circle, gathering what falls.
       const t = a.state().time / 1500;
       a.step({ x: -Math.sin(t), y: Math.cos(t) });
-      if (a.state().time > 240_000) {
+      // The last two minutes (it was the last one: the bosses now stand still to attack, which moves
+      // the seeded run's busiest moment about).
+      if (a.state().time > 180_000) {
         // Things in flight, beams, blades, and what the household weapons make: jets,
         // swings, toys, boxes and puddles.
         most = Math.max(
