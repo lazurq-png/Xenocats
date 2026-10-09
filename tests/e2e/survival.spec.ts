@@ -369,15 +369,19 @@ test.describe('on a computer', () => {
   test('a screen too slow for the frame floor is switched to light graphics, once, with a notice', async ({
     page,
   }) => {
-    // Not on CI for now: a failing browser run there is being narrowed down (decisions.md D59).
-    test.skip(!!process.env.CI, 'under investigation on CI');
     test.setTimeout(90_000);
+    // A screen that shows about 15 frames a second whatever the machine: every animation
+    // frame is handed to the game 50 ms late. (A CPU throttle, tried first, left a CI
+    // runner's browser too slow to finish the test.)
+    await page.addInitScript(() => {
+      const frame = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (callback) =>
+        frame(() => {
+          setTimeout(() => callback(performance.now()), 50);
+        }) as number;
+    });
     await openArena(page, '?seed=7');
     await expect(area(page)).toHaveCount(0);
-    // Slower than this machine: well under 40 frames a second (a CI runner, drawing in
-    // software, is slow to begin with and only more so).
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     await startRun(page);
     // Watched from inside the page, every frame: the notice lasts a few seconds, and a
     // slow machine is slow to ask about it from outside.
@@ -391,7 +395,6 @@ test.describe('on a computer', () => {
       undefined,
       { timeout: 40_000 }
     );
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     expect(
       await page.evaluate(() => localStorage.getItem('xenocats:survival:v1:graphics-auto'))
     ).toBe('1');
