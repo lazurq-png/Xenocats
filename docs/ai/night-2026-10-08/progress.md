@@ -2,6 +2,68 @@
 
 Append-only. One entry per task, appended when it ends; the morning report is inserted at the top.
 
+## Morning report
+
+### Goal
+
+- Plan's goal: "Friday 07:00" → **Deadline: 2026-10-09 07:00**. Report started 2026-10-09 10:26.
+- **What ended the run: the goal time.** The goal had passed when the run resumed. The account's usage limit stopped session 1 on 2026-10-08 at about 18:24, two minutes into T11. Its `/loop` timer did not resume it after the limit reset (20:20). The PC was in connected standby all night, and the session's process was not running to fire it (see Clock). The run sat idle until a human started session 2 at 09:12. So under §8.4 the task in flight, T11, was finished. Task 12, checkpoint 2 and the exploration the plan scheduled were never started.
+- The plan named exploration kinds (the Survival game, bugs); none ran.
+
+### Index
+
+| Task | Outcome | Branch | Base → tip | CI | What it brings |
+| ---- | ------- | ------ | ---------- | -- | -------------- |
+| T1 | completed | `night-2026-10-08-t1-remove-taming` | `ae34cbc` → `6ea1b52` | CI passed | One game instead of two: `/cats` points straight at Survival, and about 1,700 lines of Taming are gone. |
+| T2 | completed | `night-2026-10-08-t2-upgrades-say-what-they-do` | `6ea1b52` → `12191a6` | CI passed | Every level-up visibly improves something, and its card says exactly what. |
+| T3 | completed | `night-2026-10-08-t3-sound-settings` | `12191a6` → `2549bd6` | CI passed | Sound on or off from the game's lobby and pause menu, phones included. |
+| T4 | completed | `night-2026-10-08-t4-crosshair` | `2549bd6` → `bd2d94a` | CI passed | A desktop player can aim the weapons with a crosshair. |
+| T5 | completed | `night-2026-10-08-t5-pause-stats` | `bd2d94a` → `d88d6df` | CI passed | The pause menu shows weapons, passives, free slots, evolutions within reach and the run so far. |
+| Checkpoint 1 | completed | `night-2026-10-08-c1-checkpoint` | `d88d6df` → `c42d98e` | CI passed | T1–T5 reviewed together; the new settings are tested below the browser. |
+| T6 | completed | `night-2026-10-08-t6-artwork-cats-special` | `c42d98e` → `4335656` | CI passed | The twenty artwork cats are rare visits, elites and boss faces, not crowd fodder. |
+| T7 | completed | `night-2026-10-08-t7-phone-zoom` | `4335656` → `3d18903` | CI passed | On a phone, cats are seen coming about as far off as on a laptop; desktop unchanged. |
+| T8 | completed | `night-2026-10-08-t8-touch-pet` | `3d18903` → `7c6b3a5` | CI passed | A held finger pets a sleeping cat on a touch screen; a tap still wakes it. |
+| T9 | completed | `night-2026-10-08-t9-artwork-colours` | `7c6b3a5` → `2cf047e` | CI passed | Three cats look like the same cat awake and asleep. |
+| T10 | completed | `night-2026-10-08-t10-landing-header` | `2cf047e` → `3973479` | CI passed | The landing page offers "Log in" and "Meet the cats" once each, in the hero. |
+| T11 | completed | `night-2026-10-08-t11-own-data` | `3973479` → `38a92d2` | CI failed, fixed in 1 cycle (*e2e*: Browser tests (invoices), D58); then CI passed ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37904152559), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37904147806)) | Each account sees and changes only its own customers and invoices, even by guessed ids or direct action calls. |
+| T12 | not started: the goal time had passed when the run resumed (Q4) | — | — | — | — |
+| Checkpoint 2 | not started: the goal time had passed | — | — | — | — |
+
+A task's code: `git diff <base> <tip> -- . ':(exclude)docs/ai/'`. Each task's entry below has what it does, its verification, its reviewer's verdict and its CI run URLs.
+
+### Questions (most consequential first)
+
+- **Q3. The development database needs `npm run db:migrate` before its dashboard works again.** T11's queries need `customers.owner_id`, which `xenocats` does not have yet. With one user there, the migration gives them every customer. With several, it stops, changing nothing, and its comment says how to assign owners. Every existing login is signed out once.
+- **Q6. Keep the PC awake during a night run.** It was in connected standby all night, so the timer that should have resumed the run after the usage limit never fired. Setting a human must make before the next run.
+- **Q4.** Task 12 (sign-up) was not started; put it in the next plan as written. Its prerequisite, T11, is merged.
+- **Q5.** `login-limit.spec.ts` "a successful login starts the count again" fails about 1 run in 4 against `next start`. Shown on the base commit without T11, so it is older than tonight. The cause is in the test (a cookie revived after `clearCookies()`), and so is the proposed fix.
+- **Q1.** How much of the arena a phone shows, and how small the Keeper may be (T7): look at it on a phone. It is one constant.
+- **Q2.** Petting a sleeping cat with a held finger on a real iPhone and Android phone (T8): iOS's long-press gestures may cancel it.
+- Plus one flake under load, recorded but not a question: Survival's "a level-up stops the run for a choice…" failed once in T11's first `next start` run, then passed 5 of 5 alone.
+
+### Clock and budget
+
+- Session 1: started 2026-10-08 14:24 with 14,971,497 tokens. Stopped by the usage limit at about 18:24 with about 14,425,000 left (T1–T10 and checkpoint 1 done, T11 begun).
+- **Gap: 2026-10-08 ~18:24 → 2026-10-09 09:12**, about 14 h 50 min; about 12 h 35 min of it before the goal. Session 1's timer never fired in it. What the record shows:
+  - Session 1's transcript: the limit at 18:24:43; a CI notification at 18:30:00 that met the limit again; then nothing until 09:03:39, when it was resumed with a notice that its previous process had ended.
+  - Windows' system log: the PC in connected standby from 14:24:39 ("Idle Timeout") to 08:50:39 ("Input Mouse"). No shutdown or restart, and no crash in the application log.
+  - VS Code: a new launch at 09:02:01.
+
+  So the process holding the `/loop` timer was not running to fire it after 20:20: suspended in standby, then gone by morning. The record does not show which, or when it ended. Session-only timers cannot outlive their process. Session 1's restored `/loop` fired at 09:29:59, after the resume, and it stood down.
+- Session 2: started 2026-10-09 09:12 with 14,909,198 tokens; 14,699,175 at the report's start. The run's last task (T11, with its CI repair) completed at 10:18, 3 h 18 min past the deadline: all of it resumption after the gap, none of it a task overrunning.
+
+### State
+
+- Run branch `night-2026-10-08` at `38a92d2` (before this report's commit). It and all twelve task and checkpoint branches are on `origin`. Nothing provisional, nothing abandoned. Nothing uncommitted.
+- The build was in the gate for every task. Lint warnings: 0, as at the baseline.
+- Timer `760fdd62` is deleted once this report is pushed.
+
+### What nothing has checked
+
+- **Nobody looked at a page.** Each UI task was tested in a browser, not seen. The entries name what a human should look at: `/cats`'s Play section (T1), the level-up cards (T2), the game's settings, crosshair and pause menu (T3–T5), artwork cats in a run (T6), the game on a phone (T7, Q1), petting on a real phone (T8, Q2), the three recoloured cat images (T9, built, not seen), the landing header (T10), and a second account's empty dashboard (T11).
+- Acceptance criteria covered by reading only are listed in each task's decisions. For T11, that is that no other code path touches customers or invoices (`grep`).
+- No change was exercised against a production database (there is none). Migration 0005 was proved on the test schemas, on a scratch schema with existing rows, and in CI's fresh database. It has **not** been applied to `xenocats` (Q3).
+
 ## Run start
 
 - Goal: "Friday 07:00" → **Deadline: 2026-10-09 07:00** (Europe/Stockholm; machine time zone `W. Europe Standard Time`).

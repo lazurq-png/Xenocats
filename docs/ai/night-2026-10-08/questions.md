@@ -43,3 +43,12 @@ Recommendation: put task 12 in the next plan as written.
 Against `next start` it failed in T11's full gate run, 1 of 5 runs alone, and **3 of 10 runs on the base commit without T11** (`3973479`), so it is older than tonight's work. Under `next dev` it passed every time. The failure: after the first successful login the test calls `page.context().clearCookies()`, and its next `/login` lands on the dashboard (the test user's own, empty), so the next `fill` waits for an Email field that is not there until the 90 s timeout. The likely cause is a response still in flight from the dashboard (the session is refreshed on requests that pass `proxy.ts`), which sets the session cookie again after the clear. The fix is in the test: wait for the dashboard to settle (`waitForLoadState('networkidle')`) before clearing, or sign out with the button rather than clearing cookies. Not done tonight (past the goal, and outside task 11).
 
 Recommendation: a small task in the next plan; confirm it with `E2E_SERVER=start npx playwright test tests/e2e/login-limit -g "starts the count again" --repeat-each 10`.
+
+## Q6 — Keep the PC awake for a night run, or its timer cannot resume it
+
+The run's timer lives in the Claude Code process (`/loop` and `CronCreate` jobs are session-only). Last night the PC entered connected standby at 14:24 ("Idle Timeout", the minute the run started) and stayed there until 08:50. The run kept working while it had work in flight. After the usage limit at 18:24, though, nothing fired again: the process was suspended or ended, and VS Code was relaunched at 09:02. About 12½ hours before the goal were lost.
+
+- (a) Before a run, stop the PC from sleeping while plugged in, e.g. `powercfg /change standby-timeout-ac 0` (and the screen may still turn off), or use a keep-awake tool. That is a human's setting; the run must not change it (§3).
+- (b) Or run the night run as a cloud session or a scheduled cloud agent, which does not depend on this PC.
+
+Recommendation: (a) for the next run, as the cheapest change.
