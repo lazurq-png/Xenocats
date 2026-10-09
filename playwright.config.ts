@@ -62,7 +62,7 @@ const GROUPS: Record<string, string[]> = {
   ],
   customers: ['customers'],
   invoices: ['invoices-filter', 'invoice-detail', 'invoice-export', 'invoices', 'own-data'],
-  survival: ['survival'],
+  survival: ['survival', 'benchmark'],
 };
 
 // The groups with a spec that uses DEMO_USER (cat-attacks: cats-link).

@@ -25,3 +25,14 @@ All green, nothing red: lint exit 0 (0 warnings, saved in `lint-baseline.txt`); 
 - **Reviewer:** Approve; three Low findings (demo-user.json churn restored and not committed; `E2E_NO_CAT_DEPS` now compared with `'1'`; a red `cat-attacks` holds back the other groups, by the plan's design, recorded in D6).
 - Full-e2e time before/after: dev 3m31s → 3m14s, start 2m10s → 2m10s.
 - Previous task CI: none yet.
+
+## T9 — A yardstick for the game's speed on a weak machine (completed)
+
+- Branch `2026-10-09-t9-benchmarks`, base `21e7f9c`. Started 2026-10-09 16:28 (budget 14.82M tokens), completed 17:05 (14.76M).
+- **What the code does.** `tests/bench/arena-step.test.ts` + `vitest.bench.config.mts`: a seeded simulation benchmark (500, 2000, 6000 cats, six evolved weapons at level 8), printing median/p95/max ms per step; run with `npx vitest run -c vitest.bench.config.mts`, outside `npm test`. `tests/e2e/benchmark.spec.ts` (in the `survival` group, skipped unless `BENCH=1`): 20 s of a crowded run at 500 and 2000 cats under CDP CPU throttling ×4, printing fps, median/p95 frame time and frames over 50 ms. Two hooks in `test-hooks.ts`/`arena-view.tsx`: `?fps=1` (a frame-time and cat-count line in the arena, `survival-fps`) and `?crowd=N` (see D10). Unit tests on both hooks; e2e tests that `?fps=1` shows the line only when set and `?crowd=300` brings a crowd, the arsenal and no level-up.
+- **What it brings.** Every later speed change can be measured before and after on the same seeded crowd, on this laptop or a throttled one, instead of by feel; the checkpoints compare against the baseline below.
+- Decisions: D8–D12. How to run each benchmark: D9.
+- **Baseline (idle PC, seed 7).** Simulation per step: 500 wanted (483 cats) median 0.397 ms, p95 0.708; 2000 (1979) 0.757 / 1.367; 6000 (5939) 2.232 / 3.573. Render, ×4 CPU, 20 s, two runs: 500 cats 26.6 / 27.1 fps, median 33.3 ms, p95 66.7, 78 / 87 frames over 50 ms; 2000 cats 13.9 / 14.1 fps, median 66.6 ms, p95 183.3, 157 / 160 frames over 50 ms.
+- **Verification (observed).** prettier clean on changed files; `npm run lint` exit 0, 0 warnings; `tsc` exit 0; `vitest related` over the changed files and the affected-tests unit test passed; `npm run build` exit 0; selector printed FULL (playwright.config.ts), so `npm run test:e2e` on `next dev` 136 passed, 2 skipped (the benchmarks), 3m23s; `E2E_SERVER=start` 136 passed, 2 skipped, 2m30s. Acceptance: the hooks and the benchmark's runnability are checked by command; the numbers are single-machine.
+- **Reviewer:** Approve; two Low findings, one accepted (a `?crowd=` run records best time like `?speed=` does), one fixed (`BENCH` compared with `'1'`, run-by-path note).
+- Previous task CI (T1, merge `21e7f9c` on Nightrun): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37944417369

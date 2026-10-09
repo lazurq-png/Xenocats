@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { Button } from '@/app/ui/button';
 import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
 import { HERO_SVGS, VARIETY_SVG } from './arena-art';
-import { type Choice, WEAPONS, type WeaponId, describeChoice, evolutionText } from './arsenal';
+import {
+  type Choice,
+  MAX_WEAPON_LEVEL,
+  WEAPONS,
+  type WeaponId,
+  describeChoice,
+  evolutionText,
+} from './arsenal';
 import {
   type AimMode,
   bestOf,
@@ -33,7 +40,7 @@ import {
 } from './progression';
 import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
-import { parseTestHooks } from './test-hooks';
+import { CROWD_ARSENAL, parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
@@ -53,7 +60,8 @@ import type { Vec } from './effects';
 //
 // Test hooks, read from the page's address when a run starts: `?seed=` fixes the
 // random source, `?speed=` (up to 50) makes time pass that much faster, `?boss=`
-// (seconds) brings a Mega Cat that early, besides the schedule's.
+// (seconds) brings a Mega Cat that early, besides the schedule's. `?fps=1` shows the
+// frame time and cat count; `?crowd=N` starts a crowded, late-game run (test-hooks.ts).
 
 type Screen = 'start' | 'playing' | 'choosing' | 'paused' | 'results';
 
@@ -101,6 +109,8 @@ type Hud = {
   xp: number;
   xpToNext: number;
   weapons: string;
+  /** The frame time, ms (smoothed), for `?fps=1`. */
+  frameMs: number;
   /** Where the crosshair is on the screen ("x,y"), or "" without one. */
   crosshair: string;
   /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
@@ -149,6 +159,7 @@ function subscribeBest(onChange: () => void) {
 export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const [screen, setScreen] = useState<Screen>('start');
   const [hud, setHud] = useState<Hud | null>(null);
+  const [showFps, setShowFps] = useState(false);
   const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
   // The finished run's numbers, kept for the results screen.
   const [result, setResult] = useState<{
@@ -192,6 +203,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const resultsRef = useRef<HTMLElement>(null);
   const padRef = useRef<Vec>({ x: 0, y: 0 });
   const speedRef = useRef(1);
+  // `?crowd=`: the benchmarks' crowd comes whatever the frame rate (the frame guard is off).
+  const crowdRef = useRef(false);
   // Who went out, and what the run found for the codex.
   const characterRef = useRef<CharacterId>('keeper');
   const secondRef = useRef<CharacterId | null>(null);
@@ -241,8 +254,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   );
 
   const start = () => {
-    const { seed, speed, boss } = parseTestHooks(window.location.search, freshSeed);
+    const { seed, speed, boss, fps, crowd } = parseTestHooks(window.location.search, freshSeed);
     speedRef.current = speed;
+    crowdRef.current = crowd !== null;
+    setShowFps(fps);
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
     playerRef.current.unlock();
@@ -267,6 +282,19 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           ? {}
           : {
               schedule: { ...SCHEDULE, bosses: [boss, ...SCHEDULE.bosses].sort((a, b) => a - b) },
+            }),
+        ...(crowd === null
+          ? {}
+          : {
+              escalation: [[0, crowd]] as [number, number][],
+              // The arsenal sends cats home as fast as they come: refill the crowd quickly.
+              arrivalShare: 40,
+              // No level-up may stop a benchmark: gems worth nothing, chests out of reach.
+              gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+              chestReach: -1,
+              startingWeapons: CROWD_ARSENAL,
+              startingLevel: MAX_WEAPON_LEVEL,
+              hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
             }),
       },
     });
@@ -698,7 +726,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       } else arena.aimAt(null);
       let steps = 0;
       while (carry >= arena.config.stepMs && steps < MAX_STEPS_PER_FRAME) {
-        arena.step(input, guard.allowsSpawning(), input2);
+        arena.step(input, crowdRef.current || guard.allowsSpawning(), input2);
         carry -= arena.config.stepMs;
         steps++;
       }
@@ -787,6 +815,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           xp: state.xp,
           xpToNext: state.xpToNext,
           weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
+          frameMs: Math.round(10000 / (guard.fps() ?? 60)) / 10,
           crosshair:
             aimRef.current === 'crosshair' && pointerRef.current
               ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
@@ -1067,6 +1096,11 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             {notice}
           </p>
           <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
+            {showFps && (
+              <p data-testid="survival-fps" data-frame-ms={hud?.frameMs ?? ''}>
+                {hud?.frameMs ?? 0} ms · {hud?.cats ?? 0} cats
+              </p>
+            )}
             <p data-testid="survival-time">
               Time {clockText(hud?.time ?? 0)} / {clockText(ARENA_CONFIG.timeGoalMs)}
             </p>

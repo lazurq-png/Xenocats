@@ -141,6 +141,30 @@ test('the retired Taming game is gone: /cats/taming is not found', async ({ page
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
+  test('?fps=1 shows the frame time and cat count, and without it nothing is shown', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await startRun(page);
+    await expect(page.getByTestId('survival-fps')).toHaveCount(0);
+
+    await openArena(page, '?seed=7&fps=1');
+    await startRun(page);
+    const fps = page.getByTestId('survival-fps');
+    await expect(fps).toBeVisible();
+    await expect(fps).toHaveText(/^\d+(\.\d+)? ms · \d+ cats$/);
+  });
+
+  test('?crowd= brings a crowd at once, with the weapons to meet it and no level-up in the way', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&crowd=300');
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-cats'), { timeout: 30_000 }).toBeGreaterThan(150);
+    await expect(area(page)).toHaveAttribute('data-weapons', /infinite-laser:8/);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);
