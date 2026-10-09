@@ -3,9 +3,11 @@ import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { GUIDE_KEY } from '@/app/ui/xenocats/field-guide';
 
 // The field guide on /cats (no login, no database): per-cat counts kept in
-// localStorage, and the wording for a visitor who has met no cat yet.
+// localStorage, and the wording for a visitor who has met no cat yet. The page's
+// timers run on a fake clock, which keeps real time until a test moves it on.
 
 async function openCats(page: Page, stored?: Record<string, string>) {
+  await page.clock.install();
   if (stored) {
     await page.addInitScript((items) => {
       if (sessionStorage.getItem('seeded')) return;
@@ -46,10 +48,14 @@ test('meeting a cat and surviving its attack is counted, and kept', async ({ pag
   await button.click();
   const voidTabby = entry(page, 'void-tabby');
   await expect(voidTabby.getByText('Met').locator('xpath=..')).toContainText('1');
-  // Its attack (vanish) hits the cursor once it has arrived.
-  await expect(voidTabby.getByText('Attacks survived').locator('xpath=..')).toContainText('1', {
-    timeout: 10_000,
-  });
+  // Its attack (vanish) hits the cursor once it has arrived, and is survived when it ends.
+  const survived = voidTabby.getByText('Attacks survived').locator('xpath=..');
+  await expect
+    .poll(async () => {
+      await page.clock.runFor(1000);
+      return survived.textContent();
+    })
+    .toContain('1');
   await expect(page.getByTestId('guide-summary')).toHaveText(
     "You have met 1 of the 20 cats. Each card counts how often you've met that cat and survived its attack."
   );

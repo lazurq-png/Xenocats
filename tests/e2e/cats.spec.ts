@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
+import { CAT_CONFIG } from '@/app/ui/xenocats/config';
 
 // The /cats page needs no login and no database. Each test summons a cat and
 // watches what its attack does to the fake cursor.
@@ -11,6 +12,9 @@ async function openCats(page: Page, { intensity }: { intensity?: string } = {}) 
       intensity
     );
   }
+  // The page's timers run on a fake clock. It keeps real time until a test moves
+  // it on (clock.runFor) past an attack or a nap it would otherwise sit through.
+  await page.clock.install();
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/cats');
   await expect(page.getByRole('heading', { name: 'The cats' })).toBeVisible();
@@ -25,7 +29,24 @@ async function openCats(page: Page, { intensity }: { intensity?: string } = {}) 
     .toContain('xenocat-cursor-hidden');
 }
 
+/**
+ * Moves the page's clock on in small steps until `done`, or `limitMs` of page time
+ * has passed: a wait for something that happens in page time, without the waiting.
+ * Each step is a second of page time, run at once: shorter than a cat's wake and
+ * pounce (CAT_CONFIG.wakeMs + attackMs), so a test still sees a cat that woke before
+ * it leaves. What follows asserts the state.
+ */
+async function runUntil(page: Page, done: () => Promise<boolean>, limitMs: number) {
+  const step = 1000;
+  for (let ran = 0; ran < limitMs && !(await done()); ran += step) {
+    await page.clock.runFor(step);
+  }
+}
+
 const fakeCursor = (page: Page) => page.getByTestId('fake-cursor');
+
+/** The fake cursor's running effect ('' when none). */
+const effect = async (page: Page) => (await fakeCursor(page).getAttribute('data-effect')) ?? '';
 
 /** The fake cursor's drawn position, from its inline transform. */
 async function cursorAt(page: Page) {
@@ -69,7 +90,6 @@ test('lists every cat type with its thumbnail, attack and Summon buttons', async
 test('a cat summoned asleep naps in its asleep artwork, then wakes into its awake one', async ({
   page,
 }) => {
-  test.setTimeout(60_000); // the nap alone can last 22 s
   await openCats(page);
   await page.getByTestId('summon-asleep-void-tabby').click();
   await expect(page.getByTestId('summon-status')).toHaveText(
@@ -79,7 +99,12 @@ test('a cat summoned asleep naps in its asleep artwork, then wakes into its awak
   await expect(cat).toHaveAttribute('data-phase', 'sleeping');
   await expect(cat.locator('img')).toHaveAttribute('src', '/xenocats/cats/void-tabby-asleep.webp');
   // It sleeps for 8-22 s (config.ts), then wakes in its awake artwork.
-  await expect(cat).not.toHaveAttribute('data-phase', 'sleeping', { timeout: 25_000 });
+  await runUntil(
+    page,
+    async () => (await cat.getAttribute('data-phase')) !== 'sleeping',
+    CAT_CONFIG.sleepMs[1] + 1000
+  );
+  await expect(cat).not.toHaveAttribute('data-phase', 'sleeping');
   await expect(cat.locator('img')).toHaveAttribute('src', '/xenocats/cats/void-tabby-awake.webp');
 });
 
@@ -107,7 +132,8 @@ test('Void Tabby makes the cursor vanish, and clicks still go through meanwhile'
   await expect(status).toHaveText('Gravi Coon is on its way.');
 
   // After 3 s the cursor is back (the Gravi Coon it summoned may be attacking it by then).
-  await expect(fakeCursor(page)).not.toHaveAttribute('data-effect', /vanish/, { timeout: 5000 });
+  await runUntil(page, async () => !(await effect(page)).includes('vanish'), 5000);
+  await expect(fakeCursor(page)).not.toHaveAttribute('data-effect', /vanish/);
   await expect(fakeCursor(page)).toHaveCSS('opacity', '1');
 });
 
@@ -153,7 +179,8 @@ test('Pulsar Siamese knocks the cursor away from the cat', async ({ page }) => {
 test('an idle summoned cat never stays: it attacks, then leaves', async ({ page }) => {
   await openCats(page);
   await summon(page, 'void-tabby');
-  await expect(page.getByTestId('xenocat')).toHaveCount(0, { timeout: 8000 });
+  await runUntil(page, async () => (await page.getByTestId('xenocat').count()) === 0, 8000);
+  await expect(page.getByTestId('xenocat')).toHaveCount(0);
 });
 
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
@@ -184,7 +211,7 @@ test('Static Calico makes the cursor jitter around the pointer', async ({ page }
     expect(Math.abs(at.x - pointer.x)).toBeLessThanOrEqual(16);
     expect(Math.abs(at.y - pointer.y)).toBeLessThanOrEqual(16);
     seen.add(`${at.x},${at.y}`);
-    await page.waitForTimeout(60);
+    await page.clock.runFor(60);
   }
   // The pointer stood still, yet the cursor kept moving.
   expect(seen.size).toBeGreaterThan(3);
@@ -197,7 +224,7 @@ test('Cryo Persian freezes the cursor in place, iced over', async ({ page }) => 
   const frozen = await cursorAt(page);
   expect(distance(frozen, pointer)).toBeLessThan(2);
   await page.mouse.move(pointer.x + 150, pointer.y - 80, { steps: 10 });
-  await page.waitForTimeout(200);
+  await page.clock.runFor(200);
   expect(distance(await cursorAt(page), frozen)).toBeLessThan(2);
   const filter = await fakeCursor(page).evaluate((el) => (el as HTMLElement).style.filter);
   expect(filter).toContain('drop-shadow');
@@ -267,7 +294,7 @@ test('Orbit Abyssinian makes the cursor circle it', async ({ page }) => {
     expect(r).toBeGreaterThan(40);
     expect(r).toBeLessThan(170);
     angles.push(Math.atan2(at.y - cat.y, at.x - cat.x));
-    await page.waitForTimeout(80);
+    await page.clock.runFor(80);
   }
   expect(new Set(angles.map((a) => a.toFixed(1))).size).toBeGreaterThan(3);
 });
@@ -288,7 +315,7 @@ test('Wobble Fold makes the cursor wobble around a pointer that stands still', a
   let largest = 0;
   for (let i = 0; i < 10; i++) {
     largest = Math.max(largest, distance(await cursorAt(page), pointer));
-    await page.waitForTimeout(100);
+    await page.clock.runFor(100);
   }
   expect(largest).toBeGreaterThan(15);
   expect(largest).toBeLessThan(60);
@@ -381,7 +408,7 @@ test('Lag Ragamuffin makes the cursor follow 0.8 s late', async ({ page }) => {
   await openCats(page);
   const pointer = await summon(page, 'lag-ragamuffin');
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'delay');
-  await page.waitForTimeout(900); // let the delay's own start settle
+  await page.clock.runFor(900); // let the delay's own start settle
   const target = { x: pointer.x + 220, y: pointer.y };
   await page.mouse.move(target.x, target.y, { steps: 4 });
   // Just after the move the cursor is still well behind...
@@ -452,7 +479,7 @@ test('Pinball Devon sends the cursor bouncing around the screen', async ({ page 
     expect(at.y).toBeGreaterThanOrEqual(0);
     expect(at.y).toBeLessThanOrEqual(size.height);
     furthest = Math.max(furthest, distance(at, pointer));
-    await page.waitForTimeout(80);
+    await page.clock.runFor(80);
   }
   expect(furthest).toBeGreaterThan(200);
 });
@@ -481,7 +508,8 @@ test('Pinball Devon bounces page elements about as it does the cursor: near the 
   expect(moving.some((box) => box.frame)).toBe(true);
   expect(moving.some((box) => distance(box, pointer) > 400)).toBe(true);
   // Pinball runs 4 s; everything is put back when it ends, and the page unmarked.
-  await expect.poll(async () => (await puppets(page)).length, { timeout: 8000 }).toBe(0);
+  await runUntil(page, async () => (await puppets(page)).length === 0, 8000);
+  await expect.poll(async () => (await puppets(page)).length).toBe(0);
   await expect(page.locator('html')).not.toHaveAttribute('data-xenocat-puppets');
 });
 
@@ -546,7 +574,8 @@ test('calm: an attack flings the elements near the pointer as it does the cursor
   await expect.poll(() => translated(button)).toBeGreaterThan(60);
   expect(await translated(button)).toBeLessThanOrEqual(151);
   // When the effect ends (1.5 s) the button is exactly as it was.
-  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
+  await runUntil(page, async () => (await effect(page)) === '', 5000);
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '');
   await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
 });
 
@@ -569,7 +598,8 @@ test('normal: an attack flings the element under the pointer as it does the curs
     )
     .toBeGreaterThan(100);
   // When the effect ends (1.5 s) the button is exactly as it was.
-  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 5000 });
+  await runUntil(page, async () => (await effect(page)) === '', 5000);
+  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '');
   await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
 });
 
@@ -647,7 +677,8 @@ for (const type of CAT_TYPES) {
           return [r.left, r.top, r.right, r.bottom].map(Math.round);
         })
       );
-      await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', { timeout: 10_000 });
+      await runUntil(page, async () => (await effect(page)) === '', 10_000);
+      await expect(fakeCursor(page)).toHaveAttribute('data-effect', '');
       await expect.poll(() => restyled(page)).toEqual([]);
       const after = await page.evaluate(() =>
         Array.from(document.querySelectorAll<HTMLElement>('[data-e2e-hit]'), (el) => {
@@ -672,7 +703,7 @@ for (const type of CAT_TYPES) {
           expect(right).toBeLessThanOrEqual(Math.max(size.width, right - dx) + 1);
           expect(bottom).toBeLessThanOrEqual(Math.max(size.height, bottom - dy) + 1);
         }
-        await page.waitForTimeout(150);
+        await page.clock.runFor(150);
       }
       expect(furthest).toBeGreaterThan(100);
     }
@@ -706,9 +737,8 @@ for (const type of CAT_TYPES) {
       await expect(page.getByTestId('xenocat')).toHaveCount(1);
     }
 
-    await expect(fakeCursor(page)).toHaveAttribute('data-effect', '', {
-      timeout: type.effect.durationMs + 5000,
-    });
+    await runUntil(page, async () => (await effect(page)) === '', type.effect.durationMs + 5000);
+    await expect(fakeCursor(page)).toHaveAttribute('data-effect', '');
     await expect.poll(() => restyled(page)).toEqual([]);
     await expect(page.locator('html')).not.toHaveAttribute('data-xenocat-puppets');
     await expect(page.locator('[data-xenocat-props]')).toHaveCount(0);

@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { DEMO_USER } from './demo-user';
 
 // The dashboard and /cats by keyboard only: a skip link first, a visible focus
 // ring on everything Tab reaches, and every control named. The cats never touch
@@ -130,34 +131,32 @@ test.describe('logged in', () => {
     await expect(page).toHaveURL(/query=Amy/, { timeout: NAVIGATION });
   });
 
-  test('every control on the dashboard pages has a name', async ({ page }) => {
-    test.setTimeout(60_000);
-    await page.goto('/login');
-    await page.waitForLoadState('networkidle');
-    await page.getByLabel('Email').fill('user@nextmail.com');
-    await page.getByLabel('Password', { exact: true }).fill('123456');
-    await page.getByRole('button', { name: /log in/i }).click();
-    await expect(page).toHaveURL(/\/dashboard$/, { timeout: NAVIGATION });
-    for (const path of [
-      '/dashboard',
-      '/dashboard/invoices',
-      '/dashboard/customers',
-      '/dashboard/invoices/create',
-      '/dashboard/settings',
-    ]) {
-      await page.goto(path);
-      await page.waitForLoadState('networkidle');
-      await expectEveryControlNamed(page);
-    }
+  test.describe('with a saved session', () => {
+    test.use({ storageState: DEMO_USER });
 
-    // At phone width the navigation shows icons only: still named.
-    await page.setViewportSize({ width: 390, height: 844 });
-    for (const path of ['/dashboard', '/dashboard/invoices']) {
-      await page.goto(path);
-      await page.waitForLoadState('networkidle');
-      await expectEveryControlNamed(page);
-    }
-    await expect(page.getByRole('link', { name: 'Customers' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    test('every control on the dashboard pages has a name', async ({ page }) => {
+      test.setTimeout(60_000);
+      for (const path of [
+        '/dashboard',
+        '/dashboard/invoices',
+        '/dashboard/customers',
+        '/dashboard/invoices/create',
+        '/dashboard/settings',
+      ]) {
+        await page.goto(path);
+        await page.waitForLoadState('networkidle');
+        await expectEveryControlNamed(page);
+      }
+
+      // At phone width the navigation shows icons only: still named.
+      await page.setViewportSize({ width: 390, height: 844 });
+      for (const path of ['/dashboard', '/dashboard/invoices']) {
+        await page.goto(path);
+        await page.waitForLoadState('networkidle');
+        await expectEveryControlNamed(page);
+      }
+      await expect(page.getByRole('link', { name: 'Customers' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    });
   });
 });
