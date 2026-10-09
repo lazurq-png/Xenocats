@@ -30,31 +30,45 @@ const server =
     ? `npx next start -p ${PORT}`
     : `npx next dev --turbopack -p ${PORT}`;
 
+// E2E_NO_CAT_DEPS=1 drops the groups' wait for the cat-attacks group, for a run of a few
+// named specs (npm run test:affected, CI's dev-server job): Playwright runs a project's
+// dependencies in full even when a file filter names other specs, and `--no-deps` would
+// also drop the login setup.
+//
 // Each spec (its name without .spec.ts) in exactly one group.
 const GROUPS: Record<string, string[]> = {
+  // The specs that test the cats: a cat has to come, or an effect to land, or a cat be
+  // summoned. They run first, with the cats unpaused (fixtures.ts); every other group
+  // waits for them and runs with the cats paused.
+  'cat-attacks': [
+    'cats',
+    'cats-link',
+    'pet-cat',
+    'touch',
+    'intensity',
+    'field-guide',
+    'sound',
+    'keyboard',
+    'security-headers',
+  ],
   smoke: [
     'smoke',
     'branding',
     'dashboard',
     'login-limit',
     'change-password',
-    'security-headers',
     'cat-states',
-    'keyboard',
-    'intensity',
     'dashboard-range',
   ],
   customers: ['customers'],
   invoices: ['invoices-filter', 'invoice-detail', 'invoice-export', 'invoices', 'own-data'],
-  cats: ['cats', 'cats-link', 'pet-cat', 'touch'],
   survival: ['survival'],
-  sound: ['sound', 'field-guide'],
 };
 
-// The groups with a spec that uses DEMO_USER (cats: cats-link).
-const LOGGED_IN = ['smoke', 'customers', 'invoices', 'cats'];
+// The groups with a spec that uses DEMO_USER (cat-attacks: cats-link).
+const LOGGED_IN = ['cat-attacks', 'smoke', 'customers', 'invoices'];
 
-export default defineConfig({
+export default defineConfig<{ catsPaused: boolean }>({
   testDir: 'tests/e2e',
   globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: true,
@@ -76,8 +90,11 @@ export default defineConfig({
       testMatch: specs.map((spec) => `**/${spec}.spec.ts`),
       // Only the groups with a spec that starts from the saved session: a failed
       // login then holds back those, not every group.
-      dependencies: LOGGED_IN.includes(name) ? ['setup'] : [],
-      use: { ...devices['Desktop Chrome'] },
+      dependencies: [
+        ...(LOGGED_IN.includes(name) ? ['setup'] : []),
+        ...(name === 'cat-attacks' || process.env.E2E_NO_CAT_DEPS === '1' ? [] : ['cat-attacks']),
+      ],
+      use: { ...devices['Desktop Chrome'], catsPaused: name !== 'cat-attacks' },
     })),
   ],
   webServer: {

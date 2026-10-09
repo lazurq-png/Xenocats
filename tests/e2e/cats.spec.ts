@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { CAT_CONFIG } from '@/app/ui/xenocats/config';
 

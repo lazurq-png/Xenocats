@@ -1,6 +1,6 @@
 import bcryptjs from 'bcryptjs';
 import postgres from 'postgres';
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 
 // Each account sees only its own customers and invoices (migration 0005). A
 // second user of the test's own, written straight into the test schema

@@ -260,7 +260,7 @@ deleted) fail the type check for no reason in the code.
 `npm run test:e2e` starts its own `next dev` on port 3100 with a throwaway
 `AUTH_SECRET`. Before the tests, `tests/e2e/global-setup.ts` drops and rebuilds
 the `xenocats_test` schema on the database `POSTGRES_URL` names, and the test
-server uses that schema, so browser tests may log in and submit forms. Without
+server uses that schema, so browser tests may log in and submit forms. Every spec imports `test` from `tests/e2e/fixtures.ts`, whose `catsPaused` option (true by default) sets a window flag before each page loads so the dashboard's cats do not come: only the `cat-attacks` project (the specs that need a cat to come or be summoned) turns it off, and every other group waits for that project. A run of a few named specs sets `E2E_NO_CAT_DEPS=1` to skip the wait (`--no-deps` would also skip the login setup). Without
 a `POSTGRES_URL`, or with `E2E_NO_DATABASE=1` when the server is unreachable
 (off its network), the tests that need it skip; otherwise an unreachable server
 fails the whole suite.

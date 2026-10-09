@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 import { addDays } from '@/app/lib/schemas';
 import { formatDateToLocal } from '@/app/lib/utils';
 import { DEMO_USER } from './demo-user';

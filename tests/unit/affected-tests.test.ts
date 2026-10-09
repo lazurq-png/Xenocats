@@ -63,6 +63,12 @@ describe('affected-tests', () => {
     expect(select(['app/lib/csv.ts']).unit).toEqual({ files: ['app/lib/csv.ts'] });
   });
 
+  it('runs a selection of browser specs without their wait for the cat specs', () => {
+    const { e2e } = commands(select(['tests/e2e/survival.spec.ts']));
+    expect(e2e).toBe('E2E_NO_CAT_DEPS=1 npx playwright test tests/e2e/survival.spec.ts');
+    expect(commands(select(['playwright.config.ts'])).e2e).toBe('npx playwright test');
+  });
+
   it('prints nothing to run when nothing needs it', () => {
     expect(commands(select(['docs/ai/README.md']))).toEqual({
       unit: null,

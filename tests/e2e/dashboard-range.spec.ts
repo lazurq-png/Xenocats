@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
 
 // The home page's period picker: all time unless the URL asks for the last 12 months.

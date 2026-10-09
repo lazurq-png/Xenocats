@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
 
 // The cat-themed not-found and empty states. Each shows its cat (decorative, so

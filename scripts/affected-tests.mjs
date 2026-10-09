@@ -62,6 +62,10 @@ const UNIT_FULL = /^(vitest\.config\.\w+|package\.json|package-lock\.json|tsconf
 const DATABASE =
   /^(app\/lib\/data\.ts|tests\/unit\/data\.test\.ts|db\/migrations\/[^/]+\.sql|scripts\/db\.mjs)$/;
 const DATABASE_TESTS = 'tests/unit/data';
+// Set for a selection of specs: it drops the browser tests' dependency on the cat
+// specs (playwright.config.ts), which a filter by file does not, and keeps the login
+// setup the logged-in specs need (`--no-deps` would drop both).
+const NO_CAT_DEPS = 'E2E_NO_CAT_DEPS';
 
 const CODE = /\.(tsx?|mjs|js|css)$/;
 const ROUTE_FILE =
@@ -280,7 +284,7 @@ export function commands(selection) {
   const e2e = selection.e2e.full
     ? 'npx playwright test'
     : selection.e2e.specs.length
-      ? `npx playwright test ${selection.e2e.specs.join(' ')}`
+      ? `${NO_CAT_DEPS}=1 npx playwright test ${selection.e2e.specs.join(' ')}`
       : null;
   const database = selection.database.length
     ? `DATABASE_TESTS=1 npx vitest run ${DATABASE_TESTS}`
@@ -332,7 +336,11 @@ function main(argv) {
       env: { ...process.env, DATABASE_TESTS: '1' },
       shown: cmds.database,
     },
-    cmds.e2e && { cmd: cmds.e2e },
+    cmds.e2e && {
+      cmd: `npx playwright test${selection.e2e.full ? '' : ` ${selection.e2e.specs.join(' ')}`}`,
+      env: selection.e2e.full ? undefined : { ...process.env, [NO_CAT_DEPS]: '1' },
+      shown: cmds.e2e,
+    },
   ].filter(Boolean);
   for (const { cmd, env, shown } of runs) {
     console.log(`\n$ ${shown ?? cmd}`);

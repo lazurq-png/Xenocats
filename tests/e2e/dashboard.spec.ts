@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { DEMO_USER } from './demo-user';
 
 // Pages behind the login, against the test schema global-setup.ts rebuilds from
 // app/lib/placeholder-data.ts. Skipped where no database is configured.
@@ -31,4 +32,19 @@ test('an unknown email is refused like a wrong password', async ({ page }) => {
 
   await expect(page.getByText(/invalid credentials/i)).toBeVisible();
   await expect(page).toHaveURL(/\/login/);
+});
+
+// The browser tests' pause (fixtures.ts): this group's specs run with the cats paused.
+// Chaos always has a cat on screen within 9 s (intensity.spec.ts, which runs unpaused).
+test.describe('with the cats paused', () => {
+  test.use({ storageState: DEMO_USER });
+
+  test('no cat comes on the dashboard, even at chaos', async ({ page }) => {
+    await page.clock.install();
+    await page.addInitScript(() => localStorage.setItem('xenocats:intensity', 'chaos'));
+    await page.goto('/dashboard');
+    await expect(page.getByTestId('xenocat-page')).toHaveAttribute('data-cat-intensity', 'chaos');
+    for (let waited = 0; waited < 15_000; waited += 1_000) await page.clock.runFor(1_000);
+    await expect(page.getByTestId('xenocat')).toHaveCount(0);
+  });
 });

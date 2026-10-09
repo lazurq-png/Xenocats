@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
 
 // The cat intensity setting on the settings page: chosen there, remembered in this

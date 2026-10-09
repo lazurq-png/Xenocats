@@ -10,7 +10,7 @@ modules that do not open a connection (`app/lib/schemas.ts`, not
 `app/lib/actions.ts`). Browser tests run against the `xenocats_test` schema,
 rebuilt from the migrations and seed data before every run
 (`tests/e2e/global-setup.ts`), so they may log in (`user@nextmail.com` /
-`123456`) and submit forms that write. A spec that needs a session, not the
+`123456`) and submit forms that write. Every spec imports `test` from `tests/e2e/fixtures.ts`, whose `catsPaused` option (true by default) sets a window flag before each page loads so the dashboard's cats do not come: only the `cat-attacks` project (the specs that need a cat to come or be summoned) turns it off, and every other group waits for that project. A run of a few named specs sets `E2E_NO_CAT_DEPS=1` to skip the wait (`--no-deps` would also skip the login setup). A spec that needs a session, not the
 login form, starts with the one `tests/e2e/auth.setup.ts` saves once per run
 (`test.use({ storageState: DEMO_USER })`, `tests/e2e/demo-user.ts`). A wait for
 something the page does in its own time (a cat's attack, a nap) runs the page's

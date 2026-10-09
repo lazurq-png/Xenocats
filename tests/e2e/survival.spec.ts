@@ -1,4 +1,4 @@
-import { type Locator, type Page, devices, expect, test } from '@playwright/test';
+import { type Locator, type Page, devices, expect, test } from './fixtures';
 import { ARENA_CONFIG } from '@/app/ui/xenocats/arena';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
 import { SOUND_KEY } from '@/app/ui/xenocats/sounds';

@@ -50,6 +50,17 @@ export function useXenocats(): Xenocats {
   return cats;
 }
 
+/**
+ * Browser tests pause the cats by setting this window property before the page
+ * loads (Playwright's addInitScript, tests/e2e/fixtures.ts). It is read once, when
+ * the cats start. Nothing in the app sets it: no button, no setting, no stored value.
+ */
+export const CATS_PAUSED_FLAG = '__xenocatsPaused';
+
+const catsPaused = () =>
+  typeof window !== 'undefined' &&
+  (window as unknown as Record<string, unknown>)[CATS_PAUSED_FLAG] === true;
+
 const snapshot = (engine: CatEngine) => engine.cats().map((cat) => ({ ...cat }));
 
 /**
@@ -106,7 +117,12 @@ export function XenocatCatsProvider({
   // Asks the loop below for a frame; it sleeps where no cat is due (see tick).
   const wakeRef = useRef<() => void>(() => {});
 
+  // Fixed for the page's life, like the flag it comes from.
+  const [paused] = useState(catsPaused);
+
   useEffect(() => {
+    // Paused: no loop, so no cat comes and no effect starts.
+    if (paused) return;
     const onResize = () => {
       // A cat the smaller screen no longer holds moves in: draw it there.
       // The page's own width and height, without a scrollbar: the cat layer's size
@@ -295,11 +311,12 @@ export function XenocatCatsProvider({
         window.removeEventListener(type, onPressRest, { capture: true });
       window.removeEventListener('pointercancel', endPress, { capture: true });
     };
-  }, [engine, cursor, player, autoSpawn]);
+  }, [engine, cursor, player, autoSpawn, paused]);
 
   const api = useMemo<Xenocats>(
     () => ({
       summon: (typeId, options) => {
+        if (paused) return false;
         const cat = engine.summon(typeId, cursor.now(), cursor.position(), options);
         if (cat) {
           setCats(snapshot(engine));
@@ -313,7 +330,7 @@ export function XenocatCatsProvider({
         if (type) player.play(soundsFor(type)[which]);
       },
     }),
-    [engine, cursor, player]
+    [engine, cursor, player, paused]
   );
 
   return (

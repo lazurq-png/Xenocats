@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
 
 // The dashboard and /cats by keyboard only: a skip link first, a visible focus
