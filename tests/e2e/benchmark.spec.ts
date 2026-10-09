@@ -18,6 +18,8 @@ test.setTimeout(120_000);
 test.describe.configure({ mode: 'serial' });
 
 const THROTTLE = Number(process.env.BENCH_THROTTLE ?? 4);
+// BENCH_GRAPHICS=light measures the light graphics setting (the default is full).
+const GRAPHICS = process.env.BENCH_GRAPHICS === 'light' ? 'light' : 'full';
 const SECONDS = 20;
 const CROWDS = [500, 2000];
 
@@ -37,6 +39,9 @@ async function startRun(page: Page) {
 for (const crowd of CROWDS) {
   test(`${crowd} cats, CPU ${THROTTLE}× slower, ${SECONDS} s`, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript((graphics) => {
+      localStorage.setItem('xenocats:survival:v1:graphics', graphics);
+    }, GRAPHICS);
     await page.goto(`/cats/survival?seed=7&fps=1&crowd=${crowd}`);
     await startRun(page);
     await expect(page.getByTestId('survival-fps')).toBeVisible();
@@ -73,6 +78,7 @@ for (const crowd of CROWDS) {
     const row = {
       crowd,
       cats,
+      graphics: GRAPHICS,
       throttle: `${THROTTLE}×`,
       frames: frames.length,
       fps: Number((frames.length / SECONDS).toFixed(1)),

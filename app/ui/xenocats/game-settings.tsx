@@ -1,7 +1,16 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import { type AimMode, readAim, subscribeAim, writeAim } from './arena-storage';
+import {
+  type AimMode,
+  readAim,
+  readGraphics,
+  subscribeAim,
+  subscribeGraphics,
+  writeAim,
+  writeGraphics,
+} from './arena-storage';
+import type { Graphics } from './graphics';
 import { getSoundEnabled, setSoundEnabled, sharedSoundPlayer, subscribeSound } from './sounds';
 
 /**
@@ -13,6 +22,7 @@ import { getSoundEnabled, setSoundEnabled, sharedSoundPlayer, subscribeSound } f
 export function GameSettings({ where, touch }: { where: 'lobby' | 'pause'; touch: boolean }) {
   const sound = useSyncExternalStore(subscribeSound, getSoundEnabled, () => true);
   const aim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
+  const graphics = useSyncExternalStore(subscribeGraphics, readGraphics, (): Graphics => 'full');
   return (
     <fieldset
       data-testid={`survival-${where}-settings`}
@@ -34,6 +44,29 @@ export function GameSettings({ where, touch }: { where: 'lobby' | 'pause'; touch
         />
         Sound
       </label>
+      <fieldset className="mt-2">
+        <legend className="text-cream">Graphics</legend>
+        <div className="mt-1 flex flex-wrap gap-4">
+          {(
+            [
+              ['full', 'Full'],
+              ['light', 'Light: no glows, for a slow screen'],
+            ] as const
+          ).map(([mode, label]) => (
+            <label key={mode} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name={`survival-${where}-graphics`}
+                data-testid={`survival-${where}-graphics-${mode}`}
+                checked={graphics === mode}
+                onChange={() => writeGraphics(mode)}
+                className="border-line bg-void text-aura focus:ring-aura"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {!touch && (
         <fieldset className="mt-2">
           <legend className="text-cream">Aim</legend>

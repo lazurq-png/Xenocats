@@ -328,6 +328,44 @@ test.describe('on a computer', () => {
       .not.toBe('E');
   });
 
+  test('Graphics: light is chosen in the pause menu, holds on resume and in the lobby, and draws at one pixel to a pixel', async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+    const context = await browser.newContext({
+      viewport: { width: 1000, height: 700 },
+      deviceScaleFactor: 2,
+    });
+    const page = await context.newPage();
+    // No run has switched itself to light before, and none will here.
+    await page.addInitScript(() => localStorage.setItem('xenocats:survival:v1:graphics-auto', '1'));
+    await openArena(page, '?seed=7');
+    await expect(page.getByTestId('survival-lobby-graphics-full')).toBeChecked();
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-graphics', 'full');
+    const canvasWidth = () =>
+      page.locator('canvas').evaluate((c) => (c as HTMLCanvasElement).width);
+    // Full: the screen's own pixel ratio (2).
+    await expect.poll(canvasWidth).toBe(2000);
+
+    const paused = await pauseRun(page);
+    await expect(paused.getByTestId('survival-pause-graphics-full')).toBeChecked();
+    await paused.getByTestId('survival-pause-graphics-light').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-graphics', 'light');
+    // Light: one pixel to a pixel.
+    await expect.poll(canvasWidth).toBe(1000);
+
+    // It holds: paused again it is still light; in the lobby, the same.
+    const again = await pauseRun(page);
+    await expect(again.getByTestId('survival-pause-graphics-light')).toBeChecked();
+    await again.getByRole('button', { name: 'Give up' }).click();
+    await expect(page.getByTestId('survival-lobby-graphics-light')).toBeChecked();
+    await page.reload();
+    await expect(page.getByTestId('survival-lobby-graphics-light')).toBeChecked();
+    await context.close();
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);

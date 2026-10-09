@@ -1,6 +1,8 @@
 // What Survival keeps between runs, in localStorage under versioned keys. Anything
 // unreadable or corrupt reads as a fresh start; nothing here ever throws.
 
+import { type Graphics, parseGraphics } from './graphics';
+
 /** The run lengths on offer, in minutes (the first is the game's own). */
 export const RUN_LENGTHS = [5, 10, 15] as const;
 export type RunLength = (typeof RUN_LENGTHS)[number];
@@ -124,6 +126,62 @@ export function subscribeAim(onChange: () => void) {
   window.addEventListener('storage', onChange);
   return () => {
     aimListeners.delete(onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+
+export const SURVIVAL_GRAPHICS_KEY = 'xenocats:survival:v1:graphics';
+/** Set once a run has switched itself to light graphics: it does so only once. */
+export const SURVIVAL_GRAPHICS_AUTO_KEY = 'xenocats:survival:v1:graphics-auto';
+
+const graphicsListeners = new Set<() => void>();
+/** The choice, when storage is blocked: it lasts until the page is left. */
+let graphicsInMemory: Graphics | null = null;
+let graphicsAutoInMemory = false;
+
+export function readGraphics(): Graphics {
+  if (graphicsInMemory) return graphicsInMemory;
+  try {
+    return parseGraphics(window.localStorage.getItem(SURVIVAL_GRAPHICS_KEY));
+  } catch {
+    return 'full';
+  }
+}
+
+export function writeGraphics(graphics: Graphics) {
+  try {
+    window.localStorage.setItem(SURVIVAL_GRAPHICS_KEY, graphics);
+  } catch {
+    // Storage blocked: the choice lasts until the page is left.
+    graphicsInMemory = graphics;
+  }
+  for (const listener of graphicsListeners) listener();
+}
+
+/** Whether a run has switched itself to light graphics before. */
+export function readGraphicsAuto(): boolean {
+  if (graphicsAutoInMemory) return true;
+  try {
+    return window.localStorage.getItem(SURVIVAL_GRAPHICS_AUTO_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeGraphicsAuto() {
+  try {
+    window.localStorage.setItem(SURVIVAL_GRAPHICS_AUTO_KEY, '1');
+  } catch {
+    graphicsAutoInMemory = true;
+  }
+}
+
+/** For useSyncExternalStore: the stored graphics setting, and changes to it. */
+export function subscribeGraphics(onChange: () => void) {
+  graphicsListeners.add(onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    graphicsListeners.delete(onChange);
     window.removeEventListener('storage', onChange);
   };
 }

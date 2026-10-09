@@ -17,13 +17,28 @@ import {
   clockText,
   parseBest,
   parseLength,
+  SURVIVAL_GRAPHICS_KEY,
   readBest,
+  readGraphics,
+  readGraphicsAuto,
   readLength,
+  subscribeGraphics,
   subscribeLength,
+  writeGraphics,
+  writeGraphicsAuto,
   writeBest,
   writeLength,
 } from '@/app/ui/xenocats/arena-storage';
 import { SCHEDULE } from '@/app/ui/xenocats/varieties';
+import {
+  AUTO_JUDGE_FROM_MS,
+  AUTO_JUDGE_UNTIL_MS,
+  AUTO_MIN_FRAMES,
+  AUTO_WINDOW_MS,
+  parseGraphics,
+  pixelRatioFor,
+  shouldGoLight,
+} from '@/app/ui/xenocats/graphics';
 import {
   type Direction,
   DRAWN_DIRECTIONS,
@@ -1129,5 +1144,121 @@ describe('which way a Keeper faces', () => {
     const [first, second] = a.state().heroes;
     expect(directionOfAngle(first.lookAngle)).toBe('E');
     expect(directionOfAngle(second.lookAngle)).toBe('N');
+  });
+});
+
+describe('the Graphics setting', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stubStorage = (blocked = false) => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => {
+          if (blocked) throw new Error('blocked');
+          return store.get(key) ?? null;
+        },
+        setItem: (key: string, value: string) => {
+          if (blocked) throw new Error('blocked');
+          store.set(key, value);
+        },
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    return store;
+  };
+
+  it('a stored setting is full or light; anything else is full', () => {
+    expect(parseGraphics('light')).toBe('light');
+    expect(parseGraphics('full')).toBe('full');
+    for (const raw of [null, '', 'Light', 'dark', '1'])
+      expect(parseGraphics(raw), String(raw)).toBe('full');
+  });
+
+  it('is kept in the browser, and told to those who watch it', () => {
+    const store = stubStorage();
+    expect(readGraphics()).toBe('full');
+    let told = 0;
+    const stop = subscribeGraphics(() => told++);
+    writeGraphics('light');
+    expect(store.get(SURVIVAL_GRAPHICS_KEY)).toBe('light');
+    expect(readGraphics()).toBe('light');
+    expect(told).toBe(1);
+    stop();
+    writeGraphics('full');
+    expect(told).toBe(1);
+    expect(readGraphics()).toBe('full');
+  });
+
+  it('light draws at one pixel to a pixel, however sharp the screen; full at the screen’s own', () => {
+    expect(pixelRatioFor('light', 2)).toBe(1);
+    expect(pixelRatioFor('light', 3)).toBe(1);
+    expect(pixelRatioFor('full', 2)).toBe(2);
+    expect(pixelRatioFor('full', 1)).toBe(1);
+    // A missing or nonsense ratio is one.
+    expect(pixelRatioFor('full', 0)).toBe(1);
+    expect(pixelRatioFor('full', Number.NaN)).toBe(1);
+  });
+
+  // 25 fps for 3 s of the judging window: 75 frames in 3000 ms.
+  const slow = {
+    graphics: 'full' as const,
+    switchedBefore: false,
+    runMs: 4500,
+    windowMs: 3000,
+    windowFrames: 75,
+    floorFps: 40,
+  };
+
+  it('a run switches itself to light only for a slow machine, early, once', () => {
+    expect(shouldGoLight(slow)).toBe(true);
+    // A machine at or above the floor keeps full graphics (40 fps: 80 frames in 2000 ms).
+    expect(shouldGoLight({ ...slow, windowMs: 2000, windowFrames: 80 })).toBe(false);
+    expect(shouldGoLight({ ...slow, windowMs: 2000, windowFrames: 79 })).toBe(true);
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: 180 })).toBe(false);
+    // Light already, or switched before (the player changed it back): never again.
+    expect(shouldGoLight({ ...slow, graphics: 'light' })).toBe(false);
+    expect(shouldGoLight({ ...slow, switchedBefore: true })).toBe(false);
+    // Not on too short a window, nor too few frames, nor after the first seconds.
+    expect(shouldGoLight({ ...slow, windowMs: AUTO_WINDOW_MS - 1, windowFrames: 40 })).toBe(false);
+    expect(shouldGoLight({ ...slow, windowMs: AUTO_WINDOW_MS, windowFrames: 40 })).toBe(true);
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: AUTO_MIN_FRAMES - 1 })).toBe(
+      false
+    );
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: AUTO_MIN_FRAMES })).toBe(true);
+    expect(shouldGoLight({ ...slow, runMs: AUTO_JUDGE_UNTIL_MS })).toBe(true);
+    expect(shouldGoLight({ ...slow, runMs: AUTO_JUDGE_UNTIL_MS + 1 })).toBe(false);
+    expect(AUTO_JUDGE_FROM_MS).toBeLessThan(AUTO_JUDGE_UNTIL_MS);
+  });
+
+  it('one stalled frame on a good machine does not tip it: the mean decides', () => {
+    // 2 s at 60 fps (120 frames), with one 250 ms stall in it: a mean of 55 fps.
+    const frames = 120;
+    const ms = (frames - 1) * 16 + 250;
+    expect(shouldGoLight({ ...slow, windowMs: ms, windowFrames: frames })).toBe(false);
+    // The same stall on a machine that really is slow still counts with the rest.
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: 60 })).toBe(true);
+  });
+
+  it('the one switch is remembered', () => {
+    const store = stubStorage();
+    expect(readGraphicsAuto()).toBe(false);
+    writeGraphicsAuto();
+    expect(readGraphicsAuto()).toBe(true);
+    expect(store.size).toBe(1);
+  });
+
+  it('with storage blocked the choice and the flag last until the page is left', async () => {
+    // Fresh module state: the fallbacks are module-level.
+    vi.resetModules();
+    stubStorage(true);
+    const fresh = await import('@/app/ui/xenocats/arena-storage');
+    expect(fresh.readGraphics()).toBe('full');
+    expect(fresh.readGraphicsAuto()).toBe(false);
+    fresh.writeGraphics('light');
+    expect(fresh.readGraphics()).toBe('light');
+    expect(() => fresh.writeGraphicsAuto()).not.toThrow();
+    expect(fresh.readGraphicsAuto()).toBe(true);
   });
 });

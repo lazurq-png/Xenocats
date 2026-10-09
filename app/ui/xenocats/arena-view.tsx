@@ -29,10 +29,15 @@ import {
   clockText,
   readAim,
   readBest,
+  readGraphics,
+  readGraphicsAuto,
   readLength,
   subscribeAim,
+  subscribeGraphics,
   subscribeLength,
   writeBest,
+  writeGraphics,
+  writeGraphicsAuto,
   writeLength,
 } from './arena-storage';
 import { catArt } from './cat-art';
@@ -57,6 +62,13 @@ import { createRandom, freshSeed } from './random';
 import { CROWD_ARSENAL, FUSION_START, parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
+import {
+  AUTO_JUDGE_FROM_MS,
+  AUTO_JUDGE_UNTIL_MS,
+  type Graphics,
+  pixelRatioFor,
+  shouldGoLight,
+} from './graphics';
 import { tierStyle } from './item-tier';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
@@ -230,12 +242,21 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   // Aiming with a crosshair: a computer's choice (a touch screen has no pointer).
   const storedAim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
   const aimMode: AimMode = touch ? 'auto' : storedAim;
+  // Full graphics, or light (graphics.ts): drawn by the loop through a ref, so a change
+  // in the pause menu takes hold at once.
+  const graphics = useSyncExternalStore(subscribeGraphics, readGraphics, (): Graphics => 'full');
+  const graphicsRef = useRef<Graphics>(graphics);
   const aimRef = useRef<AimMode>(aimMode);
   // Where the mouse is on the screen, while a run lasts (null until it moves).
   const pointerRef = useRef<Vec | null>(null);
   useEffect(() => {
     aimRef.current = aimMode;
   }, [aimMode]);
+  useEffect(() => {
+    graphicsRef.current = graphics;
+    // The canvas is sized at the pixel ratio the setting gives: size it again.
+    window.dispatchEvent(new Event('resize'));
+  }, [graphics]);
   const arenaRef = useRef<Arena | null>(null);
   const [pausedState, setPausedState] = useState<ReturnType<Arena['state']> | null>(null);
   const screenRef = useRef<Screen>('start');
@@ -516,6 +537,11 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     const met = new Set<number>();
     const sounds: number[] = [];
     let carry = 0;
+    let runMs = 0;
+    let windowMs = 0;
+    let windowFrames = 0;
+    // Whether this run may still switch itself to light: once ever, and not under a hook.
+    let judging = !crowdRef.current && speedRef.current === 1 && !readGraphicsAuto();
     let last = performance.now();
     let lastHud = 0;
     let frameId = 0;
@@ -529,7 +555,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     };
 
     const resize = () => {
-      const ratio = window.devicePixelRatio || 1;
+      const ratio = pixelRatioFor(graphicsRef.current, window.devicePixelRatio);
       canvas.width = Math.round(window.innerWidth * ratio);
       canvas.height = Math.round(window.innerHeight * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -540,6 +566,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
 
     const draw = (time: number) => {
       const state = arena.state();
+      // Light graphics: no glows, no columns of light.
+      const light = graphicsRef.current === 'light';
       // The shared camera: the screen shows the viewport times its zoom (the screen's
       // own zoom alone: 1 on a desktop, more on a phone; more again in co-op).
       const cam = arena.camera();
@@ -693,8 +721,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
 
       // The beams.
       context.strokeStyle = '#c1e838';
-      context.shadowColor = '#c1e838';
-      context.shadowBlur = 12;
+      if (!light) {
+        context.shadowColor = '#c1e838';
+        context.shadowBlur = 12;
+      }
       context.lineWidth = 3;
       for (const beam of arena.beams()) {
         context.beginPath();
@@ -791,6 +821,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           flashes.splice(i, 1);
           continue;
         }
+        if (light) continue;
         context.fillStyle = `rgba(193, 232, 56, ${(left / 300) * 0.55})`;
         context.fillRect(flash.x - camX - 8, flash.y - camY - 60, 16, 70);
       }
@@ -800,8 +831,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       if (matriarch && titan >= 0) {
         const size = CAT_SIZE * 4;
         const bitmap = sprites[titan]();
-        context.shadowColor = '#9d86ff';
-        context.shadowBlur = 30;
+        if (!light) {
+          context.shadowColor = '#9d86ff';
+          context.shadowBlur = 30;
+        }
         if (bitmap) {
           context.drawImage(
             bitmap,
@@ -830,7 +863,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           context.globalAlpha = h.down ? 0.35 : h.effect === 'veil' ? 0.35 : 1;
           context.translate(x, y);
           if (h.down) context.rotate(Math.PI / 2);
-          if (h.effect === 'freeze' && !h.down) {
+          if (h.effect === 'freeze' && !h.down && !light) {
             context.shadowColor = '#7dd3fc';
             context.shadowBlur = 16;
           }
@@ -898,6 +931,30 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         return;
       }
       guard.record(real);
+      runMs += real;
+      // A machine below the floor, on average, in the first seconds gets light graphics,
+      // once. Not under a hook that makes a run unlike a player's (speed, crowd, elite).
+      if (judging && runMs >= AUTO_JUDGE_FROM_MS) {
+        windowMs += real;
+        windowFrames++;
+        if (
+          shouldGoLight({
+            graphics: graphicsRef.current,
+            switchedBefore: false,
+            runMs,
+            windowMs,
+            windowFrames,
+            floorFps: FRAME_GUARD.floorFps,
+          })
+        ) {
+          judging = false;
+          writeGraphicsAuto();
+          writeGraphics('light');
+          important(
+            'This screen is struggling, so Graphics is set to Light. Change it back in the pause menu.'
+          );
+        } else if (runMs > AUTO_JUDGE_UNTIL_MS) judging = false;
+      }
       carry += real * speedRef.current;
       // Alone, WASD and the arrow keys both walk him; in co-op, each player his own.
       const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
@@ -1294,6 +1351,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-hero2-y={hud?.heroes[1]?.y ?? ''}
           data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
           data-aim={aimMode}
+          data-graphics={graphics}
           data-crosshair={hud?.crosshair ?? ''}
           data-zoom={hud?.zoom ?? ''}
           className={`fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none${
