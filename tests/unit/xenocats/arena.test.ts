@@ -6,6 +6,7 @@ import {
   attackShapeOf,
   catsWanted,
   createArena,
+  pickupFor,
   runLengthConfig,
 } from '@/app/ui/xenocats/arena';
 import { createArenaGrid } from '@/app/ui/xenocats/arena-grid';
@@ -1457,5 +1458,165 @@ describe('the bosses attack', () => {
       for (const e of near.drainEvents()) expect(e.kind).not.toBe('boss-summon');
     }
     expect(near.state().outcome).toBe('goal');
+  });
+});
+
+describe('pickups', () => {
+  const quiet = { secretCat: { afterMs: Infinity, stillMs: Infinity } };
+
+  it('a cat sent home leaves one rarely, by a hash of its id: fish, magnet or bell, five, three, two in ten', () => {
+    expect(ARENA_CONFIG.pickups.chance).toBe(0.002);
+    let any = 0;
+    const kinds = { fish: 0, magnet: 0, bell: 0 };
+    for (let id = 1; id <= 200_000; id++) {
+      const kind = pickupFor(id, ARENA_CONFIG.pickups.chance);
+      if (kind) {
+        any++;
+        kinds[kind]++;
+      }
+    }
+    // 400 expected of 200 000; the hash is not random but is even.
+    expect(any).toBeGreaterThan(320);
+    expect(any).toBeLessThan(480);
+    expect(kinds.fish / any).toBeGreaterThan(0.42);
+    expect(kinds.fish / any).toBeLessThan(0.58);
+    expect(kinds.magnet / any).toBeGreaterThan(0.2);
+    expect(kinds.magnet / any).toBeLessThan(0.4);
+    expect(kinds.bell / any).toBeGreaterThan(0.12);
+    expect(kinds.bell / any).toBeLessThan(0.28);
+    // The same id, the same answer; none at chance 0, every one at chance 1.
+    expect(pickupFor(12345, 0.5)).toBe(pickupFor(12345, 0.5));
+    for (let id = 1; id < 200; id++) {
+      expect(pickupFor(id, 0)).toBeNull();
+      expect(pickupFor(id, 1)).not.toBeNull();
+    }
+  });
+
+  it('draws nothing from the random source: with their effects off, the same seeded run with and without the chance', () => {
+    const play = (chance: number) => {
+      const a = arena(
+        {
+          ...unbreakable,
+          stepMs: 50,
+          // Taken, they do nothing here, so only the drawing of random numbers could differ.
+          pickups: { ...ARENA_CONFIG.pickups, chance, fishShare: 0, magnetMs: 0, bellMs: 0 },
+        },
+        5
+      );
+      runTo(a, 60_000);
+      return JSON.stringify([a.cats().map((c) => [c.id, c.x, c.y]), a.state().sentHome]);
+    };
+    expect(play(0)).toBe(play(0.9));
+  });
+
+  it('a cat sent home may leave one where it stood, up to the cap, and it goes after its time', () => {
+    const a = arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 40]],
+      pickups: { ...ARENA_CONFIG.pickups, chance: 1, cap: 3, lifeMs: 4000 },
+    });
+    let left = 0;
+    let most = 0;
+    while (a.state().time < 30_000) {
+      a.step(still);
+      for (const e of a.drainEvents()) if (e.kind === 'pickup-left') left++;
+      most = Math.max(most, a.pickups().length);
+    }
+    expect(left).toBeGreaterThan(0);
+    expect(most).toBeLessThanOrEqual(3);
+    // One laid far from him lies out its time and is gone.
+    const b = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...quiet });
+    b.layPickup('fish', { x: 5000, y: 5000 });
+    runTo(b, ARENA_CONFIG.pickups.lifeMs - 500);
+    expect(b.pickups()).toHaveLength(1);
+    runTo(b, ARENA_CONFIG.pickups.lifeMs + 500);
+    expect(b.pickups()).toHaveLength(0);
+  });
+
+  it('a pickup near him is drawn in and taken: the state says so', () => {
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...quiet });
+    a.layPickup('bell', { x: 80, y: 0 });
+    expect(a.state().pickups).toBe(1);
+    let taken: unknown = null;
+    for (let i = 0; i < 100 && !taken; i++) {
+      a.step(still);
+      taken = a.drainEvents().find((e) => e.kind === 'pickup-taken');
+    }
+    expect(taken).toMatchObject({ kind: 'pickup-taken', pickup: 'bell', player: 0 });
+    expect(a.state()).toMatchObject({ pickups: 0, pickupsTaken: 1, lastPickup: 'bell' });
+  });
+
+  it('a fish restores a quarter of his Resolve, never beyond all of it', () => {
+    // A cat on him wears it down; then a fish.
+    const a = arena({
+      stepMs: 50,
+      escalation: [[0, 6]],
+      startingWeapons: [],
+      ...quiet,
+    });
+    let worn = 100;
+    while (a.state().hero.resolve > 80 && a.state().time < 60_000) {
+      a.step(still);
+      worn = a.state().hero.resolve;
+    }
+    expect(worn).toBeLessThanOrEqual(80);
+    const max = a.state().hero.maxResolve;
+    a.layPickup('fish', { x: a.state().hero.x, y: a.state().hero.y });
+    a.step(still);
+    const after = a.state().hero.resolve;
+    // Up by a quarter of the most (25), less at most what one more touch took in that step
+    // (a plain cat drains 11 at the most).
+    expect(after).toBeGreaterThanOrEqual(worn + max * ARENA_CONFIG.pickups.fishShare - 11);
+    expect(after).toBeLessThanOrEqual(max);
+
+    const full = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...quiet });
+    full.layPickup('fish', { x: 0, y: 0 });
+    full.step(still);
+    expect(full.state().hero.resolve).toBeLessThanOrEqual(full.state().hero.maxResolve);
+    expect(full.state().pickupsTaken).toBe(1);
+  });
+
+  it('a magnet draws every gem on the arena to him', () => {
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 60]] });
+    const far = () =>
+      a.gems().filter((g) => Math.hypot(g.x - a.state().hero.x, g.y - a.state().hero.y) > 160)
+        .length;
+    // Gems lie where the laser sent cats home, beyond the pull of his pickup reach.
+    while (far() < 3 && a.state().time < 120_000) {
+      if (a.choices()) a.choose(0);
+      else a.step(still);
+    }
+    expect(far()).toBeGreaterThanOrEqual(3);
+    a.layPickup('magnet', { x: a.state().hero.x, y: a.state().hero.y });
+    for (let i = 0; i < 24; i++) {
+      if (a.choices()) a.choose(0);
+      else a.step(still);
+    }
+    expect(far()).toBe(0);
+  });
+
+  it('a bell stops the cats on the screen for a moment, and they go on after', () => {
+    const a = arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 30]],
+      startingWeapons: [],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
+      ...quiet,
+    });
+    runTo(a, 20_000, still, true);
+    expect(a.cats().length).toBeGreaterThan(5);
+    a.layPickup('bell', { x: 0, y: 0 });
+    a.step(still);
+    const stopped = a.cats().filter((c) => c.stunUntil > a.state().time);
+    expect(stopped.length).toBeGreaterThan(5);
+    const place = new Map(stopped.map((c) => [c.id, [c.x, c.y]]));
+    for (let i = 0; i < 10; i++) a.step(still);
+    for (const c of stopped) {
+      if (c.stunUntil > a.state().time) expect([c.x, c.y]).toEqual(place.get(c.id));
+    }
+    runTo(a, a.state().time + ARENA_CONFIG.pickups.bellMs + 500);
+    expect(a.cats().some((c) => c.stunUntil > a.state().time)).toBe(false);
   });
 });

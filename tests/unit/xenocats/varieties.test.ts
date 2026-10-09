@@ -5,7 +5,12 @@ import {
   type ArenaConfig,
   createArena,
 } from '@/app/ui/xenocats/arena';
-import { HERO_BODY_SVGS, HERO_TOOL_SVGS, VARIETY_SVG } from '@/app/ui/xenocats/arena-art';
+import {
+  HERO_BODY_SVGS,
+  HERO_TOOL_SVGS,
+  PICKUP_SVG,
+  VARIETY_SVG,
+} from '@/app/ui/xenocats/arena-art';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import {
@@ -401,8 +406,9 @@ describe('the drawings', () => {
         Object.entries(bodies).map(([d, svg]) => [`${hero} ${d}`, svg] as const)
       ),
       ...Object.entries(HERO_TOOL_SVGS).map(([hero, svg]) => [`${hero} tool`, svg] as const),
+      ...Object.entries(PICKUP_SVG).map(([kind, svg]) => [`${kind} pickup`, svg] as const),
     ];
-    expect(drawings.length).toBe(Object.keys(VARIETIES).length + 20 + 4);
+    expect(drawings.length).toBe(Object.keys(VARIETIES).length + 20 + 4 + 3);
     for (const [id, svg] of drawings) {
       expect(svg, id).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"[^>]*>/);
       expect(svg.trimEnd(), id).toMatch(/<\/svg>$/);

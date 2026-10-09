@@ -20,6 +20,8 @@ export type TestHooks = {
   elite: boolean;
   /** He starts with the two weapons of the first fusion, and a chest at his feet. */
   fusion: boolean;
+  /** Cats leave pickups far more often, to see them (`?pickups=1`). */
+  pickups: boolean;
 };
 
 /** What `?crowd=` arms the Keeper with, each at the highest level: the evolved weapons. */
@@ -33,6 +35,9 @@ export const CROWD_ARSENAL: readonly WeaponId[] = [
 ];
 
 export const MAX_CROWD = 6000;
+
+/** The share of cats that leave a pickup under `?pickups=1`. */
+export const PICKUPS_HOOK_CHANCE = 0.3;
 
 /** What `?fusion=1` arms him with: the two weapons of the first fusion. */
 export const FUSION_START: readonly WeaponId[] = ['infinite-laser', 'monsoon'];
@@ -51,6 +56,7 @@ export function parseTestHooks(search: string, freshSeed: () => number): TestHoo
     fps: params.get('fps') === '1',
     elite: params.get('elite') === '1',
     fusion: params.get('fusion') === '1',
+    pickups: params.get('pickups') === '1',
     crowd: Number.isInteger(crowd) && crowd >= 1 ? Math.min(crowd, MAX_CROWD) : null,
   };
 }

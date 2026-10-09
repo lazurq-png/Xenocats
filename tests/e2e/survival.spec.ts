@@ -426,6 +426,25 @@ test.describe('on a computer', () => {
     );
   });
 
+  test('a cat sent home leaves a pickup the Keeper takes, and the HUD data shows it', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=3&pickups=1');
+    await startRun(page);
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[data-testid="survival-area"]')
+            ?.getAttribute('data-pickups-taken')
+        ) > 0,
+      undefined,
+      { timeout: 60_000 }
+    );
+    await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);

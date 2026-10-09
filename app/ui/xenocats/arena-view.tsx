@@ -10,7 +10,7 @@ import {
   createArena,
   runLengthConfig,
 } from './arena';
-import { HERO_BODY_SVGS, HERO_TOOL_SVGS, VARIETY_SVG, PATCH_SVG } from './arena-art';
+import { HERO_BODY_SVGS, HERO_TOOL_SVGS, PATCH_SVG, PICKUP_SVG, VARIETY_SVG } from './arena-art';
 import { DRAWN_DIRECTIONS, directionOfAngle, facesAway, spriteOf } from './hero-direction';
 import {
   type Choice,
@@ -59,7 +59,7 @@ import {
 } from './progression';
 import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
-import { CROWD_ARSENAL, FUSION_START, parseTestHooks } from './test-hooks';
+import { CROWD_ARSENAL, FUSION_START, PICKUPS_HOOK_CHANCE, parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
 import {
@@ -146,6 +146,9 @@ type Hud = {
   windUpsBegun: number;
   bossWindUp: string;
   bossWindUpsBegun: number;
+  pickups: number;
+  pickupsTaken: number;
+  lastPickup: string;
   /** Where the crosshair is on the screen ("x,y"), or "" without one. */
   crosshair: string;
   /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
@@ -320,7 +323,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   );
 
   const start = () => {
-    const { seed, speed, boss, fps, crowd, elite, fusion } = parseTestHooks(
+    const { seed, speed, boss, fps, crowd, elite, fusion, pickups } = parseTestHooks(
       window.location.search,
       freshSeed
     );
@@ -353,6 +356,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         ...runConfig(stored, ARENA_CONFIG, secondRef.current),
         ...lengthed,
         ...(elite ? { cats: { ...ARENA_CONFIG.cats, eliteShare: 1 } } : {}),
+        ...(pickups ? { pickups: { ...ARENA_CONFIG.pickups, chance: PICKUPS_HOOK_CHANCE } } : {}),
         ...(fusion
           ? {
               startingWeapons: FUSION_START,
@@ -521,6 +525,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       ])
     ) as Record<VarietyId, () => HTMLCanvasElement | null>;
 
+    const pickupSprites = Object.fromEntries(
+      (['fish', 'magnet', 'bell'] as const).map((kind) => [
+        kind,
+        bitmapOf(
+          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PICKUP_SVG[kind])}`,
+          64,
+          redraw
+        ),
+      ])
+    ) as Record<'fish' | 'magnet' | 'bell', () => HTMLCanvasElement | null>;
     const patchSprites = {
       toy: bitmapOf(
         `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PATCH_SVG.toy)}`,
@@ -616,6 +630,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         context.beginPath();
         context.arc(zone.x - camX, zone.y - camY, zone.radius, 0, 2 * Math.PI);
         context.fill();
+      }
+      for (const pickup of arena.pickups()) {
+        const x = pickup.x - camX;
+        const y = pickup.y - camY;
+        if (x < -24 || y < -24 || x > width + 24 || y > height + 24) continue;
+        const bitmap = pickupSprites[pickup.kind]();
+        // Blinks in its last seconds, so it is seen going.
+        if (pickup.until - state.time < 3000 && Math.floor(time / 150) % 2 === 0) continue;
+        if (bitmap) context.drawImage(bitmap, x - 16, y - 16 + Math.sin(time / 200) * 2, 32, 32);
       }
       for (const gem of arena.gems()) {
         const x = gem.x - camX;
@@ -1072,6 +1095,9 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           windUpsBegun: state.windUpsBegun,
           bossWindUp: state.bossWindUp ?? '',
           bossWindUpsBegun: state.bossWindUpsBegun,
+          pickups: state.pickups,
+          pickupsTaken: state.pickupsTaken,
+          lastPickup: state.lastPickup ?? '',
           crosshair:
             aimRef.current === 'crosshair' && pointerRef.current
               ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
@@ -1342,6 +1368,9 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-windups-begun={hud?.windUpsBegun ?? 0}
           data-boss-windup={hud?.bossWindUp ?? ''}
           data-boss-windups-begun={hud?.bossWindUpsBegun ?? 0}
+          data-pickups={hud?.pickups ?? 0}
+          data-pickups-taken={hud?.pickupsTaken ?? 0}
+          data-last-pickup={hud?.lastPickup ?? ''}
           data-sent-home={hud?.sentHome ?? 0}
           data-hero-facing={hud?.heroes[0]?.facing ?? ''}
           data-hero2-facing={hud?.heroes[1]?.facing ?? ''}

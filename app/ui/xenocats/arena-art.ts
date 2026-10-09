@@ -216,3 +216,30 @@ export const PATCH_SVG = {
   <rect x="26" y="40" width="12" height="6" fill="${CREAM}" opacity="0.8"/>
 </svg>`,
 } as const;
+
+/**
+ * What a cat sent home may leave: a fish (Resolve), a magnet (every gem comes) and a
+ * bell (the cats on screen stop). Placeholders, as the rest of this file.
+ */
+export const PICKUP_SVG = {
+  fish: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="30" cy="54" rx="18" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M10 32 Q28 14 46 32 Q28 50 10 32 Z" fill="#7dd3fc" stroke="${LINE}" stroke-width="2"/>
+  <path d="M46 32 L58 22 L58 42 Z" fill="#38bdf8" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="20" cy="29" r="2.5" fill="${VOID}"/>
+  <path d="M28 24 Q32 32 28 40" stroke="${LINE}" stroke-width="1.5" fill="none"/>
+</svg>`,
+  magnet: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="56" rx="18" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M14 14 V36 Q14 52 32 52 Q50 52 50 36 V14" stroke="#ef4444" stroke-width="12" fill="none"/>
+  <rect x="8" y="10" width="12" height="9" fill="${CREAM}"/>
+  <rect x="44" y="10" width="12" height="9" fill="${CREAM}"/>
+</svg>`,
+  bell: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="58" rx="16" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M16 46 Q16 18 32 14 Q48 18 48 46 Z" fill="#fbbf24" stroke="${LINE}" stroke-width="2"/>
+  <rect x="12" y="44" width="40" height="6" rx="3" fill="#f59e0b" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="32" cy="12" r="4" fill="#fbbf24" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="32" cy="55" r="4" fill="${LINE}"/>
+</svg>`,
+} as const;

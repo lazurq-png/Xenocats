@@ -171,6 +171,20 @@ export type ArenaConfig = {
       minDistance: number;
     };
   };
+  /**
+   * Pickups a cat sent home may leave (arena.ts, pickupFor): the share of cats that do;
+   * how long one lies, ms; at most so many lie; a fish restores this share of his
+   * Resolve; a magnet draws every gem in for `magnetMs`; a bell stops the cats on
+   * screen for `bellMs`.
+   */
+  pickups: {
+    chance: number;
+    lifeMs: number;
+    cap: number;
+    fishShare: number;
+    magnetMs: number;
+    bellMs: number;
+  };
   /** Chests lying on the Keepers' start (a test's way to reach a chest at once). */
   startingChests: number;
   /** Which cats come when (varieties.ts). */
@@ -282,6 +296,14 @@ export const ARENA_CONFIG: ArenaConfig = {
       kittens: 10,
       minDistance: 260,
     },
+  },
+  pickups: {
+    chance: 0.002,
+    lifeMs: 15_000,
+    cap: 24,
+    fishShare: 0.25,
+    magnetMs: 2000,
+    bellMs: 2000,
   },
   startingChests: 0,
   schedule: SCHEDULE,
@@ -518,6 +540,21 @@ export const GULP_BURST_RADIUS = 170;
 
 export type Gem = { x: number; y: number; value: number };
 
+/** What a cat sent home may leave besides its gem. */
+export type PickupKind = 'fish' | 'magnet' | 'bell';
+export type Pickup = { x: number; y: number; kind: PickupKind; until: number };
+
+/**
+ * Whether the cat with this id leaves a pickup when it is sent home, and which: by a hash
+ * of its id, so it draws nothing from the run's random source (the seeded runs are the
+ * same as before). Of the ones left, half are fish, three in ten magnets, a fifth bells.
+ */
+export function pickupFor(id: number, chance: number): PickupKind | null {
+  if ((Math.imul(id, 2654435761) >>> 0) / 4294967296 >= chance) return null;
+  const roll = (Math.imul(id + 7, 40503) >>> 0) % 10;
+  return roll < 5 ? 'fish' : roll < 8 ? 'magnet' : 'bell';
+}
+
 /**
  * A weapon held: its level and when it next fires. A fused weapon also keeps its
  * parents', which go on firing as they did (each its own clock), with its own
@@ -592,6 +629,9 @@ export type ArenaEvent =
   | { kind: 'elite-attack'; x: number; y: number; type: number; hits: number }
   /** The Mega Cat pounced, or the Matriarch's kittens came. */
   | { kind: 'boss-pounce'; x: number; y: number; hits: number }
+  /** A pickup was left, or taken. */
+  | { kind: 'pickup-left'; pickup: PickupKind; x: number; y: number }
+  | { kind: 'pickup-taken'; pickup: PickupKind; player: number }
   | { kind: 'boss-summon'; x: number; y: number; kittens: number }
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
@@ -708,6 +748,11 @@ export function createArena(options: {
   let megaWinding = 0;
   /** How many boss wind-ups have begun in the run (the HUD data and the tests read it). */
   let bossWindUpsBegun = 0;
+  const pickups: Pickup[] = [];
+  let pickupsTaken = 0;
+  let lastPickup: PickupKind | null = null;
+  /** Until this time every gem is drawn in (a magnet). */
+  let magnetUntil = 0;
   let matriarchWind = 0;
   let matriarchAim: Vec = { x: 0, y: 0 };
   let matriarchNextAt = Infinity;
@@ -1011,6 +1056,11 @@ export function createArena(options: {
       sentHome++;
       if (cat.windUntil > 0) stopWinding(cat);
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
+      const left = pickupFor(cat.id, config.pickups.chance);
+      if (left && pickups.length < config.pickups.cap) {
+        pickups.push({ x: cat.x, y: cat.y, kind: left, until: time + config.pickups.lifeMs });
+        events.push({ kind: 'pickup-left', pickup: left, x: cat.x, y: cat.y });
+      }
       // A boss, an elite, a visiting xenocat, or the last kitten of a swarm
       // leaves a chest.
       let chest = cat.variety === 'mega' || cat.visitor || (cat.elite && cat.swarm === 0);
@@ -2167,11 +2217,56 @@ export function createArena(options: {
 
   // --------------------------------------------------------------- experience
 
+  /** Pickups lying about are drawn in like gems; taken, they work. */
+  function gatherPickups(dt: number) {
+    for (let i = pickups.length - 1; i >= 0; i--) {
+      const p = pickups[i];
+      if (time >= p.until) {
+        pickups.splice(i, 1);
+        continue;
+      }
+      const k = nearestKeeper(p.x, p.y);
+      const dx = k.x - p.x;
+      const dy = k.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 14) {
+        if (d <= config.gems.pickup * k.mods.pickup) {
+          // Slower than a gem, so there is time to see it.
+          const move = Math.min(config.gems.speed * 0.6 * dt, d);
+          p.x += (dx / d) * move;
+          p.y += (dy / d) * move;
+        }
+        continue;
+      }
+      pickups.splice(i, 1);
+      pickupsTaken++;
+      lastPickup = p.kind;
+      events.push({ kind: 'pickup-taken', pickup: p.kind, player: k.index });
+      if (p.kind === 'fish') {
+        k.resolve = Math.min(
+          k.resolve + config.pickups.fishShare * maxResolveOf(k),
+          maxResolveOf(k)
+        );
+      } else if (p.kind === 'magnet') {
+        magnetUntil = time + config.pickups.magnetMs;
+      } else {
+        // The cats on the screen stop (the big ones, a Mega Cat, are not stopped by a bell).
+        const cam = camera();
+        const reach = (Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom;
+        for (const cat of cats) {
+          if (cat.radius > config.cats.radius * 1.5) continue;
+          if (Math.hypot(cat.x - cam.x, cat.y - cam.y) > reach) continue;
+          cat.stunUntil = Math.max(cat.stunUntil, time + config.pickups.bellMs);
+        }
+      }
+    }
+  }
+
   function gatherGems(dt: number) {
     for (let i = gems.length - 1; i >= 0; i--) {
       const gem = gems[i];
       const k = nearestKeeper(gem.x, gem.y);
-      const reach = config.gems.pickup * k.mods.pickup;
+      const reach = time < magnetUntil ? Infinity : config.gems.pickup * k.mods.pickup;
       const dx = k.x - gem.x;
       const dy = k.y - gem.y;
       const d = Math.hypot(dx, dy);
@@ -2382,6 +2477,7 @@ export function createArena(options: {
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
       gatherGems(dt);
+      gatherPickups(dt);
 
       // The time goal: the Matriarch comes, and ends the run when she reaches one.
       if (time >= config.timeGoalMs) {
@@ -2503,6 +2599,12 @@ export function createArena(options: {
     cats: (): readonly ArenaCat[] => cats,
     projectiles: (): readonly Projectile[] => projectiles,
     gems: (): readonly Gem[] => gems,
+    /** The pickups lying about. */
+    pickups: (): readonly Pickup[] => pickups,
+    /** Lays a pickup (a test's way to have one where it wants). */
+    layPickup(kind: PickupKind, at: Vec) {
+      pickups.push({ x: at.x, y: at.y, kind, until: time + config.pickups.lifeMs });
+    },
     beams: (): readonly { from: Vec; to: Vec }[] => beams,
     /** Where the Can Opener's blades are, and the Thunderous Vacuum's reach (or null). */
     blades: (): Vec[] => {
@@ -2635,6 +2737,10 @@ export function createArena(options: {
         cats: cats.length,
         /** How many elites are winding up an attack now. */
         windUps: windingUp,
+        /** Pickups lying about, taken so far, and the last one taken. */
+        pickups: pickups.length,
+        pickupsTaken,
+        lastPickup,
         bossWindUpsBegun,
         /** The boss that is winding up an attack: the Mega Cat's pounce, or the Matriarch's call. */
         bossWindUp:

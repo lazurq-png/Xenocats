@@ -4,6 +4,7 @@ import {
   CROWD_ARSENAL,
   FUSION_START,
   MAX_CROWD,
+  PICKUPS_HOOK_CHANCE,
   parseTestHooks,
 } from '@/app/ui/xenocats/test-hooks';
 
@@ -20,6 +21,7 @@ describe('the URL test hooks', () => {
       crowd: null,
       elite: false,
       fusion: false,
+      pickups: false,
     });
   });
 
@@ -32,6 +34,7 @@ describe('the URL test hooks', () => {
       crowd: null,
       elite: false,
       fusion: false,
+      pickups: false,
     });
     expect(hooks('?boss=0')).toEqual({
       seed: 777,
@@ -41,6 +44,7 @@ describe('the URL test hooks', () => {
       crowd: null,
       elite: false,
       fusion: false,
+      pickups: false,
     });
   });
 
@@ -77,6 +81,15 @@ describe('the URL test hooks', () => {
     for (const value of ['0', '', 'true', '2'])
       expect(hooks(`?fusion=${value}`).fusion, value).toBe(false);
     expect(FUSION_START).toHaveLength(2);
+  });
+
+  it('the pickups hook is on only for pickups=1', () => {
+    expect(hooks('?pickups=1').pickups).toBe(true);
+    for (const value of ['0', '', 'true', '2']) {
+      expect(hooks(`?pickups=${value}`).pickups, value).toBe(false);
+    }
+    expect(PICKUPS_HOOK_CHANCE).toBeGreaterThan(0);
+    expect(PICKUPS_HOOK_CHANCE).toBeLessThan(1);
   });
 
   it('a crowd is a whole number of cats from 1, at most 6000', () => {
