@@ -260,6 +260,47 @@ test.describe('on a computer', () => {
     await expect(paused.getByTestId('survival-pause-weapon-slots')).toHaveText('Weapons 1 of 6');
   });
 
+  test('the pause menu marks a fused weapon and a new one with different tiers', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=4&fusion=1');
+    await startRun(page);
+    // Take a weapon at the first level-up that offers one (a new weapon is tier 1).
+    let taken = '';
+    const walk = ['d', 's', 'a', 'w'];
+    for (let turn = 0; turn < 400 && !taken; turn++) {
+      if ((await area(page).count()) === 0) break;
+      const dialog = levelUp(page);
+      if ((await dialog.count()) > 0) {
+        const kinds = await dialog
+          .getByRole('button')
+          .evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
+        const at = kinds.indexOf('weapon');
+        if (at >= 0) {
+          // Its card carries the tier too: a level-1 weapon is tier 1, and its name is written.
+          const card = dialog.getByRole('button').nth(at);
+          await expect(card).toHaveAttribute('data-tier', '1');
+          await expect(card.getByTestId('choice-tier')).toHaveText('Basic');
+          taken = (await card.getAttribute('data-choice')) ?? '';
+          await page.keyboard.press(String(at + 1));
+        } else await page.keyboard.press('1');
+      }
+      const key = walk[turn % 4];
+      await page.keyboard.down(key);
+      await page.waitForTimeout(350);
+      await page.keyboard.up(key);
+    }
+    expect(taken).not.toBe('');
+    const paused = await pauseRun(page);
+    const fused = paused.locator('li[data-weapon="thunderstorm"]');
+    const fresh = paused.locator(`li[data-weapon="${taken}"]`);
+    await expect(fused).toHaveAttribute('data-tier', '7');
+    await expect(fresh).toHaveAttribute('data-tier', '1');
+    await expect(fused.getByTestId('survival-pause-tier')).toHaveText('(Fused)');
+    await expect(fresh.getByTestId('survival-pause-tier')).toHaveText('(Basic)');
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);

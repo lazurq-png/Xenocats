@@ -56,6 +56,7 @@ import { createRandom, freshSeed } from './random';
 import { CROWD_ARSENAL, FUSION_START, parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
+import { tierStyle } from './item-tier';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
@@ -189,7 +190,11 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     earned: number;
     reached: MilestoneId[];
     /** In co-op: each Keeper, who he went out as, what he carried, how he ended. */
-    keepers: { name: string; weapons: string; down: boolean }[];
+    keepers: {
+      name: string;
+      weapons: { id: WeaponId; name: string; level: number }[];
+      down: boolean;
+    }[];
   } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
@@ -274,7 +279,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         reached: after.reached,
         keepers: arena.state().heroes.map((h, i) => ({
           name: CHARACTERS[characters[i]].name,
-          weapons: h.weapons.map((w) => `${WEAPONS[w.id].name} ${w.level}`).join(', '),
+          weapons: h.weapons.map((w) => ({ id: w.id, name: WEAPONS[w.id].name, level: w.level })),
           down: h.down,
         })),
       });
@@ -1194,7 +1199,22 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                   <span className="font-semibold text-cream">
                     Player {i + 1}, {k.name}
                   </span>
-                  {k.down ? ' (down at the end)' : ''}: {k.weapons || 'nothing'}.
+                  {k.down ? ' (down at the end)' : ''}:{' '}
+                  {k.weapons.length === 0
+                    ? 'nothing'
+                    : k.weapons.map((w, n) => {
+                        const tier = tierStyle({ kind: 'weapon', id: w.id, level: w.level });
+                        return (
+                          <span key={w.id} data-weapon={w.id} data-tier={tier.tier}>
+                            {n > 0 ? ', ' : ''}
+                            <span className={tier.className}>
+                              {w.name} {w.level}
+                            </span>{' '}
+                            ({tier.name})
+                          </span>
+                        );
+                      })}
+                  .
                 </li>
               ))}
             </ul>
@@ -1389,6 +1409,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                         : choice.kind === 'passive'
                           ? 'Passive'
                           : 'Rest';
+                    const tier = choice.kind === 'restore' ? null : tierStyle(choice);
                     return (
                       <li key={i}>
                         <button
@@ -1396,12 +1417,24 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                           data-choice={choice.kind === 'restore' ? 'restore' : choice.id}
                           data-kind={choice.kind}
                           data-level={choice.kind === 'restore' ? '' : choice.level}
+                          data-tier={tier?.tier ?? ''}
                           onClick={() => choose(i)}
                           className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma"
                         >
                           <span className="font-semibold text-plasma">{i + 1}.</span>{' '}
-                          <span className="font-semibold">{name}</span>{' '}
+                          <span className={`font-semibold ${tier?.className ?? ''}`}>{name}</span>{' '}
                           <span className="text-aura">({kind})</span>
+                          {tier && (
+                            <>
+                              {' '}
+                              <span
+                                data-testid="choice-tier"
+                                className={`text-xs font-semibold ${tier.className}`}
+                              >
+                                {tier.name}
+                              </span>
+                            </>
+                          )}
                           <span className="mt-1 block text-aura">{description}</span>
                           {change && (
                             <span

@@ -34,6 +34,8 @@ import {
 } from '@/app/ui/xenocats/arsenal';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
+import { TIER_CLASS, TIER_NAMES, type Tier, tierOf, tierStyle } from '@/app/ui/xenocats/item-tier';
+import tailwind from '@/tailwind.config';
 
 const config = (a: { config: ArenaConfig }) => a.config;
 const stats8 = (id: WeaponId) => weaponStats(id, MAX_WEAPON_LEVEL, modifiers(new Map()));
@@ -1867,5 +1869,64 @@ describe('fusion: two evolved weapons made one at a chest', () => {
     expect(done.fusions).toEqual([]);
     expect(done.weapons[0]).toMatchObject({ name: 'Thunderstorm', evolved: true });
     expect(fusionText(['infinite-laser', 'monsoon'], 'thunderstorm')).toContain('Thunderstorm');
+  });
+});
+
+describe('the colour of how far an item has come', () => {
+  const tiers: Tier[] = [1, 2, 3, 4, 5, 6, 7];
+
+  it('a weapon climbs with its level: 1–2, 3–4, 5–6, 7, 8; evolved and fused have colours of their own', () => {
+    const byLevel = [1, 2, 3, 4, 5, 6, 7, 8].map((level) =>
+      tierOf({ kind: 'weapon', id: 'laser-pointer', level })
+    );
+    expect(byLevel).toEqual([1, 1, 2, 2, 3, 3, 4, 5]);
+    for (const { to } of EVOLUTIONS)
+      expect(tierOf({ kind: 'weapon', id: to, level: 8 }), to).toBe(6);
+    for (const { to } of FUSIONS) expect(tierOf({ kind: 'weapon', id: to, level: 8 }), to).toBe(7);
+    // Whatever level an evolved weapon is held at, it stays beyond the highest level's.
+    expect(tierOf({ kind: 'weapon', id: 'infinite-laser', level: 1 })).toBe(6);
+  });
+
+  it('a passive climbs a tier a level, 1 to 5, the same scale', () => {
+    for (const id of ['rubber-chicken', 'egg-timer', 'tin-foil'] as const) {
+      expect([1, 2, 3, 4, 5].map((level) => tierOf({ kind: 'passive', id, level }))).toEqual([
+        1, 2, 3, 4, 5,
+      ]);
+    }
+    expect(tierOf({ kind: 'passive', id: 'lucky-bell', level: 1 })).toBe(1);
+  });
+
+  it('every tier has its own name and its own colour class, and they are the theme’s tokens', () => {
+    expect(new Set(tiers.map((t) => TIER_NAMES[t])).size).toBe(7);
+    expect(new Set(tiers.map((t) => TIER_CLASS[t])).size).toBe(7);
+    const colours = (tailwind.theme?.extend?.colors as Record<string, Record<string, string>>).tier;
+    for (const t of tiers) expect(TIER_CLASS[t]).toBe(`text-tier-${t}`);
+    expect(Object.keys(colours).map(Number).sort()).toEqual(tiers);
+    expect(new Set(Object.values(colours)).size).toBe(7);
+    expect(tierStyle({ kind: 'weapon', id: 'cat-treats', level: 8 })).toEqual({
+      tier: 5,
+      name: TIER_NAMES[5],
+      className: 'text-tier-5',
+    });
+  });
+
+  it('each colour keeps WCAG AA contrast (4.5 : 1) against the panels it is drawn on', () => {
+    const colors = tailwind.theme?.extend?.colors as Record<string, Record<string, string>>;
+    const luminance = (hex: string) => {
+      const [r, g, b] = [1, 3, 5]
+        .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const backgrounds = [colors.void.DEFAULT, colors.panel.DEFAULT, colors.panel.raised];
+    for (const t of tiers) {
+      for (const bg of backgrounds) {
+        expect(ratio(colors.tier[t], bg), `tier ${t} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
   });
 });

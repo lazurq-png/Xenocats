@@ -1,6 +1,7 @@
 import type { Arena } from './arena';
 import { clockText } from './arena-storage';
 import { WEAPONS, loadout } from './arsenal';
+import { tierStyle } from './item-tier';
 
 type ArenaState = ReturnType<Arena['state']>;
 type Hero = ArenaState['heroes'][number];
@@ -67,13 +68,19 @@ function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; titl
         Weapons {view.weapons.length} of {view.weapons.length + view.freeWeaponSlots}
       </h4>
       <ul className="mt-1 grid gap-1">
-        {view.weapons.map((w) => (
-          <li key={w.id} data-weapon={w.id} data-level={w.level}>
-            <span className="font-semibold text-white">{w.name}</span>{' '}
-            {w.evolved ? '(evolved)' : `${w.level} / ${w.maxLevel}`}
-            {w.next && <span className="block text-xs">Next level: {w.next}</span>}
-          </li>
-        ))}
+        {view.weapons.map((w) => {
+          const tier = tierStyle({ kind: 'weapon', id: w.id, level: w.level });
+          return (
+            <li key={w.id} data-weapon={w.id} data-level={w.level} data-tier={tier.tier}>
+              <span className={`font-semibold ${tier.className}`}>{w.name}</span>{' '}
+              {w.evolved ? '' : `${w.level} / ${w.maxLevel} `}
+              <span data-testid="survival-pause-tier" className={tier.className}>
+                ({tier.name})
+              </span>
+              {w.next && <span className="block text-xs">Next level: {w.next}</span>}
+            </li>
+          );
+        })}
       </ul>
       <h4 className="mt-3 font-semibold text-cream" data-testid="survival-pause-passive-slots">
         Passives {view.passives.length} of {view.passives.length + view.freePassiveSlots}
@@ -82,12 +89,19 @@ function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; titl
         <p className="mt-1 text-xs">None yet.</p>
       ) : (
         <ul className="mt-1 grid gap-1">
-          {view.passives.map((p) => (
-            <li key={p.id} data-passive={p.id} data-level={p.level}>
-              <span className="font-semibold text-white">{p.name}</span> {p.level} / {p.maxLevel}:{' '}
-              {p.gives}
-            </li>
-          ))}
+          {view.passives.map((p) => {
+            const tier = tierStyle({ kind: 'passive', id: p.id, level: p.level });
+            return (
+              <li key={p.id} data-passive={p.id} data-level={p.level} data-tier={tier.tier}>
+                <span className={`font-semibold ${tier.className}`}>{p.name}</span> {p.level} /{' '}
+                {p.maxLevel}{' '}
+                <span data-testid="survival-pause-tier" className={tier.className}>
+                  ({tier.name})
+                </span>
+                : {p.gives}
+              </li>
+            );
+          })}
         </ul>
       )}
       {view.fusions.length > 0 && (
@@ -96,7 +110,12 @@ function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; titl
           <ul className="mt-1 grid gap-1">
             {view.fusions.map((f) => (
               <li key={f.to} data-fusion={f.to} data-ready={f.ready}>
-                <span className="font-semibold text-white">{WEAPONS[f.to].name}</span>:{' '}
+                <span
+                  className={`font-semibold ${tierStyle({ kind: 'weapon', id: f.to, level: 8 }).className}`}
+                >
+                  {WEAPONS[f.to].name}
+                </span>
+                :{' '}
                 {f.ready
                   ? 'ready. The next chest he opens fuses them, and frees a slot.'
                   : `needs ${f.missing.join(' and ')}, then a chest he opens.`}
@@ -111,7 +130,12 @@ function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; titl
           <ul className="mt-1 grid gap-1">
             {view.evolutions.map((e) => (
               <li key={e.to} data-evolution={e.to} data-ready={e.ready}>
-                <span className="font-semibold text-white">{WEAPONS[e.to].name}</span>:{' '}
+                <span
+                  className={`font-semibold ${tierStyle({ kind: 'weapon', id: e.to, level: 8 }).className}`}
+                >
+                  {WEAPONS[e.to].name}
+                </span>
+                :{' '}
                 {e.ready
                   ? 'ready. The next chest he opens evolves it.'
                   : e.after
