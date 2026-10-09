@@ -21,20 +21,34 @@ export type RunResult = {
 
 // ------------------------------------------------------------------ the tufts
 
-/** Tufts a run gathers: one for every 5 s survived, one for every 20 cats sent home. */
+/** A run's first five minutes earn a tuft every 5 s; each second after them earns twice as much. */
+export const TUFT_FULL_RATE_MS = 300_000;
+
+/**
+ * Tufts a run gathers: one for every 5 s survived up to 5:00 and one for every 2.5 s after
+ * (a longer run is worth more than its length), and one for every 20 cats sent home.
+ * A five-minute run earns what it always did.
+ */
 export function tuftsFor(run: Pick<RunResult, 'timeMs' | 'sentHome'>): number {
-  return Math.floor(Math.max(run.timeMs, 0) / 5000) + Math.floor(Math.max(run.sentHome, 0) / 20);
+  const time = Math.max(run.timeMs, 0);
+  const early = Math.floor(Math.min(time, TUFT_FULL_RATE_MS) / 5000);
+  const long = Math.floor(Math.max(time - TUFT_FULL_RATE_MS, 0) / 2500);
+  return early + long + Math.floor(Math.max(run.sentHome, 0) / 20);
 }
 
 // ----------------------------------------------------------------- milestones
 
-export type MilestoneId = 'survive-2' | 'survive-3' | 'send-1000' | 'level-20';
+export type MilestoneId =
+  'survive-2' | 'survive-3' | 'survive-10' | 'survive-15' | 'send-1000' | 'level-20';
 
 export const MILESTONES: Readonly<
   Record<MilestoneId, { text: string; reached: (run: RunResult) => boolean }>
 > = {
   'survive-2': { text: 'Survive 2:00', reached: (run) => run.timeMs >= 120_000 },
   'survive-3': { text: 'Survive 3:00', reached: (run) => run.timeMs >= 180_000 },
+  // Only a run of that length (or longer) can reach these: a run's time stops at its goal.
+  'survive-10': { text: 'Survive 10:00', reached: (run) => run.timeMs >= 600_000 },
+  'survive-15': { text: 'Survive 15:00', reached: (run) => run.timeMs >= 900_000 },
   'send-1000': { text: 'Send 1000 cats home in one run', reached: (run) => run.sentHome >= 1000 },
   'level-20': { text: 'Reach level 20', reached: (run) => run.level >= 20 },
 };
@@ -44,6 +58,8 @@ export const WEAPON_UNLOCKS: Readonly<Partial<Record<WeaponId, MilestoneId>>> = 
   'thunderous-vacuum': 'survive-3',
   'laser-pointer-deluxe': 'send-1000',
   hairball: 'level-20',
+  'hair-dryer': 'survive-10',
+  'cardboard-box': 'survive-15',
 };
 
 /** What a milestone unlocks, in a sentence (or nothing). */

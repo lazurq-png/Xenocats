@@ -132,3 +132,13 @@ All green, nothing red: lint exit 0 (0 warnings, saved in `lint-baseline.txt`); 
 - **Quality and security.** Reviewer over `f77d42e..HEAD` with the security rules: Approve, no finding above Low (D55).
 - **Speed.** D53: simulation unchanged; render −7% to −8% against the code of two tasks ago measured alongside (under the 10% line).
 - Previous task CI (T10, merge `8378fd5`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37969782208
+
+## T11 — Milestones for the longer runs (completed)
+
+- Branch `2026-10-09-t11-long-milestones`, base `90990e7`. Started 2026-10-09 20:14, completed 21:00 (budget 14.25M → 14.19M tokens; most of the gap was waiting on CI and repairing it).
+- **What the code does.** `progression.ts`: milestones Survive 10:00 and Survive 15:00 (a run's time stops at its goal, so only a run that long can reach them); the Hair Dryer is kept back until Survive 10:00 and the Cardboard Box until Survive 15:00 (the other three household weapons are offered from the start); tufts: one every 5 s up to 5:00 and one every 2.5 s after, so a five-minute run earns exactly what it did (60 for time), a ten-minute run 180, a fifteen-minute run 300. Both milestones are told where milestones are told (the results, "Locked: …" on a character). Tests: the tuft boundaries and totals, the milestones' thresholds, once-only, the unlock lists; one existing test of locked weapons runs three minutes instead of two (D58).
+- **What it brings.** A player who survives ten or fifteen minutes is rewarded for it: faster tufts for the Tailor and a new weapon, and task 12's character will hang on the ten-minute milestone.
+- Decisions: D56–D59 (D59: checkpoint 2's CI failure, below).
+- **Verification (observed).** prettier clean; lint exit 0, 0 warnings; tsc exit 0; `tests/unit/xenocats` 28 files / 652 tests passed; `npm run build` exit 0; the 12 affected specs 115 passed, 2 skipped, 0 failed. Not run in full: `npm test`, the full e2e suites (checkpoint 3).
+- **Reviewer:** Approve; no findings (one unverified note — the household e2e with the smaller pool — was in the 12-spec run and passed).
+- **CI of checkpoint 2 (merge `3f0c76d`): failed** (run 37971897076, job "Build + browser tests (production)", step "Browser tests against next start"; the failing spec could not be read, logs need authentication; it did not reproduce locally, cold build and `CI=1` included). Fixed in three cycles (D59): `d9866ee` (a design flaw found in the automatic switch: 30 frames needed, so the slowest screens escaped; the e2e throttled less) failed again; `c177d57` skipped the new e2e on CI and passed, so it was the culprit; `90990e7` rewrote it with a slowed animation frame instead of a CPU throttle and CI passed with it enabled (run 37975815809).
