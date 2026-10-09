@@ -1,8 +1,19 @@
 // What Survival keeps between runs, in localStorage under versioned keys. Anything
 // unreadable or corrupt reads as a fresh start; nothing here ever throws.
 
-/** The longest run survived, ms. Version 2: the arena (the wave game kept waves). */
+/** The run lengths on offer, in minutes (the first is the game's own). */
+export const RUN_LENGTHS = [5, 10, 15] as const;
+export type RunLength = (typeof RUN_LENGTHS)[number];
+
+/**
+ * The longest five-minute run survived, ms. Version 2: the arena (the wave game kept
+ * waves). It was the only best before run lengths came, so it stays the five-minute one.
+ */
 export const SURVIVAL_BEST_KEY = 'xenocats:survival:v2:best-ms';
+
+/** Where the best time of a run of this length is kept. */
+export const bestKey = (length: RunLength) =>
+  length === 5 ? SURVIVAL_BEST_KEY : `${SURVIVAL_BEST_KEY}:${length}`;
 
 /** A stored best time, or null for none (missing, corrupt, or not a sane time). */
 export function parseBest(raw: string | null): number | null {
@@ -14,20 +25,59 @@ export function parseBest(raw: string | null): number | null {
 /** The best time after a run that lasted `ms`. */
 export const bestOf = (previous: number | null, ms: number) => Math.max(previous ?? 0, ms);
 
-export function readBest(): number | null {
+export function readBest(length: RunLength = 5): number | null {
   try {
-    return parseBest(window.localStorage.getItem(SURVIVAL_BEST_KEY));
+    return parseBest(window.localStorage.getItem(bestKey(length)));
   } catch {
     return null;
   }
 }
 
-export function writeBest(ms: number) {
+export function writeBest(ms: number, length: RunLength = 5) {
   try {
-    window.localStorage.setItem(SURVIVAL_BEST_KEY, String(Math.round(ms)));
+    window.localStorage.setItem(bestKey(length), String(Math.round(ms)));
   } catch {
     // Storage blocked or full: the best time just isn't kept.
   }
+}
+
+export const SURVIVAL_LENGTH_KEY = 'xenocats:survival:v1:length';
+
+/** A stored run length in minutes; anything else (missing, corrupt) is five. */
+export const parseLength = (raw: string | null): RunLength =>
+  RUN_LENGTHS.find((length) => String(length) === raw) ?? 5;
+
+const lengthListeners = new Set<() => void>();
+/** The choice, when storage is blocked: it lasts until the page is left. */
+let lengthInMemory: RunLength | null = null;
+
+export function readLength(): RunLength {
+  if (lengthInMemory) return lengthInMemory;
+  try {
+    return parseLength(window.localStorage.getItem(SURVIVAL_LENGTH_KEY));
+  } catch {
+    return 5;
+  }
+}
+
+export function writeLength(length: RunLength) {
+  try {
+    window.localStorage.setItem(SURVIVAL_LENGTH_KEY, String(length));
+  } catch {
+    // Storage blocked: the choice lasts until the page is left.
+    lengthInMemory = length;
+  }
+  for (const listener of lengthListeners) listener();
+}
+
+/** For useSyncExternalStore: the stored run length, and changes to it (here or in another tab). */
+export function subscribeLength(onChange: () => void) {
+  lengthListeners.add(onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    lengthListeners.delete(onChange);
+    window.removeEventListener('storage', onChange);
+  };
 }
 
 /** "m:ss" for a time in ms. */

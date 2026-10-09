@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/app/ui/button';
-import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
+import {
+  type Arena,
+  ARENA_CONFIG,
+  type ArenaOutcome,
+  BLADE_RADIUS,
+  createArena,
+  runLengthConfig,
+} from './arena';
 import { HERO_SVGS, VARIETY_SVG } from './arena-art';
 import {
   type Choice,
@@ -14,12 +21,17 @@ import {
 } from './arsenal';
 import {
   type AimMode,
+  RUN_LENGTHS,
+  type RunLength,
   bestOf,
   clockText,
   readAim,
   readBest,
+  readLength,
   subscribeAim,
+  subscribeLength,
   writeBest,
+  writeLength,
 } from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
@@ -126,10 +138,12 @@ type Hud = {
   }[];
 };
 
+const LENGTH_WORDS: Record<RunLength, string> = { 5: 'Five', 10: 'Ten', 15: 'Fifteen' };
+
 const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
   spent: 'His Resolve is spent. The cats remain.',
   'gave-up': 'He has given up. The cats remain.',
-  goal: 'Five minutes, and the night is survived. The cats remain.',
+  goal: 'The night is survived. The cats remain.',
 };
 
 /** A sound for a cat of any kind: a variety sounds like the first xenocat type. */
@@ -184,7 +198,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   // An evolution's announcement, for a few seconds.
   const [notice, setNotice] = useState<string | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
-  const best = useSyncExternalStore(subscribeBest, readBest, () => null);
+  // How long a run lasts: the lobby's choice, kept in the browser. The run in progress
+  // (or just over) keeps the length it started with.
+  const length = useSyncExternalStore(subscribeLength, readLength, (): RunLength => 5);
+  const [runLength, setRunLength] = useState<RunLength>(5);
+  const lengthRef = useRef<RunLength>(5);
+  const best = useSyncExternalStore(
+    subscribeBest,
+    () => readBest(length),
+    () => null
+  );
   // Aiming with a crosshair: a computer's choice (a touch screen has no pointer).
   const storedAim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
   const aimMode: AimMode = touch ? 'auto' : storedAim;
@@ -226,7 +249,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       const arena = arenaRef.current;
       if (!arena) return;
       const time = Math.min(arena.state().time, arena.config.timeGoalMs);
-      writeBest(bestOf(readBest(), time));
+      writeBest(bestOf(readBest(lengthRef.current), time), lengthRef.current);
       const { sentHome, level } = arena.state();
       const after = applyRun(readProgress(), {
         timeMs: time,
@@ -255,6 +278,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
 
   const start = () => {
     const { seed, speed, boss, fps, crowd } = parseTestHooks(window.location.search, freshSeed);
+    const chosen = readLength();
+    lengthRef.current = chosen;
+    setRunLength(chosen);
+    const lengthed = runLengthConfig(chosen);
     speedRef.current = speed;
     crowdRef.current = crowd !== null;
     setShowFps(fps);
@@ -278,10 +305,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       config: {
         // His character, what the Tailor sold him, the weapons unlocked.
         ...runConfig(stored, ARENA_CONFIG, secondRef.current),
+        ...lengthed,
         ...(boss === null
           ? {}
           : {
-              schedule: { ...SCHEDULE, bosses: [boss, ...SCHEDULE.bosses].sort((a, b) => a - b) },
+              schedule: {
+                ...SCHEDULE,
+                bosses: [boss, ...lengthed.schedule!.bosses].sort((a, b) => a - b),
+              },
             }),
         ...(crowd === null
           ? {}
@@ -916,8 +947,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       <p className="mt-4 max-w-2xl text-sm text-aura">
         The cats come from every side, and they do not stop coming. The Keeper does not hate them;
         he only wishes them home. His tools find them on their own: where you stand is everything.
-        Each touch of a cat wears down his Resolve. Last five minutes, and the Matriarch herself
-        will come for him.
+        Each touch of a cat wears down his Resolve. Last for the whole run length, and the Matriarch
+        herself will come for him.
       </p>
       <p className="mt-2 max-w-2xl text-sm text-aura">
         {touch
@@ -972,13 +1003,31 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           )}
         </fieldset>
       )}
+      <fieldset className="mt-4 text-sm text-aura" disabled={running}>
+        <legend className="font-semibold text-cream">Run length</legend>
+        <div className="mt-1 flex flex-wrap gap-4">
+          {RUN_LENGTHS.map((minutes) => (
+            <label key={minutes} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="survival-length"
+                data-testid={`survival-length-${minutes}`}
+                checked={length === minutes}
+                onChange={() => writeLength(minutes)}
+                className="border-line bg-void text-aura focus:ring-aura"
+              />
+              {minutes} minutes
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <GameSettings where="lobby" touch={touch} />
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button data-testid="survival-start" onClick={start} disabled={running}>
           {screen === 'results' ? 'Play again' : 'Start Survival'}
         </Button>
         <p data-testid="survival-best" data-best={best ?? ''} className="text-sm text-aura">
-          Longest survived: {best === null ? 'none yet' : clockText(best)}
+          Longest survived ({length} minutes): {best === null ? 'none yet' : clockText(best)}
         </p>
       </div>
 
@@ -996,11 +1045,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             The run is over
           </h2>
           <p role="status" className="mt-2 text-sm text-plasma">
-            {OUTCOME_TEXT[outcome]}
+            {outcome === 'goal'
+              ? `${LENGTH_WORDS[runLength]} minutes, and the night is survived. The cats remain.`
+              : OUTCOME_TEXT[outcome]}
           </p>
           <dl className="mt-4 grid grid-cols-2 gap-2 text-sm text-white">
             <dt className="text-aura">Time survived</dt>
             <dd data-testid="survival-result-time">{clockText(result.time)}</dd>
+            <dt className="text-aura">Run length</dt>
+            <dd data-testid="survival-result-length">{clockText(runLength * 60_000)}</dd>
             <dt className="text-aura">Cats sent home</dt>
             <dd data-testid="survival-result-sent-home">{result.sentHome}</dd>
             <dt className="text-aura">Tufts of fur gathered</dt>
@@ -1102,7 +1155,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               </p>
             )}
             <p data-testid="survival-time">
-              Time {clockText(hud?.time ?? 0)} / {clockText(ARENA_CONFIG.timeGoalMs)}
+              Time {clockText(hud?.time ?? 0)} / {clockText(runLength * 60_000)}
             </p>
             <div className="flex items-center gap-2">
               <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>

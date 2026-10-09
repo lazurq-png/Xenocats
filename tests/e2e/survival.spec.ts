@@ -165,6 +165,33 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-screen', 'playing');
   });
 
+  test('the run length is chosen in the lobby and remembered, and the HUD, the pause menu and the results show it', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&speed=3');
+    await expect(page.getByTestId('survival-length-5')).toBeChecked();
+    await page.getByTestId('survival-length-10').check();
+    await expect(page.getByTestId('survival-best')).toHaveText(
+      'Longest survived (10 minutes): none yet'
+    );
+    // Remembered across a reload.
+    await page.reload();
+    await expect(page.getByTestId('survival-length-10')).toBeChecked();
+
+    await startRun(page);
+    await expect(page.getByTestId('survival-time')).toContainText('/ 10:00');
+    const paused = await pauseRun(page);
+    await expect(paused.getByTestId('survival-pause-length')).toHaveText('10:00');
+    await paused.getByRole('button', { name: 'Give up' }).click();
+    await expect(page.getByTestId('survival-results')).toHaveAttribute('data-outcome', 'gave-up');
+    await expect(page.getByTestId('survival-result-length')).toHaveText('10:00');
+    // The five-minute best is a different one.
+    await page.getByTestId('survival-length-5').check();
+    await expect(page.getByTestId('survival-best')).toHaveText(
+      'Longest survived (5 minutes): none yet'
+    );
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);
@@ -262,7 +289,9 @@ test.describe('on a computer', () => {
   }) => {
     test.setTimeout(60_000);
     await openArena(page, '?seed=7&speed=3');
-    await expect(page.getByTestId('survival-best')).toHaveText('Longest survived: none yet');
+    await expect(page.getByTestId('survival-best')).toHaveText(
+      'Longest survived (5 minutes): none yet'
+    );
     // No ambient cats and no fake cursor on the game's page.
     await expect(page.getByTestId('xenocat')).toHaveCount(0);
     await startRun(page);
@@ -304,7 +333,9 @@ test.describe('on a computer', () => {
     expect(stored).toBeGreaterThan(0);
     await page.reload();
     await expect(page.getByTestId('survival-best')).toHaveAttribute('data-best', String(stored));
-    await expect(page.getByTestId('survival-best')).not.toHaveText('Longest survived: none yet');
+    await expect(page.getByTestId('survival-best')).not.toHaveText(
+      'Longest survived (5 minutes): none yet'
+    );
   });
 
   test('WASD walks the hero', async ({ page }) => {

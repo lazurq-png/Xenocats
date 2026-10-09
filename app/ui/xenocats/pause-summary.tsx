@@ -29,6 +29,7 @@ export function PauseSummary({ state }: { state: ArenaState }) {
         {(
           [
             ['Time', 'time', clockText(state.time)],
+            ['Run length', 'length', clockText(state.goalMs)],
             ['Level', 'level', `${state.level} (${state.xp} of ${state.xpToNext} to the next)`],
             ['Resolve', 'resolve', resolve],
             ['Sent home', 'sent-home', String(state.sentHome)],

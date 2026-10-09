@@ -1,14 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ARENA_CONFIG,
   type ArenaConfig,
   HERO_EFFECTS,
   catsWanted,
   createArena,
+  runLengthConfig,
 } from '@/app/ui/xenocats/arena';
 import { createArenaGrid } from '@/app/ui/xenocats/arena-grid';
 import { WEAPONS } from '@/app/ui/xenocats/arsenal';
-import { bestOf, clockText, parseBest } from '@/app/ui/xenocats/arena-storage';
+import {
+  SURVIVAL_BEST_KEY,
+  bestKey,
+  bestOf,
+  clockText,
+  parseBest,
+  parseLength,
+  readBest,
+  writeBest,
+} from '@/app/ui/xenocats/arena-storage';
+import { SCHEDULE } from '@/app/ui/xenocats/varieties';
 import { CAT_TYPES, catTypeById } from '@/app/ui/xenocats/cat-types';
 import { createFrameGuard } from '@/app/ui/xenocats/frame-guard';
 import { createRandom } from '@/app/ui/xenocats/random';
@@ -558,5 +569,153 @@ describe('the camera on a small screen', () => {
     const { zoom } = a.camera();
     expect(zoom).toBeGreaterThan(base);
     expect(zoom).toBeLessThanOrEqual(base * ARENA_CONFIG.coop.maxZoomOut + 1e-9);
+  });
+});
+
+describe('the run length', () => {
+  it('five minutes is the game as it was: the same goal, bosses and cats', () => {
+    expect(runLengthConfig(5)).toEqual({
+      timeGoalMs: 300_000,
+      schedule: { ...SCHEDULE, bosses: [120_000, 240_000] },
+    });
+    expect(SCHEDULE.bosses).toEqual([120_000, 240_000]);
+    const play = (config: Partial<ArenaConfig>) => {
+      const a = arena({ ...unbreakable, stepMs: 50, schedule: SCHEDULE, ...config }, 3);
+      runTo(a, 150_000);
+      return JSON.stringify([a.cats(), a.state().sentHome]);
+    };
+    expect(play(runLengthConfig(5))).toBe(play({}));
+  });
+
+  it('ten and fifteen minutes: the goal moves, and a Mega Cat comes every two minutes before it', () => {
+    expect(runLengthConfig(10).timeGoalMs).toBe(600_000);
+    expect(runLengthConfig(10).schedule?.bosses).toEqual([120_000, 240_000, 360_000, 480_000]);
+    expect(runLengthConfig(15).timeGoalMs).toBe(900_000);
+    expect(runLengthConfig(15).schedule?.bosses).toEqual(
+      [1, 2, 3, 4, 5, 6, 7].map((n) => n * 120_000)
+    );
+  });
+
+  it('the Matriarch comes at the chosen time, not at five minutes', () => {
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...runLengthConfig(10) });
+    runTo(a, 310_000);
+    expect(a.matriarch()).toBeNull();
+    expect(a.state().status).toBe('playing');
+    runTo(a, 610_000);
+    expect(a.matriarch()).not.toBeNull();
+    expect(a.state().goalMs).toBe(600_000);
+  });
+
+  // Plain cats only, arriving all the time, and nothing to send them home.
+  const plain = {
+    ...unbreakable,
+    stepMs: 50,
+    startingWeapons: [],
+    // Not the secret cat, which sits by a Keeper who stands still.
+    secretCat: { afterMs: Infinity, stillMs: Infinity },
+    escalation: [
+      [0, 10],
+      [300_000, 10],
+      [900_000, 400],
+    ] as [number, number][],
+    schedule: {
+      arrivals: [{ from: 0, who: 'basic' as const, weight: 1 }],
+      swarms: { from: Infinity, everyMs: 1, size: [0, 0] as [number, number] },
+      bosses: [],
+    },
+    timeGoalMs: 15 * 60_000,
+  };
+
+  it('cats are as strong at five minutes as they always were, and tougher after', () => {
+    const base = ARENA_CONFIG.cats;
+    expect(base).toBeDefined();
+    const a = arena(plain);
+    runTo(a, 300_000);
+    const limits = new Set(a.cats().map((cat) => cat.limit));
+    const speeds = new Set(a.cats().map((cat) => cat.speed));
+    expect(limits.size).toBe(1);
+    expect(speeds.size).toBe(1);
+    const [limit] = limits;
+    const [speed] = speeds;
+    runTo(a, 600_000);
+    // A cat arriving at 10:00 has 5 minutes of toughness: +75% Homesickness, +10% speed.
+    const late = Math.max(...a.cats().map((cat) => cat.limit));
+    expect(late).toBeGreaterThan(limit * 1.7);
+    expect(late).toBeLessThanOrEqual(limit * 1.75 + 1e-9);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeGreaterThan(speed * 1.09);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeLessThanOrEqual(speed * 1.1 + 1e-9);
+  });
+
+  it('a five-minute run stays as it was after 5:00, until the Matriarch reaches him', () => {
+    const a = arena({
+      ...plain,
+      timeGoalMs: 300_000,
+      matriarch: { ...ARENA_CONFIG.matriarch, speed: 0 },
+    });
+    runTo(a, 300_000);
+    const [limit] = new Set(a.cats().map((cat) => cat.limit));
+    const [speed] = new Set(a.cats().map((cat) => cat.speed));
+    runTo(a, 330_000);
+    expect(a.matriarch()).not.toBeNull();
+    expect(new Set(a.cats().map((cat) => cat.limit))).toEqual(new Set([limit]));
+    expect(new Set(a.cats().map((cat) => cat.speed))).toEqual(new Set([speed]));
+  });
+
+  it('they grow quicker only up to the cap', () => {
+    const a = arena({
+      ...plain,
+      toughness: { ...ARENA_CONFIG.toughness, speedPerMin: 1, maxSpeedFactor: 1.3 },
+    });
+    runTo(a, 300_000);
+    const [speed] = new Set(a.cats().map((cat) => cat.speed));
+    runTo(a, 480_000);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeCloseTo(speed * 1.3, 6);
+  });
+
+  it('the crowd stays at its peak past five minutes', () => {
+    expect(catsWanted(300_000)).toBe(catsWanted(900_000));
+    expect(catsWanted(600_000)).toBe(ARENA_CONFIG.cats.hardCap);
+  });
+});
+
+describe('the best time per run length', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stubStorage = () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => void store.set(key, value),
+      },
+    });
+    return store;
+  };
+
+  it('a stored length is five, ten or fifteen, else five', () => {
+    expect(parseLength('10')).toBe(10);
+    expect(parseLength('15')).toBe(15);
+    expect(parseLength('5')).toBe(5);
+    for (const raw of [null, '', '7', 'abc', '10.5', '-5'])
+      expect(parseLength(raw), String(raw)).toBe(5);
+  });
+
+  it('five minutes keeps the old key, so a best from before counts as the five-minute best', () => {
+    expect(bestKey(5)).toBe(SURVIVAL_BEST_KEY);
+    expect(new Set([bestKey(5), bestKey(10), bestKey(15)]).size).toBe(3);
+    const store = stubStorage();
+    store.set(SURVIVAL_BEST_KEY, '250000');
+    expect(readBest()).toBe(250_000);
+    expect(readBest(5)).toBe(250_000);
+    expect(readBest(10)).toBeNull();
+  });
+
+  it('each length keeps its own best', () => {
+    stubStorage();
+    writeBest(400_000, 10);
+    writeBest(120_000, 5);
+    expect(readBest(10)).toBe(400_000);
+    expect(readBest(5)).toBe(120_000);
+    expect(readBest(15)).toBeNull();
   });
 });

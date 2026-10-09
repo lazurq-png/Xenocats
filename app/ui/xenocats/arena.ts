@@ -48,6 +48,17 @@ export type ArenaConfig = {
   stepMs: number;
   /** The run's time goal, ms: then the Matriarch comes. */
   timeGoalMs: number;
+  /**
+   * A run longer than five minutes keeps its crowd at the peak, and the cats that
+   * arrive after `fromMs` are tougher: each minute past it adds this share of their
+   * Homesickness limit and of their speed (the speed up to `maxSpeedFactor` times).
+   */
+  toughness: {
+    fromMs: number;
+    homesicknessPerMin: number;
+    speedPerMin: number;
+    maxSpeedFactor: number;
+  };
   hero: {
     /** px/s. */
     speed: number;
@@ -163,6 +174,12 @@ export type ArenaConfig = {
 export const ARENA_CONFIG: ArenaConfig = {
   stepMs: 1000 / 60,
   timeGoalMs: 5 * 60_000,
+  toughness: {
+    fromMs: 5 * 60_000,
+    homesicknessPerMin: 0.15,
+    speedPerMin: 0.02,
+    maxSpeedFactor: 1.3,
+  },
   hero: { speed: 210, resolve: 100, untouchableMs: 700, reach: 30 },
   cats: {
     speed: [45, 95],
@@ -207,6 +224,17 @@ export const ARENA_CONFIG: ArenaConfig = {
   view: { minView: 640, maxZoom: 1.8 },
   cellSize: 64,
 };
+
+/**
+ * What a run of `minutes` changes in the config: its time goal (when the Matriarch
+ * comes) and a Mega Cat every two minutes before it. Five minutes is the config as it is.
+ */
+export function runLengthConfig(minutes: number): Partial<ArenaConfig> {
+  const goal = minutes * 60_000;
+  const bosses: number[] = [];
+  for (let at = 120_000; at < goal; at += 120_000) bosses.push(at);
+  return { timeGoalMs: goal, schedule: { ...SCHEDULE, bosses } };
+}
 
 /** How many cats the arena aims to hold `ms` into the run. */
 export function catsWanted(ms: number, escalation = ARENA_CONFIG.escalation): number {
@@ -591,6 +619,17 @@ export function createArena(options: {
     return cat;
   }
 
+  /** A cat arriving late in a long run is tougher and quicker (config.toughness). */
+  function toughen(cat: ArenaCat) {
+    const t = config.toughness;
+    // A five-minute run has no long peak: the seconds until the Matriarch arrives stay as they were.
+    if (config.timeGoalMs <= t.fromMs) return;
+    const minutes = Math.max(time - t.fromMs, 0) / 60_000;
+    if (minutes === 0) return;
+    cat.limit *= 1 + minutes * t.homesicknessPerMin;
+    cat.speed *= Math.min(1 + minutes * t.speedPerMin, t.maxSpeedFactor);
+  }
+
   function spawnXenocat(at: Vec) {
     const type = random.int(0, types.length - 1);
     const cat = newCat(at);
@@ -601,6 +640,7 @@ export function createArena(options: {
     cat.limit = byType(type, config.cats.homesickness, 3);
     cat.drain = Math.round(byType(type, config.cats.drain, 5));
     cat.elite = random.next() < config.cats.eliteShare;
+    toughen(cat);
     events.push({ kind: 'xenocat', type, elite: cat.elite });
     return cat;
   }
@@ -615,6 +655,7 @@ export function createArena(options: {
     cat.limit = variety.homesickness;
     cat.drain = variety.drain;
     cat.elite = false;
+    toughen(cat);
     return cat;
   }
 
@@ -1614,6 +1655,8 @@ export function createArena(options: {
       const active = first.effect && time < first.effect.until ? first.effect.effect.kind : null;
       return {
         time,
+        /** The run's length: when the Matriarch comes, ms. */
+        goalMs: config.timeGoalMs,
         status,
         outcome,
         /** Player 1's Keeper (the only one, alone). */
