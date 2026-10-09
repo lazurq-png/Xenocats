@@ -74,3 +74,13 @@ All green, nothing red: lint exit 0 (0 warnings, saved in `lint-baseline.txt`); 
 - **Quality and security.** Reviewer over the range `903da06..2cd6c58` with `.claude/rules/security-review.md` in scope: Approve, no security finding (the test-only switches are client-side and bounded and reach nothing server-side; the new storage keys are parsed strictly; CI change is a comment and a static env var; no dependency change). Two Low test notes, both fixed.
 - **Speed.** D30: the first benchmark run found the render benchmark at −12% (2000 cats); the cause was found and fixed within the checkpoint (a per-frame O(cats) count in `state()`); after the fix all numbers are within 10% of the baseline.
 - Previous task CI (T3, merge `2cd6c58`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37958609500
+
+## T4 — Every evolved weapon has an effect of its own, stronger than its base (completed)
+
+- Branch `2026-10-09-t4-evolved-effects`, base `f77d42e`. Started 2026-10-09 18:44, completed 18:57 (budget 14.45M → 14.43M tokens).
+- **What the code does.** `arena.ts`: Yarn Apocalypse balls tangle (slow) the cats they pass; a Banquet treat that fed a cat leaves a crumb that goes after another; every eighth Monsoon droplet leaves a slowing puddle; each Bottomless Saucer spills a wave of milk outward every 1.5 s. `arsenal.ts`: their cards say so; Peacock Tail's knock-back 160 → 40. Tests: a seeded measure (homesickness dealt a second to a crowd nothing sends home) puts all eleven evolved weapons above their bases at level 8, and each new effect has a test.
+- **What it brings.** Evolving a weapon now changes how it plays, not only its numbers, and a test keeps every evolution a real step up.
+- Decisions: D32–D35 (effects and numbers: D33; the measure: D34; the new simulation baseline: D35).
+- **Verification (observed).** prettier clean; lint exit 0, 0 warnings; tsc exit 0; `tests/unit/xenocats` 28 files / 611 tests passed; `npm run build` exit 0; the 12 affected specs 110 passed, 2 skipped, 0 failed (and `survival.spec.ts` again after the reviewer's fixes). Not run in full: `npm test`, the full e2e suites. Built, not seen: the look of crumbs, milk waves and puddles.
+- **Reviewer:** Request Changes — two Medium (crumbs went back to the cat they were born on: fixed with a test; the crumb search allocated and the benchmark baseline moved: fixed, re-run and recorded), three Low (accepted or fixed, D35).
+- Previous task CI (checkpoint 1, merge `f77d42e`): CI passed — https://github.com/lazurq-png/Xenocats/actions/runs/37961277357

@@ -86,6 +86,7 @@ const SHOT_COLOR: Record<string, string> = {
   'yarn-ball': '#f472b6',
   'yarn-apocalypse': '#ec4899',
   hairball: '#a8865b',
+  'bottomless-saucer': '#f5f0e0',
   'bath-tub': '#7dd3fc',
   jacuzzi: '#38bdf8',
 };

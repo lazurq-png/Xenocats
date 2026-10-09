@@ -427,6 +427,16 @@ export const SCORCH_FACTOR = 1.5;
 export const SLOW_FACTOR = 0.5;
 /** Most patches on the field at once; the oldest give way. */
 export const PATCH_CAP = 48;
+/** Most things in flight at once for the Banquet's crumbs to be added to. */
+export const CRUMB_LIMIT = 700;
+/** The Bottomless Saucer sends out its milk waves this often, ms, and they fly this fast, px/s. */
+export const MILK_WAVE_EVERY_MS = 1500;
+export const MILK_WAVE_SPEED = 380;
+/** A Yarn Apocalypse ball slows the cats it touches for this long, ms. */
+export const TANGLE_MS = 1500;
+/** A Monsoon puddle: how wide, and how long it lasts, ms. */
+export const RAIN_PUDDLE_RADIUS = 70;
+export const RAIN_PUDDLE_MS = 2500;
 /** A Jacuzzi's puddle: how wide, and how long it lasts, ms. */
 export const PUDDLE_RADIUS = 90;
 export const PUDDLE_MS = 4000;
@@ -447,8 +457,13 @@ export type Projectile = {
   until: number;
   /** The cats it has touched (by id), each only once. */
   touched: number[];
-  /** How many more times it splits when it bounces (the Yarn Apocalypse's). */
+  /**
+   * How many more times it splits when it bounces (the Yarn Apocalypse's); for a
+   * Monsoon droplet, 1 if it leaves a puddle where it ends.
+   */
   splits: number;
+  /** A Banquet crumb looks for the nearest cat again at this time. */
+  retargetAt: number;
   /** Whose weapon fired it (the Keeper's index). */
   owner: number;
 };
@@ -463,6 +478,8 @@ export type Gem = { x: number; y: number; value: number };
 
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
+  /** When the Bottomless Saucer sends out its next milk waves. */
+  waveAt: number;
   /** The Hair Dryer's way between two looks for a cat, and when it looks next. */
   jetAngle: number;
   jetAt: number;
@@ -585,6 +602,7 @@ export function createArena(options: {
       mods: boosted(modifiers(passives)),
       jetAngle: 0,
       jetAt: 0,
+      waveAt: 0,
       revivals: config.boost.revivals,
       downedAt: null,
       gulpAt: Infinity,
@@ -1311,11 +1329,15 @@ export function createArena(options: {
   }
 
   function launch(
-    p: Omit<Projectile, 'touched' | 'splits' | 'owner'> & { splits?: number; owner?: number }
+    p: Omit<Projectile, 'touched' | 'splits' | 'owner' | 'retargetAt'> & {
+      splits?: number;
+      owner?: number;
+    }
   ) {
     const projectile = spareProjectiles.pop() ?? ({ touched: [] } as unknown as Projectile);
     Object.assign(projectile, p);
     projectile.splits = p.splits ?? 0;
+    projectile.retargetAt = 0;
     projectile.owner = p.owner ?? hero.index;
     projectile.touched.length = 0;
     projectiles.push(projectile);
@@ -1540,6 +1562,8 @@ export function createArena(options: {
           vy: Math.sin(turn) * s.speed,
           pierce: s.pierce,
           until: time + (s.durationMs * s.area) / 70,
+          // Monsoon: every eighth droplet leaves a puddle where it ends.
+          splits: id === 'monsoon' && k % 8 === 0 ? 1 : 0,
         });
       }
       return true;
@@ -1686,6 +1710,25 @@ export function createArena(options: {
         for (const blade of bladesOf(s)) {
           for (const i of within(blade, BLADE_RADIUS)) hurt(cats[i], s.damage * dt, 'orbit');
         }
+        // The Bottomless Saucer also spills: a wave of milk from each saucer, outward.
+        if (id === 'bottomless-saucer' && time >= hero.waveAt) {
+          hero.waveAt = time + MILK_WAVE_EVERY_MS;
+          for (const saucer of bladesOf(s)) {
+            const out = Math.atan2(saucer.y - hero.y, saucer.x - hero.x);
+            launch({
+              weapon: id,
+              bit: true,
+              x: saucer.x,
+              y: saucer.y,
+              vx: Math.cos(out) * MILK_WAVE_SPEED,
+              vy: Math.sin(out) * MILK_WAVE_SPEED,
+              radius: 16,
+              damage: s.damage * 0.5,
+              pierce: 6,
+              until: time + 800,
+            });
+          }
+        }
       } else if (kind === 'zone') {
         for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
       } else if (kind === 'blow') {
@@ -1713,6 +1756,28 @@ export function createArena(options: {
       const p = projectiles[n];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      // A Banquet crumb goes for the nearest cat it has not touched, looking afresh now and then.
+      if (p.bit && p.weapon === 'banquet' && time >= p.retargetAt) {
+        p.retargetAt = time + 120;
+        // The nearest cat it has not touched (one pass, nothing allocated).
+        gather(p.x, p.y, 320);
+        let best = -1;
+        let bestD = 320 * 320;
+        for (const i of near) {
+          const c = cats[i];
+          if (p.touched.includes(c.id)) continue;
+          const d = (c.x - p.x) ** 2 + (c.y - p.y) ** 2;
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+          }
+        }
+        if (best >= 0) {
+          const d = Math.sqrt(bestD) || 1;
+          p.vx = ((cats[best].x - p.x) / d) * 380;
+          p.vy = ((cats[best].y - p.y) / d) * 380;
+        }
+      }
       if (p.weapon === 'yarn-ball' || p.weapon === 'yarn-apocalypse') {
         // Off the edges of the screen, as he walks.
         let bounced = false;
@@ -1753,6 +1818,9 @@ export function createArena(options: {
         if (p.pierce <= 0 || p.touched.includes(cat.id)) continue;
         p.touched.push(cat.id);
         hurt(cat, p.damage, WEAPONS[p.weapon].kind);
+        // The Yarn Apocalypse's balls tangle the cats they pass through.
+        if (p.weapon === 'yarn-apocalypse')
+          cat.slowUntil = Math.max(cat.slowUntil, time + TANGLE_MS);
         p.pierce--;
       }
       if (p.pierce <= 0 || time >= p.until) {
@@ -1791,6 +1859,45 @@ export function createArena(options: {
               until: time + 500,
             });
           }
+        }
+        // A Banquet treat that fed a cat leaves a crumb that goes after another.
+        if (
+          p.weapon === 'banquet' &&
+          !p.bit &&
+          p.touched.length > 0 &&
+          projectiles.length < CRUMB_LIMIT
+        ) {
+          launch({
+            weapon: 'banquet',
+            owner: p.owner,
+            bit: true,
+            x: p.x,
+            y: p.y,
+            vx: 0,
+            vy: 0,
+            radius: p.radius * 0.7,
+            damage: p.damage * 0.5,
+            pierce: 2,
+            until: time + 900,
+          });
+          // It knows the cats its treat fed: it goes after another.
+          projectiles[projectiles.length - 1].touched.push(...p.touched);
+        }
+        // A Monsoon droplet marked for it leaves a puddle that slows the cats in it.
+        if (p.weapon === 'monsoon' && p.splits > 0) {
+          addPatch({
+            kind: 'puddle',
+            weapon: p.weapon,
+            x: p.x,
+            y: p.y,
+            radius: RAIN_PUDDLE_RADIUS,
+            reach: 0,
+            until: time + RAIN_PUDDLE_MS,
+            damage: p.damage / 3,
+            capacity: 0,
+            finale: 0,
+            moat: false,
+          });
         }
         projectiles[n] = projectiles[projectiles.length - 1];
         projectiles.pop();

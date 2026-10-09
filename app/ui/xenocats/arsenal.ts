@@ -462,7 +462,8 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   'yarn-apocalypse': {
     name: 'Yarn Apocalypse',
-    description: 'The yarn splits each time it bounces. Nobody will ever wind it up again.',
+    description:
+      'The yarn splits each time it bounces, and tangles every cat it passes. Nobody will wind it up again.',
     kind: 'bounce',
     unit: 'ball',
     levels: fixed({
@@ -478,7 +479,8 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   banquet: {
     name: 'Banquet',
-    description: 'Treats in every direction at once. Every cat is invited; every cat goes home.',
+    description:
+      'Treats in every direction at once, and the crumbs go looking for seconds. Every cat is invited.',
     kind: 'spread',
     unit: 'treat',
     levels: fixed({
@@ -495,7 +497,8 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   monsoon: {
     name: 'Monsoon',
-    description: 'The bottle, but the sky. A wall of water the way he faces, and it does not stop.',
+    description:
+      'The bottle, but the sky. A wall of water the way he faces, and it leaves puddles behind.',
     kind: 'arc',
     unit: 'droplet',
     levels: fixed({
@@ -511,7 +514,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   'bottomless-saucer': {
     name: 'Bottomless Saucer',
-    description: 'Warm milk, circling him without end. No cat has ever refused it.',
+    description: 'Warm milk, circling him without end, and spilling. No cat has ever refused it.',
     kind: 'orbit',
     unit: 'saucer',
     levels: fixed({
@@ -535,7 +538,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       area: 260,
       // Six sectors: nearly all the way round him.
       count: 6,
-      speed: 160,
+      speed: 40,
       // How long a cat it touches is held still, ms.
       durationMs: 1500,
       pierce: 99,

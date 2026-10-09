@@ -33,6 +33,7 @@ import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 
 const config = (a: { config: ArenaConfig }) => a.config;
+const stats8 = (id: WeaponId) => weaponStats(id, MAX_WEAPON_LEVEL, modifiers(new Map()));
 
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
@@ -1544,5 +1545,138 @@ describe('the household arsenal: five weapons and five passives, each its own wa
       return Math.min(...hits.slice(1).map((t, i) => t - hits[i]));
     };
     expect(grace(['cushion']) - grace([])).toBeGreaterThanOrEqual(100);
+  });
+});
+
+describe('every evolved weapon has an effect of its own, and outdeals its base', () => {
+  /** One weapon at its top level, cats nothing sends home all round; the arena. */
+  function lab(id: WeaponId, ms = 20_000) {
+    const a = arena({
+      ...steady,
+      startingWeapons: [id],
+      startingLevel: MAX_WEAPON_LEVEL,
+      escalation: [[0, 60]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+    });
+    while (a.state().time < ms) a.step(still);
+    return a;
+  }
+  /** Homesickness dealt in all, a second, to a crowd nothing sends home. */
+  const dealt = (id: WeaponId) => {
+    const a = lab(id);
+    return a.cats().reduce((sum, cat) => sum + cat.homesickness, 0) / (a.state().time / 1000);
+  };
+
+  for (const { from, to } of EVOLUTIONS) {
+    it(`${WEAPONS[to].name} deals more homesickness a second than the ${WEAPONS[from].name} at its best`, () => {
+      expect(dealt(to), `${to} against ${from}`).toBeGreaterThan(dealt(from));
+    });
+  }
+
+  it('the Yarn Apocalypse tangles the cats it passes through; the Yarn Ball does not', () => {
+    const slowed = (id: WeaponId) => {
+      const a = lab(id, 12_000);
+      return a.cats().filter((c) => c.slowUntil > a.state().time).length;
+    };
+    expect(slowed('yarn-apocalypse')).toBeGreaterThan(0);
+    expect(slowed('yarn-ball')).toBe(0);
+  });
+
+  it('Banquet treats that fed a cat leave crumbs that go after another; Cat Treats leave none', () => {
+    const crumbs = (id: WeaponId) => {
+      const a = createArena({
+        random: createRandom(1),
+        types: CAT_TYPES,
+        viewport,
+        config: {
+          ...steady,
+          startingWeapons: [id],
+          startingLevel: MAX_WEAPON_LEVEL,
+          escalation: [[0, 60]],
+          cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+        },
+      });
+      let most = 0;
+      let steered = false;
+      let inherits = false;
+      while (a.state().time < 15_000) {
+        a.step(still);
+        const bits = a.projectiles().filter((p) => p.bit && p.weapon === id);
+        most = Math.max(most, bits.length);
+        // A crumb is born knowing the cats its treat fed, so it goes after another.
+        if (bits.some((p) => p.vx === 0 && p.vy === 0 && p.touched.length > 0)) inherits = true;
+        // A crumb that has found a cat flies at its own pace, not at a standstill.
+        if (bits.some((p) => Math.hypot(p.vx, p.vy) > 300)) steered = true;
+      }
+      return { most, steered, inherits };
+    };
+    const banquet = crumbs('banquet');
+    expect(banquet.most).toBeGreaterThan(0);
+    expect(banquet.steered).toBe(true);
+    expect(banquet.inherits).toBe(true);
+    expect(crumbs('cat-treats').most).toBe(0);
+  });
+
+  it('Monsoon leaves puddles that slow the cats in them; the Spray Bottle leaves none', () => {
+    const rain = lab('monsoon', 12_000);
+    const puddles = rain.patches().filter((p) => p.kind === 'puddle' && p.weapon === 'monsoon');
+    expect(puddles.length).toBeGreaterThan(0);
+    expect(rain.cats().some((c) => c.slowUntil > rain.state().time)).toBe(true);
+    expect(lab('spray-bottle', 12_000).patches()).toEqual([]);
+  });
+
+  it('the Bottomless Saucer spills a wave of milk from each saucer, outward; the Can Opener does not', () => {
+    const waves = (id: WeaponId) => {
+      const a = createArena({
+        random: createRandom(1),
+        types: CAT_TYPES,
+        viewport,
+        config: {
+          ...steady,
+          startingWeapons: [id],
+          startingLevel: MAX_WEAPON_LEVEL,
+          escalation: [[0, 0]],
+        },
+      });
+      let most = 0;
+      let outward = true;
+      while (a.state().time < 4_000) {
+        a.step(still);
+        const milk = a.projectiles().filter((p) => p.weapon === id);
+        most = Math.max(most, milk.length);
+        for (const p of milk) {
+          const h = a.state().hero;
+          if ((p.x - h.x) * p.vx + (p.y - h.y) * p.vy < 0) outward = false;
+        }
+      }
+      return { most, outward };
+    };
+    // ...and a wave sends cats home: with cats round him, some wave has touched one.
+    const crowd = createArena({
+      random: createRandom(1),
+      types: CAT_TYPES,
+      viewport,
+      config: {
+        ...steady,
+        startingWeapons: ['bottomless-saucer'],
+        startingLevel: MAX_WEAPON_LEVEL,
+        escalation: [[0, 60]],
+        cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+      },
+    });
+    let touched = false;
+    while (crowd.state().time < 12_000) {
+      crowd.step(still);
+      if (
+        crowd.projectiles().some((p) => p.weapon === 'bottomless-saucer' && p.touched.length > 0)
+      ) {
+        touched = true;
+      }
+    }
+    expect(touched).toBe(true);
+    const saucer = waves('bottomless-saucer');
+    expect(saucer.most).toBe(stats8('bottomless-saucer').count);
+    expect(saucer.outward).toBe(true);
+    expect(waves('can-opener').most).toBe(0);
   });
 });
