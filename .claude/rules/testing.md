@@ -97,7 +97,8 @@ change it cannot place; take that, and never shrink its selection by hand. A
 new spec must name the routes it visits as paths (`page.goto('/cats')`, a
 `toHaveURL` regex) so the selector can find it; `tests/unit/affected-tests.test.ts`
 fails for a spec no route reaches. The full suites still run at the points
-`.claude/skills/night-run/SKILL.md` §2.1 names, and CI runs them on every push.
+`.claude/skills/night-run/SKILL.md` §2.1 names, and CI runs them on every push to `Nightrun` or `main` (and pull
+requests into either).
 
 ---
 

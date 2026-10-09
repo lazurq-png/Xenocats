@@ -14,7 +14,9 @@ branch it describes, so the reasoning stays attached to the diff it explains.
 ## Unattended runs
 
 `.claude/skills/night-run/SKILL.md` reads `docs/ai/night-<YYYY-MM-DD>/plan.md`,
-where the date is the night the run starts. The run does the plan's tasks and
+where the date is the night the run starts. That directory is the run's, though
+its branches are named differently: the integration branch is always `Nightrun`,
+and each task's is `<YYYY-MM-DD>-t<N>-<slug>`. The run does the plan's tasks and
 nothing else, until the time in the plan's `## Goal`. It **stops without doing
 anything** if the plan or its tasks are missing, or the goal is missing,
 unreadable or already past.
@@ -66,19 +68,23 @@ The run cannot fix any of these, and most of them end it silently:
 
 1. **Everything the run should build on is on `main`.** The run branch is cut
    from `main`; work left on another branch is not there.
-2. `npm ci` and `npx playwright install chromium` have been run.
-3. `.env` holds `POSTGRES_URL` (the development database, with
+2. **The last run's `Nightrun` branch is merged or deleted**, locally and on
+   `origin`. Every run's integration branch has that one name, so while the old
+   one exists a new run stops at preflight. Its task branches
+   (`<YYYY-MM-DD>-t<N>-<slug>`) are named by date and need not be removed.
+3. `npm ci` and `npx playwright install chromium` have been run.
+4. `.env` holds `POSTGRES_URL` (the development database, with
    `?search_path=xenocats`), `AUTH_SECRET` and `AUTH_URL`, and the machine is on
    the network that reaches the database server. Off that network the run still
    works, but skips the build and every test that needs the database.
-4. The plan is at `docs/ai/night-<today>/plan.md`, dated the day you start the
+5. The plan is at `docs/ai/night-<today>/plan.md`, dated the day you start the
    run: a run started after midnight looks for the new date.
-5. A `git push` works without a prompt (credentials cached). A credential
+6. A `git push` works without a prompt (credentials cached). A credential
    dialog at 03:00 waits for nobody.
-6. The session runs with permission prompts off (bypass or auto mode), the
+7. The session runs with permission prompts off (bypass or auto mode), the
    machine will not sleep, and the editor or terminal stays open: closing it
    ends the session.
-7. Start it with the prompt below, sent as one message. The `/loop` is the run's
+8. Start it with the prompt below, sent as one message. The `/loop` is the run's
    timer: it fires every 20 minutes whenever the session is idle, however the
    last turn ended, so a run stopped by the usage limit (even during preflight)
    resumes within about 20 minutes of the limit resetting. If nothing has
@@ -87,5 +93,5 @@ The run cannot fix any of these, and most of them end it silently:
    limit.
 
 ```text
-/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.5): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.5); (2) the loop in the skill's §1 lists a night-* run branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) no branch night-<today> exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
+/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.5): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.5); (2) the loop in the skill's §1 prints the Nightrun branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) no branch Nightrun exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
 ```

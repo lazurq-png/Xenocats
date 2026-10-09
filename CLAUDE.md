@@ -298,8 +298,10 @@ the schema as `?search_path=`. The schema is defined by `db/migrations/*.sql`;
 `seed` and `reset` refuse any host outside the private network ranges. There is
 no production database yet: one is built later with `db:migrate`, by a human.
 
-**CI** (`.github/workflows/ci.yml`) runs on every push and pull request, in
-three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
+**CI** (`.github/workflows/ci.yml`) runs only where work is merged: on pushes
+to `Nightrun` and `main` and on pull requests into either. A push of any other
+branch, a night run's task branches included, runs nothing; those are checked
+locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
 over a migrated and seeded `xenocats` schema, then the browser tests against
 `next start` (`E2E_SERVER=start`); and *e2e* — the browser tests against
 `next dev`. The *build* and *e2e* jobs run inside the Playwright image
@@ -382,9 +384,10 @@ attached to the diff it explains.
 
 Unattended runs must maintain it; there is no conversation for a human to read
 afterwards, so these files are the entire record of what happened. Such a run
-spans several branches — one per task, plus an integration branch it merges and
-pushes each finished task onto (`.claude/skills/night-run/SKILL.md` §1.2, §2)
-— but keeps a single directory, named after the integration branch.
+spans several branches — one per task (`<YYYY-MM-DD>-t<N>-<slug>`), plus the
+integration branch `Nightrun` it merges and pushes each finished task onto
+(`.claude/skills/night-run/SKILL.md` §1.2, §2) — but keeps a single directory,
+`docs/ai/night-<YYYY-MM-DD>/`, named after the run's date.
 
 ---
 
