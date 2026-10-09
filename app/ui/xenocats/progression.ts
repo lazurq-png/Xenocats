@@ -126,7 +126,7 @@ export function upgradeCost(id: UpgradeId, level: number): number | null {
 
 // ------------------------------------------------------------------ characters
 
-export type CharacterId = 'keeper' | 'night-porter' | 'housekeeper';
+export type CharacterId = 'keeper' | 'night-porter' | 'housekeeper' | 'hairdresser';
 
 export type Character = {
   name: string;
@@ -167,6 +167,15 @@ export const CHARACTERS: Readonly<Record<CharacterId, Character>> = {
     resolve: 30,
     speed: 0.92,
     unlock: { kind: 'cost', cost: 150 },
+  },
+  hairdresser: {
+    name: 'The Hairdresser',
+    description:
+      'A gale in one hand and a comb in the other; he asks only that nobody moves. Light on his feet, steadier than most but not the steadiest.',
+    weapon: 'hair-dryer',
+    resolve: 10,
+    speed: 1.04,
+    unlock: { kind: 'milestone', milestone: 'survive-10' },
   },
 };
 

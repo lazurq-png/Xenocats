@@ -796,6 +796,57 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-weapons', 'spray-bottle:1');
   });
 
+  test('the Hairdresser is offered once Survive 10:00 is reached, and goes out with the Hair Dryer', async ({
+    page,
+  }) => {
+    const store = (milestones: string[]) =>
+      page.addInitScript((m) => {
+        if (localStorage.getItem('xenocats:test:seeded')) return;
+        localStorage.setItem('xenocats:test:seeded', '1');
+        localStorage.setItem(
+          'xenocats:survival:v1:progress',
+          JSON.stringify({
+            version: 1,
+            tufts: 0,
+            upgrades: {},
+            milestones: m,
+            bought: [],
+            character: 'keeper',
+            found: [],
+          })
+        );
+      }, milestones);
+    await store(['survive-2']);
+    await openArena(page);
+    const hairdresser = page.getByTestId('survival-character-hairdresser');
+    await expect(hairdresser).toBeDisabled();
+    await expect(page.getByText('Locked: Survive 10:00.')).toBeVisible();
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'xenocats:survival:v1:progress',
+        JSON.stringify({
+          version: 1,
+          tufts: 0,
+          upgrades: {},
+          milestones: ['survive-2', 'survive-10'],
+          bought: [],
+          character: 'keeper',
+          found: [],
+        })
+      );
+    });
+    await page.reload();
+    await expect(hairdresser).toBeEnabled();
+    await expect
+      .poll(async () => {
+        await hairdresser.check();
+        return hairdresser.isChecked();
+      })
+      .toBe(true);
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-weapons', 'hair-dryer:1');
+  });
+
   test('the Tailor sells an upgrade for tufts; the next run begins with it', async ({ page }) => {
     await openArena(page);
     // Tufts from earlier nights.

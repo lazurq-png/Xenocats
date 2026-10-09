@@ -1130,6 +1130,8 @@ describe('which way a Keeper faces', () => {
     // With a laser behind it he turns to the cats, though the vacuum comes first.
     expect(faced(['thunderous-vacuum', 'laser-pointer']).size).toBeGreaterThan(1);
     expect(faced(['laser-pointer']).size).toBeGreaterThan(1);
+    // The Hair Dryer (the Hairdresser's own) looks where its jet looks, so the tool points where the air goes.
+    expect(faced(['hair-dryer']).size).toBeGreaterThan(1);
   });
 
   it('in co-op each Keeper looks his own way: the crosshair is player 1’s alone', () => {

@@ -17,6 +17,8 @@ const LOOKS = {
   keeper: { coat: LINE, trim: AURA },
   'night-porter': { coat: '#12162b', trim: PLASMA },
   housekeeper: { coat: '#4b4f6b', trim: CREAM },
+  // A plum coat with pink trim: the Hairdresser.
+  hairdresser: { coat: '#3b1d3f', trim: '#f472b6' },
 } as const;
 
 /** How each of the five drawn directions turns the face and leans the coat. */
@@ -86,6 +88,14 @@ export const HERO_TOOL_SVGS: Readonly<Record<keyof typeof LOOKS, string>> = {
   <rect x="12" y="26" width="16" height="12" rx="3" fill="#7dd3fc" stroke="${LINE}" stroke-width="1"/>
   <rect x="28" y="28" width="12" height="5" rx="2" fill="${CREAM}"/>
   <path d="M40 30.5 H47" stroke="${CREAM}" stroke-width="3" stroke-linecap="round"/>
+</svg>`,
+  // The Hair Dryer: a barrel with a handle in the hand, and its nozzle.
+  hairdresser: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <rect x="10" y="32" width="6" height="12" rx="2" fill="${LINE}" stroke="#f472b6" stroke-width="1"/>
+  <rect x="12" y="24" width="26" height="12" rx="5" fill="#f472b6" stroke="${LINE}" stroke-width="1"/>
+  <rect x="36" y="26" width="10" height="8" rx="2" fill="${CREAM}"/>
+  <path d="M48 26 H55 M48 30 H58 M48 34 H55" stroke="#fdba74" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
 </svg>`,
   // The Vacuum Cleaner: a hose from the hand, and the nozzle.
   housekeeper: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">

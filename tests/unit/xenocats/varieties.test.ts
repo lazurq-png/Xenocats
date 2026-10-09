@@ -393,7 +393,7 @@ describe('the drawings', () => {
       ),
       ...Object.entries(HERO_TOOL_SVGS).map(([hero, svg]) => [`${hero} tool`, svg] as const),
     ];
-    expect(drawings.length).toBe(Object.keys(VARIETIES).length + 15 + 3);
+    expect(drawings.length).toBe(Object.keys(VARIETIES).length + 20 + 4);
     for (const [id, svg] of drawings) {
       expect(svg, id).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"[^>]*>/);
       expect(svg.trimEnd(), id).toMatch(/<\/svg>$/);

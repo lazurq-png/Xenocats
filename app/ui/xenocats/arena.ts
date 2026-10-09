@@ -1742,6 +1742,9 @@ export function createArena(options: {
         return 450;
       case 'trap':
         return 520;
+      case 'blow':
+        // Where the jet looks for a cat (blowAir): the tool points where the air goes.
+        return s.area * 1.4;
       default:
         return null;
     }

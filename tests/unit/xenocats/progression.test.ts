@@ -216,6 +216,39 @@ describe('characters', () => {
     expect(buyCharacter(rich(1000), 'night-porter')).toBeNull();
   });
 
+  it('the Hairdresser comes with Survive 10:00, goes out with the Hair Dryer, and differs from the others', () => {
+    const fresh = freshProgress();
+    expect(hasCharacter(fresh, 'hairdresser')).toBe(false);
+    expect(buyCharacter(rich(10_000), 'hairdresser')).toBeNull();
+    // Only a run of ten minutes reaches the milestone.
+    const five = applyRun(fresh, run({ timeMs: 300_000 })).progress;
+    expect(hasCharacter(five, 'hairdresser')).toBe(false);
+    const ten = applyRun(fresh, run({ timeMs: 600_000 })).progress;
+    expect(hasCharacter(ten, 'hairdresser')).toBe(true);
+    expect(unlockedBy('survive-10')).toContain('The Hairdresser');
+    const chosen = chooseCharacter(ten, 'hairdresser');
+    expect(chosen.character).toBe('hairdresser');
+    const config = runConfig(chosen, ARENA_CONFIG);
+    expect(config.startingWeapons).toEqual(['hair-dryer']);
+    expect(config.hero!.speed).toBeCloseTo(ARENA_CONFIG.hero.speed * 1.04);
+    expect(config.hero!.resolve).toBe(ARENA_CONFIG.hero.resolve + 10);
+    // Resolve and pace differ from each of the other three.
+    const mine = CHARACTERS.hairdresser;
+    for (const [id, other] of Object.entries(CHARACTERS)) {
+      if (id === 'hairdresser') continue;
+      expect([mine.resolve, mine.speed], id).not.toEqual([other.resolve, other.speed]);
+      expect(mine.resolve, id).not.toBe(other.resolve);
+      expect(mine.speed, id).not.toBe(other.speed);
+    }
+    // A player 2 who does not have him goes out as the Keeper.
+    expect(runConfig(five, ARENA_CONFIG, 'hairdresser').secondPlayer!.startingWeapons).toEqual([
+      'laser-pointer',
+    ]);
+    expect(runConfig(ten, ARENA_CONFIG, 'hairdresser').secondPlayer!.startingWeapons).toEqual([
+      'hair-dryer',
+    ]);
+  });
+
   it('in co-op, player 2 goes out as a character player 1 has, with the Tailor’s work', () => {
     const progress: Progress = {
       ...freshProgress(),
