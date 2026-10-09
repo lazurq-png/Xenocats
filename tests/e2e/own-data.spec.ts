@@ -32,6 +32,14 @@ async function setUp() {
   }
 }
 
+/**
+ * The visible copies of a text. While a Suspense boundary streams in, React holds
+ * the new content in a hidden element beside the shown one for a moment, so a
+ * plain getByText can match two (strict mode then fails), most often on a cold
+ * `next dev` that compiles the page on its first visit.
+ */
+const seen = (page: Page, text: string) => page.getByText(text).filter({ visible: true });
+
 async function logIn(page: Page, email: string) {
   await page.goto('/login');
   // Filled before hydration, the form would be reset under the test's hands.
@@ -50,23 +58,23 @@ test("another account's invoices and customers are as if they did not exist", as
   // The demo user's invoice and customer, by their URLs: the same not-found as an
   // unknown id.
   await page.goto(`/dashboard/invoices/${invoice}`);
-  await expect(page.getByText('Could not find the requested invoice.')).toBeVisible();
+  await expect(seen(page, 'Could not find the requested invoice.')).toHaveCount(1);
   await page.goto(`/dashboard/invoices/${invoice}/edit`);
-  await expect(page.getByText('Could not find the requested invoice.')).toBeVisible();
+  await expect(seen(page, 'Could not find the requested invoice.')).toHaveCount(1);
   await page.goto(`/dashboard/customers/${customer}/edit`);
-  await expect(page.getByText('Could not find the requested customer.')).toBeVisible();
+  await expect(seen(page, 'Could not find the requested customer.')).toHaveCount(1);
 
   // Lists: nothing, not even with a search that matches the demo user's rows.
   await page.goto('/dashboard/invoices');
-  await expect(page.getByText('No invoices found').filter({ visible: true })).toHaveCount(1);
+  await expect(seen(page, 'No invoices found')).toHaveCount(1);
   await page.goto('/dashboard/invoices?query=paid');
-  await expect(page.getByText('No invoices found').filter({ visible: true })).toHaveCount(1);
+  await expect(seen(page, 'No invoices found')).toHaveCount(1);
   await page.goto('/dashboard/customers');
-  await expect(page.getByText('No customers found')).toBeVisible();
+  await expect(seen(page, 'No customers found')).toHaveCount(1);
 
   // The overview: no invoices, and nothing collected.
   await page.goto('/dashboard');
-  await expect(page.getByText('No invoices yet')).toBeVisible();
+  await expect(seen(page, 'No invoices yet')).toHaveCount(1);
 
   // The export: the header row and nothing else.
   const response = await page.request.get('/dashboard/invoices/export');

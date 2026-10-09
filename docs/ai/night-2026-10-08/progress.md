@@ -237,3 +237,11 @@ All green, run one after another on `ae34cbc`:
   - Acceptance criteria (D57): by command, except "no other code path touches customers or invoices", checked by reading and `grep`.
 - **Reviewer**: approve, one Low: the spec's demo invoice could be one another spec deletes mid-run, making the not-found check prove nothing. Fixed: it picks the oldest invoice, a seeded one, and passed 3 of 3 on each server. The reviewer could not run the database or browser tests (the gate was using them); both ran here, as above.
 - **Not seen**: nobody looked at a page. A human should log in as a second user (none exists in `xenocats`; Q3) and look at the empty dashboard.
+
+## T11 — CI repair, cycle 1 (completed)
+
+- **CI of T11** (`5465a6d`): **CI failed** on both branches ([run branch](https://github.com/lazurq-png/Xenocats/actions/runs/37901985058), [task branch](https://github.com/lazurq-png/Xenocats/actions/runs/37901981307)). The jobs: *checks* passed, *build* (next start) passed, *e2e* (next dev) failed, in its step "Browser tests (invoices)".
+- **What the code does**: `tests/e2e/own-data.spec.ts` asserts the visible copy of each text only, so a hidden copy React keeps while streaming no longer trips Playwright's strict mode. No app code changed.
+- **What it brings**: T11's new browser test holds on CI's cold dev server, so the run's CI goes green on the change that gives each account its own data. Decisions: D58.
+- **Verification**: reproduced cold (`.next` deleted, the invoices group alone, `CI=1`): failed with the strict-mode error. After the fix, the same cold run with retries off twice, 18 of 18 each. The spec 5 of 5 warm (dev), 3 of 3 against `next start` after `npm run build` (exit 0). prettier clean; `npm run lint` exit 0, 0 warnings; `tsc --noEmit` exit 0. The selector picked only this spec. Reviewer: not re-run, since the change is test-only and limited to how the spec locates text.
+- Completed 10:18 (budget ~14,722,000).
