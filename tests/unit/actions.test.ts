@@ -36,10 +36,13 @@ const {
   changePassword,
 } = await import('@/app/lib/actions');
 
+/** A customer's id: the database decides whether it is the user's own. */
+const customerId = 'c0ffee00-0000-4000-8000-000000000001';
+
 function invoiceForm(fields: Record<string, string> = {}) {
   const form = new FormData();
   const values = {
-    customerId: 'c0ffee',
+    customerId,
     amount: '12.50',
     status: 'paid',
     dueDate: addDays(new Date().toISOString().slice(0, 10), 30),
@@ -105,7 +108,8 @@ describe('with a session', () => {
     const due = addDays(today(), 45);
     await createInvoice({}, invoiceForm({ dueDate: due }));
     expect(sql).toHaveBeenCalledTimes(1);
-    expect(sql.mock.calls[0].slice(1)).toEqual(['c0ffee', 1250, 'paid', today(), due]);
+    // For the customer only if it is the session's user's own.
+    expect(sql.mock.calls[0].slice(1)).toEqual([1250, 'paid', today(), due, customerId, 'u1']);
     expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices');
     expect(redirect).toHaveBeenCalledWith('/dashboard/invoices');
   });
@@ -136,7 +140,7 @@ describe('with a session', () => {
 
   it("updateInvoice reports the database's own due-date check as the field's error", async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    sql.mockResolvedValueOnce([{ date: '2026-01-10' }]).mockRejectedValueOnce(
+    sql.mockResolvedValueOnce([{ date: '2026-01-10', own_customer: true }]).mockRejectedValueOnce(
       Object.assign(new Error('violates check constraint'), {
         constraint_name: 'invoices_due_date_check',
       })
@@ -151,6 +155,20 @@ describe('with a session', () => {
     consoleError.mockRestore();
   });
 
+  it("createInvoice refuses a customer that is not the user's own, as one that does not exist", async () => {
+    // The insert matched no customer of the user's.
+    sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    const refused = {
+      errors: { customerId: ['That customer does not exist.'] },
+      message: 'Failed to Create Invoice.',
+    };
+    expect(await createInvoice({}, invoiceForm())).toEqual(refused);
+    // Anything but a UUID names no customer, and never reaches the database.
+    expect(await createInvoice({}, invoiceForm({ customerId: "' OR 1=1 --" }))).toEqual(refused);
+    expect(sql).toHaveBeenCalledTimes(1);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
   it('createInvoice still validates the form', async () => {
     const result = await createInvoice({}, invoiceForm({ amount: '0' }));
     expect(result.errors?.amount).toEqual(['Please enter an amount greater than $0']);
@@ -160,22 +178,28 @@ describe('with a session', () => {
   const invoiceId = 'cc27c14a-0acf-4f4a-a6c9-d45682c144b9';
 
   it("updateInvoice checks the due date against the invoice's own date, writes and redirects", async () => {
-    sql.mockResolvedValueOnce([{ date: '2026-01-10' }]).mockResolvedValueOnce([]);
+    sql
+      .mockResolvedValueOnce([{ date: '2026-01-10', own_customer: true }])
+      .mockResolvedValueOnce([]);
     await updateInvoice(invoiceId, {}, invoiceForm({ status: 'pending', dueDate: '2026-03-01' }));
     expect(sql).toHaveBeenCalledTimes(2);
-    expect(sql.mock.calls[0].slice(1)).toEqual([invoiceId]);
+    // The user's own invoice, moved only to one of the user's own customers.
+    expect(sql.mock.calls[0].slice(1)).toEqual([customerId, 'u1', invoiceId, 'u1']);
     expect(sql.mock.calls[1].slice(1)).toEqual([
-      'c0ffee',
+      customerId,
       1250,
       'pending',
       '2026-03-01',
       invoiceId,
+      'u1',
+      customerId,
+      'u1',
     ]);
     expect(redirect).toHaveBeenCalledWith('/dashboard/invoices');
   });
 
   it('updateInvoice refuses a due date before the invoice date, and writes nothing', async () => {
-    sql.mockResolvedValueOnce([{ date: '2026-01-10' }]);
+    sql.mockResolvedValueOnce([{ date: '2026-01-10', own_customer: true }]);
     const result = await updateInvoice(invoiceId, {}, invoiceForm({ dueDate: '2026-01-09' }));
     expect(result.errors?.dueDate).toEqual(['The due date cannot be before the invoice date.']);
     // Only the read of its date.
@@ -185,10 +209,21 @@ describe('with a session', () => {
 
   it('updateInvoice says so when the invoice was deleted between the read and the write', async () => {
     sql
-      .mockResolvedValueOnce([{ date: '2026-01-10' }])
+      .mockResolvedValueOnce([{ date: '2026-01-10', own_customer: true }])
       .mockResolvedValueOnce(Object.assign([], { count: 0 }));
     const result = await updateInvoice(invoiceId, {}, invoiceForm({ dueDate: '2026-02-09' }));
     expect(result).toEqual({ message: 'No such invoice.' });
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("updateInvoice refuses to move an invoice to a customer that is not the user's own", async () => {
+    sql.mockResolvedValueOnce([{ date: '2026-01-10', own_customer: false }]);
+    expect(await updateInvoice(invoiceId, {}, invoiceForm({ dueDate: '2026-02-09' }))).toEqual({
+      errors: { customerId: ['That customer does not exist.'] },
+      message: 'Failed to Update Invoice.',
+    });
+    // Only the read.
+    expect(sql).toHaveBeenCalledTimes(1);
     expect(redirect).not.toHaveBeenCalled();
   });
 
@@ -203,9 +238,9 @@ describe('with a session', () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
-  it('deleteInvoice deletes and revalidates the list', async () => {
+  it("deleteInvoice deletes the user's own invoice and revalidates the list", async () => {
     await deleteInvoice('cc27c14a-0acf-4f4a-a6c9-d45682c144b9');
-    expect(sql.mock.calls[0].slice(1)).toEqual(['cc27c14a-0acf-4f4a-a6c9-d45682c144b9']);
+    expect(sql.mock.calls[0].slice(1)).toEqual(['cc27c14a-0acf-4f4a-a6c9-d45682c144b9', 'u1']);
     expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices');
   });
 
@@ -255,6 +290,8 @@ describe('customer actions', () => {
       await createCustomer({}, customerForm());
       expect(sql).toHaveBeenCalledTimes(1);
       expect(sql.mock.calls[0].slice(1, 3)).toEqual(['Orbital Snacks', 'orbit@example.com']);
+      // The session's user owns it.
+      expect(sql.mock.calls[0][4]).toBe('u1');
       for (const path of [
         '/dashboard/customers',
         '/dashboard/invoices',
@@ -362,10 +399,12 @@ describe('amounts in cents', () => {
 
   it('are whole numbers, even where floating point is not (10000.37 × 100)', async () => {
     await createInvoice({}, invoiceForm({ amount: '10000.37' }));
-    expect(sql.mock.calls[0][2]).toBe(1000037);
+    expect(sql.mock.calls[0][1]).toBe(1000037);
     sql.mockClear();
     // The invoice, dated today (its due date is checked against it).
-    sql.mockResolvedValueOnce([{ date: new Date().toISOString().slice(0, 10) }]);
+    sql.mockResolvedValueOnce([
+      { date: new Date().toISOString().slice(0, 10), own_customer: true },
+    ]);
     await updateInvoice(
       'cc27c14a-0acf-4f4a-a6c9-d45682c144b9',
       {},

@@ -1,5 +1,7 @@
-import { type Page, devices, expect, test } from '@playwright/test';
+import { type Locator, type Page, devices, expect, test } from '@playwright/test';
+import { ARENA_CONFIG } from '@/app/ui/xenocats/arena';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
+import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
 
 // Survival, the arena, on /cats/survival (no login, no database). The canvas cannot
 // be read, so the tests read the run's state from the play area's data- attributes
@@ -22,6 +24,48 @@ const num = async (page: Page, name: string) => {
   await playOn(page);
   return Number(await area(page).getAttribute(name));
 };
+
+/**
+ * Takes a choice from the level-up on screen (a weapon if one is offered) with
+ * `press`, and says what was taken: its kind, id and level.
+ */
+async function takeChoice(page: Page, press: (index: number) => Promise<void>) {
+  const buttons = levelUp(page).getByRole('button');
+  const kinds = await buttons.evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
+  const pick = Math.max(kinds.indexOf('weapon'), 0);
+  const taken = {
+    kind: kinds[pick],
+    id: (await buttons.nth(pick).getAttribute('data-choice')) ?? '',
+    level: Number(await buttons.nth(pick).getAttribute('data-level')),
+  };
+  await press(pick);
+  return taken;
+}
+
+/** The pause menu lists what was taken at its level (or higher: a later choice may raise it). */
+async function expectInSummary(
+  summary: Locator,
+  taken: { kind: string | null; id: string; level: number }
+) {
+  await expect(summary).toBeVisible();
+  const weapons = summary.locator('li[data-weapon]');
+  const passives = summary.locator('li[data-passive]');
+  // The slot counts agree with what is listed, out of six each.
+  await expect(summary.getByTestId('survival-pause-weapon-slots')).toHaveText(
+    `Weapons ${await weapons.count()} of 6`
+  );
+  await expect(summary.getByTestId('survival-pause-passive-slots')).toHaveText(
+    `Passives ${await passives.count()} of 6`
+  );
+  if (taken.kind === 'restore') return;
+  const row = summary.locator(
+    taken.kind === 'weapon' ? `li[data-weapon="${taken.id}"]` : `li[data-passive="${taken.id}"]`
+  );
+  await expect(row).toHaveCount(1);
+  const level = Number(await row.getAttribute('data-level'));
+  expect(level).toBeGreaterThanOrEqual(taken.level);
+  await expect(row).toContainText(`${level} / `);
+}
 
 /** Pauses the run with Esc (taking any level-up's choice first). */
 async function pauseRun(page: Page) {
@@ -61,20 +105,133 @@ async function openArena(page: Page, query = '?seed=7') {
 /** Starts a run; a click before hydration is lost, so click until it starts. */
 async function startRun(page: Page, tap = false) {
   await expect
-    .poll(async () => {
-      if ((await area(page).count()) === 0) {
-        const button = page.getByTestId('survival-start');
-        if (tap) await button.tap();
-        else await button.click();
-      }
-      return area(page).count();
-    })
+    .poll(
+      async () => {
+        if ((await area(page).count()) === 0) {
+          const button = page.getByTestId('survival-start');
+          if (tap) await button.tap();
+          else await button.click();
+        }
+        return area(page).count();
+      },
+      // A busy `next dev` may still be hydrating the page (as the other specs allow).
+      { timeout: 15_000 }
+    )
     .toBe(1);
   await expect(area(page)).toHaveAttribute('data-screen', 'playing');
 }
 
+test('/cats has one Play link, and it opens Survival', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/cats');
+  const fight = page.getByRole('region', { name: 'Fight a cat' });
+  await expect(fight.getByRole('link')).toHaveCount(1);
+  await fight.getByRole('link', { name: 'Play' }).click();
+  await expect(page).toHaveURL(/\/cats\/survival$/, { timeout: 15_000 });
+  await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
+  await expect(page.getByTestId('survival-start')).toBeVisible();
+});
+
+test('the retired Taming game is gone: /cats/taming is not found', async ({ page }) => {
+  const response = await page.goto('/cats/taming');
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole('heading', { level: 1, name: '404 Not Found' })).toBeVisible();
+});
+
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('on a computer the camera is unzoomed', async ({ page }) => {
+    await openArena(page);
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-zoom')).toBe(1);
+  });
+
+  test('the pause menu shows the run so far: the choice taken at its level, free slots, the run', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page);
+    // Walk until a level-up, and take a weapon if one is offered.
+    await page.keyboard.down('d');
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await page.keyboard.up('d');
+    const taken = await takeChoice(page, async (i) => page.keyboard.press(String(i + 1)));
+    const paused = await pauseRun(page);
+    await expectInSummary(paused.getByTestId('survival-pause-summary'), taken);
+    await expect(paused.getByTestId('survival-pause-level')).toContainText(/^[2-9]/);
+    await expect(paused.getByTestId('survival-pause-time')).toHaveText(/^\d+:\d\d$/);
+    // Resume is still what the menu puts the focus on.
+    await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
+  });
+
+  test('aiming with a crosshair: chosen in the lobby, drawn where the mouse is, put away in the pause menu', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await expect(page.getByTestId('survival-lobby-aim-auto')).toBeChecked();
+    await page.getByTestId('survival-lobby-aim-crosshair').check();
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-aim', 'crosshair');
+    const crosshairAt = async (x: number, y: number) => {
+      await page.mouse.move(x, y);
+      await expect
+        .poll(async () => {
+          await playOn(page);
+          return area(page).getAttribute('data-crosshair');
+        })
+        .toBe(`${x},${y}`);
+    };
+    await crosshairAt(300, 200);
+    await crosshairAt(900, 600);
+    // The pause menu shows the choice; switched back to automatic, the crosshair goes.
+    const paused = await pauseRun(page);
+    await expect(paused.getByTestId('survival-pause-aim-crosshair')).toBeChecked();
+    await paused.getByTestId('survival-pause-aim-auto').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-aim', 'auto');
+    await expect
+      .poll(async () => {
+        await playOn(page);
+        return area(page).getAttribute('data-crosshair');
+      })
+      .toBe('');
+    // Kept for the next visit.
+    await page.reload();
+    await expect(page.getByTestId('survival-lobby-aim-auto')).toBeChecked();
+  });
+
+  test('sound is switched in the pause menu: it holds after Resume, and the lobby and the site share it', async ({
+    page,
+  }) => {
+    await openArena(page);
+    const lobby = page.getByTestId('survival-lobby-sound');
+    await expect(lobby).toBeChecked();
+    await startRun(page);
+    const paused = await pauseRun(page);
+    const sound = paused.getByRole('checkbox', { name: 'Sound' });
+    await expect(sound).toBeChecked();
+    // Resume is still what the menu puts the focus on.
+    await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
+    // From the keyboard, like any checkbox.
+    await sound.focus();
+    await page.keyboard.press(' ');
+    await expect(sound).not.toBeChecked();
+    expect(await page.evaluate((key) => localStorage.getItem(key), SOUND_KEY)).toBe('off');
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    const again = await pauseRun(page);
+    await expect(again.getByRole('checkbox', { name: 'Sound' })).not.toBeChecked();
+    await again.getByRole('button', { name: 'Give up' }).click();
+    // The lobby shows the same setting, and switches it back.
+    await expect(lobby).not.toBeChecked();
+    await lobby.check();
+    expect(await page.evaluate((key) => localStorage.getItem(key), SOUND_KEY)).toBe('on');
+    await page.reload();
+    await expect(page.getByTestId('survival-lobby-sound')).toBeChecked();
+  });
 
   test('a run: time passes, the Laser Pointer sends cats home, Esc pauses, giving up shows the results and keeps the best time', async ({
     page,
@@ -157,6 +314,22 @@ test.describe('on a computer', () => {
     // Focus in the dialog, on the first choice; the arrow keys move it.
     const buttons = dialog.getByRole('button');
     await expect(buttons.first()).toBeFocused();
+    // Each card that improves something says exactly what (arsenal.ts, levelChanges):
+    // a passive, or a weapon held already; a new weapon has only its own line.
+    let named = 0;
+    for (const button of await buttons.all()) {
+      const kind = await button.getAttribute('data-kind');
+      const level = Number(await button.getAttribute('data-level'));
+      const change = button.getByTestId('choice-change');
+      if (kind === 'passive' || (kind === 'weapon' && level > 1)) {
+        await expect(change).toHaveText(/^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes)/);
+        named++;
+      } else {
+        await expect(change).toHaveCount(0);
+      }
+    }
+    // This seed's first offer holds at least one such card, so the check above ran.
+    expect(named).toBeGreaterThan(0);
     await page.keyboard.press('ArrowDown');
     await expect(buttons.nth(1)).toBeFocused();
     // The run waits.
@@ -173,6 +346,9 @@ test.describe('on a computer', () => {
     if (kinds[pick] === 'weapon') {
       await expect
         .poll(async () => {
+          // The HUD is only updated while playing: a further level-up waiting
+          // would hold it back, so take it (it can only raise the level).
+          await playOn(page);
           const held = (await area(page).getAttribute('data-weapons')) ?? '';
           const level = new RegExp(`${chosen}:(\\d)`).exec(held)?.[1];
           return Number(level ?? 0);
@@ -209,6 +385,10 @@ test.describe('on a computer', () => {
       )
       .toBe(1);
     await expect(bar).toContainText('Mega Cat');
+    // It wears a xenocat's face, and says whose.
+    await expect(page.getByTestId('survival-notice')).toHaveText(
+      /^A giant .+ has come for the Keeper\.$/
+    );
     const meter = bar.getByRole('meter', { name: 'Mega Cat' });
     await expect(meter).toHaveAttribute('aria-valuemax', '4500');
     await expect(meter).toHaveAttribute('aria-valuetext', /^Homesickness \d+%$/);
@@ -387,6 +567,82 @@ test.describe('on a touch screen', () => {
   // A phone's screen and touch input (its browser type cannot change inside a group).
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  test('on a phone the camera zooms out, to show as much of the arena as the rule says', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await startRun(page, true);
+    const size = page.viewportSize()!;
+    const narrower = Math.min(size.width, size.height);
+    const expected =
+      Math.round(
+        Math.min(Math.max(ARENA_CONFIG.view.minView / narrower, 1), ARENA_CONFIG.view.maxZoom) * 100
+      ) / 100;
+    expect(expected).toBeGreaterThan(1);
+    await expect.poll(() => num(page, 'data-zoom')).toBe(expected);
+  });
+
+  test('the pause menu shows the run so far on a phone too, after a level-up', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page, true);
+    const pad = page.getByTestId('movement-pad');
+    const box = (await pad.boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: box.x + box.width / 2 + 50, y: box.y + box.height / 2 }],
+    });
+    await expect(levelUp(page)).toBeVisible({ timeout: 40_000 });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const buttons = levelUp(page).getByRole('button');
+    const taken = await takeChoice(page, (i) => buttons.nth(i).tap());
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    await expectInSummary(paused.getByTestId('survival-pause-summary'), taken);
+    // The menu fits the phone: it scrolls inside itself, and Resume is in it.
+    const resume = paused.getByRole('button', { name: 'Resume' });
+    await resume.scrollIntoViewIfNeeded();
+    await expect(resume).toBeInViewport();
+  });
+
+  test('a touch screen is not offered a crosshair: its weapons aim themselves', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await expect(page.getByTestId('survival-lobby-sound')).toBeVisible();
+    await expect(page.getByTestId('survival-lobby-aim-crosshair')).toHaveCount(0);
+    await startRun(page, true);
+    await expect(area(page)).toHaveAttribute('data-aim', 'auto');
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    await expect(paused.getByTestId('survival-pause-sound')).toBeVisible();
+    await expect(paused.getByTestId('survival-pause-aim-crosshair')).toHaveCount(0);
+  });
+
+  test('sound is switched in the pause menu with a tap; it holds, and the lobby shows it', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await expect(page.getByTestId('survival-lobby-sound')).toBeChecked();
+    await startRun(page, true);
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    const sound = paused.getByRole('checkbox', { name: 'Sound' });
+    await sound.tap();
+    await expect(sound).not.toBeChecked();
+    await paused.getByRole('button', { name: 'Resume' }).tap();
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    await playOn(page, true);
+    await area(page).getByRole('button', { name: 'Pause' }).tap();
+    await expect(paused.getByRole('checkbox', { name: 'Sound' })).not.toBeChecked();
+    await paused.getByRole('button', { name: 'Give up' }).tap();
+    await expect(page.getByTestId('survival-lobby-sound')).not.toBeChecked();
+  });
 
   test('a level-up choice is made with a tap', async ({ page }) => {
     test.setTimeout(60_000);

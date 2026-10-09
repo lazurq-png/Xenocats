@@ -13,20 +13,6 @@ export default function Page() {
           <Link href="/" aria-label="Xenocat Analytics home">
             <XenocatLogo variant="landing" />
           </Link>
-          <nav aria-label="Main" className="flex items-center gap-6">
-            <Link
-              href="/login"
-              className="shrink-0 whitespace-nowrap rounded-full bg-plasma px-5 py-2.5 text-[15px] sm:px-7 sm:py-3 font-semibold text-black shadow-glow transition hover:bg-plasma-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-plasma"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/cats"
-              className="hidden border-b-2 border-aura-link/70 pb-1 text-[16.5px] font-semibold text-aura-link transition hover:border-aura hover:text-aura sm:inline"
-            >
-              Meet the cats
-            </Link>
-          </nav>
         </header>
 
         <main className="flex grow flex-col items-center gap-14 pb-16 pt-14 lg:flex-row lg:items-start lg:gap-0 lg:pb-0 lg:pt-[60px]">

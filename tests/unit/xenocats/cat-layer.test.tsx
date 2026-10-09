@@ -10,6 +10,7 @@ import {
   useXenocats,
 } from '@/app/ui/xenocats/cat-layer';
 import { catTypeById } from '@/app/ui/xenocats/cat-types';
+import { CAT_CONFIG } from '@/app/ui/xenocats/config';
 import { XenocatCursorProvider } from '@/app/ui/xenocats/fake-cursor';
 
 // Animation frames are faked and advanced explicitly, so nothing here depends on
@@ -274,5 +275,95 @@ describe('poking a sleeping cat', () => {
     fireEvent.click(button, { clientX: 1, clientY: 1, detail: 1 });
     fireEvent.click(button, { detail: 0 });
     expect(onClick).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('a sleeping cat on a touch screen', () => {
+  /** A Void Tabby asleep, and a Delete button beneath where a finger will press. */
+  async function sleeping() {
+    const onClick = vi.fn();
+    render(
+      <XenocatCursorProvider now={() => clock} seed={7}>
+        <XenocatCatsProvider autoSpawn={false}>
+          <Capture />
+          <button onClick={onClick}>Delete</button>
+        </XenocatCatsProvider>
+      </XenocatCursorProvider>
+    );
+    act(() => {
+      cats.summon('void-tabby', { asleep: true });
+    });
+    clock = 1100; // arrived: asleep
+    await frames();
+    const cat = screen.getByTestId('xenocat');
+    expect(cat.dataset.phase).toBe('sleeping');
+    const at = {
+      clientX: parseFloat(cat.style.left) + 10,
+      clientY: parseFloat(cat.style.top) + 10,
+      pointerType: 'touch',
+    };
+    return { cat, at, button: screen.getByText('Delete'), onClick };
+  }
+
+  it('a press held on it pets it, as a resting pointer does: it purrs and sleeps on', async () => {
+    const { cat, at, button, onClick } = await sleeping();
+    fireEvent.pointerDown(button, at);
+    // Frames run while the finger is held; the pet is counted from the first.
+    await frames();
+    clock += CAT_CONFIG.petMs + 50;
+    await frames();
+    expect(cat.dataset.petted).toBe('true');
+    fireEvent.pointerUp(button, at);
+    fireEvent.click(button, { ...at, detail: 1 });
+    await frames();
+    // Petted, not poked: still asleep, not angry; the press was the cat's.
+    expect(cat.dataset.phase).toBe('sleeping');
+    expect(cat.dataset.angry).not.toBe('true');
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('a quick tap wakes it, angry, and never reaches what lies beneath', async () => {
+    const { cat, at, button, onClick } = await sleeping();
+    fireEvent.pointerDown(button, at);
+    clock += 150;
+    await frames();
+    fireEvent.pointerUp(button, at);
+    fireEvent.click(button, { ...at, detail: 1 });
+    await frames();
+    expect(cat.dataset.angry).toBe('true');
+    expect(cat.dataset.phase).not.toBe('sleeping');
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('a second finger, pressed and lifted elsewhere, neither ends the hold nor wakes the cat', async () => {
+    const { cat, at, button } = await sleeping();
+    fireEvent.pointerDown(button, { ...at, pointerId: 1 });
+    await frames();
+    // Another finger, off the cat, down and up at once: a tap elsewhere.
+    fireEvent.pointerDown(window, { clientX: 1, clientY: 1, pointerType: 'touch', pointerId: 2 });
+    fireEvent.pointerMove(window, { clientX: 2, clientY: 2, pointerType: 'touch', pointerId: 2 });
+    fireEvent.pointerUp(window, { clientX: 2, clientY: 2, pointerType: 'touch', pointerId: 2 });
+    await frames();
+    expect(cat.dataset.angry).not.toBe('true');
+    clock += CAT_CONFIG.petMs + 50;
+    await frames();
+    expect(cat.dataset.petted).toBe('true');
+    fireEvent.pointerUp(button, { ...at, pointerId: 1 });
+    await frames();
+    expect(cat.dataset.phase).toBe('sleeping');
+  });
+
+  it('a press taken by a scroll (pointercancel) neither pets nor wakes it', async () => {
+    const { cat, at, button } = await sleeping();
+    fireEvent.pointerDown(button, at);
+    clock += 150;
+    fireEvent.pointerCancel(button, at);
+    clock += CAT_CONFIG.petMs;
+    await frames();
+    fireEvent.pointerUp(button, at);
+    await frames();
+    expect(cat.dataset.phase).toBe('sleeping');
+    expect(cat.dataset.angry).not.toBe('true');
+    expect(cat.dataset.petted).not.toBe('true');
   });
 });

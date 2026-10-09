@@ -9,10 +9,8 @@ import {
   isEmptyGuide,
   parseStats,
   recordStat,
-  recordTamed,
   subscribeGuide,
 } from '@/app/ui/xenocats/field-guide';
-import { TAMED_KEY } from '@/app/ui/xenocats/taming';
 
 afterEach(() => {
   localStorage.clear();
@@ -58,33 +56,29 @@ describe('the guide', () => {
     const guide = getGuide();
     expect(isEmptyGuide(guide)).toBe(true);
     for (const type of CAT_TYPES) {
-      expect(entryFor(guide, type.id)).toEqual({ met: 0, survived: 0, tamed: 0 });
+      expect(entryFor(guide, type.id)).toEqual({ met: 0, survived: 0 });
     }
   });
 
-  it('records meetings, survived attacks and tamed cats, and tells subscribers', () => {
+  it('records meetings and survived attacks, and tells subscribers', () => {
     const onChange = vi.fn();
     const unsubscribe = subscribeGuide(onChange);
     recordStat('void-tabby', 'met');
     recordStat('void-tabby', 'survived');
-    recordTamed('void-tabby');
-    recordTamed('void-tabby');
-    expect(onChange).toHaveBeenCalledTimes(4);
+    expect(onChange).toHaveBeenCalledTimes(2);
     const guide = getGuide();
     expect(isEmptyGuide(guide)).toBe(false);
-    expect(entryFor(guide, 'void-tabby')).toEqual({ met: 1, survived: 1, tamed: 2 });
+    expect(entryFor(guide, 'void-tabby')).toEqual({ met: 1, survived: 1 });
     expect(JSON.parse(localStorage.getItem(GUIDE_KEY)!)).toEqual({
       'void-tabby': { met: 1, survived: 1 },
     });
-    expect(JSON.parse(localStorage.getItem(TAMED_KEY)!)).toEqual({ 'void-tabby': 2 });
     unsubscribe();
     recordStat('void-tabby', 'met');
-    expect(onChange).toHaveBeenCalledTimes(4);
+    expect(onChange).toHaveBeenCalledTimes(2);
   });
 
   it('ignores unknown cat types', () => {
     recordStat('no-such-cat', 'met');
-    recordTamed('no-such-cat');
     expect(localStorage.length).toBe(0);
   });
 

@@ -2,6 +2,7 @@ import CatState from '@/app/ui/cat-state';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { fetchLatestInvoices } from '@/app/lib/data';
+import { currentUserId } from '@/app/lib/session';
 import { formatDateToLocal } from '@/app/lib/utils';
 
 /** A short reference for an invoice, from the start of its id. */
@@ -10,7 +11,7 @@ function invoiceRef(id: string) {
 }
 
 export default async function LatestInvoices() {
-  const latestInvoices = await fetchLatestInvoices();
+  const latestInvoices = await fetchLatestInvoices(await currentUserId());
 
   return (
     <div data-xenocat-frame className="rounded-2xl border border-line bg-panel p-5">

@@ -14,7 +14,7 @@ import { entryFor, getGuide, getServerGuide, isEmptyGuide, subscribeGuide } from
  * Every cat type with two Summon buttons: awake, to pounce as soon as it arrives,
  * or asleep, to nap and wake first as the dashboard's cats do (and show both poses'
  * artwork). Cats only come when summoned here, so the page is calm to browse and
- * predictable to test. Above them, Fight a cat: links to the two games' own pages.
+ * predictable to test. Above them, Fight a cat: a link to the game's own page.
  */
 export default function CatGallery() {
   return (
@@ -30,7 +30,7 @@ export default function CatGallery() {
 const GAME_LINK =
   'flex h-10 items-center rounded-xl bg-plasma px-4 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma active:bg-plasma-dim';
 
-/** The two fight games, each on a page of its own. */
+/** The game, Survival, on a page of its own. */
 function FightLinks() {
   return (
     <section
@@ -42,15 +42,11 @@ function FightLinks() {
       </h2>
       <p className="mt-2 max-w-2xl text-sm text-aura">
         <span className="font-semibold text-white">Survival:</span> walk your ranger, aim, and send
-        the cats home before they get you. <span className="font-semibold text-white">Taming:</span>{' '}
-        win a cat over, one at a time.
+        the cats home before they get you.
       </p>
       <div className="mt-4 flex flex-wrap gap-4">
         <Link href="/cats/survival" className={GAME_LINK} data-testid="fight-link-survival">
-          Play Survival
-        </Link>
-        <Link href="/cats/taming" className={GAME_LINK} data-testid="fight-link-taming">
-          Play Taming
+          Play
         </Link>
       </div>
     </section>
@@ -77,11 +73,7 @@ function Roster() {
   );
 
   const guide = useSyncExternalStore(subscribeGuide, getGuide, getServerGuide);
-  // A tamed cat was met, even if it was tamed before the guide counted meetings.
-  const metCount = CAT_TYPES.filter((type) => {
-    const entry = entryFor(guide, type.id);
-    return entry.met > 0 || entry.tamed > 0;
-  }).length;
+  const metCount = CAT_TYPES.filter((type) => entryFor(guide, type.id).met > 0).length;
 
   return (
     <>
@@ -91,8 +83,8 @@ function Roster() {
         </h2>
         <p data-testid="guide-summary" className="mt-2 min-h-[3.75rem] max-w-2xl text-sm text-aura">
           {isEmptyGuide(guide)
-            ? "Your field guide is empty: you haven't met any cats yet. They turn up on the dashboard while you work, or summon one below to meet it. Each card will keep count of how often you've met that cat, survived its attack and tamed it."
-            : `You have met ${metCount} of the ${CAT_TYPES.length} cats. Each card counts how often you've met that cat, survived its attack and tamed it.`}
+            ? "Your field guide is empty: you haven't met any cats yet. They turn up on the dashboard while you work, or summon one below to meet it. Each card will keep count of how often you've met that cat and survived its attack."
+            : `You have met ${metCount} of the ${CAT_TYPES.length} cats. Each card counts how often you've met that cat and survived its attack.`}
         </p>
       </section>
       <p
@@ -117,13 +109,11 @@ const CatCard = memo(function CatCard({
   type,
   met,
   survived,
-  tamed,
   onSummon,
 }: {
   type: CatType;
   met: number;
   survived: number;
-  tamed: number;
   onSummon: (type: CatType, asleep: boolean) => void;
 }) {
   return (
@@ -150,7 +140,7 @@ const CatCard = memo(function CatCard({
         </div>
       </div>
       <p className="mt-3 grow text-sm text-aura">{type.effect.description}</p>
-      <GuideEntry met={met} survived={survived} tamed={tamed} />
+      <GuideEntry met={met} survived={survived} />
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Button
           className="justify-center whitespace-nowrap px-1 text-[13px]"
@@ -177,8 +167,8 @@ const CatCard = memo(function CatCard({
  * One card's field-guide counts, or a note that this cat has not been met yet. Both
  * are the same height, so meeting a cat never moves the card's buttons.
  */
-function GuideEntry({ met, survived, tamed }: { met: number; survived: number; tamed: number }) {
-  if (met === 0 && survived === 0 && tamed === 0) {
+function GuideEntry({ met, survived }: { met: number; survived: number }) {
+  if (met === 0 && survived === 0) {
     return (
       <p
         data-testid="guide-entry"
@@ -191,10 +181,9 @@ function GuideEntry({ met, survived, tamed }: { met: number; survived: number; t
   const stats = [
     ['Met', met],
     ['Attacks survived', survived],
-    ['Tamed', tamed],
   ] as const;
   return (
-    <dl data-testid="guide-entry" className="mt-3 grid h-14 grid-cols-3 gap-2 text-center">
+    <dl data-testid="guide-entry" className="mt-3 grid h-14 grid-cols-2 gap-2 text-center">
       {stats.map(([label, value]) => (
         <div key={label} className="flex flex-col justify-center rounded-lg bg-void/60 px-1">
           <dt className="text-[11px] leading-tight text-aura">{label}</dt>

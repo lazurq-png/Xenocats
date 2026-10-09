@@ -10,7 +10,9 @@
 //
 // A sleeping cat with the pointer resting on it for `petMs` is petted: it purrs and
 // sleeps on for at least `petSleepMs`. A sleeping cat clicked (`poke`) wakes at once,
-// angry: its attack is `angryFactor` times stronger (effects.ts `strengthen`).
+// angry: its attack is `angryFactor` times stronger (effects.ts `strengthen`). On a
+// touch screen a press held on it is the resting pointer (cat-layer.tsx); a tap, the
+// click.
 //
 // Two cats that start waking within `comboWindowMs` and `comboDistance` of each
 // other, whose attacks have a combo (combos.ts), are paired: they attack once,
@@ -249,6 +251,11 @@ export function createCatEngine(options: {
     ): Cat | null {
       const type = types.find((t) => t.id === typeId);
       return type ? spawn(type, now, cursor, !asleep) : null;
+    },
+
+    /** The sleeping cat under `point`, if any: what a press there would pet or poke. */
+    sleepingAt(point: Vec): Cat | null {
+      return cats.find((c) => c.phase === 'sleeping' && covers(c, point)) ?? null;
     },
 
     /**

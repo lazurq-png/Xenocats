@@ -2,7 +2,7 @@
 // instead of every suite every time.
 //
 // Usage: node scripts/affected-tests.mjs [--base <ref>] [--run] [--json]
-//        (npm run test:affected -- --base night-2026-10-07 --run)
+//        (npm run test:affected -- --base Nightrun --run)
 //
 // Compares the working tree (committed, staged, unstaged and untracked) with the
 // merge base of HEAD and <ref> (default `main`), then prints:

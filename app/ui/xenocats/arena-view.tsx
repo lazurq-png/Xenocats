@@ -5,7 +5,15 @@ import { Button } from '@/app/ui/button';
 import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
 import { HERO_SVGS, VARIETY_SVG } from './arena-art';
 import { type Choice, WEAPONS, type WeaponId, describeChoice, evolutionText } from './arsenal';
-import { bestOf, clockText, readBest, writeBest } from './arena-storage';
+import {
+  type AimMode,
+  bestOf,
+  clockText,
+  readAim,
+  readBest,
+  subscribeAim,
+  writeBest,
+} from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
 import { recordStat } from './field-guide';
@@ -26,6 +34,8 @@ import {
 import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
 import { parseTestHooks } from './test-hooks';
+import { GameSettings } from './game-settings';
+import { PauseSummary } from './pause-summary';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
@@ -91,6 +101,10 @@ type Hud = {
   xp: number;
   xpToNext: number;
   weapons: string;
+  /** Where the crosshair is on the screen ("x,y"), or "" without one. */
+  crosshair: string;
+  /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
+  zoom: number;
   /** Each Keeper's Resolve, and whether he is down (co-op: two). */
   heroes: {
     resolve: number;
@@ -160,7 +174,17 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const [notice, setNotice] = useState<string | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
   const best = useSyncExternalStore(subscribeBest, readBest, () => null);
+  // Aiming with a crosshair: a computer's choice (a touch screen has no pointer).
+  const storedAim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
+  const aimMode: AimMode = touch ? 'auto' : storedAim;
+  const aimRef = useRef<AimMode>(aimMode);
+  // Where the mouse is on the screen, while a run lasts (null until it moves).
+  const pointerRef = useRef<Vec | null>(null);
+  useEffect(() => {
+    aimRef.current = aimMode;
+  }, [aimMode]);
   const arenaRef = useRef<Arena | null>(null);
+  const [pausedState, setPausedState] = useState<ReturnType<Arena['state']> | null>(null);
   const screenRef = useRef<Screen>('start');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -180,6 +204,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const show = useCallback((next: Screen) => {
     screenRef.current = next;
     setScreen(next);
+    // The pause menu shows the run as it stood when it paused.
+    if (next === 'paused') setPausedState(arenaRef.current?.state() ?? null);
   }, []);
 
   const finish = useCallback(
@@ -326,6 +352,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     if (!arena || !canvas || !context) return;
+    // A new run has no crosshair until the mouse moves in it: not the last run's.
+    pointerRef.current = null;
 
     let dirty = true;
     const redraw = () => {
@@ -335,6 +363,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       const art = catArt(type.id, 'awake');
       return art ? bitmapOf(art, CAT_SIZE * 2, redraw) : () => null;
     });
+    // A boss wears a xenocat's face at a Mega Cat's size: drawn from a large
+    // bitmap, made the first time that face is a boss's.
+    const bossSprites = new Map<number, () => HTMLCanvasElement | null>();
+    const bossSprite = (type: number) => {
+      let sprite = bossSprites.get(type);
+      if (!sprite) {
+        const art = catArt(CAT_TYPES[type].id, 'awake');
+        sprite = art ? bitmapOf(art, 256, redraw) : () => null;
+        bossSprites.set(type, sprite);
+      }
+      return sprite();
+    };
+    // Until then a notice that matters (a boss, an evolution, a Keeper down or
+    // back) is not covered by a xenocat's arrival.
+    let importantUntil = 0;
+    // The xenocat kinds announced this run: each is news once.
+    const announced = new Set<number>();
+    const important = (text: string) => {
+      importantUntil = performance.now() + NOTICE_MS;
+      setNotice(text);
+    };
     const heroSprites = [characterRef.current, secondRef.current ?? 'keeper'].map((id) =>
       bitmapOf(
         `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVGS[id])}`,
@@ -385,7 +434,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
 
     const draw = (time: number) => {
       const state = arena.state();
-      // The shared camera: the screen shows the viewport times its zoom (1 alone).
+      // The shared camera: the screen shows the viewport times its zoom (the screen's
+      // own zoom alone: 1 on a desktop, more on a phone; more again in co-op).
       const cam = arena.camera();
       const width = window.innerWidth * cam.zoom;
       const height = window.innerHeight * cam.zoom;
@@ -472,11 +522,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       for (const cat of arena.cats()) {
         const x = cat.x - camX;
         const y = cat.y - camY;
-        // A variety is drawn at its own size; a xenocat at the cats' size.
+        // A variety is drawn at its own size; a xenocat at the cats' size. A boss
+        // has a variety's size and a xenocat's face.
         const size = cat.variety ? cat.radius * 2.8 : CAT_SIZE;
         const half = size / 2;
         if (x < -size || y < -size || x > width + size || y > height + size) continue;
-        const bitmap = cat.variety ? varietySprites[cat.variety]() : sprites[cat.type]();
+        const bitmap = !cat.variety
+          ? sprites[cat.type]()
+          : cat.type >= 0
+            ? (bossSprite(cat.type) ?? sprites[cat.type]())
+            : varietySprites[cat.variety]();
         if (bitmap) context.drawImage(bitmap, x - half, y - half, size, size);
         else {
           context.fillStyle = cat.variety ? '#8a8aa0' : CAT_TYPES[cat.type].palette.body;
@@ -589,6 +644,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         }
       });
       context.restore();
+
+      // The crosshair, on the screen where the mouse points.
+      const pointer = aimRef.current === 'crosshair' ? pointerRef.current : null;
+      if (pointer) {
+        context.save();
+        context.strokeStyle = '#c1e838';
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(pointer.x, pointer.y, 11, 0, Math.PI * 2);
+        for (const [dx, dy] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          context.moveTo(pointer.x + dx * 6, pointer.y + dy * 6);
+          context.lineTo(pointer.x + dx * 17, pointer.y + dy * 17);
+        }
+        context.stroke();
+        context.restore();
+      }
     };
 
     const frame = () => {
@@ -610,6 +686,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
       const input = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
       const input2 = twoPlayers ? walkDirection(held, PLAYER_KEYS[1]) : { x: 0, y: 0 };
+      // Player 1 aims where the mouse points: the screen, back into the arena
+      // under the camera (centred on it, `zoom` arena pixels to a screen pixel).
+      const pointer = aimRef.current === 'crosshair' ? pointerRef.current : null;
+      if (pointer) {
+        const cam = arena.camera();
+        arena.aimAt({
+          x: cam.x + (pointer.x - window.innerWidth / 2) * cam.zoom,
+          y: cam.y + (pointer.y - window.innerHeight / 2) * cam.zoom,
+        });
+      } else arena.aimAt(null);
       let steps = 0;
       while (carry >= arena.config.stepMs && steps < MAX_STEPS_PER_FRAME) {
         arena.step(input, guard.allowsSpawning(), input2);
@@ -628,24 +714,36 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         } else if (event.kind === 'hero-hit') {
           if (event.type >= 0) hits.push(event.type);
           if (player) sound(() => player.play(soundsFor(typeOf(event.type)).attack));
-        } else if (event.kind === 'boss' && titan >= 0) {
-          if (player) player.play(soundsFor(CAT_TYPES[titan]).wake);
+        } else if (event.kind === 'boss') {
+          important(`A giant ${CAT_TYPES[event.type].name} has come for the Keeper.`);
+          if (player && titan >= 0) player.play(soundsFor(CAT_TYPES[titan]).wake);
+        } else if (event.kind === 'xenocat') {
+          // A xenocat is an event the first time its kind comes in a run (an
+          // elite says so), never over a notice that matters more.
+          if (!announced.has(event.type) && now >= importantUntil) {
+            announced.add(event.type);
+            setNotice(
+              event.elite
+                ? `${CAT_TYPES[event.type].name} has come, and it means it.`
+                : `${CAT_TYPES[event.type].name} has come.`
+            );
+          }
         } else if (event.kind === 'chest') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'evolution') {
           foundRef.current.add(event.to);
-          setNotice(evolutionText(event.from, event.to));
+          important(evolutionText(event.from, event.to));
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'secret') {
           // Nothing is said: it is simply there. The codex remembers.
           foundRef.current.add(event.id);
         } else if (event.kind === 'downed') {
-          setNotice(
+          important(
             `Player ${event.player + 1} is down. If the other lasts ${Math.round(arena.config.coop.reviveMs / 1000)} seconds, he will stand again.`
           );
           if (player) player.play(soundsFor(CAT_TYPES[0]).attack);
         } else if (event.kind === 'revived') {
-          setNotice(
+          important(
             event.by === 'ally'
               ? `Player ${event.player + 1} stands again.`
               : twoPlayers
@@ -689,6 +787,11 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           xp: state.xp,
           xpToNext: state.xpToNext,
           weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
+          crosshair:
+            aimRef.current === 'crosshair' && pointerRef.current
+              ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
+              : '',
+          zoom: Math.round(arena.camera().zoom * 100) / 100,
           heroes: state.heroes.map((h) => ({
             resolve: h.resolve,
             maxResolve: h.maxResolve,
@@ -755,10 +858,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     const onKeyUp = (event: KeyboardEvent) => {
       held.delete(event.code);
     };
+    const onPointer = (event: MouseEvent) => {
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+    };
     const onHidden = () => {
       if (document.visibilityState === 'hidden') pause();
     };
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('mousemove', onPointer);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', pause);
     window.addEventListener('resize', resize);
@@ -766,6 +873,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     return () => {
       cancelAnimationFrame(frameId);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('mousemove', onPointer);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', pause);
       window.removeEventListener('resize', resize);
@@ -835,6 +943,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           )}
         </fieldset>
       )}
+      <GameSettings where="lobby" touch={touch} />
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button data-testid="survival-start" onClick={start} disabled={running}>
           {screen === 'results' ? 'Play again' : 'Start Survival'}
@@ -918,7 +1027,12 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-hero2-x={hud?.heroes[1]?.x ?? ''}
           data-hero2-y={hud?.heroes[1]?.y ?? ''}
           data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
-          className="fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none"
+          data-aim={aimMode}
+          data-crosshair={hud?.crosshair ?? ''}
+          data-zoom={hud?.zoom ?? ''}
+          className={`fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none${
+            aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
+          }`}
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
           {hud?.boss && (
@@ -1051,7 +1165,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                 </p>
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
-                    const { name, description } = describeChoice(choice);
+                    const { name, description, change } = describeChoice(choice);
                     const kind =
                       choice.kind === 'weapon'
                         ? 'Weapon'
@@ -1072,6 +1186,14 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                           <span className="font-semibold">{name}</span>{' '}
                           <span className="text-aura">({kind})</span>
                           <span className="mt-1 block text-aura">{description}</span>
+                          {change && (
+                            <span
+                              data-testid="choice-change"
+                              className="mt-1 block font-semibold text-cream"
+                            >
+                              {change}
+                            </span>
+                          )}
                         </button>
                       </li>
                     );
@@ -1087,13 +1209,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               role="dialog"
               aria-modal="true"
               aria-labelledby="pause-heading"
-              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60"
+              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60 p-4"
             >
-              <div className="rounded-2xl border border-line bg-panel p-6 text-center">
+              <div className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-center">
                 <h2 id="pause-heading" className="font-display text-xl text-cream">
                   Paused
                 </h2>
                 <p className="mt-2 text-sm text-aura">The cats wait. They are patient.</p>
+                {pausedState && <PauseSummary state={pausedState} />}
+                <GameSettings where="pause" touch={touch} />
                 <div className="mt-4 flex justify-center gap-3">
                   <Button onClick={resume}>Resume</Button>
                   <Button onClick={giveUp}>Give up</Button>

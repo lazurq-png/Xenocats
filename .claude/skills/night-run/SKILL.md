@@ -47,7 +47,9 @@ stop.
   that alone (last run's D7).
 - **Run the tests a change can affect, not every suite every time.** The full
   suites run at fixed points; between them, `npm run test:affected` picks the
-  tests (§2.1). CI runs everything on every push, and is polled.
+  tests (§2.1). CI runs everything once per task, when the task is merged into
+  `Nightrun` and that is pushed, and is polled. A task branch's own push runs
+  no CI: until the merge, checking is local only.
 - **The state files are the memory.** `docs/ai/night-<YYYY-MM-DD>/progress.md`
   is **append-only**: created at the start of the run (§1.4), then one entry
   appended each time a task ends (§2 step 4). The one exception is the morning
@@ -71,33 +73,45 @@ test -f .env && echo ".env: present" || echo ".env: missing"   # existence only 
 git status --short
 git remote -v
 cat "docs/ai/night-$(date +%F)/plan.md"                       # §1.0
-now=$(date '+%F %H:%M')                     # unfinished runs (below the block)
-for b in $(git branch --list 'night-*' --format='%(refname:short)' \
-           | grep -E '^night-[0-9]{4}-[0-9]{2}-[0-9]{2}$'); do
-  p=$(git show "$b:docs/ai/$b/progress.md" 2>/dev/null)
+now=$(date '+%F %H:%M')                     # the run branch (below the block)
+if git rev-parse -q --verify refs/heads/Nightrun >/dev/null; then
+  r=$(git config branch.Nightrun.description)  # the run's date (§1.2)
+  p=$(git show "Nightrun:docs/ai/night-$r/progress.md" 2>/dev/null)
   d=$(printf '%s\n' "$p" | grep -oE 'Deadline: [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}' \
         | tail -n 1 | cut -c11-)
-  if ! printf '%s\n' "$p" | grep -q '^## Morning report' \
-     || { [ -n "$d" ] && [[ "$now" < "$d" ]]; }; then
-    echo "in progress: $b (deadline ${d:-not recorded})"
+  if ! printf '%s\n' "$r" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+    echo "Nightrun: no run date recorded"
+  elif ! printf '%s\n' "$p" | grep -q '^## Morning report' \
+       || { [ -n "$d" ] && [[ "$now" < "$d" ]]; }; then
+    echo "in progress: Nightrun, run $r (deadline ${d:-not recorded})"
+  else
+    echo "finished: Nightrun, run $r, not yet merged or deleted"
   fi
-done
+fi
 ```
 
 - **This session is already running the run** (a timer heartbeat, §9.5): do
   not run this preflight at all. Go to §9.5.
-- **The loop prints a run branch** → you are **resuming** it: go to §9.2. Do
-  not run §1.0, §1.2 or §1.4. Recreating the branch or state files is how a run
-  loses its history.
+- **The loop prints `in progress`** → you are **resuming** that run: go to
+  §9.2. Do not run §1.0, §1.2 or §1.4. Recreating the branch or state files is
+  how a run loses its history.
+- **It prints `finished`, or `no run date recorded`** → `Nightrun` is still
+  there from an earlier run, or was not made by §1.2. A human merges or deletes
+  it in the morning; until then no new run can take the name. **Stop**: create
+  no branch, and never rename, delete or reuse it yourself. Write an
+  uncommitted `progress.md` in today's directory (`docs/ai/night-$(date
+  +%F)/`) saying which line the loop printed, and end. A turn started by the
+  run's own timer (§9.5) writes nothing: it deletes the timer and ends.
 - **It prints nothing** → a new run: §1.0–§1.5 in order, **unless this turn's
   prompt forbids starting one** (the run's own timer does, §9.5): then delete
   that timer (`CronList`, `CronDelete`) and stop, skipping §1.0 and writing
   nothing.
 
-The loop reads `progress.md` from each run branch, never from the working tree.
-A new run is cut from `main`, which lacks unmerged earlier runs, so the tree
+The loop reads `progress.md` from the run branch, never from the working tree.
+A new run is cut from `main`, which lacks an unmerged earlier run, so the tree
 would make a finished run look unfinished. A run branch with no committed
-`progress.md` counts as in progress, which is correct.
+`progress.md` (its first task not yet committed) counts as in progress, which is
+correct.
 
 **A run is finished only when its goal time has passed and its morning report
 is written.** Its goal time is the last `Deadline: YYYY-MM-DD HH:MM` line in
@@ -196,35 +210,53 @@ One integration branch, plus one branch per task, each cut when its task starts
 (§2 step 0):
 
 ```text
-main                                    base; never committed to
-└── night-<YYYY-MM-DD>                  the run branch; moves only by fast-forward
-    ├── night-<YYYY-MM-DD>-t1-<slug>
-    └── night-<YYYY-MM-DD>-t2-<slug>    cut after t1 merged
+main                         base; never committed to
+└── Nightrun                 the run branch; moves only by fast-forward
+    ├── <YYYY-MM-DD>-t1-<slug>
+    └── <YYYY-MM-DD>-t2-<slug>    cut after t1 merged
 ```
 
 ```bash
-git checkout main && git checkout -b night-<YYYY-MM-DD>
+git checkout main && git checkout -b Nightrun
+git config branch.Nightrun.description <YYYY-MM-DD>   # the run's date (§1)
 ```
 
-- **The separator is a hyphen.** Git stores refs as paths, so
-  `night-2026-09-15/t1-x` cannot coexist with `night-2026-09-15`. The failure
-  (`cannot lock ref`) only appears at the second branch.
+- **The run branch is always `Nightrun`**, whatever the date. A human merges or
+  deletes it after the run, which frees the name for the next one (§1). Task
+  branches are named after the run's date and the task alone, with no `night`
+  in them: `<YYYY-MM-DD>-t<N>-<slug>`, and likewise `-c<N>-checkpoint`,
+  `-e<n>-<slug>` (§2.2), `-t0-baseline` (§1.5), `-t<N>-report` (§7) and
+  `-t<N>-handoff` (§9.3). The state directory keeps its dated name,
+  `docs/ai/night-<YYYY-MM-DD>/`, where the plan is.
+- **These are names for git and GitHub only.** Everywhere else the run is still
+  the night of its date: the state files, their headings, commit messages
+  (`Unattended run: docs/ai/night-<YYYY-MM-DD>/`), the morning report and
+  anything written about the run name it `night-<YYYY-MM-DD>` (or "the night
+  run of <YYYY-MM-DD>"), never `Nightrun`. `Nightrun` appears only where a
+  branch is meant: a git command, or the report's branch columns and State.
+- **The date is recorded on the branch**, as its description in the
+  repository's local git config, because the name no longer carries it. §1's
+  loop and a resumed session read it there. Git removes it with the branch.
+- **The separator is a hyphen**, never a slash. Git stores refs as paths, so a
+  branch `x` and a branch `x/y` cannot coexist; the failure (`cannot lock ref`)
+  only appears at the second branch.
 - **`<YYYY-MM-DD>` is the date the run started** and never changes, even after
-  midnight. A resumed session takes it from the branch, never from `date`.
+  midnight. A resumed session takes it from the branch's description, never
+  from `date`.
 - Never work unattended on `main`.
 
 ### 1.3 Remote
 
 ```bash
-git ls-remote --heads origin "night-<YYYY-MM-DD>*"
+git ls-remote --heads origin Nightrun "<YYYY-MM-DD>-*"
 ```
 
 | Result | Action |
 | ------ | ------ |
 | No remote | Local-only run: record it, skip every push and poll. Not a failure. |
 | Reachable, no matching branch | Normal. |
-| Matching branch, **resuming** | Expected. Confirm with `git fetch origin && git merge-base --is-ancestor origin/night-<date> night-<date>`, then continue. |
-| Matching branch, **new run** | **Stop.** Someone else owns the namespace. |
+| Matching branch, **resuming** | Expected. Confirm with `git fetch origin && git merge-base --is-ancestor origin/Nightrun Nightrun`, then continue. |
+| Matching branch, **new run** | **Stop.** `Nightrun` on the remote is an earlier run's that a human has not yet merged or deleted, or someone else owns the date's names. |
 | Unreachable | Continue local-only, record why. |
 
 Create, delete or fetch nothing else on the remote.
@@ -237,7 +269,7 @@ Create, delete or fetch nothing else on the remote.
   these.
 - Create `progress.md`, `decisions.md` and `questions.md` beside `plan.md`
   (`docs/ai/README.md` says what each holds). There is one directory for the
-  whole run, named after the run branch. Never create, overwrite or template
+  whole run, named after the run's date. Never create, overwrite or template
   `plan.md`.
 - Open `progress.md` with a `## Run start` entry, before the first task: **the
   plan's goal, quoted verbatim**, the **deadline it resolves to as a full date
@@ -307,7 +339,7 @@ The e2e suite starts its own `next dev` on port 3100 with a throwaway
   a file is right: it undoes a tool, not the task's work. Never stage them.
 
 **A red baseline makes the repair task #1**, on
-`night-<YYYY-MM-DD>-t0-baseline`, through §2 like any task and never on `main`.
+`<YYYY-MM-DD>-t0-baseline`, through §2 like any task and never on `main`.
 It is the one task the plan does not have to name, because no other task can be
 verified until it is done. If it stays red after three cycles, stop the run.
 Record that the requested work did not start, and why.
@@ -323,9 +355,9 @@ these additions.
 
    ```bash
    date '+%F %H:%M'
-   git checkout night-<YYYY-MM-DD> && git status --short
+   git checkout Nightrun && git status --short
    git rev-parse HEAD                      # the task's base SHA -- record it (§7)
-   git checkout -b night-<YYYY-MM-DD>-t<N>-<slug>
+   git checkout -b <YYYY-MM-DD>-t<N>-<slug>
    ```
 
    At or past `D`, or past the budget roundup (§8.2, §8.5), do not start it.
@@ -344,14 +376,14 @@ these additions.
    npx prettier --check <every file this task changed>
    npm run lint
    npx next typegen && npx tsc --noEmit
-   npm run test:affected -- --base night-<YYYY-MM-DD>   # prints the selection (§2.1)
+   npm run test:affected -- --base Nightrun   # prints the selection (§2.1)
    <its unit command>                                   # vitest related, or the full suite
    npm run build                                        # only if in the gate (§1.5)
    <its e2e command>                                    # the affected specs, or the full suite
    E2E_SERVER=start npm run test:e2e                    # only on a full-suite point (§2.1)
    ```
 
-   `npm run test:affected -- --base night-<YYYY-MM-DD> --run` runs the unit and
+   `npm run test:affected -- --base Nightrun --run` runs the unit and
    e2e selection in one step, stopping at the first failure, but then the build
    comes after the browser tests; either order passes the gate. Record the
    selection it printed with the results (step 4): which specs ran is part of
@@ -363,7 +395,7 @@ these additions.
    A task that adds a test script adds it to the gate from its own commit on.
 
    - **Workflow lint** joins the gate only if the task changed a workflow (any
-     output from `git diff --name-only night-<date> -- .github/workflows/` or
+     output from `git diff --name-only Nightrun -- .github/workflows/` or
      `git ls-files --others --exclude-standard -- .github/workflows/`), or a
      workflow is known to have failed, including by step 6's poll:
 
@@ -456,8 +488,8 @@ these additions.
 5. **Merge.** Only after a complete, green, reviewed task:
 
    ```bash
-   git checkout night-<YYYY-MM-DD>
-   git merge --ff-only night-<YYYY-MM-DD>-t<N>-<slug>
+   git checkout Nightrun
+   git merge --ff-only <YYYY-MM-DD>-t<N>-<slug>
    ```
 
    A refused `--ff-only` means something this protocol does not model is
@@ -467,12 +499,18 @@ these additions.
 6. **Push.**
 
    ```bash
-   git push --set-upstream origin night-<YYYY-MM-DD>-t<N>-<slug>
-   git push origin night-<YYYY-MM-DD>
+   git push --set-upstream origin <YYYY-MM-DD>-t<N>-<slug>
+   git push origin Nightrun
    ```
 
    A **rejected push**: record it, push nothing further for the rest of the
    run, and keep working locally. No PRs, ever. Local-only runs skip this step.
+
+   **CI runs only on the merge.** The workflow is triggered by pushes to
+   `Nightrun` and `main` and pull requests into them
+   (`.github/workflows/ci.yml`), never by a task branch's own push. So the
+   push of `Nightrun` above is what CI checks: one run per task, on the
+   merged state.
 
    **Then poll CI in the background**, if the pushed commit has a workflow
    (`git ls-tree -r --name-only HEAD -- .github/workflows/` prints something).
@@ -481,13 +519,14 @@ these additions.
    task, and **go straight on to the next task**:
 
    ```bash
-   node .claude/skills/night-run/ci-poll.mjs "$(git rev-parse HEAD)" \
-     night-<date>-t<N>-<slug> night-<date>
+   node .claude/skills/night-run/ci-poll.mjs "$(git rev-parse HEAD)" Nightrun
    ```
 
-   It waits 5 minutes, then checks every 3, and exits once every named branch
-   has a completed run, after 30 minutes, or after two API errors in a row. A
-   `PROVISIONAL:` branch (§4) is pushed alone, so pass only its own name. When
+   It waits 5 minutes, then checks every 3, and exits once `Nightrun` has a
+   completed run for that commit, after 30 minutes, or after two API errors in
+   a row. Never name a task branch to it: it has no run, and the poll would
+   only time out. A `PROVISIONAL:` branch (§4) is never merged, so it gets no
+   CI: record "pushed; no CI (provisional, not merged)" and poll nothing. When
    the notification arrives, note the outcome in `current-task.txt`; it goes
    into the next task's `progress.md` entry (step 4), or the report:
 
@@ -519,7 +558,7 @@ these additions.
         because the commit is pushed), then steps 1–6 again: fast-forward,
         push both, poll the new SHA.
      4. Return: `git checkout <in-flight branch> && git merge --ff-only
-        night-<date> && git stash pop`. The in-flight branch has no commits of
+        Nightrun && git stash pop`. The in-flight branch has no commits of
         its own (one commit per task, at the end), so this fast-forward always
         succeeds.
      5. On the third failed cycle, leave task N's branches pushed as they are
@@ -538,7 +577,8 @@ these additions.
 
 **Provisional work** (built on a §4 assumption) is one commit prefixed
 `PROVISIONAL:`, on its own task branch, **pushed but never merged**, so no later
-task inherits the assumption. Name the branch in `questions.md`.
+task inherits the assumption. Its only verification is local: CI never runs
+on it (step 6). Name the branch in `questions.md`.
 
 **Abandoned work** (§3, §6) stays on its local branch, unmerged and unpushed. A
 pushed branch reads as an offer. Name it in `progress.md` and do not delete it.
@@ -552,7 +592,7 @@ fixed points, and between them only the tests a change can affect.
 | When | What runs |
 | ---- | --------- |
 | **Working on a task** (implementing, and every repair cycle) | Only the test files being written or repaired, and the one that failed: `npx vitest run <file>`, `npx playwright test <spec> -g "<test title>"`, `npx playwright test --last-failed`. Never a whole suite. |
-| **The gate** (§2 step 1), once per task, on its final state | The selection `npm run test:affected -- --base night-<YYYY-MM-DD>` prints: `vitest related` over the changed files, and the specs visiting a route the change reaches, against `next dev`. |
+| **The gate** (§2 step 1), once per task, on its final state | The selection `npm run test:affected -- --base Nightrun` prints: `vitest related` over the changed files, and the specs visiting a route the change reaches, against `next dev`. |
 | **Database tests** | `DATABASE_TESTS=1 npx vitest run tests/unit/data`, at the gate whenever the selector prints a `database:` line (a change to `app/lib/data.ts`, `db/migrations/`, `scripts/db.mjs` or the tests themselves); `--run` runs it. Otherwise only at full-suite points. Nowhere else does anything run them. |
 | **Full-suite points** | `npm test`, the database tests above, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan, or every 5th task if the plan names none; the last task before the morning report; and any gate where the selector printed `FULL`. |
 | **After a fix the reviewer asked for** | The gate again, on the new final state. The selection is already narrow; no separate full run. |
@@ -608,7 +648,7 @@ out" is never what ended a run.
   `questions.md` as proposed tasks. An item that turns out to need a human is
   parked (§4), and the next one starts.
 - **Each item is a task** through the whole of §2, on
-  `night-<YYYY-MM-DD>-e<n>-<slug>`, merged like planned work. Before starting
+  `<YYYY-MM-DD>-e<n>-<slug>`, merged like planned work. Before starting
   one, append `## E<n> — started HH:MM: <item> (kind: <kind>)` to
   `progress.md`; its entry is headed `## E<n> — <item> (completed)`. Items
   count as tasks for "every 5th task" (§2.1) and for checkpoints the plan
@@ -623,8 +663,9 @@ out" is never what ended a run.
 Never, unattended:
 
 - `git push --force` / `--force-with-lease`, `--delete`, `--tags`, or a push to
-  anything outside this run's `night-<YYYY-MM-DD>` namespace: never `main`,
-  never a ref this run did not create. Check the name before every push.
+  anything but `Nightrun` and this run's own `<YYYY-MM-DD>-…` task branches:
+  never `main`, never a ref this run did not create. Check the name before
+  every push.
 - Opening a pull request.
 - Rewriting history (`rebase`, `commit --amend`, `reset --hard`) except over
   your own uncommitted work. Once pushed, never.
@@ -667,7 +708,7 @@ approve verbatim. Then:
 
 ```bash
 git restore -- <paths this task touched>    # never a bare `git restore .`: pre-existing changes are not yours
-git checkout night-<YYYY-MM-DD>
+git checkout Nightrun
 ```
 
 Do not implement up to the boundary. A half-applied change is worse than none.
@@ -720,8 +761,9 @@ End the run (merge, push and delete nothing further) when:
   just gets abandoned (§3), with all three hypotheses recorded
   (`.claude/rules/debugging.md` §8), and the run moves on.
 - **The baseline stays red** after three attempts (§1.5).
-- **The remote already holds this run's namespace** at the start of a new run
-  (§1.3).
+- **`Nightrun` already exists**, locally from a finished run (§1) or on the
+  remote (§1.3), or the remote holds this date's task branches, at the start of
+  a new run.
 - **A `--ff-only` merge is refused** (§2 step 5).
 - **The clock reaches the goal time `D`** (§8.2). No new task starts; the task
   in flight is finished (§8.4), then the morning report is written and the run
@@ -745,7 +787,7 @@ last task that passed its checks.
 ## 7. Morning report
 
 The **run's** last act. It is a task like any other, on
-`night-<YYYY-MM-DD>-t<N>-report`, merged and pushed. It is a **summary and
+`<YYYY-MM-DD>-t<N>-report`, merged and pushed. It is a **summary and
 index** of the run, **inserted at the top of `progress.md`**, under exactly
 `## Morning report`: below the title and its one-line note, above
 `## Run start`. That is the one write to `progress.md` that is not at its end,
@@ -786,8 +828,9 @@ memory. It contains:
     shows the task's code. Write that command once, under the table.
   - *CI*: "CI passed" only with a `success` in hand (the run URL goes in the
     entry), otherwise "CI failed, fixed in N cycles (job)", "abandoned after 3
-    CI cycles (job)", "pushed; CI not observed", "pushed; no CI", "not pushed:
-    rejected" or "local-only".
+    CI cycles (job)", "pushed; CI not observed", "pushed; no CI", "pushed; no
+    CI (provisional, not merged)", "not pushed: rejected" or "local-only". CI
+    is the run of `Nightrun` at the task's tip: task branches have none.
   - *What it brings*: the entry's own line, shortened to one sentence. A task
     with no entry has a dash.
 - **Questions**: the `questions.md` queue, most consequential first, including
@@ -930,7 +973,8 @@ ended, holding real verification output, its base SHA and what it does and bring
 Reached from §1. Do not re-run §1.0, §1.2 or §1.4.
 
 ```bash
-git checkout night-<YYYY-MM-DD>     # the date comes from the branch, not `date`
+git checkout Nightrun
+git config branch.Nightrun.description   # the run's date: from the branch, not `date`
 git status --short
 git log --oneline main..HEAD
 ```
@@ -957,7 +1001,7 @@ git log --oneline main..HEAD
 ### 9.3 The handoff
 
 What a session writes instead of the morning report when it stops before `D`:
-appended to `progress.md` on `night-<YYYY-MM-DD>-t<N>-handoff`, merged and
+appended to `progress.md` on `<YYYY-MM-DD>-t<N>-handoff`, merged and
 pushed. Head it `## Handoff`, **never** `## Morning report`, or §1 will treat
 the run as finished.
 
@@ -992,7 +1036,7 @@ Otherwise `CronCreate` with `cron: "7,27,47 * * * *"`, `recurring: true` and
 exactly this prompt:
 
 ```text
-Run unattended. Invoke the night-run skill. If this session already holds the run, this is a heartbeat (§9.5). Otherwise, if the loop in the skill's §1 lists a night-* run branch as in progress, resume it (§9.2). Otherwise stop immediately: skip §1.0, create no branch, write no file, and delete this timer.
+Run unattended. Invoke the night-run skill. If this session already holds the run, this is a heartbeat (§9.5). Otherwise, if the loop in the skill's §1 prints the Nightrun branch as in progress, resume it (§9.2). Otherwise stop immediately: skip §1.0, create no branch, write no file, and delete this timer.
 ```
 
 The prompt can only continue a run, never start one, so a firing after the run

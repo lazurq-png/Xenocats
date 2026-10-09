@@ -26,6 +26,9 @@ function coop(config: Partial<ArenaConfig> = {}, seed = 1) {
       },
       chestReach: -1,
       secretCat: { afterMs: Infinity, stillMs: 0 },
+      // A xenocat as rarely an elite as when these tests were written: elites' gems
+      // would bring level-ups these tests do not choose.
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0.04 },
       ...config,
     },
   });

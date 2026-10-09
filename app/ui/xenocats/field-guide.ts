@@ -1,13 +1,12 @@
 // The cat field guide: what this visitor has seen of each cat type, kept in
-// localStorage. Times met (a cat of that type turned up), attacks survived (its
-// attack hit you and you lived), and tamed (the Taming collection, taming.ts).
+// localStorage. Times met (a cat of that type turned up), and attacks survived (its
+// attack hit you and you lived).
 //
 // Pure parsing and counting, plus a tiny store for React (useSyncExternalStore)
 // that notifies this tab when a count changes and other tabs through `storage`.
 
 import type { CatType } from './cat-types';
 import { CAT_TYPES } from './cat-types';
-import { TAMED_KEY, type TamedCollection, addTamed, parseCollection } from './taming';
 
 export const GUIDE_KEY = 'xenocats:guide';
 
@@ -44,22 +43,20 @@ export function addStat(stats: GuideStats, typeId: string, field: keyof TypeStat
   return { ...stats, [typeId]: { ...current, [field]: current[field] + 1 } };
 }
 
-export type Guide = { stats: GuideStats; tamed: TamedCollection };
+export type Guide = { stats: GuideStats };
 
 /** One cat type's line in the guide. */
 export const entryFor = (guide: Guide, typeId: string) => ({
   met: guide.stats[typeId]?.met ?? 0,
   survived: guide.stats[typeId]?.survived ?? 0,
-  tamed: guide.tamed[typeId] ?? 0,
 });
 
-/** True for a visitor who has not met, survived or tamed any cat yet. */
-export const isEmptyGuide = (guide: Guide) =>
-  Object.keys(guide.stats).length === 0 && Object.keys(guide.tamed).length === 0;
+/** True for a visitor who has not met or survived any cat yet. */
+export const isEmptyGuide = (guide: Guide) => Object.keys(guide.stats).length === 0;
 
 // ------------------------------------------------------------------ the store
 
-const EMPTY: Guide = { stats: {}, tamed: {} };
+const EMPTY: Guide = { stats: {} };
 const listeners = new Set<() => void>();
 let cached: { raw: string; guide: Guide } | null = null;
 
@@ -81,14 +78,9 @@ function write(key: string, value: string) {
 
 /** The guide as stored; the same object until something changes (for React). */
 export function getGuide(): Guide {
-  const stats = read(GUIDE_KEY);
-  const tamed = read(TAMED_KEY);
-  const raw = `${stats}\u0000${tamed}`;
+  const raw = read(GUIDE_KEY) ?? '';
   if (cached?.raw !== raw) {
-    cached = {
-      raw,
-      guide: { stats: parseStats(stats, CAT_TYPES), tamed: parseCollection(tamed, CAT_TYPES) },
-    };
+    cached = { raw, guide: { stats: parseStats(raw, CAT_TYPES) } };
   }
   return cached.guide;
 }
@@ -112,12 +104,5 @@ const notify = () => {
 export function recordStat(typeId: string, field: keyof TypeStats) {
   if (!CAT_TYPES.some((type) => type.id === typeId)) return;
   write(GUIDE_KEY, JSON.stringify(addStat(getGuide().stats, typeId, field)));
-  notify();
-}
-
-/** A cat of `typeId` was tamed: one more in the collection. */
-export function recordTamed(typeId: string) {
-  if (!CAT_TYPES.some((type) => type.id === typeId)) return;
-  write(TAMED_KEY, JSON.stringify(addTamed(getGuide().tamed, typeId)));
   notify();
 }

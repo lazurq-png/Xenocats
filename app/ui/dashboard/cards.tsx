@@ -1,6 +1,7 @@
 import { BanknotesIcon, ClockIcon, UserGroupIcon, InboxIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { fetchCardData } from '@/app/lib/data';
+import { currentUserId } from '@/app/lib/session';
 import { Range, formatChange } from '@/app/lib/dashboard';
 import { CardStat } from '@/app/lib/definitions';
 import { formatCurrency } from '@/app/lib/utils';
@@ -13,7 +14,10 @@ const iconMap = {
 };
 
 export default async function CardWrapper({ range }: { range: Range }) {
-  const { collected, pending, invoices, customers } = await fetchCardData(range);
+  const { collected, pending, invoices, customers } = await fetchCardData(
+    await currentUserId(),
+    range
+  );
 
   return (
     <>

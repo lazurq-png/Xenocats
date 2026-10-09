@@ -35,3 +35,45 @@ export function clockText(ms: number): string {
   const seconds = Math.floor(Math.max(ms, 0) / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
+
+/** How player 1 aims on a computer: his weapons find their own cats, or the mouse. */
+export type AimMode = 'auto' | 'crosshair';
+
+export const SURVIVAL_AIM_KEY = 'xenocats:survival:v1:aim';
+
+/** A stored aim mode; anything else (missing, corrupt) is automatic. */
+export const parseAim = (raw: string | null): AimMode =>
+  raw === 'crosshair' ? 'crosshair' : 'auto';
+
+const aimListeners = new Set<() => void>();
+/** The choice, when storage is blocked: it lasts until the page is left. */
+let aimInMemory: AimMode | null = null;
+
+export function readAim(): AimMode {
+  if (aimInMemory) return aimInMemory;
+  try {
+    return parseAim(window.localStorage.getItem(SURVIVAL_AIM_KEY));
+  } catch {
+    return 'auto';
+  }
+}
+
+export function writeAim(mode: AimMode) {
+  try {
+    window.localStorage.setItem(SURVIVAL_AIM_KEY, mode);
+  } catch {
+    // Storage blocked: the choice lasts until the page is left.
+    aimInMemory = mode;
+  }
+  for (const listener of aimListeners) listener();
+}
+
+/** For useSyncExternalStore: the stored aim mode, and changes to it (here or in another tab). */
+export function subscribeAim(onChange: () => void) {
+  aimListeners.add(onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    aimListeners.delete(onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}

@@ -34,11 +34,13 @@ describe('affected-tests', () => {
   it('runs the specs of the area a component reaches, and not the others', () => {
     const { e2e } = select(['app/ui/invoices/table.tsx']);
     expect(e2e.specs).toContain('tests/e2e/invoices.spec.ts');
-    expect(e2e.specs).not.toContain('tests/e2e/fight.spec.ts');
+    expect(e2e.specs).not.toContain('tests/e2e/survival.spec.ts');
   });
 
   it('runs a changed spec itself, and no browser test for a unit test or a document', () => {
-    expect(select(['tests/e2e/fight.spec.ts']).e2e).toEqual({ specs: ['tests/e2e/fight.spec.ts'] });
+    expect(select(['tests/e2e/survival.spec.ts']).e2e).toEqual({
+      specs: ['tests/e2e/survival.spec.ts'],
+    });
     expect(select(['tests/unit/csv.test.ts', 'docs/ai/README.md']).e2e).toEqual({ specs: [] });
   });
 

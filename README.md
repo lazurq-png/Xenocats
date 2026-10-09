@@ -8,7 +8,6 @@ cursor. Built with the Next.js App Router, PostgreSQL and Tailwind CSS.
 - `/dashboard`: overview, invoices and customers (needs a session)
 - `/cats`: every cat, with a button to summon it
 - `/cats/survival`: Survival, five minutes in an endless arena against the horde
-- `/cats/taming`: Taming, carrying treats to the cats (also on touch screens)
 
 ## Development
 

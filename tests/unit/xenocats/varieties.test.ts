@@ -224,9 +224,13 @@ describe('keeping the horde where he is', () => {
     });
     runTo(a, 8000);
     expect(a.cats().length).toBeGreaterThan(3);
+    // The screen shows the phone's size times the camera's zoom of the arena (a phone
+    // zooms out to see more, task 7).
+    const { zoom } = a.camera();
+    expect(zoom).toBeGreaterThan(1);
     for (const cat of a.cats()) {
-      expect(Math.abs(cat.x)).toBeLessThanOrEqual(phone.width / 2 - 40 + 1e-6);
-      expect(Math.abs(cat.y)).toBeLessThanOrEqual(phone.height / 2 - 40 + 1e-6);
+      expect(Math.abs(cat.x)).toBeLessThanOrEqual((phone.width * zoom) / 2 - 40 + 1e-6);
+      expect(Math.abs(cat.y)).toBeLessThanOrEqual((phone.height * zoom) / 2 - 40 + 1e-6);
     }
   });
 
@@ -285,23 +289,15 @@ describe('keeping the horde where he is', () => {
 
 describe('the schedule', () => {
   it('opens to each variety in turn', () => {
-    expect(arrivalsAt(0).map((a) => a.who)).toEqual(['basic', 'xenocat']);
+    // The horde opens with plain cats; the xenocats visit on a clock of their own.
+    expect(arrivalsAt(0).map((a) => a.who)).toEqual(['basic']);
+    expect(SCHEDULE.xenocats).toEqual({ from: 15_000, everyMs: [8_000, 15_000] });
     expect(
       arrivalsAt(300_000)
         .map((a) => a.who)
         .sort()
     ).toEqual(
-      [
-        'basic',
-        'box',
-        'comforter',
-        'fat',
-        'hissing',
-        'laser',
-        'possessed',
-        'xenocat',
-        'zoomies',
-      ].sort()
+      ['basic', 'box', 'comforter', 'fat', 'hissing', 'laser', 'possessed', 'zoomies'].sort()
     );
   });
 
@@ -472,4 +468,102 @@ describe('the Purring Cat', () => {
     expect(at.from).toBe(130_000);
     expect(at.weight).toBeLessThan(1);
   });
+});
+
+describe('the xenocats are special, not the horde', () => {
+  it('each visiting xenocat, sent home, leaves a chest: a visit is an event', () => {
+    const a = arena(
+      {
+        ...watch,
+        stepMs: 50,
+        startingWeapons: ['infinite-laser'],
+        startingLevel: 8,
+        // No horde at all: only the visits.
+        escalation: [[0, 0]],
+        schedule: { ...only('basic'), xenocats: { from: 1000, everyMs: [2000, 2000] } },
+      },
+      4
+    );
+    let visits = 0;
+    while (a.state().time < 30_000) {
+      a.step(still);
+      for (const e of a.drainEvents()) if (e.kind === 'xenocat') visits++;
+    }
+    // Nobody opens them here (chestReach -1): they lie where the cats went home.
+    const chests = a.chests().length;
+    expect(visits).toBeGreaterThan(10);
+    // The last few may still be walking in.
+    expect(chests).toBeGreaterThanOrEqual(visits - 3);
+    expect(chests).toBeLessThanOrEqual(visits);
+  });
+
+  /** Everything that came in a seeded five-minute run, once each, as it arrived. */
+  function arrivals(seed: number) {
+    // Strong weapons keep the field small (and the test quick); every step is seen.
+    const a = arena(
+      {
+        ...watch,
+        stepMs: 50,
+        startingWeapons: ['infinite-laser', 'thunderous-vacuum'],
+        startingLevel: 8,
+      },
+      seed
+    );
+    const seen = new Map<number, Pick<ArenaCat, 'type' | 'variety' | 'swarm' | 'elite'>>();
+    const events: { kind: string; type?: number; elite?: boolean }[] = [];
+    while (a.state().time < 300_000 && a.state().status !== 'over') {
+      a.step(still);
+      for (const cat of a.cats()) {
+        if (!seen.has(cat.id)) {
+          seen.set(cat.id, {
+            type: cat.type,
+            variety: cat.variety,
+            swarm: cat.swarm,
+            elite: cat.elite,
+          });
+        }
+      }
+      for (const e of a.drainEvents())
+        if (e.kind === 'xenocat' || e.kind === 'boss') events.push(e);
+    }
+    return { cats: [...seen.values()], events };
+  }
+
+  it('no ordinary arrival or swarm cat is a xenocat; they come rarely, as elites and as the bosses', () => {
+    expect(arrivalsAt(300_000).some((a) => a.who === 'xenocat')).toBe(false);
+    let xenocats = 0;
+    let ordinary = 0;
+    let elites = 0;
+    let bosses = 0;
+    for (const seed of [1]) {
+      const { cats, events } = arrivals(seed);
+      for (const cat of cats) {
+        if (cat.swarm > 0) expect(cat.type, 'a swarm kitten').toBe(-1);
+        else if (cat.variety === 'mega') {
+          // A boss: a Mega Cat's size, a xenocat's face.
+          expect(cat.type).toBeGreaterThanOrEqual(0);
+          bosses++;
+        } else if (cat.variety) {
+          expect(cat.type, cat.variety).toBe(-1);
+          expect(cat.elite).toBe(false);
+          ordinary++;
+        } else {
+          expect(cat.type).toBeGreaterThanOrEqual(0);
+          xenocats++;
+          if (cat.elite) elites++;
+        }
+      }
+      // Each xenocat and each boss is announced, with its face.
+      const announced = events.filter((e) => e.kind === 'xenocat');
+      expect(announced).toHaveLength(cats.filter((c) => !c.variety && c.swarm === 0).length);
+      for (const e of events) expect(CAT_TYPES[e.type!]).toBeDefined();
+    }
+    expect(xenocats).toBeGreaterThan(0);
+    expect(elites).toBeGreaterThan(0);
+    expect(bosses).toBe(SCHEDULE.bosses.length);
+    // Rare, by the clock: at most one every 8 s of the five minutes, however large
+    // the horde, and a few in a hundred of the arrivals.
+    expect(xenocats).toBeLessThanOrEqual(300_000 / SCHEDULE.xenocats!.everyMs[0]);
+    expect(xenocats / (xenocats + ordinary)).toBeLessThan(0.08);
+  }, 120_000);
 });

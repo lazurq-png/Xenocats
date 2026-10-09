@@ -150,6 +150,12 @@ export type ArenaConfig = {
     /** A downed Keeper stands again if the other lasts this long, ms. */
     reviveMs: number;
   };
+  /**
+   * A small screen sees no less of the arena: the camera shows at least `minView`
+   * arena px across the screen's narrower side, zooming out up to `maxZoom` (so
+   * the Keeper and the cats stay big enough to read). A larger screen is unzoomed.
+   */
+  view: { minView: number; maxZoom: number };
   /** The spatial grid's cell, px. */
   cellSize: number;
 };
@@ -162,7 +168,7 @@ export const ARENA_CONFIG: ArenaConfig = {
     speed: [45, 95],
     homesickness: [16, 34],
     drain: [4, 11],
-    eliteShare: 0.04,
+    eliteShare: 0.4,
     effectMaxMs: 2500,
     spawnMargin: 60,
     hardCap: 6000,
@@ -194,6 +200,11 @@ export const ARENA_CONFIG: ArenaConfig = {
   secretCat: { afterMs: 60_000, stillMs: 20_000 },
   secondPlayer: null,
   coop: { startGap: 80, maxZoomOut: 1.6, margin: 80, reviveMs: 30_000 },
+  // The view is the browser window, not the screen: a 1366 × 768 laptop's window is
+  // about 650 px tall. So a phone sees about as much as the smallest common laptop
+  // window, and every desktop window from there up is unzoomed (decisions D41): a
+  // 390 px phone zooms out 1.64, a 360 px one 1.78; nothing beyond 1.8.
+  view: { minView: 640, maxZoom: 1.8 },
   cellSize: 64,
 };
 
@@ -259,6 +270,8 @@ export type ArenaCat = {
   shotAt: number;
   /** The kitten swarm it came with, or 0. */
   swarm: number;
+  /** A xenocat's visit (schedule `xenocats`): it leaves a chest when sent home. */
+  visitor: boolean;
   x: number;
   y: number;
   speed: number;
@@ -311,6 +324,11 @@ type Keeper = {
   resolve: number;
   untouchableUntil: number;
   facing: number;
+  /**
+   * Where he aims, in the arena, when the player aims with a crosshair (desktop,
+   * player 1); null when his weapons find their own cats.
+   */
+  aim: Vec | null;
   /** An elite's effect on him, while it lasts. */
   effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null;
   weapons: Map<WeaponId, { level: number; readyAt: number }>;
@@ -333,7 +351,10 @@ export type ArenaEvent =
       /** Which Keeper (0 for player 1, 1 for player 2). */
       player: number;
     }
-  | { kind: 'boss'; x: number; y: number }
+  /** A Mega Cat has come, wearing the face of xenocat `type`. */
+  | { kind: 'boss'; x: number; y: number; type: number }
+  /** A xenocat (one with artwork) has come: rare, and an elite as often as not. */
+  | { kind: 'xenocat'; type: number; elite: boolean }
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
@@ -402,6 +423,7 @@ export function createArena(options: {
       resolve: own.resolve,
       untouchableUntil: 0,
       facing: 1,
+      aim: null,
       effect: null,
       weapons,
       passives,
@@ -445,6 +467,7 @@ export function createArena(options: {
   // Kitten swarms (how many of each are left), bosses come, chests lie about.
   let nextSwarm = config.schedule.swarms.from;
   let swarmId = 0;
+  let nextXenocat = config.schedule.xenocats?.from ?? Infinity;
   const swarms = new Map<number, number>();
   let bossesCome = 0;
   const chests: Vec[] = [];
@@ -471,23 +494,32 @@ export function createArena(options: {
   const standing = (k: Keeper) => k.downedAt === null;
 
   /**
-   * The shared camera: on the one Keeper, or between the two, zoomed out (up to
-   * config.coop.maxZoomOut) to keep both in view. The screen then shows the
-   * viewport times `zoom` of the arena.
+   * The shared camera: on the one Keeper, or between the two. Its zoom is the
+   * screen's own (baseZoom: out on a small screen), and in co-op out further, up to
+   * that times config.coop.maxZoomOut, to keep both in view. The screen then shows
+   * the viewport times `zoom` of the arena.
    */
   function camera(): { x: number; y: number; zoom: number } {
-    if (keepers.length === 1) return { x: keepers[0].x, y: keepers[0].y, zoom: 1 };
+    const base = baseZoom();
+    if (keepers.length === 1) return { x: keepers[0].x, y: keepers[0].y, zoom: base };
     const [a, b] = keepers;
     const m = config.coop.margin;
     const zoom = Math.min(
-      config.coop.maxZoomOut,
+      base * config.coop.maxZoomOut,
       Math.max(
-        1,
+        base,
         (Math.abs(a.x - b.x) + 2 * m) / viewport.width,
         (Math.abs(a.y - b.y) + 2 * m) / viewport.height
       )
     );
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, zoom };
+  }
+
+  /** The screen's own zoom, before co-op's: out on a small screen (config.view). */
+  function baseZoom() {
+    const narrower = Math.min(viewport.width, viewport.height);
+    if (narrower <= 0) return 1;
+    return Math.min(Math.max(config.view.minView / narrower, 1), config.view.maxZoom);
   }
 
   /**
@@ -499,12 +531,13 @@ export function createArena(options: {
   function tether(k: Keeper, from: Vec) {
     if (keepers.length < 2) return;
     const other = keepers[1 - k.index];
+    const widest = baseZoom() * config.coop.maxZoomOut;
     const spanX = Math.max(
-      viewport.width * config.coop.maxZoomOut - 2 * config.coop.margin,
+      viewport.width * widest - 2 * config.coop.margin,
       Math.abs(from.x - other.x)
     );
     const spanY = Math.max(
-      viewport.height * config.coop.maxZoomOut - 2 * config.coop.margin,
+      viewport.height * widest - 2 * config.coop.margin,
       Math.abs(from.y - other.y)
     );
     k.x = Math.min(Math.max(k.x, other.x - spanX), other.x + spanX);
@@ -553,6 +586,7 @@ export function createArena(options: {
     cat.turnAt = 0;
     cat.shotAt = time + config.laserCat.everyMs;
     cat.swarm = 0;
+    cat.visitor = false;
     cats.push(cat);
     return cat;
   }
@@ -567,6 +601,8 @@ export function createArena(options: {
     cat.limit = byType(type, config.cats.homesickness, 3);
     cat.drain = Math.round(byType(type, config.cats.drain, 5));
     cat.elite = random.next() < config.cats.eliteShare;
+    events.push({ kind: 'xenocat', type, elite: cat.elite });
+    return cat;
   }
 
   function spawnVariety(id: VarietyId, at: Vec): ArenaCat {
@@ -656,11 +692,22 @@ export function createArena(options: {
         swarms.set(id, size);
       }
     }
+    // A xenocat's visit: rare by the clock, not a share of the horde.
+    const visits = config.schedule.xenocats;
+    if (visits && time >= nextXenocat) {
+      nextXenocat = time + random.range(visits.everyMs[0], visits.everyMs[1]);
+      if (spawn && cats.length < config.cats.hardCap) {
+        const visitor = spawnXenocat(offScreen(random.next() * 2 * Math.PI));
+        visitor.visitor = true;
+      }
+    }
     while (bossesCome < bosses.length && time >= bosses[bossesCome]) {
       bossesCome++;
       const at = offScreen(random.next() * 2 * Math.PI, VARIETIES.mega.radius);
-      spawnVariety('mega', at);
-      events.push({ kind: 'boss', x: at.x, y: at.y });
+      const boss = spawnVariety('mega', at);
+      // A Mega Cat's size and strength, and one of the xenocats' faces.
+      boss.type = random.int(0, types.length - 1);
+      events.push({ kind: 'boss', x: at.x, y: at.y, type: boss.type });
     }
   }
 
@@ -678,8 +725,9 @@ export function createArena(options: {
       });
       sentHome++;
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
-      // A boss, an elite, or the last kitten of a swarm leaves a chest.
-      let chest = cat.variety === 'mega' || (cat.elite && cat.swarm === 0);
+      // A boss, an elite, a visiting xenocat, or the last kitten of a swarm
+      // leaves a chest.
+      let chest = cat.variety === 'mega' || cat.visitor || (cat.elite && cat.swarm === 0);
       if (cat.swarm !== 0) {
         const left = (swarms.get(cat.swarm) ?? 1) - 1;
         if (left <= 0) {
@@ -934,12 +982,31 @@ export function createArena(options: {
   /** How near a cat comes before it reaches him: its size counts. */
   const reachOf = (cat: ArenaCat) => config.hero.reach + cat.radius - config.cats.radius;
 
-  /** The way from the hero to a cat; the way he faces if it stands on him. */
-  function aim(cat: ArenaCat): Vec {
-    const dx = cat.x - hero.x;
-    const dy = cat.y - hero.y;
+  /** The way from the hero to a point; the way he faces if it is on him. */
+  function towards(at: Vec): Vec {
+    const dx = at.x - hero.x;
+    const dy = at.y - hero.y;
     const length = Math.hypot(dx, dy);
     return length < 0.5 ? { x: hero.facing, y: 0 } : { x: dx / length, y: dy / length };
+  }
+
+  /** The way from the hero to a cat; the way he faces if it stands on him. */
+  const aim = (cat: ArenaCat): Vec => towards(cat);
+
+  /** Between the beams or treats of one firing: they fan out round the way he aims. */
+  const FAN = 0.16;
+
+  /**
+   * Aimed with a crosshair: of the cats he can reach (within `range` of him), the
+   * `count` nearest the crosshair, nearest first. A far crosshair picks the cats
+   * on its side of him, never one past his reach.
+   */
+  function nearestAimed(aimed: Vec, range: number, count: number): number[] {
+    return nearest(hero, range, Infinity)
+      .map((i) => ({ i, d: (cats[i].x - aimed.x) ** 2 + (cats[i].y - aimed.y) ** 2 }))
+      .sort((a, b) => a.d - b.d || a.i - b.i)
+      .slice(0, count)
+      .map((found) => found.i);
   }
 
   function launch(
@@ -956,6 +1023,16 @@ export function createArena(options: {
   /** Fires a weapon that fires; false if it found nothing to fire at (it waits). */
   function fire(id: WeaponId, s: WeaponStats): boolean {
     const kind = WEAPONS[id].kind;
+    // Aimed with a crosshair: what goes one way goes towards it, cat or no cat.
+    const aimed = hero.aim;
+    if (kind === 'beam' && aimed) {
+      const way = Math.atan2(towards(aimed).y, towards(aimed).x);
+      for (let k = 0; k < s.count; k++) {
+        const turn = way + (k - (s.count - 1) / 2) * FAN;
+        beam(hero, Math.cos(turn), Math.sin(turn), s.area, 16, s.damage);
+      }
+      return true;
+    }
     if (kind === 'beam') {
       const targets = nearest(hero, s.area, s.count);
       if (targets.length === 0) return false;
@@ -969,7 +1046,9 @@ export function createArena(options: {
       const hit = new Set<number>();
       let from: Vec = { x: hero.x, y: hero.y };
       for (let jump = 0; jump < s.count; jump++) {
-        const [i] = nearest(from, s.area, 1, hit);
+        // Aimed, the first jump goes to the cat he can reach nearest the crosshair.
+        const [i] =
+          jump === 0 && aimed ? nearestAimed(aimed, s.area, 1) : nearest(from, s.area, 1, hit);
         if (i === undefined) break;
         const cat = cats[i];
         hit.add(cat.id);
@@ -982,8 +1061,9 @@ export function createArena(options: {
       return hit.size > 0;
     }
     if (kind === 'web') {
-      // Beams at every cat near him, each joined to the next: a web, all the time.
-      const targets = nearest(hero, s.area, s.count);
+      // Beams at every cat near him (aimed: those he can reach nearest the
+      // crosshair), each joined to the next: a web, all the time.
+      const targets = aimed ? nearestAimed(aimed, s.area, s.count) : nearest(hero, s.area, s.count);
       if (targets.length === 0) return false;
       let from: Vec | null = null;
       for (const i of targets) {
@@ -1030,13 +1110,17 @@ export function createArena(options: {
     }
     const base = { weapon: id, bit: false, x: hero.x, y: hero.y, radius: s.area, damage: s.damage };
     if (kind === 'spread' || kind === 'burst') {
-      const [i] = nearest(hero, 650, 1);
-      if (i === undefined) return false;
-      const way = aim(cats[i]);
+      let way: Vec;
+      if (aimed) way = towards(aimed);
+      else {
+        const [i] = nearest(hero, 650, 1);
+        if (i === undefined) return false;
+        way = aim(cats[i]);
+      }
       const angle = Math.atan2(way.y, way.x);
       const shots = kind === 'burst' ? 1 : s.count;
       for (let k = 0; k < shots; k++) {
-        const turn = angle + (k - (shots - 1) / 2) * 0.16;
+        const turn = angle + (k - (shots - 1) / 2) * FAN;
         launch({
           ...base,
           vx: Math.cos(turn) * s.speed,
@@ -1048,8 +1132,12 @@ export function createArena(options: {
       return true;
     }
     if (kind === 'arc') {
-      // A wide arc, the way he faces.
-      const facing = hero.facing > 0 ? 0 : Math.PI;
+      // A wide arc, the way he faces (aimed: towards the crosshair).
+      const facing = aimed
+        ? Math.atan2(towards(aimed).y, towards(aimed).x)
+        : hero.facing > 0
+          ? 0
+          : Math.PI;
       const spread = Math.PI * 0.6;
       for (let k = 0; k < s.count; k++) {
         const turn = facing + (k / Math.max(s.count - 1, 1) - 0.5) * spread;
@@ -1066,7 +1154,10 @@ export function createArena(options: {
     }
     if (kind === 'bounce') {
       for (let k = 0; k < s.count; k++) {
-        const turn = random.next() * 2 * Math.PI;
+        // Any way at all; aimed, within a quarter turn of the crosshair's way.
+        const turn = aimed
+          ? Math.atan2(towards(aimed).y, towards(aimed).x) + (random.next() - 0.5) * (Math.PI / 2)
+          : random.next() * 2 * Math.PI;
         launch({
           ...base,
           vx: Math.cos(turn) * s.speed,
@@ -1267,6 +1358,15 @@ export function createArena(options: {
 
     resize(size: { width: number; height: number }) {
       viewport = size;
+    },
+
+    /**
+     * Player 1 aims at `point` in the arena (the crosshair, desktop only), or, with
+     * null, his weapons find their own cats again. The vacuums and the blades that
+     * circle him never aim, so it changes nothing for them.
+     */
+    aimAt(point: Vec | null) {
+      keepers[0].aim = point && { x: point.x, y: point.y };
     },
 
     /**
@@ -1503,7 +1603,7 @@ export function createArena(options: {
           { x: k.x, y: k.y, radius: weaponStats('thunderous-vacuum', held.level, k.mods).area },
         ];
       }),
-    /** The shared camera (one Keeper: on him, unzoomed). */
+    /** The shared camera (one Keeper: on him, at the screen's own zoom). */
     camera,
     matriarch: (): Vec | null => matriarch,
     chests: (): readonly Vec[] => chests,
