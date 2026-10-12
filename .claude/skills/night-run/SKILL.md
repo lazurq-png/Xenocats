@@ -45,6 +45,11 @@ stop.
   cheapest first, and stop at the first failure (§2 step 1). Run side by side,
   they compete for the CPU, and the timing-sensitive browser tests fail for
   that alone.
+- **One heavy job at a time, and memory checked before each** (§2.3). The
+  build, a browser suite and a full Vitest run never overlap, in the
+  background or not. The `reviewer` and the CI poll are light and may run
+  beside them. Low memory is waited out, never a reason to end someone else's
+  process.
 - **Run the tests a change can affect, not every suite every time.** The full
   suites run at fixed points; between them, `npm run test:affected` picks the
   tests (§2.1). CI runs everything once per task, when the task is merged into
@@ -298,7 +303,8 @@ time E2E_SERVER=start npm run test:e2e; echo "exit $?"   # over the build above
 ```
 
 Unlike a task's gate, the baseline does not stop at the first failure: run them
-all, so that a red baseline shows every check that is red.
+all, so that a red baseline shows every check that is red. Before each of the
+last five (the heavy jobs), §2.3's memory check.
 
 `next typegen` comes first because `tsconfig.json` includes route types
 generated under `.next/`, and stale ones fail `tsc` for no reason in the code.
@@ -388,6 +394,10 @@ these additions.
    comes after the browser tests; either order passes the gate. Record the
    selection it printed with the results (step 4): which specs ran is part of
    the evidence.
+
+   Before each heavy job in it (the unit command when it is the full suite,
+   the database tests, the build, each e2e command, and `--run`), §2.3's
+   memory check.
 
    Then undo the checks' side effect on `AGENTS.md` (§1.5) before staging.
 
@@ -655,6 +665,73 @@ out" is never what ended a run.
 - A rule the plan lifts for one of its tasks stays lifted for that task only,
   unless the plan says it carries over to exploration.
 
+### 2.3 Memory: one heavy job at a time
+
+The machine has 8 GB, much of it taken before the run starts (the editor, a
+browser). The 2026-10-09 run was stopped twice by Claude Code for low memory
+during its full suites, and blocked for the rest of the night.
+
+**Heavy jobs** are `npm run build`, every `npm run test:e2e` or
+`npx playwright test` (even one spec starts a test server), a full `npm test`,
+the database tests, and `npm run test:affected -- --run`. Before each one, in
+this order:
+
+1. **A heavy job of this run still running** (one started in the background
+   earlier) → wait for it; its notification resumes you. Never stop a job of
+   this run to make room for another.
+2. **Leftovers.** A job killed from outside can leave its test server or
+   browsers running with nothing using them. List the candidates:
+
+   ```bash
+   powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ Id = \$_.ProcessId; Parent = \$_.ParentProcessId; Name = \$_.Name; Owner = (Invoke-CimMethod -InputObject \$_ -MethodName GetOwner).User; Cmd = \$_.CommandLine } } | Where-Object { \$_.Name -in 'node.exe','chrome.exe','chrome-headless-shell.exe','cmd.exe' } | Format-List"
+   ```
+
+   A process is a leftover, and may be ended, **only if all three hold**:
+   - its `Owner` is the user this session runs as (`whoami` without its
+     `DOMAIN+` prefix);
+   - its command line is either a `next dev` or `next start` with a path
+     inside this repository and `-p 3100` (the test port), or a `chrome.exe` /
+     `chrome-headless-shell.exe` under `%LOCALAPPDATA%\ms-playwright\` with
+     `playwright_chromiumdev_profile-` in it;
+   - following `Parent` up the list reaches no live process whose command line
+     runs `@playwright\test\cli.js` (a test run, or the editor's test server,
+     which may be using it).
+
+   Anything else, or any doubt, is not touched: your own browser, the editor,
+   a `npm run dev` on port 3000, any other user's or any service's process.
+   End a leftover with `taskkill //PID <id> //T //F`, and record in
+   `progress.md` each one ended: its name, PID, the matching part of its
+   command line, and which rule made it a leftover.
+3. **Available memory**, in GB (free plus the cache Windows can hand back at
+   once):
+
+   ```bash
+   powershell.exe -NoProfile -Command "[math]::Round((Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory).AvailableMBytes / 1KB, 1)"
+   ```
+
+   At least **3 GB** → start the job. From **1.5 GB** up to 3 → start it, and
+   a browser run with `E2E_WORKERS=1` (prefix the command). Below 1.5 GB → do
+   not start it: write
+   `waiting for memory: <GB> GB available at HH:MM, before <job>` in
+   `current-task.txt` and end the turn. The next timer firing (§9.4) begins
+   again at step 1. Never close or end anything but a step 2 leftover to free
+   memory. Each wait goes into the task's `progress.md` entry, and the report
+   lists the waits under Clock (§7). Waiting is not a stop condition (§6), and
+   never a reason to skip a check: a task whose gate has not run is not
+   committed (§2 step 1).
+
+**Browser runs use two workers**, the local default in `playwright.config.ts`.
+From the first time in a run that Claude Code stops a job for low memory, every
+later browser run uses `E2E_WORKERS=1` (prefix the command); record when that
+began.
+
+**When Claude Code stops a job for low memory**, follow what it says. If it
+says not to restart the job unless asked, do not, even when a later check
+shows memory available: the check stays unrun, and that task is not
+committed. Record in `progress.md` the job, the time and the available memory
+then, and say in
+the report which check that left unrun.
+
 ---
 
 ## 3. Forbidden operations
@@ -695,6 +772,8 @@ Never, unattended:
 - Installing software, changing `PATH` beyond the per-command prefix, or
   modifying anything outside this repository.
 - Deleting a file you did not create in this run.
+- Ending a process, except a leftover of this repository's tests as §2.3
+  step 2 defines it.
 - Contacting any external service, **except** `git push`/`fetch` to `origin`
   for this run's branches; the §2 step 6 poll (`ci-poll.mjs` and the `/jobs`
   lookup): read-only, no token, only on commits this run pushed; and the
@@ -779,7 +858,7 @@ End the run (merge, push and delete nothing further) when:
   stops.
 A rejected push is **not** a stop. It ends pushing, not work. Neither are the
 plan's tasks being done (exploration runs until `D`, §2.2), a pending CI poll,
-or time lost to a usage limit.
+time lost to a usage limit, or a wait for memory (§2.3).
 
 A stop before `D` ends the run without finishing it (§1): it still writes the
 report and deletes the timer, and the `/loop` prompt resumes it once the cause
@@ -842,7 +921,8 @@ memory. It contains:
 - **Questions**: the `questions.md` queue, most consequential first, including
   any proposed tasks for the next plan. Name provisional branches here.
 - **Clock**: the start reading (§1.4), the reading at the report's start, how
-  far past `D` the last task ran, if it did, and any gaps (§9.4). The per-task
+  far past `D` the last task ran, if it did, any gaps (§9.4), and any waits
+  for memory, leftovers ended or jobs stopped for low memory (§2.3). The per-task
   readings stay in the entries.
 - **State**: the run branch and tip, which branches reached the remote,
   anything uncommitted, whether the build was in the gate, and the lint warning
@@ -1015,6 +1095,7 @@ has ended writes nothing. Record the job id in `current-task.txt`.
   carry on where they say:
   - a background job (build, `reviewer`, CI poll) still running → nothing to
     do; end the turn and let its notification or the next firing resume you;
+  - `waiting for memory` in `current-task.txt` → §2.3 again from step 1;
   - a task in flight → continue it from its current step;
   - between tasks → §2 step 0 for the next one, or, at or past `D`, the
     morning report (§8.2).

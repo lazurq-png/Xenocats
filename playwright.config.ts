@@ -30,6 +30,15 @@ const server =
     ? `npx next start -p ${PORT}`
     : `npx next dev --turbopack -p ${PORT}`;
 
+// Locally, two browsers at once unless E2E_WORKERS says otherwise: Playwright's
+// default (half the cores, four here) beside the test server ran an 8 GB machine
+// out of memory. CI keeps the default.
+const workers = process.env.E2E_WORKERS
+  ? Number(process.env.E2E_WORKERS)
+  : process.env.CI
+    ? undefined
+    : 2;
+
 // E2E_NO_CAT_DEPS=1 drops the groups' wait for the cat-attacks group, for a run of a few
 // named specs (npm run test:affected, CI's dev-server job): Playwright runs a project's
 // dependencies in full even when a file filter names other specs, and `--no-deps` would
@@ -72,6 +81,7 @@ export default defineConfig<{ catsPaused: boolean }>({
   testDir: 'tests/e2e',
   globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: true,
+  workers,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',

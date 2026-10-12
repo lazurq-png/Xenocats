@@ -95,6 +95,12 @@ The run cannot fix any of these, and most of them end it silently:
    minutes of the limit resetting. If nothing has started a minute after
    sending it, send it once more without `/loop 20m`. Never use `/loop` without
    an interval: that form dies at the first usage limit.
+9. **VS Code is closed, and so is anything else you can spare** (browsers,
+   Teams). The PC has 8 GB, and VS Code alone holds about 2 GB; with it open,
+   about 1.8 GB is left. The 2026-10-09 run was stopped twice for low memory
+   during its browser tests and blocked for the rest of the night. The run
+   waits whenever memory is short (the skill's §2.3), so whatever you leave
+   open costs time.
 
 ```text
 /loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.4): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.4); (2) the loop in the skill's §1 prints the Nightrun branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) no branch Nightrun exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
@@ -137,8 +143,9 @@ closing VS Code, or VS Code restarting itself for an update, would end the run.
    press Enter. The run's first lines are its preflight; within a few minutes
    `progress.md` gets its `## Run start` entry and the branch `Nightrun` exists.
 
-4. **Leave both windows open** until the goal time. To check on it from
-   elsewhere: the `Nightrun` branch and its CI runs on GitHub, and
+4. **Leave both windows open**, and VS Code closed (item 9 of the list above), until the
+   goal time. To check on it from elsewhere: the `Nightrun` branch and its CI
+   runs on GitHub, and
    `docs/ai/night-<date>/progress.md` on that branch.
 
 **If the window closed or the PC restarted mid-run,** reopen it the same way
