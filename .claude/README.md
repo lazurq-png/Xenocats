@@ -9,10 +9,13 @@ AGENTS.md              engineering contract — architecture, testing, security,
                         completion standards. Always relevant.
 CLAUDE.md               Claude Code operating model — always loaded by the extension/CLI
 .claude/
+├── README.md           this file
+├── agents/             subagents dispatched by name (reviewer: independent review,
+│                        no Edit or Write tool)
 ├── rules/              domain reference docs — NOT auto-loaded; CLAUDE.md tells the
 │                        agent which one to open for a given task
 ├── skills/              reusable procedures invoked as slash commands
-│                        (/code-review, /night-run)
+│                        (/code-review; /night-run, with its CI poll ci-poll.mjs)
 ├── docs/                 supporting human-readable process docs — workflow narrative,
 │                          a task-request template, and ready-to-paste prompt patterns
 └── settings.example.json       copy to settings.json and adjust permissions/hooks
@@ -51,7 +54,7 @@ location) load automatically. There's no built-in mechanism that opens a file ba
 a glob match against whatever's being edited, so the rules in `.claude/rules/` are
 reference material Claude opens on demand — `CLAUDE.md` §2 lists which file to read for
 which kind of task (frontend, backend, database, testing, debugging, architecture,
-review, security-review).
+security-review). Reviewing a diff is the `code-review` skill.
 
 If a real project has stable directory boundaries (e.g. `src/frontend/`,
 `src/backend/`), prefer dropping the matching rule file into a nested `CLAUDE.md`
@@ -63,14 +66,13 @@ touched, which scopes guidance by location more precisely than a flat `rules/` f
 `.claude/skills/night-run/SKILL.md` is the protocol for running with no human
 available. It executes the tasks of the plan a human writes in
 `docs/ai/night-<date>/plan.md` (template in `docs/ai/README.md`) until the day
-and time in that plan's `## Goal`, then finishes the task in flight, appends the
-morning report to `progress.md` and stops. It stops at once if the plan or goal
+and time in that plan's `## Goal`, then finishes the task in flight, writes the
+morning report at the top of `progress.md` and stops. It stops at once if the plan or goal
 is missing. It covers
 preflight, a branch per task merged onto a run branch and pushed as each one
-finishes, durable state under `docs/ai/<branch>/`, forbidden operations, and
-stop conditions. It is invoked
-(`/night-run`) rather than auto-loaded, so it costs nothing during ordinary
-supervised work. Unattended sessions run with permission prompts bypassed, which
+finishes, durable state under `docs/ai/night-<date>/`, forbidden operations, and
+stop conditions. It is invoked by the `/loop 20m` prompt in `docs/ai/README.md`
+rather than auto-loaded, so it costs nothing during ordinary supervised work. Unattended sessions run with permission prompts bypassed, which
 means its guardrails are honoured by instruction, not enforced by the harness.
 
 ### Code review

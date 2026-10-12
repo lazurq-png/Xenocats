@@ -1,6 +1,6 @@
 ---
 name: night-run
-description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes the tasks of a human-written plan read from docs/ai/night-<today>/plan.md, then exploration items of the kinds it names, until the plan's goal — a day and time such as "Thursday 08:00" — and stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, an append-only progress.md with an entry each time a task ends, forbidden operations (including any database but the development one, which the run touches only through the build, the browser tests and the opt-in database tests), what happens at the goal time (the task in flight is finished, then the morning report is written at the top of progress.md and the run stops), a per-session budget reserve that protects the morning report or a handoff, stop conditions, and a morning report that indexes every task with its outcome, SHAs, CI result and what it brings the project. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
+description: Protocol for running unattended, with no human available to answer questions — overnight or long autonomous sessions, including ones spanning several sessions. Executes the tasks of a human-written plan read from docs/ai/night-<today>/plan.md, then exploration items of the kinds it names, until the plan's goal — a day and time such as "Thursday 08:00" — and stops if the plan, its tasks or its goal are missing. Defines preflight and how to resume a run already in progress, a branch per task pushed as each one finishes, CI polled in the background while the next task proceeds, an append-only progress.md with an entry each time a task ends, forbidden operations (including any database but the development one, which the run touches only through the build, the browser tests and the opt-in database tests), what happens at the goal time (the task in flight is finished, then the morning report is written at the top of progress.md and the run stops), stop conditions, and a morning report that indexes every task with its outcome, SHAs, CI result and what it brings the project. Use when starting an unsupervised run, resuming one, or when a session discovers mid-flight that nobody is there.
 ---
 
 # Unattended Run
@@ -44,7 +44,7 @@ stop.
   **The exception is the checks themselves**: they run one after another,
   cheapest first, and stop at the first failure (§2 step 1). Run side by side,
   they compete for the CPU, and the timing-sensitive browser tests fail for
-  that alone (last run's D7).
+  that alone.
 - **Run the tests a change can affect, not every suite every time.** The full
   suites run at fixed points; between them, `npm run test:affected` picks the
   tests (§2.1). CI runs everything once per task, when the task is merged into
@@ -90,8 +90,8 @@ if git rev-parse -q --verify refs/heads/Nightrun >/dev/null; then
 fi
 ```
 
-- **This session is already running the run** (a timer heartbeat, §9.5): do
-  not run this preflight at all. Go to §9.5.
+- **This session is already running the run** (a timer heartbeat, §9.4): do
+  not run this preflight at all. Go to §9.4.
 - **The loop prints `in progress`** → you are **resuming** that run: go to
   §9.2. Do not run §1.0, §1.2 or §1.4. Recreating the branch or state files is
   how a run loses its history.
@@ -101,9 +101,9 @@ fi
   no branch, and never rename, delete or reuse it yourself. Write an
   uncommitted `progress.md` in today's directory (`docs/ai/night-$(date
   +%F)/`) saying which line the loop printed, and end. A turn started by the
-  run's own timer (§9.5) writes nothing: it deletes the timer and ends.
+  run's own timer (§9.4) writes nothing: it deletes the timer and ends.
 - **It prints nothing** → a new run: §1.0–§1.5 in order, **unless this turn's
-  prompt forbids starting one** (the run's own timer does, §9.5): then delete
+  prompt forbids starting one** (the run's own timer does, §9.4): then delete
   that timer (`CronList`, `CronDelete`) and stop, skipping §1.0 and writing
   nothing.
 
@@ -117,8 +117,9 @@ correct.
 is written.** Its goal time is the last `Deadline: YYYY-MM-DD HH:MM` line in
 its `progress.md`: the run-start entry's (§1.4), or a later one where the human
 changed the goal (§9.2 step 1). So a run that a §6 stop condition ended before
-its deadline is still in progress, report and all: a `/night-run` once the
-cause is fixed resumes it, and it replaces that report when it ends again (§7).
+its deadline is still in progress, report and all: the `/loop` prompt in
+`docs/ai/README.md`, sent once the cause is fixed, resumes it, and it replaces
+that report when it ends again (§7).
 
 If a step fails in a way it does not say how to recover from, stop and write why
 into `progress.md`.
@@ -225,8 +226,7 @@ git config branch.Nightrun.description <YYYY-MM-DD>   # the run's date (§1)
   deletes it after the run, which frees the name for the next one (§1). Task
   branches are named after the run's date and the task alone, with no `night`
   in them: `<YYYY-MM-DD>-t<N>-<slug>`, and likewise `-c<N>-checkpoint`,
-  `-e<n>-<slug>` (§2.2), `-t0-baseline` (§1.5), `-t<N>-report` (§7) and
-  `-t<N>-handoff` (§9.3). The state directory keeps its dated name,
+  `-e<n>-<slug>` (§2.2), `-t0-baseline` (§1.5) and `-t<N>-report` (§7). The state directory keeps its dated name,
   `docs/ai/night-<YYYY-MM-DD>/`, where the plan is.
 - **These are names for git and GitHub only.** Everywhere else the run is still
   the night of its date: the state files, their headings, commit messages
@@ -274,19 +274,18 @@ Create, delete or fetch nothing else on the remote.
 - Open `progress.md` with a `## Run start` entry, before the first task: **the
   plan's goal, quoted verbatim**, the **deadline it resolves to as a full date
   and time** (§1.0), e.g. `Goal: "Thursday 08:00" → Deadline: 2026-10-01
-  08:00`, the wall clock, the session's budget figure (§8.5), and anything under
-  `## Limits`. The budget thresholds are proportions of that starting figure,
-  and compaction will lose it if it is not written down. From here on
+  08:00`, the wall clock, and anything under `## Limits`. From here on
   `progress.md` only grows at its end, until the morning report (§7).
-- **Arm the timer** (§9.5) right after the run-start entry, so that from here on
+- **Arm the timer** (§9.4) right after the run-start entry, so that from here on
   a usage limit or a stalled turn cannot end the run.
 
 ### 1.5 Baseline
 
 The baseline is one of the points where every suite runs in full (§2.1). Run
 the checks one after another, in this order, and time each one: the timings go
-into the run-start entry, and later estimates use them (§8.3). None of them
-writes anything tracked:
+into the run-start entry, and later estimates use them (§8.3). Only the lint
+report is kept: `lint-baseline.txt` in the state directory, committed with the
+first task. The other checks write nothing tracked:
 
 ```bash
 npm run lint > docs/ai/night-<YYYY-MM-DD>/lint-baseline.txt 2>&1; echo "exit $?"
@@ -331,12 +330,13 @@ The e2e suite starts its own `next dev` on port 3100 with a throwaway
   above. Report every task's database-backed behaviour as checked by reading
   only (§5), and the database tests as skipped. Re-try the plain command at each task start; when it passes again,
   record that and return to it.
-- **Side effects of the checks.** `next dev` and `next build` rewrite the
-  tracked `next-env.d.ts`, and `next dev` (re-)adds an agent-rules block to
-  `AGENTS.md`. Neither is part of any task. After the checks, if either file
-  differs and was not dirty at preflight and the task did not edit it, put it
-  back with `git checkout -- <that file>`. This is the one place a checkout of
-  a file is right: it undoes a tool, not the task's work. Never stage them.
+- **Side effect of the checks.** `next dev` rewrites the Next.js agent-rules
+  block at the end of `AGENTS.md`. The block is committed, so normally nothing
+  changes; a diff means a newer Next changed the block's text, and it is not
+  part of any task. After the checks, if `AGENTS.md` differs and was not dirty
+  at preflight and the task did not edit it, put it back with
+  `git checkout -- AGENTS.md`. This is the one place a checkout of a file is
+  right: it undoes a tool, not the task's work. Never stage that diff.
 
 **A red baseline makes the repair task #1**, on
 `<YYYY-MM-DD>-t0-baseline`, through §2 like any task and never on `main`.
@@ -351,7 +351,7 @@ Record that the requested work did not start, and why.
 `CLAUDE.md` §1 applies per task (explore, plan, implement, verify, review), with
 these additions.
 
-0. **Read clock and budget, then cut the branch** from the run branch:
+0. **Read the clock, then cut the branch** from the run branch:
 
    ```bash
    date '+%F %H:%M'
@@ -360,8 +360,8 @@ these additions.
    git checkout -b <YYYY-MM-DD>-t<N>-<slug>
    ```
 
-   At or past `D`, or past the budget roundup (§8.2, §8.5), do not start it.
-   Note the clock, budget and **base SHA** in `current-task.txt` in your
+   At or past `D` (§8.2), do not start it.
+   Note the clock and **base SHA** in `current-task.txt` in your
    scratchpad directory, which survives compaction; they go into the task's
    `progress.md` entry when it ends (step 4). The base SHA is what the morning
    report diffs the task's code against.
@@ -389,8 +389,7 @@ these additions.
    selection it printed with the results (step 4): which specs ran is part of
    the evidence.
 
-   Then undo the checks' side effects on `next-env.d.ts` and `AGENTS.md`
-   (§1.5) before staging.
+   Then undo the checks' side effect on `AGENTS.md` (§1.5) before staging.
 
    A task that adds a test script adds it to the gate from its own commit on.
 
@@ -444,7 +443,7 @@ these additions.
    other state files on the task branch before staging, so the evidence travels
    with the diff. The entry holds:
 
-   - branch and base SHA, clock and budget at start (step 0), and the clock at
+   - branch and base SHA, the clock at start (step 0), and the clock at
      completion;
    - **What the code does**: per file or group of files, the behaviour it adds
      or changes, in plain words;
@@ -545,7 +544,7 @@ these additions.
      from changing GitHub settings. Later tasks' CI will fail the same way;
      record each, and keep working.
    - **`failure`** otherwise → a verification failure found late. It continues
-     this task's three-cycle count (`.claude/rules/debugging.md` §8):
+     this task's three-cycle count (§6):
      1. Name the failing jobs: append `/jobs` to the run's API URL
         (`https://api.github.com/repos/<owner>/<repo>/actions/runs/<id>/jobs`,
         the repository from `git remote get-url origin`, as the run URL shows).
@@ -594,7 +593,7 @@ fixed points, and between them only the tests a change can affect.
 | **Working on a task** (implementing, and every repair cycle) | Only the test files being written or repaired, and the one that failed: `npx vitest run <file>`, `npx playwright test <spec> -g "<test title>"`, `npx playwright test --last-failed`. Never a whole suite. |
 | **The gate** (§2 step 1), once per task, on its final state | The selection `npm run test:affected -- --base Nightrun` prints: `vitest related` over the changed files, and the specs visiting a route the change reaches, against `next dev`. |
 | **Database tests** | `DATABASE_TESTS=1 npx vitest run tests/unit/data`, at the gate whenever the selector prints a `database:` line (a change to `app/lib/data.ts`, `db/migrations/`, `scripts/db.mjs` or the tests themselves); `--run` runs it. Otherwise only at full-suite points. Nowhere else does anything run them. |
-| **Full-suite points** | `npm test`, the database tests above, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan, or every 5th task if the plan names none; the last task before the morning report; and any gate where the selector printed `FULL`. |
+| **Full-suite points** | `npm test`, the database tests above, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan, or every 5th task if the plan names none; the last task before the morning report; and any gate where the selector printed `FULL`. When the build is out of the gate (§1.5), `E2E_SERVER=start` has nothing to serve: skip it, and say so in the task's entry and the report. |
 | **After a fix the reviewer asked for** | The gate again, on the new final state. The selection is already narrow; no separate full run. |
 
 The selector (`scripts/affected-tests.mjs`) follows each changed file through
@@ -624,7 +623,7 @@ and never overrides a `FULL`.
 When every task in the plan is completed, provisional, parked or abandoned and
 the clock is before `D`, the run explores: it picks small improvements itself
 and builds each one as a task. **Exploration does not run out.** It ends only
-at `D`, at the budget roundup (§8.5) or on a §6 stop condition. "The tasks ran
+at `D` or on a §6 stop condition. "The tasks ran
 out" is never what ended a run.
 
 - **Start a new item whenever the clock reads before `D`**, however close to
@@ -717,6 +716,10 @@ Do not implement up to the boundary. A half-applied change is worse than none.
 
 ## 4. Ambiguity: park and continue
 
+This changes how a question is answered, not what counts as one: what
+`AGENTS.md` §18 would have you pause for is unchanged, but it is logged and
+worked around rather than waited on.
+
 When a requirement has two defensible readings — judged against the task's own
 words and the rest of the plan, not your preference — or a fork appears that
 `AGENTS.md` §18 would have you ask about:
@@ -757,9 +760,15 @@ End the run (merge, push and delete nothing further) when:
 - **The plan or its tasks are missing, or its goal is missing, unreadable or
   already past** (§1.0).
 - **`node_modules` or Chromium is missing** (§1.1).
-- **A second task hits three failed verify → repair cycles.** The first one
-  just gets abandoned (§3), with all three hypotheses recorded
-  (`.claude/rules/debugging.md` §8), and the run moves on.
+- **A second task hits three failed verify → repair cycles** against the same
+  failure (`.claude/rules/debugging.md` §8 explains the limit). The first one
+  just gets abandoned, and the run moves on:
+  1. `git restore -- <paths this task touched>` (§3), leaving the tree at the
+     last verified-green commit. A half-repaired failure is worse than none.
+  2. Append its `(abandoned)` entry to `progress.md`: the exact failure
+     output, each of the three hypotheses, and what each attempt eliminated.
+  3. Move to the next independent task. Never retry it later in the run under
+     a different description.
 - **The baseline stays red** after three attempts (§1.5).
 - **`Nightrun` already exists**, locally from a finished run (§1) or on the
   remote (§1.3), or the remote holds this date's task branches, at the start of
@@ -768,15 +777,13 @@ End the run (merge, push and delete nothing further) when:
 - **The clock reaches the goal time `D`** (§8.2). No new task starts; the task
   in flight is finished (§8.4), then the morning report is written and the run
   stops.
-- **The budget reaches roundup** (§8.5). That ends the *session*. It ends the
-  *run* only if this session owes the report; otherwise hand off (§9.3).
 A rejected push is **not** a stop. It ends pushing, not work. Neither are the
 plan's tasks being done (exploration runs until `D`, §2.2), a pending CI poll,
 or time lost to a usage limit.
 
 A stop before `D` ends the run without finishing it (§1): it still writes the
-report and deletes the timer, and a `/night-run` resumes it once the cause is
-fixed.
+report and deletes the timer, and the `/loop` prompt resumes it once the cause
+is fixed.
 
 On stopping: the tree clean or its state explained, `progress.md` current,
 outstanding CI polls resolved or recorded as pending, and the run branch at the
@@ -794,8 +801,7 @@ index** of the run, **inserted at the top of `progress.md`**, under exactly
 and it changes no entry. Nothing is appended after it. §1 recognises a finished
 run by that heading together with its deadline. A run resumed after a stop
 (§1) replaces its earlier report in place when it ends again. It is never cut
-short for the clock (§8.4). An earlier
-session appends §9.3's handoff instead, which carries the same content.
+short for the clock (§8.4).
 
 The task entries below it already hold each task's detail: what the code does,
 what it brings, its verification, its reviewer verdict. The report points to
@@ -811,7 +817,7 @@ memory. It contains:
 
 - **Goal**: the plan's `## Goal` quoted verbatim, the deadline it resolved to,
   the clock when the report was started, and **what ended the run**: the goal
-  time, the budget, or a stop condition, never "the tasks ran out" (§2.2). If
+  time or a stop condition, never "the tasks ran out" (§2.2). If
   the plan had no `## Exploration` section, say so here.
 - **Index**: one table, a row for every task in the plan, every checkpoint and
   every exploration item (`E<n>`), in the order they ran:
@@ -835,9 +841,9 @@ memory. It contains:
     with no entry has a dash.
 - **Questions**: the `questions.md` queue, most consequential first, including
   any proposed tasks for the next plan. Name provisional branches here.
-- **Clock and budget**: the starting figures (§1.4), the reading at the
-  report's start, and how far past `D` the last task ran, if it did. The
-  per-task readings stay in the entries.
+- **Clock**: the start reading (§1.4), the reading at the report's start, how
+  far past `D` the last task ran, if it did, and any gaps (§9.4). The per-task
+  readings stay in the entries.
 - **State**: the run branch and tip, which branches reached the remote,
   anything uncommitted, whether the build was in the gate, and the lint warning
   count against the baseline.
@@ -846,18 +852,17 @@ memory. It contains:
   exercised against a production database (there is none yet).
 
 Report only what was observed. "Could not verify X" is useful. A claimed
-passing check that never ran is a lie the morning will act on. Under a tight
-budget, cut prose, never facts.
+passing check that never ran is a lie the morning will act on. Cut prose,
+never facts.
 
 ---
 
-## 8. Deadlines: the clock and the budget
+## 8. The deadline
 
-The run ends at whichever comes first: the **goal time** `D` (§8.1–§8.4), which
-the plan sets, or the session **budget** (§8.5). If the account's usage limit
-runs out first, the run pauses until the timer's next firing after it resets
-(§9.5); §2's commit-and-push per task bounds what an interrupted turn loses. Both reserve room for the report instead of leaving it the
-remainder.
+The run ends at the **goal time** `D`, which the plan sets. If the account's
+usage limit runs out first, the run pauses until the timer's next firing after
+it resets (§9.4); §2's commit-and-push per task bounds what an interrupted turn
+loses.
 
 ### 8.1 Reading the clock
 
@@ -885,8 +890,7 @@ gives `2026-10-01 08:00`. It belongs to the run. A resumed session copies it
 from `progress.md` and never recomputes it. Compare full dated readings, never
 times alone: 23:10 on the 30th is not "after 07:30" on the 1st.
 
-Read clock and budget at every task start (§2 step 0) and completion (§2
-step 4).
+Read the clock at every task start (§2 step 0) and completion (§2 step 4).
 
 | From | Rule |
 | ---- | ---- |
@@ -895,22 +899,15 @@ step 4).
 
 ### 8.3 Estimating
 
-This repository's first run is recorded in
-`docs/ai/night-2026-09-25/progress.md` (its tasks' start times give their
-lengths; T9 took 16 minutes). On the project this protocol came
-from, the median task took **~20 minutes** (range 3–50), and the `reviewer` took
-4–7 minutes of that. `npm run build` and the e2e suite are the slowest local
-checks; time them and record it. On 2026-10-07 the full unit suite took ~50 s
-(almost all of it starting test environments; `vitest related` over one file,
-~3 s), the build ~30 s, and the full e2e suite 1–1.3 min per server unloaded and
-over 5 min under load; the last run paid for the e2e suite twice per task, plus
-again after every fix. A full-suite point (§2.1) costs those; a targeted gate a
-fraction of them. CI overlaps the next task (§2 step 6), so it
-adds wall-clock time only when it fails, and at the very end, where the report
-waits on the last poll.
-Replace these figures with this repository's own once a run has produced them.
-A task started shortly before `D` runs past it by up to its own length; that is
-expected, and the report says by how much (§7).
+Estimates come from this run, never from fixed figures: the baseline's check
+timings (§1.5, in the run-start entry) and the lengths of the tasks it has
+finished (their start and completion clocks in `progress.md`). Before the first
+task ends, assume 20 minutes per task. A full-suite point (§2.1) costs the
+baseline's timings; a targeted gate a fraction of them. CI overlaps the next
+task (§2 step 6), so it adds wall-clock time only when it fails, and at the
+very end, where the report waits on the last poll. A task started shortly
+before `D` runs past it by up to its own length; that is expected, and the
+report says by how much (§7).
 
 ### 8.4 At the goal time: finish the task in flight
 
@@ -920,53 +917,23 @@ clock does not shorten any of it. **Never traded for time: the reviewer pass
 and a passing gate.**
 
 The task still ends the ways any task can: abandoned after three failed
-verify → repair cycles (`.claude/rules/debugging.md` §8), or on a forbidden
-operation (§3), or at the budget ceiling (§8.5). When it has ended, write the
-report; start nothing else. The report itself is never cut for the clock.
-
-### 8.5 The budget
-
-**Read** the harness's `<total_tokens>N tokens left</total_tokens>` at the same
-checkpoints as the clock. Do not estimate it. Thresholds are proportions of the
-figure **this session** started with, and whichever of the two numbers is larger
-applies:
-
-| Remaining | Rule |
-| --------- | ---- |
-| below the **reserve** (next table) | **Roundup.** Start nothing new. Finish the task in flight only if its change is written, its verification is green or running and expected to pass, the `reviewer` has run or there is room for it, and no failure is unresolved; otherwise abandon it (§3). Then close out: the report if this session owes it, otherwise the handoff (§9.3). |
-| below 4%, or 40k | **Ceiling.** Abandon, and close out now. |
-
-| This session | Reserve | Closes with |
-| ------------ | ------- | ----------- |
-| is final: at or past `D`, or less than one task's length before it | **30%**, or 150k | the morning report (§7) |
-| otherwise; another session can follow | **10%**, or 60k | the handoff (§9.3) |
-
-Misjudging which session is final is safe, because a handoff is written to
-serve as the report (§9.3).
-
-For scale, a run on the source project used 4.7% of 15M tokens for preflight,
-17 tasks and the report, about 40k per task. Keep reading the figure anyway,
-because the run that does end on budget needs its report most. The
-`reviewer`'s own usage is billed to the subagent, not to this figure.
-
-**No figure visible:** say so in the report, and round the session up after five
-completed tasks, handing off first if it is more than one task's length before `D`. After a context
-compaction, trust `progress.md` over memory.
-
----
+verify → repair cycles (§6), or on a forbidden operation (§3). When it has
+ended, write the report; start nothing else. The report itself is never cut for the clock.
 
 ## 9. Running across sessions
 
 The run branch and `docs/ai/night-<YYYY-MM-DD>/` *are* the run. A session only
 holds them for a while, and nothing of its conversation survives it. A timer
-heartbeat is not a new session (§9.5).
+heartbeat is not a new session (§9.4).
 
 ### 9.1 What a session owes the next
 
-The run branch with every completed task merged and pushed. State files current,
-with the goal and its deadline quoted, an appended entry for every task that
-ended, holding real verification output, its base SHA and what it does and brings (§2 step
-4), and every CI outcome observed. A handoff (§9.3) as the last entry.
+A session can end without warning: the window closes, the PC restarts. So the
+run's state is current at every commit, never written up at the end: the run
+branch with every completed task merged and pushed, and state files with the
+goal and its deadline quoted, an appended entry for every task that ended
+(real verification output, base SHA, what it does and brings, §2 step 4), and
+every CI outcome observed.
 
 ### 9.2 Resuming
 
@@ -979,85 +946,71 @@ git status --short
 git log --oneline main..HEAD
 ```
 
-1. Read the state files, starting with `progress.md`'s last entry: that is the
-   handoff. Take the goal from `plan.md`, and check it matches the copy in
+1. Read the state files, starting with `progress.md`'s last entry: it says
+   where the run was. Take the goal from `plan.md`, and check it matches the copy in
    `progress.md`. If the human has changed it since, the plan wins: resolve the
    new text against the run's start reading in `progress.md` (§1.0), append the
    change and the new deadline, and use that. If the new time is unreadable or
    already past, write the report and stop.
-2. Re-run §1.1 and §1.5 (the baseline is a claim you inherit). Compare the lint
-   output against the existing `lint-baseline.txt` and never overwrite it.
+2. Re-run §1.1 and §1.5 (the baseline is a claim you inherit), with one
+   change: send the lint output to `lint-resume.txt` in the scratchpad, not to
+   `lint-baseline.txt`, and compare it with the committed `lint-baseline.txt`.
+   Never overwrite that file: warnings earlier tasks added would become part of
+   the baseline and never be reported.
 3. Append a new session heading to `progress.md` with this session's starting
-   clock and budget (its own denominator), and copy the deadline as it stands.
+   clock, and copy the deadline as it stands.
 4. Any CI recorded as `pending` belongs to a poll that died with the old
    session. Run the poll again once on that SHA. A task that was in flight
    when the old session ended has no entry; if its branch has no commit, start
    it again from §2 step 0.
-5. Pick up an abandoned task only if it was abandoned for budget. The
-   three-cycle limit belongs to the run and does not reset.
-6. Arm the timer if this session has none (§9.5).
+5. Never pick up an abandoned task. The three-cycle limit belongs to the run
+   and does not reset.
+6. Arm the timer if this session has none (§9.4).
 7. Continue at §2 step 0. The resume entry is committed with the next task.
 
-### 9.3 The handoff
-
-What a session writes instead of the morning report when it stops before `D`:
-appended to `progress.md` on `<YYYY-MM-DD>-t<N>-handoff`, merged and
-pushed. Head it `## Handoff`, **never** `## Morning report`, or §1 will treat
-the run as finished.
-
-It states why the session stopped, where the run is (its tip, which tasks are
-done and which remain), anything in flight and why it was left, the next
-session's first step in one sentence, and **everything §7 requires**: its
-index and sections, appended here rather than at the top, because the next
-session reads the last entry. If no session follows, this is the
-morning report, so write it for the person at breakfast. Never write anything
-that only makes sense if another session comes.
-
-### 9.4 The run is still one run
+### 9.3 The run is still one run
 
 These carry across sessions and never reset: the three-cycle limit, the dated
 deadline, the append-only `progress.md`, and parked questions (a later session inherits the
-decision and the `PROVISIONAL:` branch). Only the budget is per session.
+decision and the `PROVISIONAL:` branch).
 
-### 9.5 The timer: heartbeats and usage limits
+### 9.4 The timer: heartbeats and usage limits
 
-A run is started with a plain **`/night-run`**. The run then arms its own timer
-(§1.4, §9.2 step 6), a recurring Claude Code job that fires in this session
+A run is started with the **`/loop 20m …` prompt** in `docs/ai/README.md`, and
+that loop is the run's timer: a recurring Claude Code job that fires in this session
 every 20 minutes whenever the session is idle (a firing during a turn waits for
 it to end). It keeps firing however the previous turn ended, so a run cut off by
 the account's **usage limit** resumes by itself at the first firing after the
 limit resets: within one interval, plus up to 10% jitter. Firings while the
 limit is still in force fail and cost nothing.
 
-**Arming it.** `CronList` first; if any job whose prompt invokes the night-run
-skill exists (this one, or a human's `/loop` that says it is the run's timer),
-do nothing.
-Otherwise `CronCreate` with `cron: "7,27,47 * * * *"`, `recurring: true` and
+**Arming it** (§1.4, §9.2 step 6), for a session that has none, e.g. because
+the prompt was sent without `/loop`. `CronList` first; if any job whose prompt
+invokes the night-run skill exists (the human's `/loop`, or one armed earlier),
+do nothing. Otherwise `CronCreate` with `cron: "7,27,47 * * * *"`, `recurring: true` and
 exactly this prompt:
 
 ```text
-Run unattended. Invoke the night-run skill. If this session already holds the run, this is a heartbeat (§9.5). Otherwise, if the loop in the skill's §1 prints the Nightrun branch as in progress, resume it (§9.2). Otherwise stop immediately: skip §1.0, create no branch, write no file, and delete this timer.
+Run unattended. Invoke the night-run skill. If this session already holds the run, this is a heartbeat (§9.4). Otherwise, if the loop in the skill's §1 prints the Nightrun branch as in progress, resume it (§9.2). Otherwise stop immediately: skip §1.0, create no branch, write no file, and delete this timer.
 ```
 
 The prompt can only continue a run, never start one, so a firing after the run
 has ended writes nothing. Record the job id in `current-task.txt`.
 
-- **Started under a `/loop`.** A human may instead start with `/loop <interval>
-  <prompt>`, whose prompt invokes this skill and may allow starting a run; then
-  that loop is the timer, §1.4 finds it with `CronList` and arms nothing, and
-  ending deletes that loop. A self-paced `/loop` (no interval) lives
+- **A self-paced `/loop`** (no interval) lives
   only as long as every turn ends with `ScheduleWakeup`; a turn the usage limit
   cuts off never gets there, and the run dies. If a run is under one, arm the
   timer anyway and stop calling `ScheduleWakeup`.
 - **The timer lives in this session.** It is gone if the editor or terminal
-  closes or the machine sleeps; then a human resumes with a new session (§9.2).
+  closes or the machine sleeps; then a human resumes with a new session and
+  the `/loop` prompt (§9.2).
   It expires after 7 days, far beyond any run.
 - **Tell a heartbeat from a new session** by your own context: if this
   conversation already holds this run's preflight or task work, it is a
   heartbeat. After a compaction, `progress.md` on the run branch, with this
-  session's heading and no handoff after it, says the same.
+  session's heading, says the same.
 - **On a heartbeat**, run no preflight, no baseline and no §9.2 resume. Read
-  the clock and budget, `git status --short`, `git branch --show-current`,
+  the clock, `git status --short`, `git branch --show-current`,
   `current-task.txt` in the scratchpad and the last entry of `progress.md`, then
   carry on where they say:
   - a background job (build, `reviewer`, CI poll) still running → nothing to
@@ -1077,9 +1030,7 @@ has ended writes nothing. Record the job id in `current-task.txt`.
   has ended the run, delete the timer: `CronList`, then `CronDelete` on the
   job whose prompt invokes the night-run skill. A
   firing that finds the run finished (§1: past its deadline, with its report)
-  deletes it and does nothing else. A session that hands off (§9.3) deletes its timer
-  too: the next session is started by a human with `/night-run`, and arms its
-  own.
+  deletes it and does nothing else.
 - **Past the goal time:** a firing after `D`, for example the first one after a
   usage limit resets, finishes a task still in flight (§8.4), writes the report
   if none exists and deletes the timer. It starts no new task.

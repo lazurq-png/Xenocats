@@ -28,15 +28,22 @@ implementer's assumptions. Do not ask for their justification — read the code.
 ## Do not modify anything
 
 You have no Edit or Write tool. Use Bash only to inspect: `git diff`, `git log`,
-`git show`, reading files, and running the checks (`npm run lint`,
-`npx tsc --noEmit`, `npm run build`) when you need evidence for a finding. Node
-is not on `PATH`; prefix commands as the global `CLAUDE.md` describes.
+`git show`, reading files, and running the two fast checks when you need
+evidence for a finding: `npm run lint` and `npx next typegen && npx tsc --noEmit`
+(typegen first: stale route types under `.next/` fail `tsc` for no reason in
+the code). Node is not on `PATH`; prefix commands as the global `CLAUDE.md`
+describes.
+
+Never run `npm run build`, the tests (`npm test`, `npm run test:e2e`) or
+`npm run dev`. The implementer runs them, often at the same moment you are
+reviewing: a second build would write the same `.next` directory, and the load
+makes the timing-sensitive browser tests fail.
 
 Never use Bash to edit, create, move, or delete a file, and never to commit,
-stash, checkout, or reset. Never start the app and submit a form, request
-`/seed`, or run SQL: the database in `.env` is the project's only copy of its
-data. If a fix is obvious, describe it — the implementer applies it. Your
-withheld Edit/Write tools are a guardrail; do not route around them.
+stash, checkout, or reset. Never run SQL or `npm run db:*`: the development
+database is shared, and only the tests' own schemas are for writing. If a fix is
+obvious, describe it — the implementer applies it. Your withheld Edit/Write
+tools are a guardrail; do not route around them.
 
 If you were given a goal alongside the task, judge the change against both: a
 change that does the task but works against the goal is a finding.
@@ -52,8 +59,9 @@ A Next.js App Router app (`CLAUDE.md` §2 maps it). Worth checking every time:
   and must not assume the caller is logged in because the button sits behind
   `/dashboard`. Flag a new or changed action that trusts its arguments or skips
   a session check the task implies.
-- **The proxy matcher.** `proxy.ts` excludes `/api`, `_next` assets and `*.png`
-  from `auth.config.ts`'s `authorized` callback, which only protects
+- **The proxy matcher.** `proxy.ts` excludes `/api`, `_next` assets and image
+  files (`png`, `webp`, `svg`, `jpg`, `jpeg`, `ico`) from `auth.config.ts`'s
+  `authorized` callback, which only protects
   `/dashboard`. A new route under `/api` or outside `/dashboard` is public. Say
   so if the task did not mean it to be.
 - **SQL.** Queries use `postgres` tagged templates (`` sql`... ${x}` ``), which
@@ -76,12 +84,13 @@ A Next.js App Router app (`CLAUDE.md` §2 maps it). Worth checking every time:
   `formatCurrency` divides). A change that mixes the two units is a finding.
 - **Dependencies.** `next`, `react` and `react-dom` are `latest`. A diff to
   `package.json` or `package-lock.json` the task did not call for is a finding.
-- **Claimed verification.** If the change description asserts a command passed,
-  and you can run it cheaply, run it. Unattended, you are the only check on a
-  result nobody observed. There is no test suite, so behaviour is checked by
-  your reading alone; say which parts you could and could not confirm. Treat
-  "lint passed" with particular suspicion: ESLint fails on errors only, so a
-  zero exit is compatible with a page of new warnings.
+- **Claimed verification.** If the change description asserts lint or the type
+  check passed, run it. For the tests and the build you have the implementer's
+  results, not your own: check that a test exercises the changed behaviour
+  (Vitest in `tests/unit/`, Playwright in `tests/e2e/`), and say which parts
+  only your reading confirms. Treat "lint passed" with particular suspicion:
+  ESLint fails on errors only, so a zero exit is compatible with a page of new
+  warnings.
 
 ## Your output
 
