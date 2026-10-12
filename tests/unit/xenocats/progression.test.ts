@@ -4,6 +4,7 @@ import { EVOLUTIONS, MAX_WEAPON_LEVEL, WEAPONS, type WeaponId } from '@/app/ui/x
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import {
   CHARACTERS,
+  MILESTONES,
   PROGRESS_KEY,
   type Progress,
   type RunResult,
@@ -44,6 +45,41 @@ describe('tufts', () => {
     expect(tuftsFor({ timeMs: 60_000, sentHome: 400 })).toBe(12 + 20);
   });
 
+  it('a five-minute run earns what it always did; each second past 5:00 earns twice as much', () => {
+    // The old rule, for the first five minutes: one tuft a 5 s.
+    expect(tuftsFor({ timeMs: 300_000, sentHome: 0 })).toBe(60);
+    expect(tuftsFor({ timeMs: 299_999, sentHome: 0 })).toBe(59);
+    // Then one every 2.5 s: ten minutes is 60 + 120, fifteen 60 + 240.
+    expect(tuftsFor({ timeMs: 302_499, sentHome: 0 })).toBe(60);
+    expect(tuftsFor({ timeMs: 302_500, sentHome: 0 })).toBe(61);
+    expect(tuftsFor({ timeMs: 600_000, sentHome: 0 })).toBe(180);
+    expect(tuftsFor({ timeMs: 900_000, sentHome: 0 })).toBe(300);
+    // Cats sent home count the same in every run.
+    expect(tuftsFor({ timeMs: 600_000, sentHome: 400 })).toBe(180 + 20);
+    // A longer run is worth more than its length alone.
+    expect(tuftsFor({ timeMs: 600_000, sentHome: 0 })).toBeGreaterThan(
+      2 * tuftsFor({ timeMs: 300_000, sentHome: 0 })
+    );
+  });
+
+  it('the Tailor sells more rerolls and more skips, and a run begins with them', () => {
+    expect(UPGRADES['second-opinion'].maxLevel).toBe(3);
+    expect(UPGRADES.shrug.maxLevel).toBe(3);
+    const bought = buyUpgrade(buyUpgrade(rich(500), 'second-opinion')!, 'shrug')!;
+    expect(bought.upgrades).toEqual({ 'second-opinion': 1, shrug: 1 });
+    const boost = runConfig(bought, ARENA_CONFIG).boost!;
+    expect(boost).toMatchObject({ rerolls: 1, skips: 1 });
+    const run = createArena({
+      random: createRandom(1),
+      types: CAT_TYPES,
+      viewport: { width: 1280, height: 800 },
+      config: { ...runConfig(bought, ARENA_CONFIG) },
+    });
+    expect(run.levelUpUses()).toEqual({ rerolls: 2, skips: 2 });
+    // A fresh store buys none.
+    expect(runConfig(freshProgress(), ARENA_CONFIG).boost).toMatchObject({ rerolls: 0, skips: 0 });
+  });
+
   it('a run adds its tufts to what he had', () => {
     const after = applyRun(rich(7), run({ timeMs: 30_000, sentHome: 40 }));
     expect(after.earned).toBe(8);
@@ -60,6 +96,26 @@ describe('milestones', () => {
     expect(again.progress.milestones).toHaveLength(4);
   });
 
+  it('Survive 10:00 and Survive 15:00 need a run that long, and unlock a household weapon each', () => {
+    const ten = applyRun(freshProgress(), run({ timeMs: 600_000 }));
+    expect(ten.reached).toContain('survive-10');
+    expect(ten.reached).not.toContain('survive-15');
+    const fifteen = applyRun(freshProgress(), run({ timeMs: 900_000 }));
+    expect(fifteen.reached).toEqual(expect.arrayContaining(['survive-10', 'survive-15']));
+    // A moment short of either.
+    expect(applyRun(freshProgress(), run({ timeMs: 599_999 })).reached).not.toContain('survive-10');
+    expect(applyRun(freshProgress(), run({ timeMs: 899_999 })).reached).not.toContain('survive-15');
+    // A five-minute run's time stops at its goal: it can never reach either.
+    expect(applyRun(freshProgress(), run({ timeMs: 300_000 })).reached).not.toContain('survive-10');
+    // What each unlocks is told where milestones are told.
+    expect(MILESTONES['survive-10'].text).toBe('Survive 10:00');
+    expect(unlockedBy('survive-10')).toContain('Hair Dryer');
+    expect(unlockedBy('survive-15')).toContain('Cardboard Box');
+    // Reached once, kept.
+    const again = applyRun(ten.progress, run({ timeMs: 600_000 }));
+    expect(again.reached).toEqual([]);
+  });
+
   it('are not reached a moment short', () => {
     const short = applyRun(freshProgress(), run({ timeMs: 119_999, sentHome: 999, level: 19 }));
     expect(short.reached).toEqual([]);
@@ -70,11 +126,22 @@ describe('milestones', () => {
     expect(fresh).not.toContain('thunderous-vacuum');
     expect(fresh).not.toContain('laser-pointer-deluxe');
     expect(fresh).not.toContain('hairball');
+    // The longer runs' milestones keep a household weapon each back.
+    expect(fresh).not.toContain('hair-dryer');
+    expect(fresh).not.toContain('cardboard-box');
     expect(fresh).toContain('laser-pointer');
+    expect(fresh).toContain('feather-wand');
     const later = availableWeapons({ ...freshProgress(), milestones: ['survive-3', 'level-20'] });
     expect(later).toContain('thunderous-vacuum');
     expect(later).toContain('hairball');
     expect(later).not.toContain('laser-pointer-deluxe');
+    expect(later).not.toContain('hair-dryer');
+    const long = availableWeapons({ ...freshProgress(), milestones: ['survive-10'] });
+    expect(long).toContain('hair-dryer');
+    expect(long).not.toContain('cardboard-box');
+    expect(availableWeapons({ ...freshProgress(), milestones: ['survive-15'] })).toContain(
+      'cardboard-box'
+    );
 
     // In a run: never offered, whatever comes.
     const a = createArena({
@@ -87,9 +154,17 @@ describe('milestones', () => {
         stepMs: 50,
       },
     });
-    const locked: WeaponId[] = ['thunderous-vacuum', 'laser-pointer-deluxe', 'hairball'];
+    const locked: WeaponId[] = [
+      'thunderous-vacuum',
+      'laser-pointer-deluxe',
+      'hairball',
+      'hair-dryer',
+      'cardboard-box',
+    ];
     let offers = 0;
-    while (a.state().time < 120_000) {
+    // Three minutes: the larger pool of weapons changes the seeded run, which now has 3 level-ups
+    // in two minutes, where the check wants more than 3.
+    while (a.state().time < 180_000) {
       const offer = a.choices();
       if (offer) {
         offers++;
@@ -139,7 +214,13 @@ describe('the Tailor', () => {
     const config = runConfig(progress, ARENA_CONFIG);
     expect(config.hero!.resolve).toBe(ARENA_CONFIG.hero.resolve + 20);
     expect(config.hero!.speed).toBeCloseTo(ARENA_CONFIG.hero.speed * 1.2);
-    expect(config.boost).toEqual({ might: 1.15, pickup: 1.1, revivals: 1 });
+    expect(config.boost).toEqual({
+      might: 1.15,
+      pickup: 1.1,
+      revivals: 1,
+      rerolls: 0,
+      skips: 0,
+    });
   });
 });
 
@@ -157,6 +238,39 @@ describe('characters', () => {
     expect(hired.tufts).toBe(50);
     expect(buyCharacter(hired, 'housekeeper')).toBeNull();
     expect(buyCharacter(rich(1000), 'night-porter')).toBeNull();
+  });
+
+  it('the Hairdresser comes with Survive 10:00, goes out with the Hair Dryer, and differs from the others', () => {
+    const fresh = freshProgress();
+    expect(hasCharacter(fresh, 'hairdresser')).toBe(false);
+    expect(buyCharacter(rich(10_000), 'hairdresser')).toBeNull();
+    // Only a run of ten minutes reaches the milestone.
+    const five = applyRun(fresh, run({ timeMs: 300_000 })).progress;
+    expect(hasCharacter(five, 'hairdresser')).toBe(false);
+    const ten = applyRun(fresh, run({ timeMs: 600_000 })).progress;
+    expect(hasCharacter(ten, 'hairdresser')).toBe(true);
+    expect(unlockedBy('survive-10')).toContain('The Hairdresser');
+    const chosen = chooseCharacter(ten, 'hairdresser');
+    expect(chosen.character).toBe('hairdresser');
+    const config = runConfig(chosen, ARENA_CONFIG);
+    expect(config.startingWeapons).toEqual(['hair-dryer']);
+    expect(config.hero!.speed).toBeCloseTo(ARENA_CONFIG.hero.speed * 1.04);
+    expect(config.hero!.resolve).toBe(ARENA_CONFIG.hero.resolve + 10);
+    // Resolve and pace differ from each of the other three.
+    const mine = CHARACTERS.hairdresser;
+    for (const [id, other] of Object.entries(CHARACTERS)) {
+      if (id === 'hairdresser') continue;
+      expect([mine.resolve, mine.speed], id).not.toEqual([other.resolve, other.speed]);
+      expect(mine.resolve, id).not.toBe(other.resolve);
+      expect(mine.speed, id).not.toBe(other.speed);
+    }
+    // A player 2 who does not have him goes out as the Keeper.
+    expect(runConfig(five, ARENA_CONFIG, 'hairdresser').secondPlayer!.startingWeapons).toEqual([
+      'laser-pointer',
+    ]);
+    expect(runConfig(ten, ARENA_CONFIG, 'hairdresser').secondPlayer!.startingWeapons).toEqual([
+      'hair-dryer',
+    ]);
   });
 
   it('in co-op, player 2 goes out as a character player 1 has, with the Tailor’s work', () => {
@@ -339,7 +453,7 @@ describe('Second Wind', () => {
       config: {
         startingWeapons: [],
         escalation: [[0, 60]],
-        boost: { might: 1, pickup: 1, revivals: 1 },
+        boost: { might: 1, pickup: 1, revivals: 1, rerolls: 0, skips: 0 },
       },
     });
     const kinds: string[] = [];

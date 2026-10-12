@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
 
 // The invoice list's CSV export link, and the export refused without a session.

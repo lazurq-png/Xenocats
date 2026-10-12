@@ -1,4 +1,4 @@
-// What the Keeper can carry in Survival (arena.ts): nine weapons that fire on their
+// What the Keeper can carry in Survival (arena.ts): fourteen weapons that fire on their
 // own, up to level 8, and passives that make him or his weapons better, up to level
 // 5; at most six of each. Each level-up offers three choices (four with the Lucky
 // Bell), drawn from what he does not yet have at its highest level. A weapon at its
@@ -22,13 +22,28 @@ export type WeaponId =
   | 'hairball'
   | 'thunderous-vacuum'
   | 'laser-pointer-deluxe'
+  | 'feather-wand'
+  | 'squeaky-toy'
+  | 'cardboard-box'
+  | 'hair-dryer'
+  | 'bath-tub'
   // Evolved: never offered, only reached by evolution.
   | 'infinite-laser'
   | 'forbidden-catnip-vacuum'
   | 'yarn-apocalypse'
   | 'banquet'
   | 'monsoon'
-  | 'bottomless-saucer';
+  | 'bottomless-saucer'
+  | 'peacock-tail'
+  | 'squeak-symphony'
+  | 'cardboard-castle'
+  | 'scorch-dryer'
+  | 'jacuzzi'
+  // Fused: two evolved weapons made one at a chest (FUSIONS); never offered.
+  | 'thunderstorm'
+  | 'scorching-maw'
+  | 'yarn-feast'
+  | 'milk-symphony';
 
 export type PassiveId =
   | 'rubber-chicken'
@@ -39,7 +54,12 @@ export type PassiveId =
   | 'warm-milk'
   | 'long-whiskers'
   | 'stern-look'
-  | 'lucky-bell';
+  | 'lucky-bell'
+  | 'egg-timer'
+  | 'slippers'
+  | 'cushion'
+  | 'fish-bowl'
+  | 'tin-foil';
 
 /** A weapon at one level, before the passives. */
 export type WeaponStats = {
@@ -110,7 +130,17 @@ export type WeaponKind =
   /** Beams at every cat near him, joined to one another, all the time. */
   | 'web'
   /** Pulls every cat far round him in, then sends those close home at once. */
-  | 'gulp';
+  | 'gulp'
+  /** A swing of feathers across a sector round him: damage, and cats knocked back. */
+  | 'sweep'
+  /** A toy set down among the cats: every cat near it comes for it, and is hurt there. */
+  | 'lure'
+  /** A box set down on the cats: whichever cats it takes are held in it, and hurt. */
+  | 'trap'
+  /** A jet of hot air the way he faces: cats in it are pushed back, and hurt, all the time. */
+  | 'blow'
+  /** Two evolved weapons in one: both fire, and something of its own besides. */
+  | 'fused';
 
 export type WeaponInfo = {
   name: string;
@@ -122,7 +152,81 @@ export type WeaponInfo = {
   levels: readonly WeaponStats[];
 };
 
+/**
+ * The stats of a fused weapon are its own extra, not its parents' (they keep firing
+ * as they did): every `cooldownMs`, `count` of its own things of `damage`.
+ */
+const FUSED_WEAPONS: Readonly<
+  Record<'thunderstorm' | 'scorching-maw' | 'yarn-feast' | 'milk-symphony', WeaponInfo>
+> = {
+  thunderstorm: {
+    name: 'Thunderstorm',
+    description: 'The laser web and the monsoon, together. Lightning finds the wet cats first.',
+    kind: 'fused',
+    unit: 'strike',
+    levels: fixed({
+      cooldownMs: 2000,
+      damage: 120,
+      area: 450,
+      count: 6,
+      speed: 0,
+      durationMs: 180,
+      pierce: 99,
+    }),
+  },
+  'scorching-maw': {
+    name: 'Scorching Maw',
+    description:
+      'It draws in every cat for a long way, hot air at its back. Whatever it draws in is scorched.',
+    kind: 'fused',
+    unit: 'scorch',
+    levels: fixed({
+      cooldownMs: 4000,
+      damage: 0,
+      area: 560,
+      count: 1,
+      speed: 0,
+      // How long a scorched cat stays so, ms.
+      durationMs: 3000,
+      pierce: 99,
+    }),
+  },
+  'yarn-feast': {
+    name: 'Yarn Feast',
+    description:
+      'Yarn that tangles, treats that chase. Now and then the whole table goes after the cats.',
+    kind: 'fused',
+    unit: 'crumb',
+    levels: fixed({
+      cooldownMs: 3000,
+      damage: 300,
+      area: 16,
+      count: 24,
+      speed: 380,
+      durationMs: 900,
+      pierce: 2,
+    }),
+  },
+  'milk-symphony': {
+    name: 'Milk Symphony',
+    description:
+      'Saucers that circle, toys that squeak. Every toy in earshot spills a little milk on the cats.',
+    kind: 'fused',
+    unit: 'wave',
+    levels: fixed({
+      cooldownMs: 3000,
+      damage: 90,
+      area: 16,
+      count: 6,
+      speed: 380,
+      durationMs: 800,
+      pierce: 6,
+    }),
+  },
+};
+
 export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
+  ...FUSED_WEAPONS,
   'laser-pointer': {
     name: 'Laser Pointer',
     description: 'A red dot no cat can ignore. Whatever it touches grows homesick.',
@@ -301,6 +405,107 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       ]
     ),
   },
+  'feather-wand': {
+    name: 'Feather Wand',
+    description: 'A swish of feathers. Every cat in the swing forgets what it came for.',
+    kind: 'sweep',
+    unit: 'swing',
+    levels: ladder(
+      { cooldownMs: 1400, damage: 16, area: 150, count: 1, speed: 90, durationMs: 200, pierce: 99 },
+      [
+        { count: 1 },
+        { damage: 6 },
+        { cooldownMs: -250 },
+        { area: 30 },
+        { count: 1, damage: 5 },
+        { speed: 40 },
+        { cooldownMs: -250, damage: 6 },
+      ]
+    ),
+  },
+  'squeaky-toy': {
+    name: 'Squeaky Toy',
+    description: 'Set down among the cats. Every cat nearby comes to see, and stays to squeak.',
+    kind: 'lure',
+    unit: 'toy',
+    levels: ladder(
+      // Damage is a second's worth, to every cat at the toy; speed is how far the squeak carries.
+      {
+        cooldownMs: 3800,
+        damage: 14,
+        area: 55,
+        count: 1,
+        speed: 260,
+        durationMs: 3200,
+        pierce: 99,
+      },
+      [
+        { count: 1 },
+        { damage: 6 },
+        { durationMs: 700 },
+        { speed: 60 },
+        { count: 1, cooldownMs: -500 },
+        { damage: 6, area: 15 },
+        { count: 1, durationMs: 800 },
+      ]
+    ),
+  },
+  'cardboard-box': {
+    name: 'Cardboard Box',
+    description: 'If it fits, it sits. A cat taken by a box stays in it until the box gives out.',
+    kind: 'trap',
+    unit: 'carton',
+    levels: ladder(
+      // Damage is a second's worth, to each cat held; pierce is how many a box can hold.
+      { cooldownMs: 4200, damage: 12, area: 38, count: 1, speed: 0, durationMs: 4000, pierce: 4 },
+      [
+        { count: 1 },
+        { damage: 6 },
+        { pierce: 2 },
+        { durationMs: 800, area: 8 },
+        { count: 1, damage: 5 },
+        { cooldownMs: -700, pierce: 2 },
+        { count: 1, damage: 6, area: 8 },
+      ]
+    ),
+  },
+  'hair-dryer': {
+    name: 'Hair Dryer',
+    description: 'A gale of warm air. Nothing with fur has ever stood in it for long.',
+    kind: 'blow',
+    unit: 'jet',
+    levels: ladder(
+      // Continuous: damage a second, and speed is how fast the cats are blown back, px/s.
+      { cooldownMs: 0, damage: 16, area: 190, count: 1, speed: 140, durationMs: 0, pierce: 99 },
+      [
+        { count: 1 },
+        { damage: 8 },
+        { area: 30 },
+        { speed: 60 },
+        { count: 1, damage: 6 },
+        { area: 30 },
+        { damage: 8, speed: 60 },
+      ]
+    ),
+  },
+  'bath-tub': {
+    name: 'Bath Tub',
+    description: 'Thrown at a cat. It bursts, and what is in it goes everywhere.',
+    kind: 'burst',
+    unit: 'bubble',
+    levels: ladder(
+      { cooldownMs: 3000, damage: 30, area: 18, count: 6, speed: 260, durationMs: 1100, pierce: 1 },
+      [
+        { count: 2 },
+        { damage: 10 },
+        { cooldownMs: -500 },
+        { area: 4, speed: 40 },
+        { count: 2, damage: 10 },
+        { cooldownMs: -500, durationMs: 300 },
+        { count: 2, damage: 12, area: 4 },
+      ]
+    ),
+  },
   'infinite-laser': {
     name: 'Infinite Laser',
     description: 'The red dot, without end. The screen is a web of it.',
@@ -338,7 +543,8 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   'yarn-apocalypse': {
     name: 'Yarn Apocalypse',
-    description: 'The yarn splits each time it bounces. Nobody will ever wind it up again.',
+    description:
+      'The yarn splits each time it bounces, and tangles every cat it passes. Nobody will wind it up again.',
     kind: 'bounce',
     unit: 'ball',
     levels: fixed({
@@ -354,7 +560,8 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   banquet: {
     name: 'Banquet',
-    description: 'Treats in every direction at once. Every cat is invited; every cat goes home.',
+    description:
+      'Treats in every direction at once, and the crumbs go looking for seconds. Every cat is invited.',
     kind: 'spread',
     unit: 'treat',
     levels: fixed({
@@ -371,7 +578,8 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   monsoon: {
     name: 'Monsoon',
-    description: 'The bottle, but the sky. A wall of water the way he faces, and it does not stop.',
+    description:
+      'The bottle, but the sky. A wall of water the way he faces, and it leaves puddles behind.',
     kind: 'arc',
     unit: 'droplet',
     levels: fixed({
@@ -387,7 +595,7 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   'bottomless-saucer': {
     name: 'Bottomless Saucer',
-    description: 'Warm milk, circling him without end. No cat has ever refused it.',
+    description: 'Warm milk, circling him without end, and spilling. No cat has ever refused it.',
     kind: 'orbit',
     unit: 'saucer',
     levels: fixed({
@@ -398,6 +606,83 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       speed: 4.6,
       durationMs: 0,
       pierce: 99,
+    }),
+  },
+  'peacock-tail': {
+    name: 'Peacock Tail',
+    description: 'A fan of eyes, all the way round. Every cat it brushes is struck still.',
+    kind: 'sweep',
+    unit: 'swing',
+    levels: fixed({
+      cooldownMs: 700,
+      damage: 34,
+      area: 260,
+      // Six sectors: nearly all the way round him.
+      count: 6,
+      speed: 40,
+      // How long a cat it touches is held still, ms.
+      durationMs: 1500,
+      pierce: 99,
+    }),
+  },
+  'squeak-symphony': {
+    name: 'Squeak Symphony',
+    description: 'Three toys, a crescendo, and a last note that no cat nearby survives.',
+    kind: 'lure',
+    unit: 'toy',
+    levels: fixed({
+      cooldownMs: 2600,
+      damage: 40,
+      area: 90,
+      count: 3,
+      speed: 420,
+      durationMs: 3800,
+      pierce: 99,
+    }),
+  },
+  'cardboard-castle': {
+    name: 'Cardboard Castle',
+    description: 'Towers, a moat, a drawbridge. Cats near it slow to a crawl; those in it stay.',
+    kind: 'trap',
+    unit: 'carton',
+    levels: fixed({
+      cooldownMs: 3000,
+      damage: 40,
+      area: 70,
+      count: 4,
+      speed: 0,
+      durationMs: 7000,
+      pierce: 12,
+    }),
+  },
+  'scorch-dryer': {
+    name: 'Scorch Dryer',
+    description: 'Hot enough to singe. A scorched cat takes half again from everything else.',
+    kind: 'blow',
+    unit: 'jet',
+    levels: fixed({
+      cooldownMs: 0,
+      damage: 50,
+      area: 300,
+      count: 3,
+      speed: 240,
+      durationMs: 0,
+      pierce: 99,
+    }),
+  },
+  jacuzzi: {
+    name: 'Jacuzzi',
+    description: 'The tub, but much more of it. Every splash leaves a puddle cats cannot cross.',
+    kind: 'burst',
+    unit: 'bubble',
+    levels: fixed({
+      cooldownMs: 1800,
+      damage: 60,
+      area: 22,
+      count: 10,
+      speed: 300,
+      durationMs: 1300,
+      pierce: 1,
     }),
   },
 };
@@ -415,12 +700,47 @@ export const EVOLUTIONS: readonly Evolution[] = [
   { from: 'cat-treats', with: 'long-whiskers', to: 'banquet' },
   { from: 'spray-bottle', with: 'wool-sweater', to: 'monsoon' },
   { from: 'can-opener', with: 'warm-milk', to: 'bottomless-saucer', secret: true },
+  { from: 'feather-wand', with: 'cushion', to: 'peacock-tail' },
+  { from: 'squeaky-toy', with: 'egg-timer', to: 'squeak-symphony' },
+  { from: 'cardboard-box', with: 'slippers', to: 'cardboard-castle' },
+  { from: 'hair-dryer', with: 'tin-foil', to: 'scorch-dryer' },
+  { from: 'bath-tub', with: 'fish-bowl', to: 'jacuzzi' },
 ];
 
-/** The weapons a level-up may offer: all but the evolved ones. */
+/**
+ * Two evolved weapons, held together, become one at a chest (before an evolution
+ * is made): it fires what both fired, and something of its own, and takes one
+ * weapon slot instead of two. Never offered at a level-up.
+ */
+export type Fusion = { from: readonly [WeaponId, WeaponId]; to: WeaponId };
+
+export const FUSIONS: readonly Fusion[] = [
+  { from: ['infinite-laser', 'monsoon'], to: 'thunderstorm' },
+  { from: ['forbidden-catnip-vacuum', 'scorch-dryer'], to: 'scorching-maw' },
+  { from: ['yarn-apocalypse', 'banquet'], to: 'yarn-feast' },
+  { from: ['bottomless-saucer', 'squeak-symphony'], to: 'milk-symphony' },
+];
+
+/** The weapons a level-up may offer: all but the evolved and the fused ones. */
 export const BASE_WEAPONS: readonly WeaponId[] = (Object.keys(WEAPONS) as WeaponId[]).filter(
-  (id) => !EVOLUTIONS.some((e) => e.to === id)
+  (id) => !EVOLUTIONS.some((e) => e.to === id) && !FUSIONS.some((f) => f.to === id)
 );
+
+/** The fusion a chest opened now would make, if any: the first whose two are held. */
+export function fusionFor(weapons: ReadonlyMap<WeaponId, number>): Fusion | null {
+  for (const fusion of FUSIONS) {
+    if (fusion.from.every((id) => weapons.has(id)) && !weapons.has(fusion.to)) return fusion;
+  }
+  return null;
+}
+
+/** The evolved weapons the fused ones held have absorbed. */
+function absorbedBy(weapons: ReadonlyMap<WeaponId, number>): Set<WeaponId> {
+  const absorbed = new Set<WeaponId>();
+  for (const fusion of FUSIONS)
+    if (weapons.has(fusion.to)) for (const id of fusion.from) absorbed.add(id);
+  return absorbed;
+}
 
 /** The evolution a chest opened now would bring, if any: the first that is ready. */
 export function evolutionFor(
@@ -492,6 +812,31 @@ export const PASSIVES: Readonly<Record<PassiveId, PassiveInfo>> = {
     description: 'A small brass bell. One more choice at every level.',
     maxLevel: 1,
   },
+  'egg-timer': {
+    name: 'Egg Timer',
+    description: 'It ticks louder than it should. What his weapons make lasts longer.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  slippers: {
+    name: 'Slippers',
+    description: 'Soft, and silent on any floor. What his weapons fire goes through more cats.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  cushion: {
+    name: 'Cushion',
+    description: 'Somewhere soft to land. He stays untouchable a little longer after a hit.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'fish-bowl': {
+    name: 'Fish Bowl',
+    description: 'Something to stare at, and learn from. Gems are worth more.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'tin-foil': {
+    name: 'Tin Foil',
+    description: 'A hat, for reasons. The tricks of the elite cats wear off sooner.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
 };
 
 /** What the passives held add up to. */
@@ -507,6 +852,16 @@ export type Modifiers = {
   pickup: number;
   might: number;
   choices: number;
+  /** Multiplies how long what a weapon makes lasts. */
+  duration: number;
+  /** Added to how many cats one thing a weapon fires or places can take. */
+  pierce: number;
+  /** Added to the moment he is untouchable after a hit, ms. */
+  grace: number;
+  /** Multiplies the experience a gem gives. */
+  xp: number;
+  /** The share an elite's effect on him is cut by. */
+  guard: number;
 };
 
 export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
@@ -521,6 +876,11 @@ export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
     pickup: 1 + 0.25 * level('long-whiskers'),
     might: 1 + 0.1 * level('stern-look'),
     choices: 3 + level('lucky-bell'),
+    duration: 1 + 0.12 * level('egg-timer'),
+    pierce: level('slippers'),
+    grace: 120 * level('cushion'),
+    xp: 1 + 0.12 * level('fish-bowl'),
+    guard: 0.15 * level('tin-foil'),
   };
 }
 
@@ -533,6 +893,9 @@ export function weaponStats(id: WeaponId, level: number, mods: Modifiers): Weapo
     damage: base.damage * mods.might,
     area: base.area * mods.area,
     count: base.count + mods.count,
+    // What lasts, lasts longer; what passes through cats (not the unlimited) passes through more.
+    durationMs: base.durationMs * mods.duration,
+    pierce: base.pierce < 99 ? base.pierce + mods.pierce : base.pierce,
   };
 }
 
@@ -560,9 +923,13 @@ export function offerChoices(
   available: readonly WeaponId[] = BASE_WEAPONS
 ): Choice[] {
   const pool: Choice[] = [];
+  const absorbed = absorbedBy(weapons);
   for (const id of available) {
-    // A weapon that has evolved is gone for good: its evolution holds its place.
-    if (EVOLUTIONS.some((e) => e.from === id && weapons.has(e.to))) continue;
+    // A weapon that has evolved is gone for good: its evolution holds its place, or a
+    // fused weapon that took the evolution up.
+    if (EVOLUTIONS.some((e) => e.from === id && (weapons.has(e.to) || absorbed.has(e.to)))) {
+      continue;
+    }
     const level = weapons.get(id);
     if (level === undefined) {
       if (weapons.size < WEAPON_SLOTS) pool.push({ kind: 'weapon', id, level: 1 });
@@ -597,6 +964,20 @@ const AREA_WORD: Readonly<Record<WeaponKind, string>> = {
   bounce: 'size',
   burst: 'size',
   arc: 'range',
+  sweep: 'reach',
+  lure: 'size',
+  trap: 'size',
+  blow: 'reach',
+  fused: 'reach',
+};
+
+/** What a weapon's speed is, in its level-up card's words. */
+const SPEED_WORD: Partial<Record<WeaponKind, string>> = {
+  pull: 'pull',
+  orbit: 'turning speed',
+  sweep: 'knockback',
+  lure: 'squeak range',
+  blow: 'push',
 };
 
 /**
@@ -623,7 +1004,7 @@ export function levelChanges(id: WeaponId, level: number): string[] {
     changes.push(`+${percent(after.area, before.area)}% ${AREA_WORD[kind]}`);
   }
   if (after.speed !== before.speed) {
-    const word = kind === 'pull' ? 'pull' : kind === 'orbit' ? 'turning speed' : 'speed';
+    const word = SPEED_WORD[kind] ?? 'speed';
     changes.push(`+${percent(after.speed, before.speed)}% ${word}`);
   }
   if (after.durationMs !== before.durationMs) {
@@ -631,7 +1012,9 @@ export function levelChanges(id: WeaponId, level: number): string[] {
   }
   if (after.pierce !== before.pierce) {
     const n = after.pierce - before.pierce;
-    changes.push(`passes through ${n} more cat${n === 1 ? '' : 's'}`);
+    changes.push(
+      `${kind === 'trap' ? 'holds' : 'passes through'} ${n} more cat${n === 1 ? '' : 's'}`
+    );
   }
   return changes;
 }
@@ -664,6 +1047,11 @@ const MODIFIER_WORDS: { [K in keyof Modifiers]: (step: number) => string } = {
   pickup: (step) => `+${Math.round(step * 100)}% pickup reach`,
   might: (step) => `+${Math.round(step * 100)}% homesickness`,
   choices: (step) => `+${step} choice at every level`,
+  duration: (step) => `what his weapons make lasts ${Math.round(step * 100)}% longer`,
+  pierce: (step) => `+${step} cat through each shot, and in each carton`,
+  grace: (step) => `untouchable ${Math.round(step)} ms longer after a hit`,
+  xp: (step) => `+${Math.round(step * 100)}% experience from gems`,
+  guard: (step) => `elite effects on him last ${Math.round(step * 100)}% shorter`,
 };
 
 /**
@@ -750,6 +1138,16 @@ export type Loadout = {
     ready: boolean;
     after: WeaponId | null;
   }[];
+  /**
+   * Each fusion he has started (holds one of its two evolved weapons), not yet made:
+   * what is still missing, or `ready` when both are held (the next chest fuses them).
+   */
+  fusions: {
+    from: readonly [WeaponId, WeaponId];
+    to: WeaponId;
+    missing: string[];
+    ready: boolean;
+  }[];
 };
 
 export function loadout(
@@ -758,7 +1156,10 @@ export function loadout(
 ): Loadout {
   const weaponLevels = new Map(weapons.map((w) => [w.id, w.level] as const));
   const passiveLevels = new Map(passives.map((p) => [p.id, p.level] as const));
-  const evolvedIds = new Set(EVOLUTIONS.map((e) => e.to));
+  const evolvedIds = new Set<WeaponId>([
+    ...EVOLUTIONS.map((e) => e.to),
+    ...FUSIONS.map((f) => f.to),
+  ]);
   // What the next chest he opens evolves, by the chest's own rule.
   const first = evolutionFor(weaponLevels, passiveLevels);
   return {
@@ -784,6 +1185,14 @@ export function loadout(
       gives: `${capitalise(passiveTotal(id, level).join(', '))}.`,
     })),
     freePassiveSlots: Math.max(PASSIVE_SLOTS - passives.length, 0),
+    fusions: FUSIONS.filter(
+      (f) => !weaponLevels.has(f.to) && f.from.some((id) => weaponLevels.has(id))
+    ).map((f) => {
+      const missing = f.from
+        .filter((id) => !weaponLevels.has(id))
+        .map((id) => `the ${WEAPONS[id].name}`);
+      return { from: f.from, to: f.to, missing, ready: missing.length === 0 };
+    }),
     evolutions: EVOLUTIONS.filter(
       (e) =>
         !e.secret &&
@@ -811,6 +1220,11 @@ export function loadout(
       };
     }),
   };
+}
+
+/** A fusion, announced with due gravity. */
+export function fusionText(from: readonly [WeaponId, WeaponId], to: WeaponId): string {
+  return `${the(WEAPONS[from[0]].name, 'The')} and ${the(WEAPONS[from[1]].name, 'the')} are one. In their place: ${the(WEAPONS[to].name, 'the')}.`;
 }
 
 /** An evolution, announced with due gravity. */

@@ -468,18 +468,9 @@ Do not repeatedly ask for approval for routine implementation details.
 
 ## Unattended operation
 
-The pause triggers above assume a human is available. When no human is — an
-overnight or otherwise unsupervised run — pausing produces nothing, so they
-resolve differently: record the question, the options and a recommendation in
-the run's durable state, choose the smallest reversible interpretation, isolate
-that work on its own commit as provisional, and continue with the next
-independent task.
-
-This is a change of *response*, not of *threshold*. What counts as consequential
-is unchanged; it is logged and worked around rather than waited on. The
-exceptions that must never be worked around unattended — any database other
-than the development one, secrets, dependency changes, force-pushes —
-are listed in `.claude/skills/night-run/SKILL.md`, which governs that mode.
+With no human available, an agent records these questions instead of pausing,
+as `.claude/skills/night-run/SKILL.md` defines. That skill governs unattended
+work; supervised work does not need it.
 
 ---
 
@@ -529,31 +520,9 @@ The objective is to move humans toward decisions where their judgment has the hi
 
 # 21. Completion Report
 
-When completing a non-trivial task, report:
-
-## Summary
-
-What changed.
-
-## Files
-
-Which important files changed and why.
-
-## Verification
-
-Exactly what was run and whether it passed.
-
-## Decisions
-
-Important implementation or architectural decisions.
-
-## Risks
-
-Known limitations or remaining uncertainty.
-
-## Follow-up
-
-Only genuinely useful follow-up work.
+When completing a non-trivial task, report in the format `CLAUDE.md` §17
+defines: Summary, Verification, Notes, Remaining Issues. It is the repository's
+one completion-report format.
 
 Do not produce vague completion statements.
 
@@ -583,8 +552,8 @@ When instructions conflict, use this priority:
 
 1. explicit user requirements
 2. system/platform constraints
-3. repository architecture and contracts
-4. security and correctness
+3. security and correctness
+4. repository architecture and contracts
 5. project-specific AI instructions
 6. technology-specific conventions
 7. stylistic preferences

@@ -1,4 +1,4 @@
-import { devices, expect, test } from '@playwright/test';
+import { devices, expect, test } from './fixtures';
 
 // Cats on a touch screen (/cats, no login, no database): a phone profile, so the
 // page sees a coarse pointer and touch input.

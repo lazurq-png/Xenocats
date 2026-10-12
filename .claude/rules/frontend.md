@@ -153,13 +153,6 @@ interaction works; it does not prove the page looks right.
 data has no value, and `npm run db:reset` restores the seed data. Browser tests
 use their own schema and may submit writing forms (`.claude/rules/testing.md`).
 
-### Unattended: nobody can look
-
-An unattended UI change is verified by steps 1–3 and a reviewer's reading, with
-a browser test standing in for step 5. Report it as **tested in a browser, not
-seen**, name what a human should look at, and never imply the UI was looked at.
-Primarily visual changes are weak unattended work for that reason.
-
 ---
 
 ## Visual Consistency

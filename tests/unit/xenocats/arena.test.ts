@@ -1,14 +1,53 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ARENA_CONFIG,
   type ArenaConfig,
   HERO_EFFECTS,
+  attackShapeOf,
   catsWanted,
   createArena,
+  pickupFor,
+  runLengthConfig,
 } from '@/app/ui/xenocats/arena';
 import { createArenaGrid } from '@/app/ui/xenocats/arena-grid';
-import { WEAPONS } from '@/app/ui/xenocats/arsenal';
-import { bestOf, clockText, parseBest } from '@/app/ui/xenocats/arena-storage';
+import { WEAPONS, type WeaponId } from '@/app/ui/xenocats/arsenal';
+import {
+  SURVIVAL_BEST_KEY,
+  bestKey,
+  bestOf,
+  clockText,
+  parseBest,
+  parseLength,
+  SURVIVAL_GRAPHICS_KEY,
+  readBest,
+  readGraphics,
+  readGraphicsAuto,
+  readLength,
+  subscribeGraphics,
+  subscribeLength,
+  writeGraphics,
+  writeGraphicsAuto,
+  writeBest,
+  writeLength,
+} from '@/app/ui/xenocats/arena-storage';
+import { SCHEDULE } from '@/app/ui/xenocats/varieties';
+import {
+  AUTO_JUDGE_FROM_MS,
+  AUTO_JUDGE_UNTIL_MS,
+  AUTO_MIN_FRAMES,
+  AUTO_WINDOW_MS,
+  parseGraphics,
+  pixelRatioFor,
+  shouldGoLight,
+} from '@/app/ui/xenocats/graphics';
+import {
+  type Direction,
+  DRAWN_DIRECTIONS,
+  directionOf,
+  directionOfAngle,
+  facesAway,
+  spriteOf,
+} from '@/app/ui/xenocats/hero-direction';
 import { CAT_TYPES, catTypeById } from '@/app/ui/xenocats/cat-types';
 import { createFrameGuard } from '@/app/ui/xenocats/frame-guard';
 import { createRandom } from '@/app/ui/xenocats/random';
@@ -558,5 +597,1155 @@ describe('the camera on a small screen', () => {
     const { zoom } = a.camera();
     expect(zoom).toBeGreaterThan(base);
     expect(zoom).toBeLessThanOrEqual(base * ARENA_CONFIG.coop.maxZoomOut + 1e-9);
+  });
+});
+
+describe('the run length', () => {
+  it('five minutes is the game as it was: the same goal, bosses and cats', () => {
+    expect(runLengthConfig(5)).toEqual({
+      timeGoalMs: 300_000,
+      schedule: { ...SCHEDULE, bosses: [120_000, 240_000] },
+    });
+    expect(SCHEDULE.bosses).toEqual([120_000, 240_000]);
+    const play = (config: Partial<ArenaConfig>) => {
+      const a = arena({ ...unbreakable, stepMs: 50, schedule: SCHEDULE, ...config }, 3);
+      runTo(a, 150_000);
+      return JSON.stringify([a.cats(), a.state().sentHome]);
+    };
+    expect(play(runLengthConfig(5))).toBe(play({}));
+  });
+
+  it('ten and fifteen minutes: the goal moves, and a Mega Cat comes every two minutes before it', () => {
+    expect(runLengthConfig(10).timeGoalMs).toBe(600_000);
+    expect(runLengthConfig(10).schedule?.bosses).toEqual([120_000, 240_000, 360_000, 480_000]);
+    expect(runLengthConfig(15).timeGoalMs).toBe(900_000);
+    expect(runLengthConfig(15).schedule?.bosses).toEqual(
+      [1, 2, 3, 4, 5, 6, 7].map((n) => n * 120_000)
+    );
+  });
+
+  it('the Matriarch comes at the chosen time, not at five minutes', () => {
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...runLengthConfig(10) });
+    runTo(a, 310_000);
+    expect(a.matriarch()).toBeNull();
+    expect(a.state().status).toBe('playing');
+    runTo(a, 610_000);
+    expect(a.matriarch()).not.toBeNull();
+    expect(a.state().goalMs).toBe(600_000);
+  });
+
+  // Plain cats only, arriving all the time, and nothing to send them home.
+  const plain = {
+    ...unbreakable,
+    stepMs: 50,
+    startingWeapons: [],
+    // Not the secret cat, which sits by a Keeper who stands still.
+    secretCat: { afterMs: Infinity, stillMs: Infinity },
+    escalation: [
+      [0, 10],
+      [300_000, 10],
+      [900_000, 400],
+    ] as [number, number][],
+    schedule: {
+      arrivals: [{ from: 0, who: 'basic' as const, weight: 1 }],
+      swarms: { from: Infinity, everyMs: 1, size: [0, 0] as [number, number] },
+      bosses: [],
+    },
+    timeGoalMs: 15 * 60_000,
+  };
+
+  it('cats are as strong at five minutes as they always were, and tougher after', () => {
+    const base = ARENA_CONFIG.cats;
+    expect(base).toBeDefined();
+    const a = arena(plain);
+    runTo(a, 300_000);
+    const limits = new Set(a.cats().map((cat) => cat.limit));
+    const speeds = new Set(a.cats().map((cat) => cat.speed));
+    expect(limits.size).toBe(1);
+    expect(speeds.size).toBe(1);
+    const [limit] = limits;
+    const [speed] = speeds;
+    runTo(a, 600_000);
+    // A cat arriving at 10:00 has 5 minutes of toughness: +75% Homesickness, +10% speed.
+    const late = Math.max(...a.cats().map((cat) => cat.limit));
+    expect(late).toBeGreaterThan(limit * 1.7);
+    expect(late).toBeLessThanOrEqual(limit * 1.75 + 1e-9);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeGreaterThan(speed * 1.09);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeLessThanOrEqual(speed * 1.1 + 1e-9);
+  });
+
+  it('a five-minute run stays as it was after 5:00, until the Matriarch reaches him', () => {
+    const a = arena({
+      ...plain,
+      timeGoalMs: 300_000,
+      matriarch: { ...ARENA_CONFIG.matriarch, speed: 0 },
+      // Not the kittens she calls: they are weaker cats of their own.
+      bossAttack: {
+        ...ARENA_CONFIG.bossAttack,
+        summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: Infinity },
+      },
+    });
+    runTo(a, 300_000);
+    const [limit] = new Set(a.cats().map((cat) => cat.limit));
+    const [speed] = new Set(a.cats().map((cat) => cat.speed));
+    runTo(a, 330_000);
+    expect(a.matriarch()).not.toBeNull();
+    expect(new Set(a.cats().map((cat) => cat.limit))).toEqual(new Set([limit]));
+    expect(new Set(a.cats().map((cat) => cat.speed))).toEqual(new Set([speed]));
+  });
+
+  it('they grow quicker only up to the cap', () => {
+    const a = arena({
+      ...plain,
+      toughness: { ...ARENA_CONFIG.toughness, speedPerMin: 1, maxSpeedFactor: 1.3 },
+    });
+    runTo(a, 300_000);
+    const [speed] = new Set(a.cats().map((cat) => cat.speed));
+    runTo(a, 480_000);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeCloseTo(speed * 1.3, 6);
+  });
+
+  it('the crowd stays at its peak past five minutes', () => {
+    expect(catsWanted(300_000)).toBe(catsWanted(900_000));
+    expect(catsWanted(600_000)).toBe(ARENA_CONFIG.cats.hardCap);
+  });
+});
+
+describe('the best time per run length', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stubStorage = () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => void store.set(key, value),
+      },
+    });
+    return store;
+  };
+
+  it('a stored length is five, ten or fifteen, else five', () => {
+    expect(parseLength('10')).toBe(10);
+    expect(parseLength('15')).toBe(15);
+    expect(parseLength('5')).toBe(5);
+    for (const raw of [null, '', '7', 'abc', '10.5', '-5'])
+      expect(parseLength(raw), String(raw)).toBe(5);
+  });
+
+  it('five minutes keeps the old key, so a best from before counts as the five-minute best', () => {
+    expect(bestKey(5)).toBe(SURVIVAL_BEST_KEY);
+    expect(new Set([bestKey(5), bestKey(10), bestKey(15)]).size).toBe(3);
+    const store = stubStorage();
+    store.set(SURVIVAL_BEST_KEY, '250000');
+    expect(readBest()).toBe(250_000);
+    expect(readBest(5)).toBe(250_000);
+    expect(readBest(10)).toBeNull();
+  });
+
+  it('with storage blocked, the length chosen lasts until the page is left', () => {
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: () => {
+          throw new Error('blocked');
+        },
+        setItem: () => {
+          throw new Error('blocked');
+        },
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    expect(readLength()).toBe(5);
+    let told = 0;
+    const stop = subscribeLength(() => told++);
+    writeLength(15);
+    expect(readLength()).toBe(15);
+    expect(told).toBe(1);
+    stop();
+    writeLength(5);
+    expect(told).toBe(1);
+    expect(readLength()).toBe(5);
+    // And no best time is kept, but nothing throws.
+    expect(() => writeBest(100_000, 10)).not.toThrow();
+    expect(readBest(10)).toBeNull();
+  });
+
+  it('each length keeps its own best', () => {
+    stubStorage();
+    writeBest(400_000, 10);
+    writeBest(120_000, 5);
+    expect(readBest(10)).toBe(400_000);
+    expect(readBest(5)).toBe(120_000);
+    expect(readBest(15)).toBeNull();
+  });
+});
+
+describe('elites', () => {
+  it('are about a third as common as they were: 13% of the xenocats', () => {
+    expect(ARENA_CONFIG.cats.eliteShare).toBe(0.13);
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 150]] }, 11);
+    let xenocats = 0;
+    let elites = 0;
+    while (a.state().time < 180_000) {
+      a.step(still);
+      for (const e of a.drainEvents()) {
+        if (e.kind !== 'xenocat') continue;
+        xenocats++;
+        if (e.elite) elites++;
+      }
+    }
+    expect(xenocats).toBeGreaterThan(300);
+    expect(elites / xenocats).toBeGreaterThan(0.09);
+    expect(elites / xenocats).toBeLessThan(0.17);
+  });
+});
+
+describe('an elite attack', () => {
+  /** One elite of this type at a time, no weapons, a Keeper nothing can wear down. */
+  const lone = (id: string, config: Partial<ArenaConfig> = {}) =>
+    arena(
+      {
+        ...unbreakable,
+        stepMs: 50,
+        escalation: [[0, 1]],
+        startingWeapons: [],
+        secretCat: { afterMs: Infinity, stillMs: Infinity },
+        cats: { ...ARENA_CONFIG.cats, eliteShare: 1 },
+        ...config,
+      },
+      1,
+      [catTypeById(id)!]
+    );
+  type Event = ReturnType<ReturnType<typeof lone>['drainEvents']>[number];
+
+  /** Steps (the Keeper still, or walking) until an event of this kind, and says it. */
+  function until(a: ReturnType<typeof lone>, kind: Event['kind'], input = still) {
+    for (let i = 0; i < 4000; i++) {
+      a.step(input);
+      for (const e of a.drainEvents()) if (e.kind === kind) return e;
+    }
+    throw new Error(`no ${kind}`);
+  }
+  const heroAt = (a: ReturnType<typeof lone>) => a.state().hero;
+
+  it('draws its shape from the effect: a ring for the freezes and pulls, a blast for the pushes, a line for the rest', () => {
+    expect(attackShapeOf(HERO_EFFECTS.freeze)).toBe('ring');
+    expect(attackShapeOf(HERO_EFFECTS.heavy)).toBe('ring');
+    expect(attackShapeOf(HERO_EFFECTS.magnet)).toBe('ring');
+    expect(attackShapeOf(HERO_EFFECTS.knockback)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.fall)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.teleport)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.jitter)).toBe('blast');
+    expect(attackShapeOf(HERO_EFFECTS.reverse)).toBe('line');
+    expect(attackShapeOf(HERO_EFFECTS['axis-lock'])).toBe('line');
+    expect(attackShapeOf(HERO_EFFECTS.vanish)).toBe('line');
+  });
+
+  it('never begins out of range: a blast winds up only once the elite is within range of the Keeper', () => {
+    const a = lone('pulsar-siamese');
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(a);
+    expect(Math.hypot(wind.x - h.x, wind.y - h.y)).toBeLessThanOrEqual(
+      ARENA_CONFIG.eliteAttack.range + 5
+    );
+    expect(wind.shape).toBe('blast');
+    // And it came from outside that range: nothing attacked before it was near.
+    expect(a.state().time).toBeGreaterThan(2000);
+  });
+
+  it('a ring begins only when the Keeper is inside it', () => {
+    const a = lone('cryo-persian');
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(a);
+    expect(wind.shape).toBe('ring');
+    expect(Math.hypot(wind.x - h.x, wind.y - h.y)).toBeLessThanOrEqual(
+      ARENA_CONFIG.eliteAttack.ringRadius + 5
+    );
+    expect(ARENA_CONFIG.eliteAttack.ringWindUpMs).toBeGreaterThan(
+      ARENA_CONFIG.eliteAttack.windUpMs
+    );
+  });
+
+  it('winds up for its time, standing still, warning where it will land; then lands', () => {
+    const a = lone('pulsar-siamese');
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const began = a.state().time;
+    const aimed = { x: heroAt(a).x, y: heroAt(a).y };
+    expect(a.state().windUps).toBe(1);
+    const [warning] = a.telegraphs();
+    expect(warning).toMatchObject({
+      shape: 'blast',
+      x: wind.x,
+      y: wind.y,
+      aimX: aimed.x,
+      aimY: aimed.y,
+    });
+    expect(warning.progress).toBeLessThan(0.2);
+    const cat = () => a.cats().find((c) => c.elite)!;
+    const place = { x: cat().x, y: cat().y };
+    const strike = until(a, 'elite-attack');
+    expect(a.state().time - began).toBeGreaterThanOrEqual(ARENA_CONFIG.eliteAttack.windUpMs - 1);
+    expect(a.state().time - began).toBeLessThanOrEqual(ARENA_CONFIG.eliteAttack.windUpMs + 100);
+    expect({ x: cat().x, y: cat().y }).toEqual(place);
+    expect(strike).toMatchObject({ kind: 'elite-attack', hits: 1 });
+    expect(heroAt(a).effect).not.toBeNull();
+    expect(a.state().windUps).toBe(0);
+    expect(a.telegraphs()).toEqual([]);
+  });
+
+  it('a Keeper who stays where he was is hit; one who walks out of the shape during the wind-up is not', () => {
+    const stay = lone('pulsar-siamese');
+    until(stay, 'wind-up');
+    expect(until(stay, 'elite-attack')).toMatchObject({ hits: 1 });
+
+    const away = lone('pulsar-siamese');
+    const wind = until(away, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    // Straight away from the elite: the blast lands where he was.
+    const h = heroAt(away);
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y);
+    const outward = { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len };
+    const strike = until(away, 'elite-attack', outward);
+    expect(strike).toMatchObject({ hits: 0 });
+    expect(heroAt(away).effect).toBeNull();
+  });
+
+  it('a ring is dodged by stepping out of it', () => {
+    const stay = lone('cryo-persian');
+    until(stay, 'wind-up');
+    expect(until(stay, 'elite-attack')).toMatchObject({ hits: 1 });
+    expect(heroAt(stay).effect).toBe('freeze');
+
+    const away = lone('cryo-persian');
+    const wind = until(away, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(away);
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    const strike = until(away, 'elite-attack', {
+      x: (h.x - wind.x) / len,
+      y: (h.y - wind.y) / len,
+    });
+    expect(strike).toMatchObject({ hits: 0 });
+    expect(heroAt(away).effect).toBeNull();
+  });
+
+  it('a ring is dodged even from beside the elite, with a moment to react', () => {
+    for (const id of ['cryo-persian', 'magneto-bengal']) {
+      const a = lone(id);
+      until(a, 'wind-up');
+      until(a, 'elite-attack');
+      // He stood; the elite walked up and touched him, and the next ring begins beside him.
+      const wind = until(a, 'wind-up');
+      if (wind.kind !== 'wind-up') throw new Error('x');
+      const h = heroAt(a);
+      const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+      expect(len, id).toBeLessThan(60);
+      const outward = { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len };
+      // A third of a second to notice, then straight out.
+      for (let i = 0; i < 6; i++) a.step(still);
+      const strike = until(a, 'elite-attack', outward);
+      expect(strike, id).toMatchObject({ kind: 'elite-attack', hits: 0 });
+    }
+  });
+
+  it('a line is dodged by stepping aside', () => {
+    const stay = lone('laser-ocicat');
+    until(stay, 'wind-up');
+    expect(until(stay, 'elite-attack')).toMatchObject({ hits: 1 });
+
+    const aside = lone('laser-ocicat');
+    const wind = until(aside, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = heroAt(aside);
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    // Across the line from the elite to him.
+    const sideways = { x: -(h.y - wind.y) / len, y: (h.x - wind.x) / len };
+    expect(until(aside, 'elite-attack', sideways)).toMatchObject({ hits: 0 });
+  });
+
+  it('the count of elites winding up falls when one is held still, or sent home, mid-wind-up', () => {
+    // The cats are the arena's own objects: held and made homesick here by hand.
+    const held = lone('pulsar-siamese');
+    until(held, 'wind-up');
+    expect(held.state().windUps).toBe(1);
+    const winding = held.cats().find((c) => c.windUntil > 0)!;
+    winding.stunUntil = held.state().time + 2000;
+    held.step(still);
+    expect(winding.windUntil).toBe(0);
+    expect(held.state().windUps).toBe(0);
+    expect(held.telegraphs()).toEqual([]);
+
+    const home = lone('pulsar-siamese');
+    until(home, 'wind-up');
+    const going = home.cats().find((c) => c.windUntil > 0)!;
+    going.homesickness = going.limit;
+    home.step(still);
+    expect(home.cats().some((c) => c.id === going.id)).toBe(false);
+    expect(home.state().windUps).toBe(0);
+    expect(home.state().windUpsBegun).toBe(1);
+  });
+
+  it('rests between attacks, and an ordinary cat never attacks', () => {
+    const a = lone('pulsar-siamese');
+    until(a, 'wind-up');
+    until(a, 'elite-attack');
+    const landed = a.state().time;
+    const again = until(a, 'wind-up');
+    expect(again.kind).toBe('wind-up');
+    expect(a.state().time - landed).toBeGreaterThanOrEqual(
+      ARENA_CONFIG.eliteAttack.cooldownMs - 100
+    );
+
+    const plain = lone('pulsar-siamese', { cats: { ...ARENA_CONFIG.cats, eliteShare: 0 } });
+    for (let i = 0; i < 1200; i++) {
+      plain.step(still);
+      for (const e of plain.drainEvents())
+        expect(['wind-up', 'elite-attack']).not.toContain(e.kind);
+    }
+  });
+});
+
+describe('which way a Keeper faces', () => {
+  // East, clockwise on the screen (y grows downward), 45° apart.
+  const ORDER: Direction[] = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+  const eighth = Math.PI / 4;
+
+  it('each of the eight directions is the 45° sector centred on it', () => {
+    ORDER.forEach((direction, k) => {
+      const centre = k * eighth;
+      expect(directionOfAngle(centre), direction).toBe(direction);
+      // Well inside its sector, either side.
+      expect(directionOfAngle(centre + eighth * 0.4), direction).toBe(direction);
+      expect(directionOfAngle(centre - eighth * 0.4), direction).toBe(direction);
+      // Full turns, either way, change nothing.
+      expect(directionOfAngle(centre + 2 * Math.PI), direction).toBe(direction);
+      expect(directionOfAngle(centre - 4 * Math.PI), direction).toBe(direction);
+    });
+  });
+
+  it('at every boundary the way tips over just past it, and an exact boundary goes clockwise', () => {
+    ORDER.forEach((direction, k) => {
+      const next = ORDER[(k + 1) % 8];
+      const boundary = k * eighth + eighth / 2;
+      expect(directionOfAngle(boundary - 1e-9), `just before ${next}`).toBe(direction);
+      expect(directionOfAngle(boundary + 1e-9), `just past ${direction}`).toBe(next);
+    });
+    // Exactly between east and south-east.
+    expect(directionOfAngle(Math.PI / 8)).toBe('SE');
+  });
+
+  it('a way (dx right, dy down) names the same direction; no way at all is east', () => {
+    expect(directionOf(1, 0)).toBe('E');
+    expect(directionOf(1, 1)).toBe('SE');
+    expect(directionOf(0, 1)).toBe('S');
+    expect(directionOf(-1, 1)).toBe('SW');
+    expect(directionOf(-1, 0)).toBe('W');
+    expect(directionOf(-1, -1)).toBe('NW');
+    expect(directionOf(0, -1)).toBe('N');
+    expect(directionOf(1, -1)).toBe('NE');
+    expect(directionOf(0, 0)).toBe('E');
+    expect(directionOfAngle(Number.NaN)).toBe('E');
+    expect(directionOfAngle(Infinity)).toBe('E');
+  });
+
+  it('five are drawn; the other three are those mirrored', () => {
+    expect(DRAWN_DIRECTIONS).toEqual(['N', 'NE', 'E', 'SE', 'S']);
+    for (const d of DRAWN_DIRECTIONS) expect(spriteOf(d)).toEqual({ drawn: d, mirrored: false });
+    expect(spriteOf('SW')).toEqual({ drawn: 'SE', mirrored: true });
+    expect(spriteOf('W')).toEqual({ drawn: 'E', mirrored: true });
+    expect(spriteOf('NW')).toEqual({ drawn: 'NE', mirrored: true });
+    // He holds his tool behind him when he faces away.
+    expect(ORDER.filter(facesAway)).toEqual(['NW', 'N', 'NE']);
+  });
+
+  /** One Keeper with the Laser Pointer, cats coming one at a time (none: a quiet arena). */
+  function look(cats: number, config: Partial<ArenaConfig> = {}) {
+    return arena({ ...unbreakable, stepMs: 50, escalation: [[0, cats]], ...config });
+  }
+  const lookAngle = (a: ReturnType<typeof look>) => a.state().heroes[0].lookAngle;
+
+  it('with nothing to aim at he looks the way he walked last', () => {
+    const a = look(0);
+    expect(lookAngle(a)).toBe(0);
+    a.step({ x: 0, y: -1 });
+    expect(directionOfAngle(lookAngle(a))).toBe('N');
+    a.step({ x: -1, y: 1 });
+    expect(directionOfAngle(lookAngle(a))).toBe('SW');
+    // Standing still, he keeps looking where he was.
+    for (let i = 0; i < 20; i++) a.step(still);
+    expect(directionOfAngle(lookAngle(a))).toBe('SW');
+  });
+
+  it('with the crosshair he looks at it, the moment it moves', () => {
+    const a = look(0);
+    for (let k = 0; k < 8; k++) {
+      const angle = k * eighth;
+      a.aimAt({ x: Math.cos(angle) * 300, y: Math.sin(angle) * 300 });
+      a.step(still);
+      expect(lookAngle(a)).toBeCloseTo(angle > Math.PI ? angle - 2 * Math.PI : angle, 6);
+      expect(directionOfAngle(lookAngle(a))).toBe(ORDER[k]);
+    }
+    // Put away, he goes back to the way he walked.
+    a.aimAt(null);
+    a.step({ x: 1, y: 0 });
+    expect(directionOfAngle(lookAngle(a))).toBe('E');
+  });
+
+  it('with automatic aim he looks at the cat his first aiming weapon would fire at', () => {
+    const a = look(1, { cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9] } });
+    let checked = 0;
+    for (let i = 0; i < 4000 && checked < 3; i++) {
+      a.step(still);
+      const h = a.state().hero;
+      const near = a
+        .cats()
+        .filter((c) => Math.hypot(c.x - h.x, c.y - h.y) < 280)
+        .sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0];
+      // Only a cat well away from east, where he looks before he has a cat to look at.
+      if (!near || Math.abs(Math.atan2(near.y - h.y, near.x - h.x)) < 1.2) continue;
+      // He looks for a cat five times a second, so give him a moment to have seen it.
+      for (let j = 0; j < 6; j++) a.step(still);
+      const now = a.cats()[0];
+      const toCat = Math.atan2(now.y - h.y, now.x - h.x);
+      const apart = Math.abs(
+        Math.atan2(Math.sin(lookAngle(a) - toCat), Math.cos(lookAngle(a) - toCat))
+      );
+      expect(apart).toBeLessThan(0.6);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('he looks for a cat with his first weapon that aims, and skips those that do not', () => {
+    const quiet = { cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9] as [number, number] } };
+    const faced = (weapons: WeaponId[]) => {
+      const a = look(1, { startingWeapons: weapons, ...quiet });
+      const seen = new Set<string>();
+      for (let i = 0; i < 4000; i++) {
+        a.step(still);
+        seen.add(directionOfAngle(lookAngle(a)));
+      }
+      return seen;
+    };
+    // The vacuum's hum aims at nothing: he never turns from the way he walked (east).
+    expect([...faced(['thunderous-vacuum'])]).toEqual(['E']);
+    // With a laser behind it he turns to the cats, though the vacuum comes first.
+    expect(faced(['thunderous-vacuum', 'laser-pointer']).size).toBeGreaterThan(1);
+    expect(faced(['laser-pointer']).size).toBeGreaterThan(1);
+    // The Hair Dryer (the Hairdresser's own) looks where its jet looks, so the tool points where the air goes.
+    expect(faced(['hair-dryer']).size).toBeGreaterThan(1);
+  });
+
+  it('in co-op each Keeper looks his own way: the crosshair is player 1’s alone', () => {
+    const a = arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      secondPlayer: { startingWeapons: ['spray-bottle'], speed: 210, resolve: 1e12 },
+    });
+    a.aimAt({ x: 300, y: 0 });
+    a.step(still, true, { x: 0, y: -1 });
+    const [first, second] = a.state().heroes;
+    expect(directionOfAngle(first.lookAngle)).toBe('E');
+    expect(directionOfAngle(second.lookAngle)).toBe('N');
+  });
+});
+
+describe('the Graphics setting', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stubStorage = (blocked = false) => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => {
+          if (blocked) throw new Error('blocked');
+          return store.get(key) ?? null;
+        },
+        setItem: (key: string, value: string) => {
+          if (blocked) throw new Error('blocked');
+          store.set(key, value);
+        },
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    return store;
+  };
+
+  it('a stored setting is full or light; anything else is full', () => {
+    expect(parseGraphics('light')).toBe('light');
+    expect(parseGraphics('full')).toBe('full');
+    for (const raw of [null, '', 'Light', 'dark', '1'])
+      expect(parseGraphics(raw), String(raw)).toBe('full');
+  });
+
+  it('is kept in the browser, and told to those who watch it', () => {
+    const store = stubStorage();
+    expect(readGraphics()).toBe('full');
+    let told = 0;
+    const stop = subscribeGraphics(() => told++);
+    writeGraphics('light');
+    expect(store.get(SURVIVAL_GRAPHICS_KEY)).toBe('light');
+    expect(readGraphics()).toBe('light');
+    expect(told).toBe(1);
+    stop();
+    writeGraphics('full');
+    expect(told).toBe(1);
+    expect(readGraphics()).toBe('full');
+  });
+
+  it('light draws at one pixel to a pixel, however sharp the screen; full at the screen’s own', () => {
+    expect(pixelRatioFor('light', 2)).toBe(1);
+    expect(pixelRatioFor('light', 3)).toBe(1);
+    expect(pixelRatioFor('full', 2)).toBe(2);
+    expect(pixelRatioFor('full', 1)).toBe(1);
+    // A missing or nonsense ratio is one.
+    expect(pixelRatioFor('full', 0)).toBe(1);
+    expect(pixelRatioFor('full', Number.NaN)).toBe(1);
+  });
+
+  // 25 fps for 3 s of the judging window: 75 frames in 3000 ms.
+  const slow = {
+    graphics: 'full' as const,
+    switchedBefore: false,
+    runMs: 4500,
+    windowMs: 3000,
+    windowFrames: 75,
+    floorFps: 40,
+  };
+
+  it('a run switches itself to light only for a slow machine, early, once', () => {
+    expect(shouldGoLight(slow)).toBe(true);
+    // A machine at or above the floor keeps full graphics (40 fps: 80 frames in 2000 ms).
+    expect(shouldGoLight({ ...slow, windowMs: 2000, windowFrames: 80 })).toBe(false);
+    expect(shouldGoLight({ ...slow, windowMs: 2000, windowFrames: 79 })).toBe(true);
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: 180 })).toBe(false);
+    // Light already, or switched before (the player changed it back): never again.
+    expect(shouldGoLight({ ...slow, graphics: 'light' })).toBe(false);
+    expect(shouldGoLight({ ...slow, switchedBefore: true })).toBe(false);
+    // Not on too short a window, nor too few frames, nor after the first seconds.
+    expect(shouldGoLight({ ...slow, windowMs: AUTO_WINDOW_MS - 1, windowFrames: 40 })).toBe(false);
+    expect(shouldGoLight({ ...slow, windowMs: AUTO_WINDOW_MS, windowFrames: 40 })).toBe(true);
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: AUTO_MIN_FRAMES - 1 })).toBe(
+      false
+    );
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: AUTO_MIN_FRAMES })).toBe(true);
+    expect(shouldGoLight({ ...slow, runMs: AUTO_JUDGE_UNTIL_MS })).toBe(true);
+    expect(shouldGoLight({ ...slow, runMs: AUTO_JUDGE_UNTIL_MS + 1 })).toBe(false);
+    expect(AUTO_JUDGE_FROM_MS).toBeLessThan(AUTO_JUDGE_UNTIL_MS);
+  });
+
+  it('one stalled frame on a good machine does not tip it: the mean decides', () => {
+    // 2 s at 60 fps (120 frames), with one 250 ms stall in it: a mean of 55 fps.
+    const frames = 120;
+    const ms = (frames - 1) * 16 + 250;
+    expect(shouldGoLight({ ...slow, windowMs: ms, windowFrames: frames })).toBe(false);
+    // The same stall on a machine that really is slow still counts with the rest.
+    expect(shouldGoLight({ ...slow, windowMs: 3000, windowFrames: 60 })).toBe(true);
+  });
+
+  it('the one switch is remembered', () => {
+    const store = stubStorage();
+    expect(readGraphicsAuto()).toBe(false);
+    writeGraphicsAuto();
+    expect(readGraphicsAuto()).toBe(true);
+    expect(store.size).toBe(1);
+  });
+
+  it('with storage blocked the choice and the flag last until the page is left', async () => {
+    // Fresh module state: the fallbacks are module-level.
+    vi.resetModules();
+    stubStorage(true);
+    const fresh = await import('@/app/ui/xenocats/arena-storage');
+    expect(fresh.readGraphics()).toBe('full');
+    expect(fresh.readGraphicsAuto()).toBe(false);
+    fresh.writeGraphics('light');
+    expect(fresh.readGraphics()).toBe('light');
+    expect(() => fresh.writeGraphicsAuto()).not.toThrow();
+    expect(fresh.readGraphicsAuto()).toBe(true);
+  });
+});
+
+describe('the bosses attack', () => {
+  const noCats = { startingWeapons: [], secretCat: { afterMs: Infinity, stillMs: Infinity } };
+  const MEGA_DRAIN = 25;
+
+  /** The Mega Cat alone, from the start, and a Keeper with Resolve to lose. */
+  const mega = () =>
+    arena({
+      ...noCats,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      schedule: { ...xenocatsOnly.schedule!, bosses: [0] },
+    });
+  type Run = ReturnType<typeof mega>;
+  type Ev = ReturnType<Run['drainEvents']>[number];
+
+  function until(a: Run, kind: Ev['kind'], input = still) {
+    for (let i = 0; i < 6000; i++) {
+      a.step(input);
+      for (const e of a.drainEvents()) if (e.kind === kind) return e;
+    }
+    throw new Error(`no ${kind}`);
+  }
+  const bigOne = (a: Run) => a.cats().find((c) => c.variety === 'mega')!;
+
+  it('the Mega Cat near a Keeper stands still and winds up, warning where it will land', () => {
+    const a = mega();
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    expect(wind.shape).toBe('blast');
+    const h = a.state().hero;
+    expect(Math.hypot(wind.x - h.x, wind.y - h.y)).toBeLessThanOrEqual(
+      ARENA_CONFIG.bossAttack.pounce.range + 5
+    );
+    expect(a.state().bossWindUp).toBe('pounce');
+    expect(a.state().windUps).toBe(1);
+    const [warning] = a.telegraphs();
+    expect(warning).toMatchObject({
+      shape: 'blast',
+      aimX: h.x,
+      aimY: h.y,
+      radius: ARENA_CONFIG.bossAttack.pounce.radius,
+    });
+    const place = { x: bigOne(a).x, y: bigOne(a).y };
+    for (let i = 0; i < 10; i++) a.step(still);
+    expect({ x: bigOne(a).x, y: bigOne(a).y }).toEqual(place);
+  });
+
+  it('it lands where the Keeper stood: a Keeper who stayed loses Resolve, one who walked away does not', () => {
+    const stay = mega();
+    until(stay, 'wind-up');
+    const before = stay.state().hero.resolve;
+    const strike = until(stay, 'boss-pounce');
+    expect(strike).toMatchObject({ kind: 'boss-pounce', hits: 1 });
+    expect(stay.state().hero.resolve).toBe(before - MEGA_DRAIN);
+    // It is where he stood now.
+    const there = bigOne(stay);
+    const him = stay.state().hero;
+    expect(Math.hypot(there.x - him.x, there.y - him.y)).toBeLessThan(5);
+    expect(stay.state().bossWindUp).toBeNull();
+
+    const away = mega();
+    const wind = until(away, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = away.state().hero;
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    // Out from the Mega Cat, after a third of a second to notice.
+    for (let i = 0; i < 6; i++) away.step(still);
+    const full = away.state().hero.resolve;
+    const dodge = until(away, 'boss-pounce', { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len });
+    expect(dodge).toMatchObject({ hits: 0 });
+    expect(away.state().hero.resolve).toBe(full);
+  });
+
+  it('a Mega Cat sent home mid-wind-up leaves no wind-up behind', () => {
+    const a = mega();
+    until(a, 'wind-up');
+    expect(a.state().bossWindUp).toBe('pounce');
+    expect(a.state().bossWindUpsBegun).toBe(1);
+    const big = bigOne(a);
+    big.homesickness = big.limit;
+    a.step(still);
+    expect(a.cats().some((c) => c.variety === 'mega')).toBe(false);
+    expect(a.state().windUps).toBe(0);
+    expect(a.state().bossWindUp).toBeNull();
+    expect(a.telegraphs()).toEqual([]);
+  });
+
+  it('it rests between pounces', () => {
+    const a = mega();
+    until(a, 'wind-up');
+    until(a, 'boss-pounce');
+    const landed = a.state().time;
+    // It lands on him and will not pounce at one it is already on: he walks off, and it follows.
+    for (let i = 0; i < 60; i++) a.step({ x: 1, y: 0 });
+    until(a, 'wind-up');
+    expect(a.state().time - landed).toBeGreaterThanOrEqual(
+      ARENA_CONFIG.bossAttack.pounce.cooldownMs - 100
+    );
+  });
+
+  /** The Matriarch alone: her goal soon, and she is slow, so the call comes first. */
+  const matriarch = () =>
+    arena({
+      ...noCats,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      timeGoalMs: 5_000,
+      matriarch: { ...ARENA_CONFIG.matriarch, speed: 40 },
+    });
+
+  it('the Matriarch stops and winds up a call, and a ring of kittens comes where the Keeper stood', () => {
+    const a = matriarch();
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    expect(wind.type).toBe(-1);
+    expect(a.state().bossWindUp).toBe('summon');
+    const h = { x: a.state().hero.x, y: a.state().hero.y };
+    const [warning] = a.telegraphs();
+    expect(warning).toMatchObject({
+      shape: 'blast',
+      aimX: h.x,
+      aimY: h.y,
+      radius: ARENA_CONFIG.bossAttack.summon.ringRadius,
+    });
+    // She stands still while she calls.
+    const place = { ...a.matriarch()! };
+    for (let i = 0; i < 10; i++) a.step(still);
+    expect(a.matriarch()).toEqual(place);
+    const call = until(a, 'boss-summon');
+    expect(call).toMatchObject({
+      kind: 'boss-summon',
+      kittens: ARENA_CONFIG.bossAttack.summon.kittens,
+    });
+    const kittens = a.cats().filter((c) => c.variety === 'kitten');
+    expect(kittens).toHaveLength(ARENA_CONFIG.bossAttack.summon.kittens);
+    for (const k of kittens) {
+      expect(Math.hypot(k.x - h.x, k.y - h.y)).toBeCloseTo(
+        ARENA_CONFIG.bossAttack.summon.ringRadius,
+        0
+      );
+    }
+    expect(a.state().bossWindUp).toBeNull();
+  });
+
+  it('a Keeper who walks away is not in the ring when it closes', () => {
+    const a = matriarch();
+    const wind = until(a, 'wind-up');
+    if (wind.kind !== 'wind-up') throw new Error('x');
+    const h = { ...a.state().hero };
+    const len = Math.hypot(h.x - wind.x, h.y - wind.y) || 1;
+    until(a, 'boss-summon', { x: (h.x - wind.x) / len, y: (h.y - wind.y) / len });
+    const now = a.state().hero;
+    // Well outside the ring's reach of where he stood; the kittens are still gathering.
+    expect(Math.hypot(now.x - h.x, now.y - h.y)).toBeGreaterThan(
+      ARENA_CONFIG.bossAttack.summon.ringRadius
+    );
+    expect(
+      a.cats().filter((c) => c.variety === 'kitten' && Math.hypot(c.x - now.x, c.y - now.y) < 40)
+    ).toHaveLength(0);
+  });
+
+  it('the Matriarch calls again after her rest, and never once she is on him', () => {
+    const a = matriarch();
+    until(a, 'wind-up');
+    until(a, 'boss-summon');
+    const first = a.state().time;
+    until(a, 'wind-up');
+    expect(a.state().time - first).toBeGreaterThanOrEqual(
+      ARENA_CONFIG.bossAttack.summon.everyMs - 100
+    );
+    // She calls only from afar: with a minimum distance beyond any she has, she never does.
+    const near = arena({
+      ...noCats,
+      stepMs: 50,
+      escalation: [[0, 0]],
+      timeGoalMs: 1_000,
+      matriarch: { ...ARENA_CONFIG.matriarch, speed: 300 },
+      bossAttack: {
+        ...ARENA_CONFIG.bossAttack,
+        summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: 0, minDistance: 5000 },
+      },
+    });
+    while (near.state().status === 'playing' && near.state().time < 10_000) {
+      near.step(still);
+      for (const e of near.drainEvents()) expect(e.kind).not.toBe('boss-summon');
+    }
+    expect(near.state().outcome).toBe('goal');
+  });
+});
+
+describe('pickups', () => {
+  const quiet = { secretCat: { afterMs: Infinity, stillMs: Infinity } };
+
+  it('a cat sent home leaves one rarely, by a hash of its id: fish, magnet or bell, five, three, two in ten', () => {
+    expect(ARENA_CONFIG.pickups.chance).toBe(0.002);
+    let any = 0;
+    const kinds = { fish: 0, magnet: 0, bell: 0 };
+    for (let id = 1; id <= 200_000; id++) {
+      const kind = pickupFor(id, ARENA_CONFIG.pickups.chance);
+      if (kind) {
+        any++;
+        kinds[kind]++;
+      }
+    }
+    // 400 expected of 200 000; the hash is not random but is even.
+    expect(any).toBeGreaterThan(320);
+    expect(any).toBeLessThan(480);
+    expect(kinds.fish / any).toBeGreaterThan(0.42);
+    expect(kinds.fish / any).toBeLessThan(0.58);
+    expect(kinds.magnet / any).toBeGreaterThan(0.2);
+    expect(kinds.magnet / any).toBeLessThan(0.4);
+    expect(kinds.bell / any).toBeGreaterThan(0.12);
+    expect(kinds.bell / any).toBeLessThan(0.28);
+    // The same id, the same answer; none at chance 0, every one at chance 1.
+    expect(pickupFor(12345, 0.5)).toBe(pickupFor(12345, 0.5));
+    for (let id = 1; id < 200; id++) {
+      expect(pickupFor(id, 0)).toBeNull();
+      expect(pickupFor(id, 1)).not.toBeNull();
+    }
+  });
+
+  it('draws nothing from the random source: with their effects off, the same seeded run with and without the chance', () => {
+    const play = (chance: number) => {
+      const a = arena(
+        {
+          ...unbreakable,
+          stepMs: 50,
+          // Taken, they do nothing here, so only the drawing of random numbers could differ.
+          pickups: { ...ARENA_CONFIG.pickups, chance, fishShare: 0, magnetMs: 0, bellMs: 0 },
+        },
+        5
+      );
+      runTo(a, 60_000);
+      return JSON.stringify([a.cats().map((c) => [c.id, c.x, c.y]), a.state().sentHome]);
+    };
+    expect(play(0)).toBe(play(0.9));
+  });
+
+  it('a cat sent home may leave one where it stood, up to the cap, and it goes after its time', () => {
+    const a = arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 40]],
+      pickups: { ...ARENA_CONFIG.pickups, chance: 1, cap: 3, lifeMs: 4000 },
+    });
+    let left = 0;
+    let most = 0;
+    while (a.state().time < 30_000) {
+      a.step(still);
+      for (const e of a.drainEvents()) if (e.kind === 'pickup-left') left++;
+      most = Math.max(most, a.pickups().length);
+    }
+    expect(left).toBeGreaterThan(0);
+    expect(most).toBeLessThanOrEqual(3);
+    // One laid far from him lies out its time and is gone.
+    const b = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...quiet });
+    b.layPickup('fish', { x: 5000, y: 5000 });
+    runTo(b, ARENA_CONFIG.pickups.lifeMs - 500);
+    expect(b.pickups()).toHaveLength(1);
+    runTo(b, ARENA_CONFIG.pickups.lifeMs + 500);
+    expect(b.pickups()).toHaveLength(0);
+  });
+
+  it('a pickup near him is drawn in and taken: the state says so', () => {
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...quiet });
+    a.layPickup('bell', { x: 80, y: 0 });
+    expect(a.state().pickups).toBe(1);
+    let taken: unknown = null;
+    for (let i = 0; i < 100 && !taken; i++) {
+      a.step(still);
+      taken = a.drainEvents().find((e) => e.kind === 'pickup-taken');
+    }
+    expect(taken).toMatchObject({ kind: 'pickup-taken', pickup: 'bell', player: 0 });
+    expect(a.state()).toMatchObject({ pickups: 0, pickupsTaken: 1, lastPickup: 'bell' });
+  });
+
+  it('a fish restores a quarter of his Resolve, never beyond all of it', () => {
+    // A cat on him wears it down; then a fish.
+    const a = arena({
+      stepMs: 50,
+      escalation: [[0, 6]],
+      startingWeapons: [],
+      ...quiet,
+    });
+    let worn = 100;
+    while (a.state().hero.resolve > 80 && a.state().time < 60_000) {
+      a.step(still);
+      worn = a.state().hero.resolve;
+    }
+    expect(worn).toBeLessThanOrEqual(80);
+    const max = a.state().hero.maxResolve;
+    a.layPickup('fish', { x: a.state().hero.x, y: a.state().hero.y });
+    a.step(still);
+    const after = a.state().hero.resolve;
+    // Up by a quarter of the most (25), less at most what one more touch took in that step
+    // (a plain cat drains 11 at the most).
+    expect(after).toBeGreaterThanOrEqual(worn + max * ARENA_CONFIG.pickups.fishShare - 11);
+    expect(after).toBeLessThanOrEqual(max);
+
+    const full = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...quiet });
+    full.layPickup('fish', { x: 0, y: 0 });
+    full.step(still);
+    expect(full.state().hero.resolve).toBeLessThanOrEqual(full.state().hero.maxResolve);
+    expect(full.state().pickupsTaken).toBe(1);
+  });
+
+  it('a magnet draws every gem on the arena to him', () => {
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 60]] });
+    const far = () =>
+      a.gems().filter((g) => Math.hypot(g.x - a.state().hero.x, g.y - a.state().hero.y) > 160)
+        .length;
+    // Gems lie where the laser sent cats home, beyond the pull of his pickup reach.
+    while (far() < 3 && a.state().time < 120_000) {
+      if (a.choices()) a.choose(0);
+      else a.step(still);
+    }
+    expect(far()).toBeGreaterThanOrEqual(3);
+    a.layPickup('magnet', { x: a.state().hero.x, y: a.state().hero.y });
+    for (let i = 0; i < 24; i++) {
+      if (a.choices()) a.choose(0);
+      else a.step(still);
+    }
+    expect(far()).toBe(0);
+  });
+
+  it('a bell stops the cats on the screen for a moment, and they go on after', () => {
+    const a = arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 30]],
+      startingWeapons: [],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
+      ...quiet,
+    });
+    runTo(a, 20_000, still, true);
+    expect(a.cats().length).toBeGreaterThan(5);
+    a.layPickup('bell', { x: 0, y: 0 });
+    a.step(still);
+    const stopped = a.cats().filter((c) => c.stunUntil > a.state().time);
+    expect(stopped.length).toBeGreaterThan(5);
+    const place = new Map(stopped.map((c) => [c.id, [c.x, c.y]]));
+    for (let i = 0; i < 10; i++) a.step(still);
+    for (const c of stopped) {
+      if (c.stunUntil > a.state().time) expect([c.x, c.y]).toEqual(place.get(c.id));
+    }
+    runTo(a, a.state().time + ARENA_CONFIG.pickups.bellMs + 500);
+    expect(a.cats().some((c) => c.stunUntil > a.state().time)).toBe(false);
+  });
+});
+
+describe('reroll and skip at a level-up', () => {
+  /** A run with gems worth a level each, the laser sending cats home all round. */
+  function levelling(config: Partial<ArenaConfig> = {}, seed = 3) {
+    return createArena({
+      random: createRandom(seed),
+      types: CAT_TYPES,
+      viewport,
+      config: {
+        ...unbreakable,
+        stepMs: 50,
+        escalation: [[0, 30]],
+        schedule: xenocatsOnly.schedule,
+        gems: { ...ARENA_CONFIG.gems, value: 40, eliteValue: 40 },
+        ...config,
+      },
+    });
+  }
+  type Run = ReturnType<typeof levelling>;
+  const untilChoosing = (a: Run) => {
+    for (let i = 0; i < 4000 && !a.choices(); i++) a.step(still);
+    expect(a.choices()).not.toBeNull();
+  };
+  const ids = (a: Run) =>
+    a
+      .choices()!
+      .map((c) => (c.kind === 'restore' ? 'restore' : `${c.kind}:${c.id}`))
+      .join(' ');
+
+  it('each Keeper has one reroll and one skip a run, and the Tailor’s upgrades add to them', () => {
+    expect(ARENA_CONFIG.levelUp).toEqual({ rerolls: 1, skips: 1, skipXpShare: 0.3 });
+    expect(levelling().levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
+    const more = levelling({ boost: { ...ARENA_CONFIG.boost, rerolls: 2, skips: 3 } });
+    expect(more.levelUpUses()).toEqual({ rerolls: 3, skips: 4 });
+  });
+
+  it('a reroll asks for new choices, spends a use, and the level-up waits for a choice as before', () => {
+    const a = levelling();
+    untilChoosing(a);
+    const level = a.state().level;
+    const before = ids(a);
+    expect(a.reroll()).toBe(true);
+    expect(ids(a)).not.toBe(before);
+    expect(a.levelUpUses()).toEqual({ rerolls: 0, skips: 1 });
+    // None left: refused, and the choices stay.
+    const now = ids(a);
+    expect(a.reroll()).toBe(false);
+    expect(ids(a)).toBe(now);
+    // Nothing else moved: the same level, still waiting, a choice goes on as usual.
+    expect(a.state().level).toBe(level);
+    a.choose(0);
+    expect(a.state().level).toBe(level);
+  });
+
+  it('a reroll is not offered when nothing waits', () => {
+    const a = levelling();
+    expect(a.reroll()).toBe(false);
+    expect(a.skip()).toBe(false);
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
+  });
+
+  it('a skip takes no choice and 30% of the experience the next level needs instead', () => {
+    const a = levelling({ gems: { ...ARENA_CONFIG.gems, value: 8, eliteValue: 8 } });
+    untilChoosing(a);
+    const { xp, xpToNext, level } = a.state();
+    const held = a
+      .state()
+      .weapons.map((w) => `${w.id}${w.level}`)
+      .join();
+    expect(a.skip()).toBe(true);
+    // No choice was taken; the level-up is over (or the next waits).
+    expect(
+      a
+        .state()
+        .weapons.map((w) => `${w.id}${w.level}`)
+        .join()
+    ).toBe(held);
+    expect(a.state().xp).toBeCloseTo(xp + xpToNext * 0.3, 6);
+    expect(a.state().level).toBe(level);
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 0 });
+    // None left: refused, and a choice that waits stays.
+    if (a.choices()) {
+      const waiting = ids(a);
+      expect(a.skip()).toBe(false);
+      expect(ids(a)).toBe(waiting);
+    }
+  });
+
+  it('a skip lets the run go on', () => {
+    const a = levelling();
+    untilChoosing(a);
+    const pending = a.state().level;
+    expect(a.skip()).toBe(true);
+    // More level-ups may wait behind this one (the gems here are worth a level each): choose
+    // them, and the run goes on.
+    for (let i = 0; i < 50 && a.choices(); i++) a.choose(0);
+    expect(a.choices()).toBeNull();
+    const time = a.state().time;
+    a.step(still);
+    expect(a.state().time).toBeGreaterThan(time);
+    expect(a.state().level).toBeGreaterThanOrEqual(pending);
+  });
+
+  it('in co-op each Keeper has his own, and they go on to the other player’s choice', () => {
+    const a = levelling({
+      secondPlayer: { startingWeapons: ['spray-bottle'], speed: 210, resolve: 1e12 },
+    });
+    untilChoosing(a);
+    expect(a.chooser()).toBe(0);
+    expect(a.skip()).toBe(true);
+    // Player 1 has used his skip; now player 2 chooses, with his own to spend.
+    expect(a.chooser()).toBe(1);
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
+    expect(a.reroll()).toBe(true);
+    const [first, second] = a.state().heroes;
+    expect([first.rerollsLeft, first.skipsLeft]).toEqual([1, 0]);
+    expect([second.rerollsLeft, second.skipsLeft]).toEqual([0, 1]);
+  });
+
+  it('rerolls give choices that differ from the last, whatever the seed', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const a = levelling({}, seed);
+      untilChoosing(a);
+      const before = ids(a);
+      a.reroll();
+      expect(ids(a), `seed ${seed}`).not.toBe(before);
+    }
   });
 });

@@ -71,7 +71,6 @@ If the task touches a specific domain, read the matching reference in `.claude/r
 * `.claude/rules/database.md` — schemas, migrations, persistence, data integrity
 * `.claude/rules/testing.md` — coverage strategy, flaky tests, definition of done
 * `.claude/rules/debugging.md` — evidence-driven failure diagnosis
-* `.claude/rules/review.md` — adversarial review of a finished diff
 * `.claude/rules/security-review.md` — authn/authz, secrets, payments, external input
 
 These are not auto-loaded — open the one(s) relevant to the task based on what the work touches.
@@ -159,14 +158,11 @@ Use:
 * `.claude/rules/`
 * documentation
 * architecture records
-* task plans
-* handoffs
 
-for durable knowledge.
+for durable knowledge: what stays true about the project.
 
-Do not rely on the assumption that previous conversational context will remain available.
-
-When a long task becomes too large for the current context, preserve the important state before continuing.
+The state of a task in progress is not project knowledge. Supervised work keeps
+it in the conversation and writes no task-state files (§11).
 
 ---
 
@@ -191,7 +187,7 @@ Read surrounding code only when needed to understand behavior.
 
 Before making a large edit, confirm that the relevant implementation and its callers are understood.
 
-Do not repeatedly rediscover information that can be captured in a durable task artifact.
+Do not repeatedly rediscover information already established in the conversation.
 
 ---
 
@@ -222,11 +218,8 @@ For high-risk changes, an independent reviewer should ideally evaluate the imple
 
 `.claude/agents/reviewer.md` is the standing reviewer for this — dispatch it by
 name. It has no Edit or Write tool, follows the `code-review` skill, and knows
-this repository's recurring failure modes.
-
-Unattended, "ideally" becomes "always": it is the only review a change will get
-before it is committed. Give it the task, not your reasoning —
-`.claude/skills/night-run/SKILL.md` §2.
+this repository's recurring failure modes. Give it the task, not your
+reasoning, and let it find the diff itself.
 
 ---
 
@@ -260,14 +253,16 @@ deleted) fail the type check for no reason in the code.
 `npm run test:e2e` starts its own `next dev` on port 3100 with a throwaway
 `AUTH_SECRET`. Before the tests, `tests/e2e/global-setup.ts` drops and rebuilds
 the `xenocats_test` schema on the database `POSTGRES_URL` names, and the test
-server uses that schema, so browser tests may log in and submit forms. Without
+server uses that schema, so browser tests may log in and submit forms. Every spec imports `test` from `tests/e2e/fixtures.ts`, whose `catsPaused` option (true by default) sets a window flag before each page loads so the dashboard's cats do not come: only the `cat-attacks` project (the specs that need a cat to come or be summoned) turns it off, and every other group waits for that project. A run of a few named specs sets `E2E_NO_CAT_DEPS=1` to skip the wait (`--no-deps` would also skip the login setup). Without
 a `POSTGRES_URL`, or with `E2E_NO_DATABASE=1` when the server is unreachable
 (off its network), the tests that need it skip; otherwise an unreachable server
 fails the whole suite.
 `E2E_SERVER=start npm run test:e2e` runs the same tests against `next start`
-instead, which needs an existing `npm run build`. `next dev` also (re-)adds a Next.js agent-rules block
-to `AGENTS.md` when it detects an AI agent, and flips `next-env.d.ts` between
-its dev and build variants; neither is part of a task's change.
+instead, which needs an existing `npm run build`. When `next dev` detects an AI
+agent, it rewrites the Next.js agent-rules block at the end of `AGENTS.md`. The
+block is committed, so this normally changes nothing; a diff to it means a newer
+Next changed the block's text. That diff is not part of a task's change: revert
+it with `git checkout -- AGENTS.md` unless the task itself edited `AGENTS.md`.
 
 `tests/unit/data.test.ts` runs every query in `app/lib/data.ts` against a real
 database, and is **opt-in**: it runs only with `DATABASE_TESTS=1`
@@ -314,17 +309,12 @@ service container, which `scripts/ci-database.mjs` switches TLS on for and
 points `POSTGRES_URL` at. So CI needs no repository secret and no outside
 database, and runs the database tests too. Each job that starts Next
 makes its own throwaway `AUTH_SECRET`. It runs on GitHub, not on your machine: never
-report a CI result you have not observed.
-The one sanctioned way to observe one is the night-run skill's read-only poll
-of the public Actions API for a commit that run pushed
-(`.claude/skills/night-run/SKILL.md` §2 step 6) — a narrow, documented case,
-not licence to check CI any other way.
+report a CI result you have not observed. Do not check CI from a supervised
+session; the night-run skill's read-only poll is the one exception.
 
 A clean type check and build prove the code compiles, not that a page works.
-For UI changes run the app and look (`.claude/rules/frontend.md`). When running
-unattended there is nobody to look: a Playwright test that performs the changed
-interaction is the substitute, and still does not prove the page looks right.
-Say so rather than implying the page was seen.
+For UI changes run the app and look (`.claude/rules/frontend.md`). A Playwright
+test proves an interaction works, not that the page looks right.
 
 Start with the narrowest useful verification.
 
@@ -364,9 +354,7 @@ If the same strategy fails repeatedly, stop and reassess the hypothesis.
 
 ## 11. Long-Running Tasks
 
-For large tasks, maintain durable progress.
-
-A useful task state includes:
+For a large supervised task, keep its state in the conversation:
 
 * objective
 * current understanding
@@ -376,21 +364,12 @@ A useful task state includes:
 * verification status
 * unresolved risks
 
-Do not keep critical state exclusively in the conversation.
+Restate it when it changes, so that it survives a context compaction.
 
-When handing work to another agent or resuming after interruption, leave enough information for the next agent to continue without reconstructing the entire investigation.
-
-That state lives in `docs/ai/<branch>/` — `plan.md`, `progress.md`,
-`decisions.md`, `questions.md`. See `docs/ai/README.md` for what belongs in
-each. It is committed on the branch it describes, so the reasoning stays
-attached to the diff it explains.
-
-Unattended runs must maintain it; there is no conversation for a human to read
-afterwards, so these files are the entire record of what happened. Such a run
-spans several branches — one per task (`<YYYY-MM-DD>-t<N>-<slug>`), plus the
-integration branch `Nightrun` it merges and pushes each finished task onto
-(`.claude/skills/night-run/SKILL.md` §1.2, §2) — but keeps a single directory,
-`docs/ai/night-<YYYY-MM-DD>/`, named after the run's date.
+Supervised work writes **no task-state files**: nothing in `docs/ai/`. That
+directory holds night runs' state (`docs/ai/night-<YYYY-MM-DD>/`, defined by
+`.claude/skills/night-run/SKILL.md`) and older directories kept as history.
+Supervised work neither adds to it nor needs to read the night-run skill.
 
 ---
 
@@ -485,17 +464,13 @@ Examples:
 
 When asking, explain the actual decision and its consequences rather than asking a vague "what should I do?"
 
-If no human is available to answer — an unattended run — do not wait. Write the
-question, the options and your recommendation to the run's `questions.md`, take
-the smallest reversible interpretation, commit that work separately and flag it
-provisional, then continue. `.claude/skills/night-run/SKILL.md` governs this;
-AGENTS.md §18 states the same rule for tool-agnostic agents.
-
 ---
 
 ## 17. Final Response
 
-For meaningful engineering tasks, provide a concise completion report:
+For meaningful engineering tasks, provide a concise completion report. This is
+the repository's one completion-report format; `AGENTS.md` §21 and the
+templates in `.claude/docs/` point here.
 
 ### Summary
 
@@ -523,10 +498,11 @@ This repository's `.claude/` directory is structured as follows:
 
 ```text
 .claude/
+├── README.md   — how these files fit together, and how to copy them to a new repo
 ├── agents/     — specialized subagents dispatched by name (reviewer)
 ├── rules/      — domain-specific reference docs (see §2), opened on demand
 ├── skills/     — reusable procedural workflows, invoked as slash commands
-│                 (code-review, night-run)
+│                 (code-review; night-run, with its CI poll ci-poll.mjs)
 ├── docs/       — supporting human-readable process docs (workflow, task
 │                 template, prompt patterns) — not auto-loaded
 └── settings.example.json — inert template; no settings.json is defined here
@@ -538,30 +514,15 @@ table, run separately.
 Use `.claude/skills/code-review/` for an adversarial review pass over a diff —
 see §13 for when to run it.
 
-Use `.claude/skills/night-run/` when this session is running unattended (no
-human available to answer). It executes the tasks of the plan a human wrote in
-`docs/ai/night-<date>/plan.md` until that plan's `## Goal` — a day and time such
-as `Thursday 08:00` — then finishes the task in flight, writes the morning
-report at the top of `progress.md` and stops. It stops if the plan, its tasks or a readable
-goal are missing. When the tasks are done before the goal it explores
-(small improvements of the kinds the plan names) until the goal; it never
-stops early for lack of work. It keeps `progress.md` append-only, one entry per finished
-task. It defines the
-preflight, the branch-per-task and commit cadence, when a finished task's branch
-may be pushed and to where, the durable state files, the forbidden operations —
-including any write to the project's only database — the deadline (the
-plan's goal time), the per-session budget reserve, and the stop
-conditions. `docs/ai/README.md` has the plan template.
-
-A run may span several sessions; its §9 covers resuming one, and what a session
-must leave behind for the next. The state files in `docs/ai/<branch>/` are the
-only handover — nothing of the conversation survives — which is why they are
-made current before every commit rather than at the end.
-
-Do not improvise unattended operation without it — least of all the push rules,
-which are the only part of this repository's agent protocol that reaches another
-machine, and the database rule, since there is no copy of that data to fall back
-on.
+Use `.claude/skills/night-run/` only when this session is running unattended
+(no human available to answer). It runs the tasks of the plan a human wrote in
+`docs/ai/night-<date>/plan.md` until the plan's goal time, and defines
+everything that differs without a human: asking questions, verifying UI,
+branches, pushes, CI, state files, forbidden operations and stopping. Supervised
+work does not need it. Do not improvise unattended operation without it — least
+of all the push rules, which reach another machine, and the database rule, which
+keeps a run's writes inside the test schemas so the shared development data
+stays as people left it.
 
 `.claude/agents/reviewer.md` is the standing independent reviewer — see §8 and
 §13. Add further specialized subagents only if the task mix justifies them; a

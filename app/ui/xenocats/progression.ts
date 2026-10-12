@@ -4,7 +4,7 @@
 // live in (localStorage, one versioned key; anything unreadable is a fresh start).
 
 import type { ArenaConfig } from './arena';
-import { BASE_WEAPONS, EVOLUTIONS, WEAPONS, type WeaponId } from './arsenal';
+import { BASE_WEAPONS, EVOLUTIONS, FUSIONS, WEAPONS, type WeaponId } from './arsenal';
 import { VARIETIES } from './varieties';
 
 export const PROGRESS_KEY = 'xenocats:survival:v1:progress';
@@ -21,20 +21,34 @@ export type RunResult = {
 
 // ------------------------------------------------------------------ the tufts
 
-/** Tufts a run gathers: one for every 5 s survived, one for every 20 cats sent home. */
+/** A run's first five minutes earn a tuft every 5 s; each second after them earns twice as much. */
+export const TUFT_FULL_RATE_MS = 300_000;
+
+/**
+ * Tufts a run gathers: one for every 5 s survived up to 5:00 and one for every 2.5 s after
+ * (a longer run is worth more than its length), and one for every 20 cats sent home.
+ * A five-minute run earns what it always did.
+ */
 export function tuftsFor(run: Pick<RunResult, 'timeMs' | 'sentHome'>): number {
-  return Math.floor(Math.max(run.timeMs, 0) / 5000) + Math.floor(Math.max(run.sentHome, 0) / 20);
+  const time = Math.max(run.timeMs, 0);
+  const early = Math.floor(Math.min(time, TUFT_FULL_RATE_MS) / 5000);
+  const long = Math.floor(Math.max(time - TUFT_FULL_RATE_MS, 0) / 2500);
+  return early + long + Math.floor(Math.max(run.sentHome, 0) / 20);
 }
 
 // ----------------------------------------------------------------- milestones
 
-export type MilestoneId = 'survive-2' | 'survive-3' | 'send-1000' | 'level-20';
+export type MilestoneId =
+  'survive-2' | 'survive-3' | 'survive-10' | 'survive-15' | 'send-1000' | 'level-20';
 
 export const MILESTONES: Readonly<
   Record<MilestoneId, { text: string; reached: (run: RunResult) => boolean }>
 > = {
   'survive-2': { text: 'Survive 2:00', reached: (run) => run.timeMs >= 120_000 },
   'survive-3': { text: 'Survive 3:00', reached: (run) => run.timeMs >= 180_000 },
+  // Only a run of that length (or longer) can reach these: a run's time stops at its goal.
+  'survive-10': { text: 'Survive 10:00', reached: (run) => run.timeMs >= 600_000 },
+  'survive-15': { text: 'Survive 15:00', reached: (run) => run.timeMs >= 900_000 },
   'send-1000': { text: 'Send 1000 cats home in one run', reached: (run) => run.sentHome >= 1000 },
   'level-20': { text: 'Reach level 20', reached: (run) => run.level >= 20 },
 };
@@ -44,6 +58,8 @@ export const WEAPON_UNLOCKS: Readonly<Partial<Record<WeaponId, MilestoneId>>> = 
   'thunderous-vacuum': 'survive-3',
   'laser-pointer-deluxe': 'send-1000',
   hairball: 'level-20',
+  'hair-dryer': 'survive-10',
+  'cardboard-box': 'survive-15',
 };
 
 /** What a milestone unlocks, in a sentence (or nothing). */
@@ -64,7 +80,14 @@ export function unlockedBy(id: MilestoneId): string {
 
 // ------------------------------------------------------------------ the Tailor
 
-export type UpgradeId = 'stubbornness' | 'sternness' | 'brisk-step' | 'long-arms' | 'second-wind';
+export type UpgradeId =
+  | 'stubbornness'
+  | 'sternness'
+  | 'brisk-step'
+  | 'long-arms'
+  | 'second-wind'
+  | 'second-opinion'
+  | 'shrug';
 
 export const UPGRADES: Readonly<
   Record<UpgradeId, { name: string; description: string; maxLevel: number; baseCost: number }>
@@ -99,6 +122,18 @@ export const UPGRADES: Readonly<
     maxLevel: 1,
     baseCost: 80,
   },
+  'second-opinion': {
+    name: 'Second Opinion',
+    description: 'One more reroll at the level-ups of every run.',
+    maxLevel: 3,
+    baseCost: 20,
+  },
+  shrug: {
+    name: 'Shrug',
+    description: 'One more skip at the level-ups of every run.',
+    maxLevel: 3,
+    baseCost: 15,
+  },
 };
 
 /** The next level of an upgrade costs more each time; null once it is at its highest. */
@@ -110,7 +145,7 @@ export function upgradeCost(id: UpgradeId, level: number): number | null {
 
 // ------------------------------------------------------------------ characters
 
-export type CharacterId = 'keeper' | 'night-porter' | 'housekeeper';
+export type CharacterId = 'keeper' | 'night-porter' | 'housekeeper' | 'hairdresser';
 
 export type Character = {
   name: string;
@@ -152,6 +187,15 @@ export const CHARACTERS: Readonly<Record<CharacterId, Character>> = {
     speed: 0.92,
     unlock: { kind: 'cost', cost: 150 },
   },
+  hairdresser: {
+    name: 'The Hairdresser',
+    description:
+      'A gale in one hand and a comb in the other; he asks only that nobody moves. Light on his feet, steadier than most but not the steadiest.',
+    weapon: 'hair-dryer',
+    resolve: 10,
+    speed: 1.04,
+    unlock: { kind: 'milestone', milestone: 'survive-10' },
+  },
 };
 
 // ------------------------------------------------------------------- the codex
@@ -159,9 +203,10 @@ export const CHARACTERS: Readonly<Record<CharacterId, Character>> = {
 /** The secret cat: comes only to a Keeper who stands still (decisions.md, D60). */
 export const SECRET_CAT = 'neighbour';
 
-/** The codex's entries, in order: every evolution (one of them hidden) and the secret cat. */
+/** The codex's entries, in order: every evolution (one of them hidden), every fusion and the secret cat. */
 export const CODEX: readonly { id: string; name: string }[] = [
   ...EVOLUTIONS.map((e) => ({ id: e.to, name: WEAPONS[e.to].name })),
+  ...FUSIONS.map((f) => ({ id: f.to, name: WEAPONS[f.to].name })),
   { id: SECRET_CAT, name: VARIETIES[SECRET_CAT].name },
 ];
 
@@ -331,6 +376,8 @@ export function runConfig(
       might: 1 + 0.05 * level('sternness'),
       pickup: 1 + 0.1 * level('long-arms'),
       revivals: level('second-wind'),
+      rerolls: level('second-opinion'),
+      skips: level('shrug'),
     },
     secondPlayer:
       second === null

@@ -1,8 +1,9 @@
 // The Survival arena's own artwork, drawn by the run as SVG in the site's palette
-// (tailwind.config.ts): the heroes (the Keeper and the characters re-dressed) and
+// (tailwind.config.ts): the heroes (the Keeper and the characters re-dressed, in five directions) and
 // the varieties of cat. Placeholders until a Superdesign pass. The twenty xenocat
 // types keep their own artwork (cat-art.ts), unchanged.
 
+import type { DrawnDirection } from './hero-direction';
 import type { VarietyId } from './varieties';
 
 const VOID = '#070b14';
@@ -11,43 +12,98 @@ const AURA = '#9d86ff';
 const PLASMA = '#c1e838';
 const CREAM = '#e0e0b3';
 
+/** How each character is dressed: the Keeper, the Night Porter and the Housekeeper. */
+const LOOKS = {
+  keeper: { coat: LINE, trim: AURA },
+  'night-porter': { coat: '#12162b', trim: PLASMA },
+  housekeeper: { coat: '#4b4f6b', trim: CREAM },
+  // A plum coat with pink trim: the Hairdresser.
+  hairdresser: { coat: '#3b1d3f', trim: '#f472b6' },
+} as const;
+
+/** How each of the five drawn directions turns the face and leans the coat. */
+const TURNS: Record<
+  DrawnDirection,
+  { lean: number; face: number; visor: number; seen: boolean; seam: number }
+> = {
+  // Front on.
+  S: { lean: 0, face: 32, visor: 32, seen: true, seam: 32 },
+  // Front, turned right.
+  SE: { lean: 2, face: 35, visor: 36, seen: true, seam: 35 },
+  // Side on, facing right.
+  E: { lean: 3, face: 38, visor: 40, seen: true, seam: 36 },
+  // Back, turned right: a sliver of cheek.
+  NE: { lean: 2, face: 40, visor: 43, seen: true, seam: 34 },
+  // Back to us: the hood, nothing of the face.
+  N: { lean: 0, face: 32, visor: 32, seen: false, seam: 32 },
+};
+
 /**
- * A hero: a long coat, a pale face under a hood, an arm held out with `tool` at
- * its end. The Keeper and the characters (progression.ts) are this one, re-dressed.
+ * A hero's body facing one of the five drawn directions (the other three are these
+ * mirrored), without the tool: that is drawn apart and turned to the aim.
  */
-function heroSvg(o: { coat: string; trim: string; tool: string }): string {
+function heroBodySvg(look: { coat: string; trim: string }, direction: DrawnDirection): string {
+  const t = TURNS[direction];
+  const l = t.lean;
+  const sliver = direction === 'NE';
+  const face = t.seen
+    ? `<ellipse cx="${t.face}" cy="24" rx="${sliver ? 3 : 7}" ry="6" fill="${CREAM}"/>
+  ${sliver ? '' : `<rect x="${t.visor - 5}" y="22.5" width="10" height="3" rx="1.5" fill="${VOID}"/>`}`
+    : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <ellipse cx="32" cy="58" rx="16" ry="4" fill="${VOID}" opacity="0.6"/>
-  <path d="M20 54 L24 26 Q32 18 40 26 L44 54 Q32 58 20 54 Z" fill="${o.coat}" stroke="${o.trim}" stroke-width="2"/>
-  <path d="M32 30 L32 54" stroke="${o.trim}" stroke-width="1.5" opacity="0.7"/>
-  <path d="M21 26 Q32 6 43 26 Q32 20 21 26 Z" fill="${o.coat}" stroke="${o.trim}" stroke-width="2"/>
-  <ellipse cx="32" cy="24" rx="7" ry="6" fill="${CREAM}"/>
-  <rect x="27" y="22.5" width="10" height="3" rx="1.5" fill="${VOID}"/>
-  <path d="M41 36 L52 33" stroke="${CREAM}" stroke-width="3.5" stroke-linecap="round"/>
-  ${o.tool}
+  <path d="M${20 + l} 54 L${24 + l} 26 Q${32 + l} 18 ${40 + l} 26 L${44 + l} 54 Q${32 + l} 58 ${20 + l} 54 Z" fill="${look.coat}" stroke="${look.trim}" stroke-width="2"/>
+  <path d="M${t.seam} 30 L${t.seam} 54" stroke="${look.trim}" stroke-width="1.5" opacity="0.7"/>
+  <path d="M${21 + l} 26 Q${32 + l} 6 ${43 + l} 26 Q${32 + l} 20 ${21 + l} 26 Z" fill="${look.coat}" stroke="${look.trim}" stroke-width="2"/>
+  ${face}
 </svg>`;
 }
 
-/** The heroes, by character (progression.ts): the Keeper, the Night Porter, the Housekeeper. */
-export const HERO_SVGS = {
-  keeper: heroSvg({
-    coat: LINE,
-    trim: AURA,
-    tool: `<rect x="50" y="30.5" width="9" height="4" rx="1.5" fill="${AURA}"/><circle cx="59.5" cy="32.5" r="2" fill="${PLASMA}"/>`,
-  }),
-  // A shorter, brighter-trimmed coat, and a spray bottle.
-  'night-porter': heroSvg({
-    coat: '#12162b',
-    trim: PLASMA,
-    tool: `<rect x="51" y="27" width="7" height="11" rx="2" fill="#7dd3fc"/><rect x="52.5" y="23" width="4" height="4" fill="${CREAM}"/><path d="M56.5 24 H61" stroke="${CREAM}" stroke-width="2"/>`,
-  }),
-  // A pale apron over the coat, and the vacuum's nozzle.
-  housekeeper: heroSvg({
-    coat: '#4b4f6b',
-    trim: CREAM,
-    tool: `<path d="M28 34 H36 L38 52 H26 Z" fill="${CREAM}" opacity="0.85"/><path d="M52 33 Q58 40 56 50" stroke="${AURA}" stroke-width="3" fill="none"/><rect x="51" y="49" width="10" height="5" rx="2" fill="${LINE}" stroke="${AURA}" stroke-width="1.5"/>`,
-  }),
-} as const;
+/** The bodies, by character, then by the five drawn directions. */
+export const HERO_BODY_SVGS: Readonly<
+  Record<keyof typeof LOOKS, Readonly<Record<DrawnDirection, string>>>
+> = Object.fromEntries(
+  (Object.keys(LOOKS) as (keyof typeof LOOKS)[]).map((id) => [
+    id,
+    Object.fromEntries(
+      (['N', 'NE', 'E', 'SE', 'S'] as const).map((d) => [d, heroBodySvg(LOOKS[id], d)])
+    ),
+  ])
+) as Record<keyof typeof LOOKS, Record<DrawnDirection, string>>;
+
+/**
+ * A starting weapon, drawn pointing right from the hand at (10, 32) of a 64×64 box;
+ * the view turns it to point exactly at the aim, whatever the eight directions say.
+ */
+export const HERO_TOOL_SVGS: Readonly<Record<keyof typeof LOOKS, string>> = {
+  // The Laser Pointer: a slim pen, and its dot.
+  keeper: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <rect x="10" y="29" width="30" height="6" rx="3" fill="${AURA}" stroke="${LINE}" stroke-width="1"/>
+  <circle cx="45" cy="32" r="3.5" fill="${PLASMA}"/>
+</svg>`,
+  // The Spray Bottle: a bottle in the hand, a nozzle ahead of it.
+  'night-porter': `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <rect x="12" y="26" width="16" height="12" rx="3" fill="#7dd3fc" stroke="${LINE}" stroke-width="1"/>
+  <rect x="28" y="28" width="12" height="5" rx="2" fill="${CREAM}"/>
+  <path d="M40 30.5 H47" stroke="${CREAM}" stroke-width="3" stroke-linecap="round"/>
+</svg>`,
+  // The Hair Dryer: a barrel with a handle in the hand, and its nozzle.
+  hairdresser: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <rect x="10" y="32" width="6" height="12" rx="2" fill="${LINE}" stroke="#f472b6" stroke-width="1"/>
+  <rect x="12" y="24" width="26" height="12" rx="5" fill="#f472b6" stroke="${LINE}" stroke-width="1"/>
+  <rect x="36" y="26" width="10" height="8" rx="2" fill="${CREAM}"/>
+  <path d="M48 26 H55 M48 30 H58 M48 34 H55" stroke="#fdba74" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+</svg>`,
+  // The Vacuum Cleaner: a hose from the hand, and the nozzle.
+  housekeeper: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="10" cy="32" r="4" fill="${CREAM}"/>
+  <path d="M12 32 Q24 40 34 32" stroke="${AURA}" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <rect x="34" y="27" width="14" height="10" rx="3" fill="${LINE}" stroke="${AURA}" stroke-width="1.5"/>
+</svg>`,
+};
 
 /**
  * A sitting cat, front on, in a 64×64 box: body, head, ears, eyes, a tail; `extra`
@@ -136,3 +192,54 @@ export const VARIETY_SVG: Readonly<Record<VarietyId, string>> = {
     extra: `<path d="M24 16 L26 21 M32 14 V20 M40 16 L38 21 M20 42 Q24 40 22 46 M44 42 Q40 40 42 46" stroke="#a24e12" stroke-width="2.2" stroke-linecap="round" fill="none"/>`,
   }),
 };
+
+/**
+ * What the household weapons set down: a squeaky toy (a mouse that has seen things)
+ * and a cardboard box (the open end up). Placeholders, as the rest of this file.
+ */
+export const PATCH_SVG = {
+  toy: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="54" rx="18" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M46 44 Q58 40 56 28" stroke="${PLASMA}" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <ellipse cx="30" cy="40" rx="18" ry="13" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="18" cy="28" r="6" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="30" cy="27" r="6" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="16" cy="40" r="2.2" fill="${VOID}"/>
+  <circle cx="11" cy="43" r="2" fill="${AURA}"/>
+</svg>`,
+  box: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="56" rx="24" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M8 26 L32 18 L56 26 L56 50 L32 58 L8 50 Z" fill="#b8874f" stroke="${LINE}" stroke-width="2"/>
+  <path d="M8 26 L32 34 L56 26" fill="none" stroke="${LINE}" stroke-width="2"/>
+  <path d="M32 34 L32 58" stroke="${LINE}" stroke-width="2"/>
+  <path d="M8 26 L32 18 L56 26 L32 34 Z" fill="#1a1308" opacity="0.55"/>
+  <rect x="26" y="40" width="12" height="6" fill="${CREAM}" opacity="0.8"/>
+</svg>`,
+} as const;
+
+/**
+ * What a cat sent home may leave: a fish (Resolve), a magnet (every gem comes) and a
+ * bell (the cats on screen stop). Placeholders, as the rest of this file.
+ */
+export const PICKUP_SVG = {
+  fish: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="30" cy="54" rx="18" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M10 32 Q28 14 46 32 Q28 50 10 32 Z" fill="#7dd3fc" stroke="${LINE}" stroke-width="2"/>
+  <path d="M46 32 L58 22 L58 42 Z" fill="#38bdf8" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="20" cy="29" r="2.5" fill="${VOID}"/>
+  <path d="M28 24 Q32 32 28 40" stroke="${LINE}" stroke-width="1.5" fill="none"/>
+</svg>`,
+  magnet: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="56" rx="18" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M14 14 V36 Q14 52 32 52 Q50 52 50 36 V14" stroke="#ef4444" stroke-width="12" fill="none"/>
+  <rect x="8" y="10" width="12" height="9" fill="${CREAM}"/>
+  <rect x="44" y="10" width="12" height="9" fill="${CREAM}"/>
+</svg>`,
+  bell: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="58" rx="16" ry="4" fill="${VOID}" opacity="0.6"/>
+  <path d="M16 46 Q16 18 32 14 Q48 18 48 46 Z" fill="#fbbf24" stroke="${LINE}" stroke-width="2"/>
+  <rect x="12" y="44" width="40" height="6" rx="3" fill="#f59e0b" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="32" cy="12" r="4" fill="#fbbf24" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="32" cy="55" r="4" fill="${LINE}"/>
+</svg>`,
+} as const;

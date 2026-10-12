@@ -731,27 +731,9 @@ Only claim completion based on actual evidence.
 # 21. Completion Prompt
 
 ```text
-Finish the task and provide a concise engineering completion report.
-
-Include:
-
-## Summary
-What changed and why.
-
-## Files
-Meaningful files changed.
-
-## Verification
-Commands/checks actually run and their results.
-
-## Tests
-New or updated regression coverage.
-
-## Risks
-Compatibility, migration, deployment, security, or operational risks.
-
-## Remaining Work
-Anything intentionally deferred or unresolved.
+Finish the task and provide a concise engineering completion report,
+in the format CLAUDE.md §17 defines: Summary, Verification, Notes,
+Remaining Issues.
 
 Do not claim a check passed unless it was actually run.
 ```

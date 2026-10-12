@@ -129,7 +129,7 @@ jobs:
         # Already in the image: a no-op unless the versions drifted apart.
         run: npx playwright install chromium
       # Every browser test, in one run on one server: playwright.config.ts names the
-      # groups (smoke, customers, invoices, cats, survival, sound) as projects, so the
+      # groups (cat-attacks, smoke, customers, invoices, survival) as projects, so the
       # list and the report say which group a failure is in.
       - name: Browser tests against next start
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
@@ -200,6 +200,9 @@ jobs:
       # xenocats_test schema.
       - name: Browser tests (smoke, security headers, dashboard login)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          # Only these specs: not the cat-attacks group the others wait for.
+          E2E_NO_CAT_DEPS: '1'
         run: npx playwright test tests/e2e/smoke.spec tests/e2e/security-headers.spec tests/e2e/dashboard.spec
       - uses: actions/upload-artifact@v4
         if: failure()

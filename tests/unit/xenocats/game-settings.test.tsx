@@ -52,10 +52,14 @@ describe('Survival’s settings', () => {
     );
   });
 
-  it('a touch screen gets Sound only: it has no pointer to aim with', () => {
+  it('a touch screen gets Sound and Graphics but no Aim: it has no pointer to aim with', () => {
     render(<GameSettings where="pause" touch />);
     expect(screen.getByRole('checkbox', { name: 'Sound' })).toBeTruthy();
-    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getAllByRole('radio').map((r) => r.getAttribute('data-testid'))).toEqual([
+      'survival-pause-graphics-full',
+      'survival-pause-graphics-light',
+    ]);
+    expect(screen.queryByTestId('survival-pause-aim-crosshair')).toBeNull();
   });
 
   it('the lobby and the pause menu show the same setting', () => {

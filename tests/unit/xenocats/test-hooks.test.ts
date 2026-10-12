@@ -1,17 +1,51 @@
 import { describe, expect, it } from 'vitest';
-import { parseTestHooks } from '@/app/ui/xenocats/test-hooks';
+import { WEAPONS } from '@/app/ui/xenocats/arsenal';
+import {
+  CROWD_ARSENAL,
+  FUSION_START,
+  MAX_CROWD,
+  PICKUPS_HOOK_CHANCE,
+  parseTestHooks,
+} from '@/app/ui/xenocats/test-hooks';
 
 const fresh = () => 777;
 const hooks = (search: string) => parseTestHooks(search, fresh);
 
 describe('the URL test hooks', () => {
   it('none set: a fresh seed, time at its own pace, no early boss', () => {
-    expect(hooks('')).toEqual({ seed: 777, speed: 1, boss: null });
+    expect(hooks('')).toEqual({
+      seed: 777,
+      speed: 1,
+      boss: null,
+      fps: false,
+      crowd: null,
+      elite: false,
+      fusion: false,
+      pickups: false,
+    });
   });
 
   it('read as set', () => {
-    expect(hooks('?seed=42&speed=3&boss=2.5')).toEqual({ seed: 42, speed: 3, boss: 2500 });
-    expect(hooks('?boss=0')).toEqual({ seed: 777, speed: 1, boss: 0 });
+    expect(hooks('?seed=42&speed=3&boss=2.5')).toEqual({
+      seed: 42,
+      speed: 3,
+      boss: 2500,
+      fps: false,
+      crowd: null,
+      elite: false,
+      fusion: false,
+      pickups: false,
+    });
+    expect(hooks('?boss=0')).toEqual({
+      seed: 777,
+      speed: 1,
+      boss: 0,
+      fps: false,
+      crowd: null,
+      elite: false,
+      fusion: false,
+      pickups: false,
+    });
   });
 
   it('a seed that is not a whole number above 0 is no seed', () => {
@@ -27,6 +61,51 @@ describe('the URL test hooks', () => {
     expect(hooks('?speed=Infinity').speed).toBe(1);
     expect(hooks('?speed=100').speed).toBe(50);
     expect(hooks('?speed=1e308').speed).toBe(50);
+  });
+
+  it('the frame counter is on only for fps=1', () => {
+    expect(hooks('?fps=1').fps).toBe(true);
+    for (const value of ['0', '', 'true', '2', 'yes']) {
+      expect(hooks(`?fps=${value}`).fps, value).toBe(false);
+    }
+  });
+
+  it('every xenocat is an elite only for elite=1', () => {
+    expect(hooks('?elite=1').elite).toBe(true);
+    for (const value of ['0', '', 'true', '2'])
+      expect(hooks(`?elite=${value}`).elite, value).toBe(false);
+  });
+
+  it('the fusion start is on only for fusion=1', () => {
+    expect(hooks('?fusion=1').fusion).toBe(true);
+    for (const value of ['0', '', 'true', '2'])
+      expect(hooks(`?fusion=${value}`).fusion, value).toBe(false);
+    expect(FUSION_START).toHaveLength(2);
+  });
+
+  it('the pickups hook is on only for pickups=1', () => {
+    expect(hooks('?pickups=1').pickups).toBe(true);
+    for (const value of ['0', '', 'true', '2']) {
+      expect(hooks(`?pickups=${value}`).pickups, value).toBe(false);
+    }
+    expect(PICKUPS_HOOK_CHANCE).toBeGreaterThan(0);
+    expect(PICKUPS_HOOK_CHANCE).toBeLessThan(1);
+  });
+
+  it('a crowd is a whole number of cats from 1, at most 6000', () => {
+    expect(hooks('?crowd=300').crowd).toBe(300);
+    expect(hooks('?crowd=1').crowd).toBe(1);
+    expect(hooks('?crowd=99999').crowd).toBe(MAX_CROWD);
+    expect(MAX_CROWD).toBe(6000);
+    for (const crowd of ['0', '-5', '2.5', 'abc', '', 'NaN', 'Infinity']) {
+      expect(hooks(`?crowd=${crowd}`).crowd, crowd).toBeNull();
+    }
+  });
+
+  it('a crowd arms the Keeper with six evolved weapons', () => {
+    expect(CROWD_ARSENAL).toHaveLength(6);
+    expect(new Set(CROWD_ARSENAL).size).toBe(6);
+    for (const id of CROWD_ARSENAL) expect(WEAPONS[id], id).toBeDefined();
   });
 
   it('a boss time that is not a time is no early boss', () => {

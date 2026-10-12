@@ -1,8 +1,11 @@
-# `docs/ai/` — durable task state
+# `docs/ai/` — night-run state
 
-Agent work that spans many files, sessions or an unattended night keeps its state
-here, one directory per branch: `docs/ai/<branch>/`. It is committed on the
-branch it describes, so the reasoning stays attached to the diff it explains.
+Unattended night runs keep their state here, one directory per run:
+`docs/ai/night-<YYYY-MM-DD>/`. It is committed with the run's work, so the
+reasoning stays attached to the diff it explains.
+
+Supervised work writes nothing here: it keeps its state in the conversation
+(`CLAUDE.md` §11). Other directories here are older work, kept as history.
 
 | File | Written by | Holds |
 | ---- | ---------- | ----- |
@@ -94,7 +97,7 @@ The run cannot fix any of these, and most of them end it silently:
    an interval: that form dies at the first usage limit.
 
 ```text
-/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.5): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.5); (2) the loop in the skill's §1 prints the Nightrun branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) no branch Nightrun exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
+/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.4): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.4); (2) the loop in the skill's §1 prints the Nightrun branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) no branch Nightrun exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
 ```
 
 ### Starting it from the CLI
@@ -152,4 +155,5 @@ the first is still running: two sessions would work the same branches at once.
 
 **To end a run early,** close the CLI window. Every finished task is already
 committed and pushed; the task in flight is left uncommitted on its branch.
-`/night-run` in a new session resumes the run later, until its goal time.
+Start a new session and paste the `/loop 20m …` prompt above to resume the run
+later, until its goal time: case (2) picks it up.

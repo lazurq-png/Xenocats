@@ -1,4 +1,4 @@
-import { type Locator, type Page, devices, expect, test } from '@playwright/test';
+import { type Locator, type Page, devices, expect, test } from './fixtures';
 import { ARENA_CONFIG } from '@/app/ui/xenocats/arena';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
 import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
@@ -141,6 +141,371 @@ test('the retired Taming game is gone: /cats/taming is not found', async ({ page
 test.describe('on a computer', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
+  test('?fps=1 shows the frame time and cat count, and without it nothing is shown', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await startRun(page);
+    await expect(page.getByTestId('survival-fps')).toHaveCount(0);
+
+    await openArena(page, '?seed=7&fps=1');
+    await startRun(page);
+    const fps = page.getByTestId('survival-fps');
+    await expect(fps).toBeVisible();
+    await expect(fps).toHaveText(/^\d+(\.\d+)? ms · \d+ cats$/);
+  });
+
+  test('?crowd= brings a crowd at once, with the weapons to meet it and no level-up in the way', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&crowd=300');
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-cats'), { timeout: 30_000 }).toBeGreaterThan(150);
+    await expect(area(page)).toHaveAttribute('data-weapons', /infinite-laser:8/);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+  });
+
+  test('the run length is chosen in the lobby and remembered, and the HUD, the pause menu and the results show it', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&speed=3');
+    await expect(page.getByTestId('survival-length-5')).toBeChecked();
+    await page.getByTestId('survival-length-10').check();
+    await expect(page.getByTestId('survival-best')).toHaveText(
+      'Longest survived (10 minutes): none yet'
+    );
+    // Remembered across a reload.
+    await page.reload();
+    await expect(page.getByTestId('survival-length-10')).toBeChecked();
+
+    await startRun(page);
+    await expect(page.getByTestId('survival-time')).toContainText('/ 10:00');
+    const paused = await pauseRun(page);
+    await expect(paused.getByTestId('survival-pause-length')).toHaveText('10:00');
+    await paused.getByRole('button', { name: 'Give up' }).click();
+    await expect(page.getByTestId('survival-results')).toHaveAttribute('data-outcome', 'gave-up');
+    await expect(page.getByTestId('survival-result-length')).toHaveText('10:00');
+    // The five-minute best is a different one.
+    await page.getByTestId('survival-length-5').check();
+    await expect(page.getByTestId('survival-best')).toHaveText(
+      'Longest survived (5 minutes): none yet'
+    );
+  });
+
+  test('an elite near the Keeper winds up an attack the HUD data shows', async ({ page }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=8&elite=1');
+    await startRun(page);
+    // The run is over in under a minute: watch from inside the page, every frame,
+    // rather than poll from here.
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[data-testid="survival-area"]')
+            ?.getAttribute('data-windups-begun')
+        ) > 0,
+      undefined,
+      { timeout: 60_000 }
+    );
+  });
+
+  test('a new household weapon, taken at a level-up of a seeded run, is in the pause menu', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const household = ['feather-wand', 'squeaky-toy', 'cardboard-box', 'hair-dryer', 'bath-tub'];
+    await openArena(page, '?seed=7&speed=4');
+    await startRun(page);
+    let taken = '';
+    const walk = ['d', 's', 'a', 'w'];
+    for (let turn = 0; turn < 400 && !taken; turn++) {
+      if ((await area(page).count()) === 0) break;
+      const dialog = levelUp(page);
+      if ((await dialog.count()) > 0) {
+        const ids = await dialog
+          .getByRole('button')
+          .evaluateAll((all) => all.map((b) => b.getAttribute('data-choice') ?? ''));
+        const at = ids.findIndex((id) => household.includes(id));
+        if (at >= 0) {
+          taken = ids[at];
+          await page.keyboard.press(String(at + 1));
+        } else {
+          await page.keyboard.press('1');
+        }
+      }
+      // He walks a square, to last as long as he can.
+      const key = walk[turn % 4];
+      await page.keyboard.down(key);
+      await page.waitForTimeout(350);
+      await page.keyboard.up(key);
+    }
+    expect(household).toContain(taken);
+    await expect(area(page)).toHaveAttribute('data-weapons', new RegExp(taken));
+    const paused = await pauseRun(page);
+    await expect(paused.locator(`li[data-weapon="${taken}"]`)).toBeVisible();
+  });
+
+  test('two evolved weapons held at a chest fuse into one, named in the pause menu', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&fusion=1');
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-weapons', 'thunderstorm:8');
+    const paused = await pauseRun(page);
+    await expect(paused.locator('li[data-weapon="thunderstorm"]')).toBeVisible();
+    await expect(paused.locator('li[data-weapon="infinite-laser"]')).toHaveCount(0);
+    await expect(paused.locator('li[data-weapon="monsoon"]')).toHaveCount(0);
+    // One slot where there were two.
+    await expect(paused.getByTestId('survival-pause-weapon-slots')).toHaveText('Weapons 1 of 6');
+  });
+
+  test('the pause menu marks a fused weapon and a new one with different tiers', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=4&fusion=1');
+    await startRun(page);
+    // Take a weapon at the first level-up that offers one (a new weapon is tier 1).
+    let taken = '';
+    const walk = ['d', 's', 'a', 'w'];
+    for (let turn = 0; turn < 400 && !taken; turn++) {
+      if ((await area(page).count()) === 0) break;
+      const dialog = levelUp(page);
+      if ((await dialog.count()) > 0) {
+        const kinds = await dialog
+          .getByRole('button')
+          .evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
+        const at = kinds.indexOf('weapon');
+        if (at >= 0) {
+          // Its card carries the tier too: a level-1 weapon is tier 1, and its name is written.
+          const card = dialog.getByRole('button').nth(at);
+          await expect(card).toHaveAttribute('data-tier', '1');
+          await expect(card.getByTestId('choice-tier')).toHaveText('Basic');
+          taken = (await card.getAttribute('data-choice')) ?? '';
+          await page.keyboard.press(String(at + 1));
+        } else await page.keyboard.press('1');
+      }
+      const key = walk[turn % 4];
+      await page.keyboard.down(key);
+      await page.waitForTimeout(350);
+      await page.keyboard.up(key);
+    }
+    expect(taken).not.toBe('');
+    const paused = await pauseRun(page);
+    const fused = paused.locator('li[data-weapon="thunderstorm"]');
+    const fresh = paused.locator(`li[data-weapon="${taken}"]`);
+    await expect(fused).toHaveAttribute('data-tier', '7');
+    await expect(fresh).toHaveAttribute('data-tier', '1');
+    await expect(fused.getByTestId('survival-pause-tier')).toHaveText('(Fused)');
+    await expect(fresh.getByTestId('survival-pause-tier')).toHaveText('(Basic)');
+  });
+
+  test('the Keeper faces the crosshair in all eight directions; automatic, he faces a cat or the way he walks', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openArena(page, '?seed=7');
+    await page.getByTestId('survival-lobby-aim-crosshair').check();
+    await startRun(page);
+    // The Keeper stands in the middle of the screen: the mouse goes round him.
+    const centre = { x: 640, y: 400 };
+    const eight = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+    for (let k = 0; k < 8; k++) {
+      const angle = (k * Math.PI) / 4;
+      await page.mouse.move(centre.x + Math.cos(angle) * 250, centre.y + Math.sin(angle) * 250);
+      await expect(area(page)).toHaveAttribute('data-hero-facing', eight[k]);
+    }
+    // Put the crosshair away. He stands still, so the way he walked last is east (he has
+    // not walked); facing anything else means he turned to a cat.
+    const paused = await pauseRun(page);
+    await paused.getByTestId('survival-pause-aim-auto').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-aim', 'auto');
+    await expect
+      .poll(() => area(page).getAttribute('data-hero-facing'), { timeout: 30_000 })
+      .not.toBe('E');
+  });
+
+  test('Graphics: light is chosen in the pause menu, holds on resume and in the lobby, and draws at one pixel to a pixel', async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+    const context = await browser.newContext({
+      viewport: { width: 1000, height: 700 },
+      deviceScaleFactor: 2,
+    });
+    const page = await context.newPage();
+    // No run has switched itself to light before, and none will here.
+    await page.addInitScript(() => localStorage.setItem('xenocats:survival:v1:graphics-auto', '1'));
+    await openArena(page, '?seed=7');
+    await expect(page.getByTestId('survival-lobby-graphics-full')).toBeChecked();
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-graphics', 'full');
+    const canvasWidth = () =>
+      page.locator('canvas').evaluate((c) => (c as HTMLCanvasElement).width);
+    // Full: the screen's own pixel ratio (2).
+    await expect.poll(canvasWidth).toBe(2000);
+
+    const paused = await pauseRun(page);
+    await expect(paused.getByTestId('survival-pause-graphics-full')).toBeChecked();
+    await paused.getByTestId('survival-pause-graphics-light').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-graphics', 'light');
+    // Light: one pixel to a pixel.
+    await expect.poll(canvasWidth).toBe(1000);
+
+    // It holds: paused again it is still light; in the lobby, the same.
+    const again = await pauseRun(page);
+    await expect(again.getByTestId('survival-pause-graphics-light')).toBeChecked();
+    await again.getByRole('button', { name: 'Give up' }).click();
+    await expect(page.getByTestId('survival-lobby-graphics-light')).toBeChecked();
+    await page.reload();
+    await expect(page.getByTestId('survival-lobby-graphics-light')).toBeChecked();
+    await context.close();
+  });
+
+  test('a screen too slow for the frame floor is switched to light graphics, once, with a notice', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    // A screen that shows about 15 frames a second whatever the machine: every animation
+    // frame is handed to the game 50 ms late. (A CPU throttle, tried first, left a CI
+    // runner's browser too slow to finish the test.)
+    await page.addInitScript(() => {
+      const frame = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (callback) =>
+        frame(() => {
+          setTimeout(() => callback(performance.now()), 50);
+        }) as number;
+    });
+    await openArena(page, '?seed=7');
+    await expect(area(page)).toHaveCount(0);
+    await startRun(page);
+    // Watched from inside the page, every frame: the notice lasts a few seconds, and a
+    // slow machine is slow to ask about it from outside.
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="survival-area"]')?.getAttribute('data-graphics') ===
+          'light' &&
+        (document.querySelector('[data-testid="survival-notice"]')?.textContent ?? '').includes(
+          'struggling'
+        ),
+      undefined,
+      { timeout: 40_000 }
+    );
+    expect(
+      await page.evaluate(() => localStorage.getItem('xenocats:survival:v1:graphics-auto'))
+    ).toBe('1');
+    expect(await page.evaluate(() => localStorage.getItem('xenocats:survival:v1:graphics'))).toBe(
+      'light'
+    );
+    // The player changes it back: it does not switch again.
+    const paused = await pauseRun(page);
+    await paused.getByTestId('survival-pause-graphics-full').check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-graphics', 'full');
+  });
+
+  test('a Mega Cat near the Keeper winds up a pounce the HUD data shows', async ({ page }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=4&boss=0');
+    await startRun(page);
+    // A count of boss wind-ups begun, not the wind-up itself: the HUD data is refreshed a few
+    // times a second, and a wind-up lasts about a quarter of a second here.
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[data-testid="survival-area"]')
+            ?.getAttribute('data-boss-windups-begun')
+        ) > 0,
+      undefined,
+      { timeout: 60_000 }
+    );
+  });
+
+  test('a cat sent home leaves a pickup the Keeper takes, and the HUD data shows it', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await openArena(page, '?seed=7&speed=3&pickups=1');
+    await startRun(page);
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[data-testid="survival-area"]')
+            ?.getAttribute('data-pickups-taken')
+        ) > 0,
+      undefined,
+      { timeout: 60_000 }
+    );
+    await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
+  });
+
+  test('a level-up can be rerolled once (new choices, a use spent) and skipped once (no choice, the run goes on)', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page);
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    const choices = dialog.locator('button[data-choice]');
+    const ids = async () =>
+      choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
+    const reroll = dialog.getByTestId('survival-reroll');
+    const skip = dialog.getByTestId('survival-skip');
+    await expect(reroll).toHaveText('Reroll (1 left)');
+    await expect(skip).toHaveText('Skip, for some experience (1 left)');
+
+    // Reroll: new choices, and the use is spent.
+    const before = await ids();
+    await reroll.click();
+    await expect.poll(ids).not.toEqual(before);
+    await expect(reroll).toHaveText('Reroll (0 left)');
+    await expect(reroll).toBeDisabled();
+    await expect(dialog).toBeVisible();
+    const level = Number(await area(page).getAttribute('data-level'));
+    await expect(skip).toBeEnabled();
+
+    // Skip: no choice taken; the run goes on (or the next level-up waits, and has no skip left).
+    await skip.click();
+    await expect
+      .poll(async () => {
+        if ((await dialog.count()) === 0) return 'playing';
+        return (await skip.isDisabled()) ? 'next' : 'waiting';
+      })
+      .not.toBe('waiting');
+    expect(Number(await area(page).getAttribute('data-level'))).toBeGreaterThanOrEqual(level);
+  });
+
+  test('R rerolls and X skips at a level-up; a number picks only from the choices', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page);
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    const reroll = dialog.getByTestId('survival-reroll');
+    await page.keyboard.press('r');
+    await expect(reroll).toHaveText('Reroll (0 left)');
+    // Past the last choice, a number picks nothing (the buttons after the list are not choices).
+    const count = await dialog.locator('button[data-choice]').count();
+    await page.keyboard.press(String(count + 1));
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('x');
+    await expect
+      .poll(
+        async () =>
+          (await dialog.count()) === 0 || (await dialog.getByTestId('survival-skip').isDisabled())
+      )
+      .toBe(true);
+  });
+
   test('on a computer the camera is unzoomed', async ({ page }) => {
     await openArena(page);
     await startRun(page);
@@ -238,7 +603,9 @@ test.describe('on a computer', () => {
   }) => {
     test.setTimeout(60_000);
     await openArena(page, '?seed=7&speed=3');
-    await expect(page.getByTestId('survival-best')).toHaveText('Longest survived: none yet');
+    await expect(page.getByTestId('survival-best')).toHaveText(
+      'Longest survived (5 minutes): none yet'
+    );
     // No ambient cats and no fake cursor on the game's page.
     await expect(page.getByTestId('xenocat')).toHaveCount(0);
     await startRun(page);
@@ -280,7 +647,9 @@ test.describe('on a computer', () => {
     expect(stored).toBeGreaterThan(0);
     await page.reload();
     await expect(page.getByTestId('survival-best')).toHaveAttribute('data-best', String(stored));
-    await expect(page.getByTestId('survival-best')).not.toHaveText('Longest survived: none yet');
+    await expect(page.getByTestId('survival-best')).not.toHaveText(
+      'Longest survived (5 minutes): none yet'
+    );
   });
 
   test('WASD walks the hero', async ({ page }) => {
@@ -322,7 +691,9 @@ test.describe('on a computer', () => {
       const level = Number(await button.getAttribute('data-level'));
       const change = button.getByTestId('choice-change');
       if (kind === 'passive' || (kind === 'weapon' && level > 1)) {
-        await expect(change).toHaveText(/^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes)/);
+        await expect(change).toHaveText(
+          /^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes|Holds|What his weapons|Untouchable|Elite effects)/
+        );
         named++;
       } else {
         await expect(change).toHaveCount(0);
@@ -514,13 +885,64 @@ test.describe('on a computer', () => {
       .toBe(true);
     const codex = page.getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
-    // Six evolutions and the secret cat: one found, the rest unknown.
-    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(6);
+    // Eleven evolutions, four fusions and the secret cat: one found, the rest unknown.
+    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(15);
     // Kept after a reload; he goes out as the Night Porter, with the Spray Bottle.
     await page.reload();
     await expect(porter).toBeChecked();
     await startRun(page);
     await expect(area(page)).toHaveAttribute('data-weapons', 'spray-bottle:1');
+  });
+
+  test('the Hairdresser is offered once Survive 10:00 is reached, and goes out with the Hair Dryer', async ({
+    page,
+  }) => {
+    const store = (milestones: string[]) =>
+      page.addInitScript((m) => {
+        if (localStorage.getItem('xenocats:test:seeded')) return;
+        localStorage.setItem('xenocats:test:seeded', '1');
+        localStorage.setItem(
+          'xenocats:survival:v1:progress',
+          JSON.stringify({
+            version: 1,
+            tufts: 0,
+            upgrades: {},
+            milestones: m,
+            bought: [],
+            character: 'keeper',
+            found: [],
+          })
+        );
+      }, milestones);
+    await store(['survive-2']);
+    await openArena(page);
+    const hairdresser = page.getByTestId('survival-character-hairdresser');
+    await expect(hairdresser).toBeDisabled();
+    await expect(page.getByText('Locked: Survive 10:00.')).toBeVisible();
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'xenocats:survival:v1:progress',
+        JSON.stringify({
+          version: 1,
+          tufts: 0,
+          upgrades: {},
+          milestones: ['survive-2', 'survive-10'],
+          bought: [],
+          character: 'keeper',
+          found: [],
+        })
+      );
+    });
+    await page.reload();
+    await expect(hairdresser).toBeEnabled();
+    await expect
+      .poll(async () => {
+        await hairdresser.check();
+        return hairdresser.isChecked();
+      })
+      .toBe(true);
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-weapons', 'hair-dryer:1');
   });
 
   test('the Tailor sells an upgrade for tufts; the next run begins with it', async ({ page }) => {
@@ -598,7 +1020,13 @@ test.describe('on a touch screen', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     const buttons = levelUp(page).getByRole('button');
     const taken = await takeChoice(page, (i) => buttons.nth(i).tap());
-    await playOn(page, true);
+    // Another level may follow at once: take choices until the run is playing.
+    await expect
+      .poll(async () => {
+        await playOn(page, true);
+        return levelUp(page).count();
+      })
+      .toBe(0);
     await area(page).getByRole('button', { name: 'Pause' }).tap();
     const paused = page.getByRole('dialog', { name: 'Paused' });
     await expectInSummary(paused.getByTestId('survival-pause-summary'), taken);

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
 
 // The dashboard's "Meet the cats" link leads out of the dashboard's layout to

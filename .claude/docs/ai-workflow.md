@@ -266,7 +266,6 @@ backend.md
 database.md
 testing.md
 debugging.md
-review.md
 security-review.md
 ```
 
@@ -369,23 +368,9 @@ Specificity should describe behavior, not dictate unnecessary implementation.
 
 # 11. Long-Running Tasks
 
-For tasks that span many files or long sessions, maintain durable state.
+For tasks that span many files or long sessions, keep the task's state where the agent can see it.
 
-Useful artifacts include:
-
-```text
-docs/ai/
-    task.md
-    plan.md
-    progress.md
-    decisions.md
-    verification.md
-    handoff.md
-```
-
-In this repository that location is scoped per branch: `docs/ai/<branch>/` — see `docs/ai/README.md` for the layout and the night-run plan template. Unattended runs must maintain it (`.claude/skills/night-run/SKILL.md`); supervised runs should when a task spans many files or sessions.
-
-The purpose is to prevent critical context from existing only inside the agent's current conversation.
+In this repository, supervised work keeps it in the conversation and writes no task-state files: see `CLAUDE.md` §11. Only unattended night runs keep state on disk, in `docs/ai/night-<YYYY-MM-DD>/`, as `.claude/skills/night-run/SKILL.md` and `docs/ai/README.md` define.
 
 ## Progress State
 
@@ -399,7 +384,7 @@ Record:
 * known risks
 * next action
 
-A future agent should be able to continue without reconstructing the entire history.
+A future agent, or the same one after a context compaction, should be able to continue without reconstructing the entire history.
 
 ---
 

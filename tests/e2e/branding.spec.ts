@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 // The site is Xenocat Analytics everywhere a visitor can see without logging in.
 

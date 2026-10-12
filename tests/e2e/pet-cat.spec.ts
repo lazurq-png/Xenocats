@@ -1,4 +1,4 @@
-import { type Page, devices, expect, test } from '@playwright/test';
+import { type Page, devices, expect, test } from './fixtures';
 import { CAT_CONFIG } from '@/app/ui/xenocats/config';
 import { vanish } from '@/app/ui/xenocats/effects';
 

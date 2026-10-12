@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
 
 // The invoice detail page and the delete confirmation dialog, logged in as the

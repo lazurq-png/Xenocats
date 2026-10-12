@@ -2,17 +2,43 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/app/ui/button';
-import { type Arena, ARENA_CONFIG, type ArenaOutcome, BLADE_RADIUS, createArena } from './arena';
-import { HERO_SVGS, VARIETY_SVG } from './arena-art';
-import { type Choice, WEAPONS, type WeaponId, describeChoice, evolutionText } from './arsenal';
+import {
+  type Arena,
+  ARENA_CONFIG,
+  type ArenaOutcome,
+  BLADE_RADIUS,
+  createArena,
+  runLengthConfig,
+} from './arena';
+import { HERO_BODY_SVGS, HERO_TOOL_SVGS, PATCH_SVG, PICKUP_SVG, VARIETY_SVG } from './arena-art';
+import { DRAWN_DIRECTIONS, directionOfAngle, facesAway, spriteOf } from './hero-direction';
+import {
+  type Choice,
+  MAX_WEAPON_LEVEL,
+  WEAPONS,
+  type WeaponId,
+  describeChoice,
+  evolutionText,
+  fusionText,
+} from './arsenal';
 import {
   type AimMode,
+  RUN_LENGTHS,
+  type RunLength,
   bestOf,
   clockText,
   readAim,
   readBest,
+  readGraphics,
+  readGraphicsAuto,
+  readLength,
   subscribeAim,
+  subscribeGraphics,
+  subscribeLength,
   writeBest,
+  writeGraphics,
+  writeGraphicsAuto,
+  writeLength,
 } from './arena-storage';
 import { catArt } from './cat-art';
 import { CAT_TYPES } from './cat-types';
@@ -33,9 +59,17 @@ import {
 } from './progression';
 import { ProgressionPanel, useProgress } from './progression-view';
 import { createRandom, freshSeed } from './random';
-import { parseTestHooks } from './test-hooks';
+import { CROWD_ARSENAL, FUSION_START, PICKUPS_HOOK_CHANCE, parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
+import {
+  AUTO_JUDGE_FROM_MS,
+  AUTO_JUDGE_UNTIL_MS,
+  type Graphics,
+  pixelRatioFor,
+  shouldGoLight,
+} from './graphics';
+import { tierStyle } from './item-tier';
 import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
@@ -53,7 +87,8 @@ import type { Vec } from './effects';
 //
 // Test hooks, read from the page's address when a run starts: `?seed=` fixes the
 // random source, `?speed=` (up to 50) makes time pass that much faster, `?boss=`
-// (seconds) brings a Mega Cat that early, besides the schedule's.
+// (seconds) brings a Mega Cat that early, besides the schedule's. `?fps=1` shows the
+// frame time and cat count; `?crowd=N` starts a crowded, late-game run (test-hooks.ts).
 
 type Screen = 'start' | 'playing' | 'choosing' | 'paused' | 'results';
 
@@ -66,6 +101,9 @@ const SHOT_COLOR: Record<string, string> = {
   'yarn-ball': '#f472b6',
   'yarn-apocalypse': '#ec4899',
   hairball: '#a8865b',
+  'bottomless-saucer': '#f5f0e0',
+  'bath-tub': '#7dd3fc',
+  jacuzzi: '#38bdf8',
 };
 
 /** How long an evolution's announcement stays, ms. */
@@ -101,12 +139,24 @@ type Hud = {
   xp: number;
   xpToNext: number;
   weapons: string;
+  /** The frame time, ms (smoothed), for `?fps=1`. */
+  frameMs: number;
+  /** How many elites are winding up an attack, and how many have begun in the run. */
+  windUps: number;
+  windUpsBegun: number;
+  bossWindUp: string;
+  bossWindUpsBegun: number;
+  pickups: number;
+  pickupsTaken: number;
+  lastPickup: string;
   /** Where the crosshair is on the screen ("x,y"), or "" without one. */
   crosshair: string;
   /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
   zoom: number;
   /** Each Keeper's Resolve, and whether he is down (co-op: two). */
   heroes: {
+    /** Which of the eight directions he faces. */
+    facing: string;
     resolve: number;
     maxResolve: number;
     down: boolean;
@@ -116,14 +166,20 @@ type Hud = {
   }[];
 };
 
+const LENGTH_WORDS: Record<RunLength, string> = { 5: 'Five', 10: 'Ten', 15: 'Fifteen' };
+
 const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
   spent: 'His Resolve is spent. The cats remain.',
   'gave-up': 'He has given up. The cats remain.',
-  goal: 'Five minutes, and the night is survived. The cats remain.',
+  goal: 'The night is survived. The cats remain.',
 };
 
 /** A sound for a cat of any kind: a variety sounds like the first xenocat type. */
 const typeOf = (type: number) => CAT_TYPES[type] ?? CAT_TYPES[0];
+
+/** The direction a Keeper is drawn facing: his aim; a downed one lies on his side, as ever. */
+const viewDirection = (h: { down: boolean; facing: number; lookAngle: number }) =>
+  h.down ? (h.facing < 0 ? 'W' : 'E') : directionOfAngle(h.lookAngle);
 
 /** A bitmap of `src`, `size` px square, drawn once; null until it has loaded. */
 function bitmapOf(src: string, size: number, onReady: () => void): () => HTMLCanvasElement | null {
@@ -149,6 +205,7 @@ function subscribeBest(onChange: () => void) {
 export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const [screen, setScreen] = useState<Screen>('start');
   const [hud, setHud] = useState<Hud | null>(null);
+  const [showFps, setShowFps] = useState(false);
   const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
   // The finished run's numbers, kept for the results screen.
   const [result, setResult] = useState<{
@@ -157,10 +214,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     earned: number;
     reached: MilestoneId[];
     /** In co-op: each Keeper, who he went out as, what he carried, how he ended. */
-    keepers: { name: string; weapons: string; down: boolean }[];
+    keepers: {
+      name: string;
+      weapons: { id: WeaponId; name: string; level: number }[];
+      down: boolean;
+    }[];
   } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
+  // What the Keeper whose choice waits has left to reroll and to skip.
+  const [uses, setUses] = useState({ rerolls: 0, skips: 0 });
   // The level the waiting choice is for (several can wait after one gem).
   const [choiceLevel, setChoiceLevel] = useState(2);
   // One Keeper, or two at one keyboard; player 2's character; whose choice it is.
@@ -173,16 +236,34 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   // An evolution's announcement, for a few seconds.
   const [notice, setNotice] = useState<string | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
-  const best = useSyncExternalStore(subscribeBest, readBest, () => null);
+  // How long a run lasts: the lobby's choice, kept in the browser. The run in progress
+  // (or just over) keeps the length it started with.
+  const length = useSyncExternalStore(subscribeLength, readLength, (): RunLength => 5);
+  const [runLength, setRunLength] = useState<RunLength>(5);
+  const lengthRef = useRef<RunLength>(5);
+  const best = useSyncExternalStore(
+    subscribeBest,
+    () => readBest(length),
+    () => null
+  );
   // Aiming with a crosshair: a computer's choice (a touch screen has no pointer).
   const storedAim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
   const aimMode: AimMode = touch ? 'auto' : storedAim;
+  // Full graphics, or light (graphics.ts): drawn by the loop through a ref, so a change
+  // in the pause menu takes hold at once.
+  const graphics = useSyncExternalStore(subscribeGraphics, readGraphics, (): Graphics => 'full');
+  const graphicsRef = useRef<Graphics>(graphics);
   const aimRef = useRef<AimMode>(aimMode);
   // Where the mouse is on the screen, while a run lasts (null until it moves).
   const pointerRef = useRef<Vec | null>(null);
   useEffect(() => {
     aimRef.current = aimMode;
   }, [aimMode]);
+  useEffect(() => {
+    graphicsRef.current = graphics;
+    // The canvas is sized at the pixel ratio the setting gives: size it again.
+    window.dispatchEvent(new Event('resize'));
+  }, [graphics]);
   const arenaRef = useRef<Arena | null>(null);
   const [pausedState, setPausedState] = useState<ReturnType<Arena['state']> | null>(null);
   const screenRef = useRef<Screen>('start');
@@ -192,6 +273,9 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const resultsRef = useRef<HTMLElement>(null);
   const padRef = useRef<Vec>({ x: 0, y: 0 });
   const speedRef = useRef(1);
+  // `?crowd=` and `?elite=`: the cats come whatever the frame rate (the frame guard is off), so a
+  // test's run does not depend on how busy the machine is.
+  const crowdRef = useRef(false);
   // Who went out, and what the run found for the codex.
   const characterRef = useRef<CharacterId>('keeper');
   const secondRef = useRef<CharacterId | null>(null);
@@ -213,7 +297,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       const arena = arenaRef.current;
       if (!arena) return;
       const time = Math.min(arena.state().time, arena.config.timeGoalMs);
-      writeBest(bestOf(readBest(), time));
+      writeBest(bestOf(readBest(lengthRef.current), time), lengthRef.current);
       const { sentHome, level } = arena.state();
       const after = applyRun(readProgress(), {
         timeMs: time,
@@ -230,7 +314,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         reached: after.reached,
         keepers: arena.state().heroes.map((h, i) => ({
           name: CHARACTERS[characters[i]].name,
-          weapons: h.weapons.map((w) => `${WEAPONS[w.id].name} ${w.level}`).join(', '),
+          weapons: h.weapons.map((w) => ({ id: w.id, name: WEAPONS[w.id].name, level: w.level })),
           down: h.down,
         })),
       });
@@ -241,8 +325,17 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   );
 
   const start = () => {
-    const { seed, speed, boss } = parseTestHooks(window.location.search, freshSeed);
+    const { seed, speed, boss, fps, crowd, elite, fusion, pickups } = parseTestHooks(
+      window.location.search,
+      freshSeed
+    );
+    const chosen = readLength();
+    lengthRef.current = chosen;
+    setRunLength(chosen);
+    const lengthed = runLengthConfig(chosen);
     speedRef.current = speed;
+    crowdRef.current = crowd !== null || elite;
+    setShowFps(fps);
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
     playerRef.current.unlock();
@@ -263,10 +356,36 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       config: {
         // His character, what the Tailor sold him, the weapons unlocked.
         ...runConfig(stored, ARENA_CONFIG, secondRef.current),
+        ...lengthed,
+        ...(elite ? { cats: { ...ARENA_CONFIG.cats, eliteShare: 1 } } : {}),
+        ...(pickups ? { pickups: { ...ARENA_CONFIG.pickups, chance: PICKUPS_HOOK_CHANCE } } : {}),
+        ...(fusion
+          ? {
+              startingWeapons: FUSION_START,
+              startingLevel: MAX_WEAPON_LEVEL,
+              startingChests: 1,
+            }
+          : {}),
         ...(boss === null
           ? {}
           : {
-              schedule: { ...SCHEDULE, bosses: [boss, ...SCHEDULE.bosses].sort((a, b) => a - b) },
+              schedule: {
+                ...SCHEDULE,
+                bosses: [boss, ...lengthed.schedule!.bosses].sort((a, b) => a - b),
+              },
+            }),
+        ...(crowd === null
+          ? {}
+          : {
+              escalation: [[0, crowd]] as [number, number][],
+              // The arsenal sends cats home as fast as they come: refill the crowd quickly.
+              arrivalShare: 40,
+              // No level-up may stop a benchmark: gems worth nothing, chests out of reach.
+              gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+              chestReach: -1,
+              startingWeapons: CROWD_ARSENAL,
+              startingLevel: MAX_WEAPON_LEVEL,
+              hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
             }),
       },
     });
@@ -300,6 +419,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         setChoices([...next]);
         setChoiceLevel(arena.choiceLevel());
         setChooser(arena.chooser());
+        setUses(arena.levelUpUses());
       } else {
         setChoices(null);
         show('playing');
@@ -307,6 +427,30 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     },
     [show]
   );
+
+  /** After a reroll, new choices; after a skip, the next choice or the run. */
+  const refresh = useCallback(() => {
+    const arena = arenaRef.current;
+    if (!arena) return;
+    const next = arena.choices();
+    if (next) {
+      setChoices([...next]);
+      setChoiceLevel(arena.choiceLevel());
+      setChooser(arena.chooser());
+      setUses(arena.levelUpUses());
+    } else {
+      setChoices(null);
+      show('playing');
+    }
+  }, [show]);
+  const reroll = useCallback(() => {
+    if (screenRef.current !== 'choosing' || !arenaRef.current?.reroll()) return;
+    refresh();
+  }, [refresh]);
+  const skip = useCallback(() => {
+    if (screenRef.current !== 'choosing' || !arenaRef.current?.skip()) return;
+    refresh();
+  }, [refresh]);
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
 
@@ -384,13 +528,17 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       importantUntil = performance.now() + NOTICE_MS;
       setNotice(text);
     };
-    const heroSprites = [characterRef.current, secondRef.current ?? 'keeper'].map((id) =>
-      bitmapOf(
-        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HERO_SVGS[id])}`,
-        HERO_SIZE * 2,
-        redraw
-      )
-    );
+    // Each Keeper: his body in the five directions the art draws, and his tool.
+    const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    const heroSprites = [characterRef.current, secondRef.current ?? 'keeper'].map((id) => ({
+      bodies: Object.fromEntries(
+        DRAWN_DIRECTIONS.map((d) => [
+          d,
+          bitmapOf(svgUrl(HERO_BODY_SVGS[id][d]), HERO_SIZE * 2, redraw),
+        ])
+      ) as Record<(typeof DRAWN_DIRECTIONS)[number], () => HTMLCanvasElement | null>,
+      tool: bitmapOf(svgUrl(HERO_TOOL_SVGS[id]), HERO_SIZE * 2, redraw),
+    }));
     const twoPlayers = secondRef.current !== null;
     const titan = CAT_TYPES.findIndex((type) => type.id === 'titan-forest-cat');
     const varietySprites = Object.fromEntries(
@@ -404,12 +552,39 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       ])
     ) as Record<VarietyId, () => HTMLCanvasElement | null>;
 
+    const pickupSprites = Object.fromEntries(
+      (['fish', 'magnet', 'bell'] as const).map((kind) => [
+        kind,
+        bitmapOf(
+          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PICKUP_SVG[kind])}`,
+          64,
+          redraw
+        ),
+      ])
+    ) as Record<'fish' | 'magnet' | 'bell', () => HTMLCanvasElement | null>;
+    const patchSprites = {
+      toy: bitmapOf(
+        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PATCH_SVG.toy)}`,
+        64,
+        redraw
+      ),
+      box: bitmapOf(
+        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PATCH_SVG.box)}`,
+        64,
+        redraw
+      ),
+    };
     const guard = createFrameGuard(FRAME_GUARD);
     const held = new Set<string>();
     const flashes: Flash[] = [];
     const met = new Set<number>();
     const sounds: number[] = [];
     let carry = 0;
+    let runMs = 0;
+    let windowMs = 0;
+    let windowFrames = 0;
+    // Whether this run may still switch itself to light: once ever, and not under a hook.
+    let judging = !crowdRef.current && speedRef.current === 1 && !readGraphicsAuto();
     let last = performance.now();
     let lastHud = 0;
     let frameId = 0;
@@ -423,7 +598,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
     };
 
     const resize = () => {
-      const ratio = window.devicePixelRatio || 1;
+      const ratio = pixelRatioFor(graphicsRef.current, window.devicePixelRatio);
       canvas.width = Math.round(window.innerWidth * ratio);
       canvas.height = Math.round(window.innerHeight * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -434,6 +609,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
 
     const draw = (time: number) => {
       const state = arena.state();
+      // Light graphics: no glows, no columns of light.
+      const light = graphicsRef.current === 'light';
       // The shared camera: the screen shows the viewport times its zoom (the screen's
       // own zoom alone: 1 on a desktop, more on a phone; more again in co-op).
       const cam = arena.camera();
@@ -481,6 +658,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         context.arc(zone.x - camX, zone.y - camY, zone.radius, 0, 2 * Math.PI);
         context.fill();
       }
+      for (const pickup of arena.pickups()) {
+        const x = pickup.x - camX;
+        const y = pickup.y - camY;
+        if (x < -24 || y < -24 || x > width + 24 || y > height + 24) continue;
+        const bitmap = pickupSprites[pickup.kind]();
+        // Blinks in its last seconds, so it is seen going.
+        if (pickup.until - state.time < 3000 && Math.floor(time / 150) % 2 === 0) continue;
+        if (bitmap) context.drawImage(bitmap, x - 16, y - 16 + Math.sin(time / 200) * 2, 32, 32);
+      }
       for (const gem of arena.gems()) {
         const x = gem.x - camX;
         const y = gem.y - camY;
@@ -494,10 +680,103 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         context.fill();
       }
 
+      // What the household weapons set down: puddles under, then the toys and boxes.
+      for (const patch of arena.patches()) {
+        const x = patch.x - camX;
+        const y = patch.y - camY;
+        if (
+          x < -patch.radius * 2 ||
+          y < -patch.radius * 2 ||
+          x > width + patch.radius * 2 ||
+          y > height + patch.radius * 2
+        ) {
+          continue;
+        }
+        if (patch.kind === 'puddle') {
+          context.fillStyle = 'rgba(125, 211, 252, 0.22)';
+          context.beginPath();
+          context.ellipse(x, y, patch.radius, patch.radius * 0.7, 0, 0, 2 * Math.PI);
+          context.fill();
+          continue;
+        }
+        // A toy's squeak, faint: how far it carries; a box's own size.
+        if (patch.kind === 'toy') {
+          context.strokeStyle = `rgba(224, 224, 179, ${0.18 + 0.08 * Math.sin(time / 120)})`;
+          context.lineWidth = 2;
+          context.beginPath();
+          context.arc(x, y, patch.radius, 0, 2 * Math.PI);
+          context.stroke();
+        }
+        const bitmap = patchSprites[patch.kind]();
+        const size = Math.max(patch.radius * 1.6, 36);
+        if (bitmap) context.drawImage(bitmap, x - size / 2, y - size / 2, size, size);
+      }
+      // The Feather Wand's swings, fading, and the Hair Dryer's jets.
+      for (const swing of arena.sweeps()) {
+        const left = Math.max(swing.until - state.time, 0) / 240;
+        context.fillStyle = `rgba(224, 224, 179, ${0.1 + 0.3 * left})`;
+        context.beginPath();
+        context.moveTo(swing.x - camX, swing.y - camY);
+        context.arc(
+          swing.x - camX,
+          swing.y - camY,
+          swing.reach,
+          swing.angle - swing.half,
+          swing.angle + swing.half
+        );
+        context.closePath();
+        context.fill();
+      }
+      for (const jet of arena.jets()) {
+        context.fillStyle = 'rgba(253, 186, 116, 0.13)';
+        context.strokeStyle = 'rgba(253, 186, 116, 0.35)';
+        context.lineWidth = 1.5;
+        context.beginPath();
+        context.moveTo(jet.x - camX, jet.y - camY);
+        context.arc(
+          jet.x - camX,
+          jet.y - camY,
+          jet.reach,
+          jet.angle - jet.half,
+          jet.angle + jet.half
+        );
+        context.closePath();
+        context.fill();
+        context.stroke();
+      }
+
+      // An elite's attack winding up: where it will land, filling as the moment nears.
+      for (const warning of arena.telegraphs()) {
+        const ex = warning.x - camX;
+        const ey = warning.y - camY;
+        const fill = 0.08 + 0.22 * warning.progress;
+        context.fillStyle = `rgba(255, 99, 99, ${fill})`;
+        context.strokeStyle = 'rgba(255, 99, 99, 0.85)';
+        context.lineWidth = 2;
+        if (warning.shape === 'line') {
+          const angle = Math.atan2(warning.aimY - warning.y, warning.aimX - warning.x);
+          context.save();
+          context.translate(ex, ey);
+          context.rotate(angle);
+          context.fillRect(0, -warning.width / 2, warning.length, warning.width);
+          context.strokeRect(0, -warning.width / 2, warning.length, warning.width);
+          context.restore();
+        } else {
+          const cx = (warning.shape === 'ring' ? warning.x : warning.aimX) - camX;
+          const cy = (warning.shape === 'ring' ? warning.y : warning.aimY) - camY;
+          context.beginPath();
+          context.arc(cx, cy, warning.radius, 0, 2 * Math.PI);
+          context.fill();
+          context.stroke();
+        }
+      }
+
       // The beams.
       context.strokeStyle = '#c1e838';
-      context.shadowColor = '#c1e838';
-      context.shadowBlur = 12;
+      if (!light) {
+        context.shadowColor = '#c1e838';
+        context.shadowBlur = 12;
+      }
       context.lineWidth = 3;
       for (const beam of arena.beams()) {
         context.beginPath();
@@ -594,6 +873,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           flashes.splice(i, 1);
           continue;
         }
+        if (light) continue;
         context.fillStyle = `rgba(193, 232, 56, ${(left / 300) * 0.55})`;
         context.fillRect(flash.x - camX - 8, flash.y - camY - 60, 16, 70);
       }
@@ -603,8 +883,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       if (matriarch && titan >= 0) {
         const size = CAT_SIZE * 4;
         const bitmap = sprites[titan]();
-        context.shadowColor = '#9d86ff';
-        context.shadowBlur = 30;
+        if (!light) {
+          context.shadowColor = '#9d86ff';
+          context.shadowBlur = 30;
+        }
         if (bitmap) {
           context.drawImage(
             bitmap,
@@ -620,7 +902,12 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       // The Keepers, flickering while untouchable, faint under a veil; a downed one
       // lies on his side, pale. In co-op each is marked with his number.
       state.heroes.forEach((h, i) => {
-        const keeper = heroSprites[i]();
+        // He faces his aim (the crosshair, else the cat his weapon would fire at, else the
+        // way he walks) in the nearest of eight directions; his tool points exactly at it.
+        const direction = viewDirection(h);
+        const { drawn, mirrored } = spriteOf(direction);
+        const keeper = heroSprites[i].bodies[drawn]();
+        const tool = heroSprites[i].tool();
         const x = h.x - camX;
         const y = h.y - camY;
         if (keeper && !(h.untouchable && !h.down && Math.floor(time / 90) % 2 === 0)) {
@@ -628,12 +915,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           context.globalAlpha = h.down ? 0.35 : h.effect === 'veil' ? 0.35 : 1;
           context.translate(x, y);
           if (h.down) context.rotate(Math.PI / 2);
-          if (h.facing < 0) context.scale(-1, 1);
-          if (h.effect === 'freeze' && !h.down) {
+          if (h.effect === 'freeze' && !h.down && !light) {
             context.shadowColor = '#7dd3fc';
             context.shadowBlur = 16;
           }
+          const drawTool = () => {
+            if (!tool || h.down) return;
+            // The tool turns about his hand, pointing at the aim to the degree.
+            context.save();
+            context.translate(0, HERO_SIZE * 0.08);
+            context.rotate(h.lookAngle);
+            const k = (HERO_SIZE * 1.1) / 64;
+            context.drawImage(tool, -10 * k, -32 * k, 64 * k, 64 * k);
+            context.restore();
+          };
+          // Facing away, the tool is behind him.
+          if (facesAway(direction)) drawTool();
+          context.save();
+          if (mirrored) context.scale(-1, 1);
           context.drawImage(keeper, -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
+          context.restore();
+          if (!facesAway(direction)) drawTool();
           context.restore();
         }
         if (twoPlayers) {
@@ -681,6 +983,30 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         return;
       }
       guard.record(real);
+      runMs += real;
+      // A machine below the floor, on average, in the first seconds gets light graphics,
+      // once. Not under a hook that makes a run unlike a player's (speed, crowd, elite).
+      if (judging && runMs >= AUTO_JUDGE_FROM_MS) {
+        windowMs += real;
+        windowFrames++;
+        if (
+          shouldGoLight({
+            graphics: graphicsRef.current,
+            switchedBefore: false,
+            runMs,
+            windowMs,
+            windowFrames,
+            floorFps: FRAME_GUARD.floorFps,
+          })
+        ) {
+          judging = false;
+          writeGraphicsAuto();
+          writeGraphics('light');
+          important(
+            'This screen is struggling, so Graphics is set to Light. Change it back in the pause menu.'
+          );
+        } else if (runMs > AUTO_JUDGE_UNTIL_MS) judging = false;
+      }
       carry += real * speedRef.current;
       // Alone, WASD and the arrow keys both walk him; in co-op, each player his own.
       const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
@@ -698,7 +1024,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       } else arena.aimAt(null);
       let steps = 0;
       while (carry >= arena.config.stepMs && steps < MAX_STEPS_PER_FRAME) {
-        arena.step(input, guard.allowsSpawning(), input2);
+        arena.step(input, crowdRef.current || guard.allowsSpawning(), input2);
         carry -= arena.config.stepMs;
         steps++;
       }
@@ -733,6 +1059,10 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         } else if (event.kind === 'evolution') {
           foundRef.current.add(event.to);
           important(evolutionText(event.from, event.to));
+          if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
+        } else if (event.kind === 'fusion') {
+          foundRef.current.add(event.to);
+          important(fusionText(event.from, event.to));
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'secret') {
           // Nothing is said: it is simply there. The codex remembers.
@@ -787,12 +1117,21 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           xp: state.xp,
           xpToNext: state.xpToNext,
           weapons: state.weapons.map((w) => `${w.id}:${w.level}`).join(' '),
+          frameMs: Math.round(10000 / (guard.fps() ?? 60)) / 10,
+          windUps: state.windUps,
+          windUpsBegun: state.windUpsBegun,
+          bossWindUp: state.bossWindUp ?? '',
+          bossWindUpsBegun: state.bossWindUpsBegun,
+          pickups: state.pickups,
+          pickupsTaken: state.pickupsTaken,
+          lastPickup: state.lastPickup ?? '',
           crosshair:
             aimRef.current === 'crosshair' && pointerRef.current
               ? `${Math.round(pointerRef.current.x)},${Math.round(pointerRef.current.y)}`
               : '',
           zoom: Math.round(arena.camera().zoom * 100) / 100,
           heroes: state.heroes.map((h) => ({
+            facing: viewDirection(h),
             resolve: h.resolve,
             maxResolve: h.maxResolve,
             down: h.down,
@@ -820,6 +1159,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         setChoices([...arena.choices()!]);
         setChoiceLevel(arena.choiceLevel());
         setChooser(arena.chooser());
+        setUses(arena.levelUpUses());
         show('choosing');
       }
     };
@@ -832,14 +1172,27 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
         const buttons = Array.from(
           choiceRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? []
         );
-        if (Number.isInteger(number) && number >= 1 && number <= buttons.length) {
+        const picks = buttons.filter((b) => b.hasAttribute('data-choice'));
+        if (Number.isInteger(number) && number >= 1 && number <= picks.length) {
           event.preventDefault();
           choose(number - 1);
+        } else if (
+          event.key === 'r' ||
+          event.key === 'R' ||
+          event.key === 'x' ||
+          event.key === 'X'
+        ) {
+          // Not a held key, nor a browser shortcut (Ctrl+R reloads).
+          if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+          event.preventDefault();
+          if (event.key === 'r' || event.key === 'R') reroll();
+          else skip();
         } else if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)) {
           event.preventDefault();
-          const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const enabled = buttons.filter((b) => !b.disabled);
+          const at = enabled.indexOf(document.activeElement as HTMLButtonElement);
           const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
-          buttons[(at + step + buttons.length) % buttons.length]?.focus();
+          enabled[(at + step + enabled.length) % enabled.length]?.focus();
         }
         return;
       }
@@ -879,7 +1232,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onHidden);
     };
-  }, [running, finish, pause, show, choose]);
+  }, [running, finish, pause, show, choose, reroll, skip]);
 
   return (
     <div>
@@ -887,8 +1240,8 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       <p className="mt-4 max-w-2xl text-sm text-aura">
         The cats come from every side, and they do not stop coming. The Keeper does not hate them;
         he only wishes them home. His tools find them on their own: where you stand is everything.
-        Each touch of a cat wears down his Resolve. Last five minutes, and the Matriarch herself
-        will come for him.
+        Each touch of a cat wears down his Resolve. Last for the whole run length, and the Matriarch
+        herself will come for him.
       </p>
       <p className="mt-2 max-w-2xl text-sm text-aura">
         {touch
@@ -943,13 +1296,31 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           )}
         </fieldset>
       )}
+      <fieldset className="mt-4 text-sm text-aura" disabled={running}>
+        <legend className="font-semibold text-cream">Run length</legend>
+        <div className="mt-1 flex flex-wrap gap-4">
+          {RUN_LENGTHS.map((minutes) => (
+            <label key={minutes} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="survival-length"
+                data-testid={`survival-length-${minutes}`}
+                checked={length === minutes}
+                onChange={() => writeLength(minutes)}
+                className="border-line bg-void text-aura focus:ring-aura"
+              />
+              {minutes} minutes
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <GameSettings where="lobby" touch={touch} />
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button data-testid="survival-start" onClick={start} disabled={running}>
           {screen === 'results' ? 'Play again' : 'Start Survival'}
         </Button>
         <p data-testid="survival-best" data-best={best ?? ''} className="text-sm text-aura">
-          Longest survived: {best === null ? 'none yet' : clockText(best)}
+          Longest survived ({length} minutes): {best === null ? 'none yet' : clockText(best)}
         </p>
       </div>
 
@@ -967,11 +1338,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             The run is over
           </h2>
           <p role="status" className="mt-2 text-sm text-plasma">
-            {OUTCOME_TEXT[outcome]}
+            {outcome === 'goal'
+              ? `${LENGTH_WORDS[runLength]} minutes, and the night is survived. The cats remain.`
+              : OUTCOME_TEXT[outcome]}
           </p>
           <dl className="mt-4 grid grid-cols-2 gap-2 text-sm text-white">
             <dt className="text-aura">Time survived</dt>
             <dd data-testid="survival-result-time">{clockText(result.time)}</dd>
+            <dt className="text-aura">Run length</dt>
+            <dd data-testid="survival-result-length">{clockText(runLength * 60_000)}</dd>
             <dt className="text-aura">Cats sent home</dt>
             <dd data-testid="survival-result-sent-home">{result.sentHome}</dd>
             <dt className="text-aura">Tufts of fur gathered</dt>
@@ -984,7 +1359,22 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                   <span className="font-semibold text-cream">
                     Player {i + 1}, {k.name}
                   </span>
-                  {k.down ? ' (down at the end)' : ''}: {k.weapons || 'nothing'}.
+                  {k.down ? ' (down at the end)' : ''}:{' '}
+                  {k.weapons.length === 0
+                    ? 'nothing'
+                    : k.weapons.map((w, n) => {
+                        const tier = tierStyle({ kind: 'weapon', id: w.id, level: w.level });
+                        return (
+                          <span key={w.id} data-weapon={w.id} data-tier={tier.tier}>
+                            {n > 0 ? ', ' : ''}
+                            <span className={tier.className}>
+                              {w.name} {w.level}
+                            </span>{' '}
+                            ({tier.name})
+                          </span>
+                        );
+                      })}
+                  .
                 </li>
               ))}
             </ul>
@@ -1015,7 +1405,16 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-time={hud?.time ?? 0}
           data-resolve={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
           data-cats={hud?.cats ?? 0}
+          data-windups={hud?.windUps ?? 0}
+          data-windups-begun={hud?.windUpsBegun ?? 0}
+          data-boss-windup={hud?.bossWindUp ?? ''}
+          data-boss-windups-begun={hud?.bossWindUpsBegun ?? 0}
+          data-pickups={hud?.pickups ?? 0}
+          data-pickups-taken={hud?.pickupsTaken ?? 0}
+          data-last-pickup={hud?.lastPickup ?? ''}
           data-sent-home={hud?.sentHome ?? 0}
+          data-hero-facing={hud?.heroes[0]?.facing ?? ''}
+          data-hero2-facing={hud?.heroes[1]?.facing ?? ''}
           data-hero-x={hud?.heroX ?? 0}
           data-hero-y={hud?.heroY ?? 0}
           data-effect={hud?.effect ?? ''}
@@ -1028,6 +1427,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
           data-hero2-y={hud?.heroes[1]?.y ?? ''}
           data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
           data-aim={aimMode}
+          data-graphics={graphics}
           data-crosshair={hud?.crosshair ?? ''}
           data-zoom={hud?.zoom ?? ''}
           className={`fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none${
@@ -1067,8 +1467,13 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             {notice}
           </p>
           <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
+            {showFps && (
+              <p data-testid="survival-fps" data-frame-ms={hud?.frameMs ?? ''}>
+                {hud?.frameMs ?? 0} ms · {hud?.cats ?? 0} cats
+              </p>
+            )}
             <p data-testid="survival-time">
-              Time {clockText(hud?.time ?? 0)} / {clockText(ARENA_CONFIG.timeGoalMs)}
+              Time {clockText(hud?.time ?? 0)} / {clockText(runLength * 60_000)}
             </p>
             <div className="flex items-center gap-2">
               <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>
@@ -1161,7 +1566,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                 <p id="level-up-help" className="mt-1 text-sm text-aura">
                   {touch
                     ? 'Tap a choice.'
-                    : `Press 1 to ${choices.length}, or use the arrow keys and Enter.`}
+                    : `Press 1 to ${choices.length}, or use the arrow keys and Enter. R rerolls, X skips.`}
                 </p>
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
@@ -1172,6 +1577,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                         : choice.kind === 'passive'
                           ? 'Passive'
                           : 'Rest';
+                    const tier = choice.kind === 'restore' ? null : tierStyle(choice);
                     return (
                       <li key={i}>
                         <button
@@ -1179,12 +1585,24 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                           data-choice={choice.kind === 'restore' ? 'restore' : choice.id}
                           data-kind={choice.kind}
                           data-level={choice.kind === 'restore' ? '' : choice.level}
+                          data-tier={tier?.tier ?? ''}
                           onClick={() => choose(i)}
                           className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma"
                         >
                           <span className="font-semibold text-plasma">{i + 1}.</span>{' '}
-                          <span className="font-semibold">{name}</span>{' '}
+                          <span className={`font-semibold ${tier?.className ?? ''}`}>{name}</span>{' '}
                           <span className="text-aura">({kind})</span>
+                          {tier && (
+                            <>
+                              {' '}
+                              <span
+                                data-testid="choice-tier"
+                                className={`text-xs font-semibold ${tier.className}`}
+                              >
+                                {tier.name}
+                              </span>
+                            </>
+                          )}
                           <span className="mt-1 block text-aura">{description}</span>
                           {change && (
                             <span
@@ -1199,6 +1617,28 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
                     );
                   })}
                 </ol>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    data-testid="survival-reroll"
+                    data-uses={uses.rerolls}
+                    disabled={uses.rerolls <= 0}
+                    onClick={reroll}
+                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
+                  >
+                    Reroll ({uses.rerolls} left)
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="survival-skip"
+                    data-uses={uses.skips}
+                    disabled={uses.skips <= 0}
+                    onClick={skip}
+                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
+                  >
+                    Skip, for some experience ({uses.skips} left)
+                  </button>
+                </div>
               </div>
             </div>
           )}

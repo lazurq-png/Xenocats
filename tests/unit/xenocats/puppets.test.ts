@@ -336,7 +336,9 @@ describe('every attack does to a page element what it does to the pointer', () =
         document.body.innerHTML = '';
       }
     }
-  });
+    // 20 s: it simulates every effect three times, about 5 s in a loaded full run, so the
+    // default 5 s limit failed it on a busy machine (also on main, unchanged).
+  }, 20_000);
 
   it('one already partly off screen is never pulled further off, nor pulled in by an attack that does not move it', () => {
     const top = { x: 600, y: 5 };

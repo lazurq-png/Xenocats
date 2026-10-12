@@ -1,6 +1,6 @@
 import bcryptjs from 'bcryptjs';
 import postgres from 'postgres';
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 
 // The login lockout, against the test schema global-setup.ts rebuilds. Each test
 // makes a user of its own (written straight into the test schema: there is no

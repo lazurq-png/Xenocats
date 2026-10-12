@@ -225,34 +225,7 @@ Do not suppress errors without understanding them.
 
 ## Completion Report
 
-When finished, report:
-
-### Summary
-
-What changed and why.
-
-### Files Changed
-
-List the meaningful files changed.
-
-### Verification
-
-List the commands/checks actually run and their results.
-
-### Remaining Issues
-
-Mention:
-
-* Known failures
-* Environment limitations
-* Deferred work
-* Unverified assumptions
-
-If nothing remains, say so explicitly.
-
-### Risk
-
-Briefly describe any meaningful compatibility, migration, deployment, or operational risk.
+When finished, report in the format `CLAUDE.md` §17 defines — Summary, Verification, Notes, Remaining Issues — the repository's one completion-report format.
 
 ---
 

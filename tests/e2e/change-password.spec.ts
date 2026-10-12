@@ -1,6 +1,6 @@
 import bcryptjs from 'bcryptjs';
 import postgres from 'postgres';
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 
 // Changing the password on the settings page, against the test schema
 // global-setup.ts rebuilds, as a user of the test's own (written straight into

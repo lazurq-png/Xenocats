@@ -5,7 +5,12 @@ import {
   type ArenaConfig,
   createArena,
 } from '@/app/ui/xenocats/arena';
-import { HERO_SVGS, VARIETY_SVG } from '@/app/ui/xenocats/arena-art';
+import {
+  HERO_BODY_SVGS,
+  HERO_TOOL_SVGS,
+  PICKUP_SVG,
+  VARIETY_SVG,
+} from '@/app/ui/xenocats/arena-art';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import {
@@ -339,6 +344,8 @@ describe('the Mega Cat', () => {
       escalation: [[0, 0]],
       startingWeapons: ['thunderous-vacuum', 'can-opener', 'cat-treats'],
       startingLevel: 8,
+      // The Mega Cat pounces now: a Keeper who is not worn down, or the run ends under the loop below.
+      hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
     });
     let arrived = false;
     while (a.state().time < 4900) a.step(still);
@@ -366,18 +373,25 @@ describe('the Mega Cat', () => {
       startingWeapons: ['thunderous-vacuum', 'can-opener', 'cat-treats'],
       startingLevel: 8,
       chestReach: ARENA_CONFIG.chestReach,
+      hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
     });
-    while (a.state().chests === 0 && a.state().time < 300_000) a.step(still);
-    const chest = a.chests()[0];
-    const level = a.state().level;
-    // Walk to it.
-    while (!a.choices() && a.state().time < 400_000) {
-      const { x, y } = a.state().hero;
-      const d = Math.hypot(chest.x - x, chest.y - y) || 1;
-      a.step({ x: (chest.x - x) / d, y: (chest.y - y) / d });
+    // The Mega Cat pounces onto him now, so it is sent home where he stands and its chest
+    // is under his feet: he opens it at once. A level-up on the way (a gem) stops the run
+    // until it is chosen, so the loop chooses and goes on until a chest has been opened.
+    let opened = false;
+    for (let i = 0; i < 40_000 && !opened; i++) {
+      if (a.choices()) {
+        a.choose(0);
+        continue;
+      }
+      a.step(still);
+      if (a.drainEvents().some((e) => e.kind === 'chest')) opened = true;
     }
+    expect(opened).toBe(true);
+    // The chest was a level-up (until weapons evolve): a choice waits, no chest is left.
     expect(a.choices()).not.toBeNull();
     expect(a.state().chests).toBe(0);
+    const level = a.state().level;
     a.choose(0);
     expect(a.state().level).toBe(level);
   }, 60_000);
@@ -387,9 +401,14 @@ describe('the drawings', () => {
   it('every variety and every hero has a whole SVG, every colour filled in', () => {
     const drawings = [
       ...(Object.keys(VARIETIES) as VarietyId[]).map((id) => [id, VARIETY_SVG[id]] as const),
-      ...Object.entries(HERO_SVGS),
+      // Each hero's body in the five drawn directions, and his tool.
+      ...Object.entries(HERO_BODY_SVGS).flatMap(([hero, bodies]) =>
+        Object.entries(bodies).map(([d, svg]) => [`${hero} ${d}`, svg] as const)
+      ),
+      ...Object.entries(HERO_TOOL_SVGS).map(([hero, svg]) => [`${hero} tool`, svg] as const),
+      ...Object.entries(PICKUP_SVG).map(([kind, svg]) => [`${kind} pickup`, svg] as const),
     ];
-    expect(drawings.length).toBe(Object.keys(VARIETIES).length + 3);
+    expect(drawings.length).toBe(Object.keys(VARIETIES).length + 20 + 4 + 3);
     for (const [id, svg] of drawings) {
       expect(svg, id).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"[^>]*>/);
       expect(svg.trimEnd(), id).toMatch(/<\/svg>$/);

@@ -19,6 +19,17 @@ const config: Config = {
         plasma: { DEFAULT: '#c1e838', dim: '#aacf22' },
         aura: { DEFAULT: '#9d86ff', login: '#8c88ff', link: '#7a7ff1' },
         cream: '#e0e0b3',
+        // How far a Survival weapon or passive has come (app/ui/xenocats/item-tier.ts): each
+        // keeps 4.5 : 1 against the dark panels it is drawn on.
+        tier: {
+          1: '#9ca3af',
+          2: '#7dd3fc',
+          3: '#9d86ff',
+          4: '#c1e838',
+          5: '#fbbf24',
+          6: '#fb923c',
+          7: '#f472b6',
+        },
       },
       fontFamily: {
         display: ['var(--font-display)', 'sans-serif'],

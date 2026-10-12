@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from './fixtures';
 import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
 
 // The speaker toggle and the cats' sounds on /cats (no login, no database). Web

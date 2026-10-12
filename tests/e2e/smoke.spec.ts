@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 // Pages that render without the database; dashboard.spec.ts covers those that need it.
 

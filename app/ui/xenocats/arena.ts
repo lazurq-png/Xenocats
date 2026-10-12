@@ -31,7 +31,9 @@ import {
   type WeaponId,
   type WeaponKind,
   type WeaponStats,
+  FUSIONS,
   evolutionFor,
+  fusionFor,
   modifiers,
   offerChoices,
   weaponStats,
@@ -48,6 +50,17 @@ export type ArenaConfig = {
   stepMs: number;
   /** The run's time goal, ms: then the Matriarch comes. */
   timeGoalMs: number;
+  /**
+   * A run longer than five minutes keeps its crowd at the peak, and the cats that
+   * arrive after `fromMs` are tougher: each minute past it adds this share of their
+   * Homesickness limit and of their speed (the speed up to `maxSpeedFactor` times).
+   */
+  toughness: {
+    fromMs: number;
+    homesicknessPerMin: number;
+    speedPerMin: number;
+    maxSpeedFactor: number;
+  };
   hero: {
     /** px/s. */
     speed: number;
@@ -111,6 +124,69 @@ export type ArenaConfig = {
     speed: number;
     reach: number;
   };
+  /**
+   * An elite xenocat near a Keeper winds up an attack (shaped by its effect), stands
+   * still while it does, then lands it where the Keeper was when it began; a Keeper
+   * who has moved out of the shape is not hit. Then it rests for `cooldownMs`.
+   */
+  eliteAttack: {
+    /** A blast or a line begins within this of a Keeper, px (well inside the smallest screen). */
+    range: number;
+    windUpMs: number;
+    /** A ring starts with the Keeper inside it, even beside the elite: a longer wind-up to leave it. */
+    ringWindUpMs: number;
+    cooldownMs: number;
+    /** Rings round the elite (Cryo and the slows; the pulls), px. */
+    ringRadius: number;
+    pullRadius: number;
+    /** A blast at the aim, px. */
+    blastRadius: number;
+    /** A line from the elite through the aim: its length and width, px. */
+    lineLength: number;
+    lineWidth: number;
+  };
+  /**
+   * The bosses attack too, wound up and dodgeable like an elite's: the Mega Cat
+   * pounces where the Keeper stood; the Matriarch calls a ring of kittens round where
+   * he stood. Each stands still for its wind-up.
+   */
+  bossAttack: {
+    pounce: {
+      /** It begins within this of a Keeper (and not already on him), px. */
+      range: number;
+      windUpMs: number;
+      cooldownMs: number;
+      /** What it lands on, px, round where he was. */
+      radius: number;
+    };
+    summon: {
+      /** The Matriarch's first call, and then one this often, ms after she comes. */
+      firstMs: number;
+      everyMs: number;
+      windUpMs: number;
+      /** The ring of kittens is this wide, round where he was, px; this many. */
+      ringRadius: number;
+      kittens: number;
+      /** She calls only from this far off, px: not once she is on him. */
+      minDistance: number;
+    };
+  };
+  /**
+   * Pickups a cat sent home may leave (arena.ts, pickupFor): the share of cats that do;
+   * how long one lies, ms; at most so many lie; a fish restores this share of his
+   * Resolve; a magnet draws every gem in for `magnetMs`; a bell stops the cats on
+   * screen for `bellMs`.
+   */
+  pickups: {
+    chance: number;
+    lifeMs: number;
+    cap: number;
+    fishShare: number;
+    magnetMs: number;
+    bellMs: number;
+  };
+  /** Chests lying on the Keepers' start (a test's way to reach a chest at once). */
+  startingChests: number;
   /** Which cats come when (varieties.ts). */
   schedule: Schedule;
   laserCat: {
@@ -125,8 +201,14 @@ export type ArenaConfig = {
   chestReach: number;
   /** The base weapons a level-up may offer (the progression keeps some back). */
   availableWeapons: readonly WeaponId[];
-  /** What the run brings from before (progression.ts): multipliers, and revivals. */
-  boost: { might: number; pickup: number; revivals: number };
+  /** What the run brings from before (progression.ts): multipliers, revivals, and more rerolls and skips. */
+  boost: { might: number; pickup: number; revivals: number; rerolls: number; skips: number };
+  /**
+   * At a level-up a Keeper may ask for new choices (a reroll) or take a little experience
+   * and no choice (a skip): so many of each a run, and a skip is worth this share of the
+   * experience the next level needs.
+   */
+  levelUp: { rerolls: number; skips: number; skipXpShare: number };
   /**
    * The secret cat (decisions.md): once a run, from `afterMs` into it, when he has
    * stood still for `stillMs`, it comes and sits by him.
@@ -163,12 +245,19 @@ export type ArenaConfig = {
 export const ARENA_CONFIG: ArenaConfig = {
   stepMs: 1000 / 60,
   timeGoalMs: 5 * 60_000,
+  toughness: {
+    fromMs: 5 * 60_000,
+    homesicknessPerMin: 0.15,
+    speedPerMin: 0.02,
+    maxSpeedFactor: 1.3,
+  },
   hero: { speed: 210, resolve: 100, untouchableMs: 700, reach: 30 },
   cats: {
     speed: [45, 95],
     homesickness: [16, 34],
     drain: [4, 11],
-    eliteShare: 0.4,
+    // About a third of what it was (0.4): an elite is an event, and it now attacks.
+    eliteShare: 0.13,
     effectMaxMs: 2500,
     spawnMargin: 60,
     hardCap: 6000,
@@ -192,11 +281,43 @@ export const ARENA_CONFIG: ArenaConfig = {
   startingPassives: [],
   gems: { pickup: 100, speed: 520, value: 1, eliteValue: 6, cap: 1500 },
   matriarch: { speed: 330, reach: 70 },
+  eliteAttack: {
+    range: 300,
+    windUpMs: 900,
+    ringWindUpMs: 1100,
+    cooldownMs: 3500,
+    ringRadius: 110,
+    pullRadius: 140,
+    blastRadius: 70,
+    lineLength: 330,
+    lineWidth: 44,
+  },
+  bossAttack: {
+    pounce: { range: 420, windUpMs: 1100, cooldownMs: 6000, radius: 120 },
+    summon: {
+      firstMs: 3000,
+      everyMs: 8000,
+      windUpMs: 1300,
+      ringRadius: 150,
+      kittens: 10,
+      minDistance: 260,
+    },
+  },
+  pickups: {
+    chance: 0.002,
+    lifeMs: 15_000,
+    cap: 24,
+    fishShare: 0.25,
+    magnetMs: 2000,
+    bellMs: 2000,
+  },
+  startingChests: 0,
   schedule: SCHEDULE,
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
   availableWeapons: BASE_WEAPONS,
-  boost: { might: 1, pickup: 1, revivals: 0 },
+  boost: { might: 1, pickup: 1, revivals: 0, rerolls: 0, skips: 0 },
+  levelUp: { rerolls: 1, skips: 1, skipXpShare: 0.3 },
   secretCat: { afterMs: 60_000, stillMs: 20_000 },
   secondPlayer: null,
   coop: { startGap: 80, maxZoomOut: 1.6, margin: 80, reviveMs: 30_000 },
@@ -207,6 +328,17 @@ export const ARENA_CONFIG: ArenaConfig = {
   view: { minView: 640, maxZoom: 1.8 },
   cellSize: 64,
 };
+
+/**
+ * What a run of `minutes` changes in the config: its time goal (when the Matriarch
+ * comes) and a Mega Cat every two minutes before it. Five minutes is the config as it is.
+ */
+export function runLengthConfig(minutes: number): Partial<ArenaConfig> {
+  const goal = minutes * 60_000;
+  const bosses: number[] = [];
+  for (let at = 120_000; at < goal; at += 120_000) bosses.push(at);
+  return { timeGoalMs: goal, schedule: { ...SCHEDULE, bosses } };
+}
 
 /** How many cats the arena aims to hold `ms` into the run. */
 export function catsWanted(ms: number, escalation = ARENA_CONFIG.escalation): number {
@@ -256,6 +388,42 @@ export const HERO_EFFECTS: Readonly<Record<string, HeroEffect>> = {
   tiny: { kind: 'veil' },
 };
 
+/** What an elite's attack looks like and where it lands. */
+export type AttackShape = 'ring' | 'blast' | 'line';
+
+/** The shape of the attack drawn from an effect (the hero effect's kind). */
+export function attackShapeOf(effect: HeroEffect): AttackShape {
+  switch (effect.kind) {
+    case 'freeze':
+    case 'slow':
+      return 'ring';
+    case 'push':
+      return effect.way === 'toward' ? 'ring' : 'blast';
+    case 'jump':
+    case 'jitter':
+      return 'blast';
+    default:
+      return 'line';
+  }
+}
+
+/** An elite's attack winding up, for the view to warn with. */
+export type Telegraph = {
+  shape: AttackShape;
+  /** The elite. */
+  x: number;
+  y: number;
+  /** Where the Keeper was when it began. */
+  aimX: number;
+  aimY: number;
+  /** A ring's or a blast's radius; a line's length and width. */
+  radius: number;
+  length: number;
+  width: number;
+  /** 0 as it begins, 1 as it lands. */
+  progress: number;
+};
+
 export type ArenaCat = {
   id: number;
   /** A variety (varieties.ts), or null for one of the twenty xenocat types. */
@@ -280,7 +448,69 @@ export type ArenaCat = {
   limit: number;
   drain: number;
   elite: boolean;
+  /** An elite's attack: when it lands (0 while none winds up), where it aimed, and when it may begin next. */
+  windUntil: number;
+  aimX: number;
+  aimY: number;
+  nextAttackAt: number;
+  /** Held still until (a Peacock Tail's touch, a box), slowed until (a puddle), scorched until. */
+  stunUntil: number;
+  slowUntil: number;
+  vulnUntil: number;
 };
+
+/** Something a weapon set down that stays a while: a toy, a box, a puddle. */
+export type Patch = {
+  kind: 'toy' | 'box' | 'puddle';
+  weapon: WeaponId;
+  x: number;
+  y: number;
+  /** Where it hurts or holds, px. */
+  radius: number;
+  /** A toy's squeak carries this far, px. */
+  reach: number;
+  until: number;
+  /** Homesickness a second, to each cat in it. */
+  damage: number;
+  /** A box takes at most this many cats. */
+  capacity: number;
+  /** A Squeak Symphony's last note, and a Cardboard Castle's slow field. */
+  finale: number;
+  moat: boolean;
+};
+
+/** A swing of the Feather Wand: from him, this way, this far, this wide (half-angle). */
+export type Sweep = {
+  x: number;
+  y: number;
+  angle: number;
+  reach: number;
+  half: number;
+  until: number;
+};
+
+/** A Hair Dryer's jet this step. */
+export type Jet = { x: number; y: number; angle: number; reach: number; half: number };
+
+/** A scorched cat takes this much more from every weapon. */
+export const SCORCH_FACTOR = 1.5;
+/** A puddle, or a castle's moat, slows the cats in it to this share of their speed. */
+export const SLOW_FACTOR = 0.5;
+/** Most patches on the field at once; the oldest give way. */
+export const PATCH_CAP = 48;
+/** Most things in flight at once for the Banquet's crumbs to be added to. */
+export const CRUMB_LIMIT = 700;
+/** The Bottomless Saucer sends out its milk waves this often, ms, and they fly this fast, px/s. */
+export const MILK_WAVE_EVERY_MS = 1500;
+export const MILK_WAVE_SPEED = 380;
+/** A Yarn Apocalypse ball slows the cats it touches for this long, ms. */
+export const TANGLE_MS = 1500;
+/** A Monsoon puddle: how wide, and how long it lasts, ms. */
+export const RAIN_PUDDLE_RADIUS = 70;
+export const RAIN_PUDDLE_MS = 2500;
+/** A Jacuzzi's puddle: how wide, and how long it lasts, ms. */
+export const PUDDLE_RADIUS = 90;
+export const PUDDLE_MS = 4000;
 
 /** Something a weapon fired, in flight. */
 export type Projectile = {
@@ -298,8 +528,13 @@ export type Projectile = {
   until: number;
   /** The cats it has touched (by id), each only once. */
   touched: number[];
-  /** How many more times it splits when it bounces (the Yarn Apocalypse's). */
+  /**
+   * How many more times it splits when it bounces (the Yarn Apocalypse's); for a
+   * Monsoon droplet, 1 if it leaves a puddle where it ends.
+   */
   splits: number;
+  /** A Banquet crumb looks for the nearest cat again at this time. */
+  retargetAt: number;
   /** Whose weapon fired it (the Keeper's index). */
   owner: number;
 };
@@ -312,8 +547,50 @@ export const GULP_BURST_RADIUS = 170;
 
 export type Gem = { x: number; y: number; value: number };
 
+/** What a cat sent home may leave besides its gem. */
+export type PickupKind = 'fish' | 'magnet' | 'bell';
+export type Pickup = { x: number; y: number; kind: PickupKind; until: number };
+
+/**
+ * Whether the cat with this id leaves a pickup when it is sent home, and which: by a hash
+ * of its id, so it draws nothing from the run's random source (the seeded runs are the
+ * same as before). Of the ones left, half are fish, three in ten magnets, a fifth bells.
+ */
+export function pickupFor(id: number, chance: number): PickupKind | null {
+  if ((Math.imul(id, 2654435761) >>> 0) / 4294967296 >= chance) return null;
+  const roll = (Math.imul(id + 7, 40503) >>> 0) % 10;
+  return roll < 5 ? 'fish' : roll < 8 ? 'magnet' : 'bell';
+}
+
+/**
+ * A weapon held: its level and when it next fires. A fused weapon also keeps its
+ * parents', which go on firing as they did (each its own clock), with its own
+ * `readyAt` for what it adds.
+ */
+type Held = {
+  level: number;
+  readyAt: number;
+  parts?: Map<WeaponId, { level: number; readyAt: number }>;
+};
+
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
+  /** Rerolls and skips he has left this run. */
+  rerollsLeft: number;
+  skipsLeft: number;
+  /**
+   * Where he looks, radians (the screen's): at the crosshair, else at the cat his first
+   * aiming weapon targets now (looked for five times a second), else null.
+   */
+  aimAngle: number | null;
+  lookAt: number;
+  /** The way he last walked, radians. */
+  walkAngle: number;
+  /** When the Bottomless Saucer sends out its next milk waves. */
+  waveAt: number;
+  /** The Hair Dryer's way between two looks for a cat, and when it looks next. */
+  jetAngle: number;
+  jetAt: number;
   /** 0 for player 1, 1 for player 2. */
   index: number;
   x: number;
@@ -331,7 +608,7 @@ type Keeper = {
   aim: Vec | null;
   /** An elite's effect on him, while it lasts. */
   effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null;
-  weapons: Map<WeaponId, { level: number; readyAt: number }>;
+  weapons: Map<WeaponId, Held>;
   passives: Map<PassiveId, number>;
   mods: Modifiers;
   revivals: number;
@@ -339,6 +616,8 @@ type Keeper = {
   downedAt: number | null;
   /** The Forbidden Catnip Vacuum's burst, when it comes (after its pull). */
   gulpAt: number;
+  /** What the burst after the Forbidden Catnip Vacuum's pull does. */
+  gulpDamage: number;
 };
 
 export type ArenaEvent =
@@ -355,10 +634,21 @@ export type ArenaEvent =
   | { kind: 'boss'; x: number; y: number; type: number }
   /** A xenocat (one with artwork) has come: rare, and an elite as often as not. */
   | { kind: 'xenocat'; type: number; elite: boolean }
+  /** An elite begins to wind up an attack, and when it lands (hit or not). */
+  | { kind: 'wind-up'; x: number; y: number; type: number; shape: AttackShape }
+  | { kind: 'elite-attack'; x: number; y: number; type: number; hits: number }
+  /** The Mega Cat pounced, or the Matriarch's kittens came. */
+  | { kind: 'boss-pounce'; x: number; y: number; hits: number }
+  /** A pickup was left, or taken. */
+  | { kind: 'pickup-left'; pickup: PickupKind; x: number; y: number }
+  | { kind: 'pickup-taken'; pickup: PickupKind; player: number }
+  | { kind: 'boss-summon'; x: number; y: number; kittens: number }
   | { kind: 'chest'; x: number; y: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
   | { kind: 'evolution'; from: WeaponId; to: WeaponId }
+  /** Two evolved weapons became one at a chest. */
+  | { kind: 'fusion'; from: readonly [WeaponId, WeaponId]; to: WeaponId }
   /** The secret cat has come. */
   | { kind: 'secret'; id: 'neighbour' }
   /** His Resolve was spent, and half of it returned (Second Wind, or the other lasted). */
@@ -409,7 +699,7 @@ export function createArena(options: {
     own: { startingWeapons: readonly WeaponId[]; speed: number; resolve: number },
     startingPassives: readonly PassiveId[]
   ): Keeper {
-    const weapons = new Map<WeaponId, { level: number; readyAt: number }>();
+    const weapons = new Map<WeaponId, Held>();
     for (const id of own.startingWeapons) {
       weapons.set(id, { level: config.startingLevel, readyAt: config.firstShotMs });
     }
@@ -428,9 +718,18 @@ export function createArena(options: {
       weapons,
       passives,
       mods: boosted(modifiers(passives)),
+      jetAngle: 0,
+      jetAt: 0,
+      waveAt: 0,
+      rerollsLeft: config.levelUp.rerolls + config.boost.rerolls,
+      skipsLeft: config.levelUp.skips + config.boost.skips,
+      aimAngle: null,
+      lookAt: 0,
+      walkAngle: 0,
       revivals: config.boost.revivals,
       downedAt: null,
       gulpAt: Infinity,
+      gulpDamage: 0,
     };
   }
 
@@ -454,6 +753,26 @@ export function createArena(options: {
   /** The Keeper being dealt with now: whose walk, weapons and touch. */
   let hero = keepers[0];
   let sentHome = 0;
+  let windUpsBegun = 0;
+  /** How many elites are winding up an attack now (kept, not counted: state() is read every frame). */
+  let windingUp = 0;
+  /** Of them, the Mega Cats; and the Matriarch's call, if she is making one. */
+  let megaWinding = 0;
+  /** How many boss wind-ups have begun in the run (the HUD data and the tests read it). */
+  let bossWindUpsBegun = 0;
+  const pickups: Pickup[] = [];
+  let pickupsTaken = 0;
+  let lastPickup: PickupKind | null = null;
+  /** Until this time every gem is drawn in (a magnet). */
+  let magnetUntil = 0;
+  let matriarchWind = 0;
+  let matriarchAim: Vec = { x: 0, y: 0 };
+  let matriarchNextAt = Infinity;
+  /** One wind-up ended, wherever it was: landed, held still, or the cat went home. */
+  function stopWinding(cat: ArenaCat) {
+    windingUp--;
+    if (cat.variety === 'mega') megaWinding--;
+  }
   let nextId = 1;
   // How long he has stood still; whether the secret cat has come.
   let stillFor = 0;
@@ -470,7 +789,7 @@ export function createArena(options: {
   let nextXenocat = config.schedule.xenocats?.from ?? Infinity;
   const swarms = new Map<number, number>();
   let bossesCome = 0;
-  const chests: Vec[] = [];
+  const chests: Vec[] = Array.from({ length: config.startingChests }, () => ({ x: 0, y: 0 }));
   // The Laser Cats' shots.
   type Shot = { x: number; y: number; vx: number; vy: number; until: number; drain: number };
   const shots: Shot[] = [];
@@ -480,6 +799,9 @@ export function createArena(options: {
   const projectiles: Projectile[] = [];
   const spareProjectiles: Projectile[] = [];
   const beams: { from: Vec; to: Vec; until: number }[] = [];
+  const patches: Patch[] = [];
+  const sweeps: Sweep[] = [];
+  const jets: Jet[] = [];
   // Experience.
   const gems: Gem[] = [];
   let xp = 0;
@@ -587,8 +909,26 @@ export function createArena(options: {
     cat.shotAt = time + config.laserCat.everyMs;
     cat.swarm = 0;
     cat.visitor = false;
+    cat.windUntil = 0;
+    cat.aimX = 0;
+    cat.aimY = 0;
+    cat.nextAttackAt = 0;
+    cat.stunUntil = 0;
+    cat.slowUntil = 0;
+    cat.vulnUntil = 0;
     cats.push(cat);
     return cat;
+  }
+
+  /** A cat arriving late in a long run is tougher and quicker (config.toughness). */
+  function toughen(cat: ArenaCat) {
+    const t = config.toughness;
+    // A five-minute run has no long peak: the seconds until the Matriarch arrives stay as they were.
+    if (config.timeGoalMs <= t.fromMs) return;
+    const minutes = Math.max(time - t.fromMs, 0) / 60_000;
+    if (minutes === 0) return;
+    cat.limit *= 1 + minutes * t.homesicknessPerMin;
+    cat.speed *= Math.min(1 + minutes * t.speedPerMin, t.maxSpeedFactor);
   }
 
   function spawnXenocat(at: Vec) {
@@ -601,6 +941,7 @@ export function createArena(options: {
     cat.limit = byType(type, config.cats.homesickness, 3);
     cat.drain = Math.round(byType(type, config.cats.drain, 5));
     cat.elite = random.next() < config.cats.eliteShare;
+    toughen(cat);
     events.push({ kind: 'xenocat', type, elite: cat.elite });
     return cat;
   }
@@ -615,6 +956,7 @@ export function createArena(options: {
     cat.limit = variety.homesickness;
     cat.drain = variety.drain;
     cat.elite = false;
+    toughen(cat);
     return cat;
   }
 
@@ -724,7 +1066,13 @@ export function createArena(options: {
         variety: cat.variety,
       });
       sentHome++;
+      if (cat.windUntil > 0) stopWinding(cat);
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
+      const left = pickupFor(cat.id, config.pickups.chance);
+      if (left && pickups.length < config.pickups.cap) {
+        pickups.push({ x: cat.x, y: cat.y, kind: left, until: time + config.pickups.lifeMs });
+        events.push({ kind: 'pickup-left', pickup: left, x: cat.x, y: cat.y });
+      }
       // A boss, an elite, a visiting xenocat, or the last kitten of a swarm
       // leaves a chest.
       let chest = cat.variety === 'mega' || cat.visitor || (cat.elite && cat.swarm === 0);
@@ -756,14 +1104,15 @@ export function createArena(options: {
     events.push({ kind: 'over', outcome });
   }
 
-  /** Lays an elite's effect on the hero, if none is on him. */
-  function afflict(cat: ArenaCat) {
-    if (hero.effect && time < hero.effect.until) return;
-    if (cat.variety !== null) return;
+  /** Lays an elite's effect on the hero, if none is on him; whether it did. */
+  function afflict(cat: ArenaCat): boolean {
+    if (hero.effect && time < hero.effect.until) return false;
+    if (cat.variety !== null) return false;
     const type = types[cat.type];
     const kind = HERO_EFFECTS[type.effect.id];
-    if (!kind) return;
-    const until = time + Math.min(type.effect.durationMs, config.cats.effectMaxMs);
+    if (!kind) return false;
+    const until =
+      time + Math.min(type.effect.durationMs, config.cats.effectMaxMs) * (1 - hero.mods.guard);
     const away = { x: hero.x - cat.x, y: hero.y - cat.y };
     const length = Math.hypot(away.x, away.y) || 1;
     const angle = random.next() * 2 * Math.PI;
@@ -781,6 +1130,120 @@ export function createArena(options: {
       tether(hero, from);
     }
     hero.effect = { effect: kind, until, from: { x: cat.x, y: cat.y }, way };
+    return true;
+  }
+
+  /**
+   * The Mega Cat near a Keeper stands still, then pounces where he stood: it lands
+   * there (a Keeper still within the radius loses Resolve), and goes on from there.
+   * Returns whether it spends this step on it.
+   */
+  function megaPounces(cat: ArenaCat, target: Keeper, d: number): boolean {
+    const a = config.bossAttack.pounce;
+    if (cat.windUntil > 0) {
+      if (time < cat.windUntil) return true;
+      cat.windUntil = 0;
+      stopWinding(cat);
+      cat.nextAttackAt = time + a.cooldownMs;
+      cat.x = cat.aimX;
+      cat.y = cat.aimY;
+      let hits = 0;
+      for (const k of keepers) {
+        if (!standing(k) || time < k.untouchableUntil) continue;
+        if (Math.hypot(k.x - cat.aimX, k.y - cat.aimY) > a.radius + config.hero.reach / 2) continue;
+        k.resolve = Math.max(k.resolve - cat.drain, 0);
+        k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
+        events.push({
+          kind: 'hero-hit',
+          type: cat.type,
+          variety: cat.variety,
+          elite: false,
+          player: k.index,
+        });
+        hits++;
+      }
+      events.push({ kind: 'boss-pounce', x: cat.x, y: cat.y, hits });
+      return true;
+    }
+    if (time >= cat.nextAttackAt && d <= a.range && d > a.radius) {
+      cat.windUntil = time + a.windUpMs;
+      cat.aimX = target.x;
+      cat.aimY = target.y;
+      windUpsBegun++;
+      windingUp++;
+      megaWinding++;
+      bossWindUpsBegun++;
+      events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape: 'blast' });
+      return true;
+    }
+    return false;
+  }
+
+  /** The attack an elite xenocat winds up, or null for a cat that has none. */
+  function attackOf(cat: ArenaCat): { shape: AttackShape; radius: number; begins: number } | null {
+    if (!cat.elite || cat.variety !== null || cat.type < 0) return null;
+    const kind = HERO_EFFECTS[types[cat.type].effect.id];
+    if (!kind) return null;
+    const a = config.eliteAttack;
+    const shape = attackShapeOf(kind);
+    // A ring is round the elite itself, so it begins only once a Keeper is inside it;
+    // a blast or a line reaches out to him from `range`.
+    if (shape === 'line') return { shape, radius: a.lineLength, begins: a.range };
+    if (shape === 'blast') return { shape, radius: a.blastRadius, begins: a.range };
+    const radius = kind.kind === 'push' ? a.pullRadius : a.ringRadius;
+    return { shape, radius, begins: radius };
+  }
+
+  /** Whether a Keeper stands in the shape an elite aimed at `aim` (where he was). */
+  function struck(cat: ArenaCat, k: Keeper, shape: AttackShape, radius: number): boolean {
+    const reach = config.hero.reach / 2;
+    if (shape === 'ring') return Math.hypot(k.x - cat.x, k.y - cat.y) <= radius + reach;
+    if (shape === 'blast') return Math.hypot(k.x - cat.aimX, k.y - cat.aimY) <= radius + reach;
+    // A line from the elite through the aim, as long as it is, as wide as it is.
+    const dx = cat.aimX - cat.x;
+    const dy = cat.aimY - cat.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const ux = dx / length;
+    const uy = dy / length;
+    const along = (k.x - cat.x) * ux + (k.y - cat.y) * uy;
+    const across = Math.abs((k.x - cat.x) * uy - (k.y - cat.y) * ux);
+    return along >= 0 && along <= radius && across <= config.eliteAttack.lineWidth / 2 + reach;
+  }
+
+  /**
+   * An elite near a Keeper winds up, standing still, and then lands its attack
+   * where he was. Returns whether the elite spends this step on it (no walking).
+   */
+  function eliteAttacks(cat: ArenaCat, target: Keeper, d: number): boolean {
+    const attack = attackOf(cat);
+    if (!attack) return false;
+    const a = config.eliteAttack;
+    const windUp = attack.shape === 'ring' ? a.ringWindUpMs : a.windUpMs;
+    if (cat.windUntil > 0) {
+      if (time < cat.windUntil) return true;
+      cat.windUntil = 0;
+      stopWinding(cat);
+      cat.nextAttackAt = time + a.cooldownMs;
+      let hits = 0;
+      for (const k of keepers) {
+        if (!standing(k) || !struck(cat, k, attack.shape, attack.radius)) continue;
+        hero = k;
+        if (afflict(cat)) hits++;
+      }
+      hero = keepers[0];
+      events.push({ kind: 'elite-attack', x: cat.x, y: cat.y, type: cat.type, hits });
+      return true;
+    }
+    if (time >= cat.nextAttackAt && d <= attack.begins) {
+      cat.windUntil = time + windUp;
+      cat.aimX = target.x;
+      cat.aimY = target.y;
+      windUpsBegun++;
+      windingUp++;
+      events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape: attack.shape });
+      return true;
+    }
+    return false;
   }
 
   /** The hero's walk this step, after any effect on him. */
@@ -805,16 +1268,67 @@ export function createArena(options: {
     hero.x += x * speed * dt;
     hero.y += y * speed * dt;
     if (x !== 0) hero.facing = Math.sign(x);
+    // Frozen, he turns no way: the stick moves nothing.
+    if ((x !== 0 || y !== 0) && speed > 0) hero.walkAngle = Math.atan2(y, x);
+  }
+
+  /** The toy that calls this cat, if one is near enough: where it goes instead. */
+  function lureOf(cat: ArenaCat): Patch | null {
+    if (patches.length === 0 || cat.variety === 'mega') return null;
+    let best: Patch | null = null;
+    let bestD = Infinity;
+    for (const p of patches) {
+      if (p.kind !== 'toy') continue;
+      const d = (p.x - cat.x) ** 2 + (p.y - cat.y) ** 2;
+      if (d <= p.reach * p.reach && d < bestD) {
+        best = p;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** A cat's step: held still, slowed or called away by what his weapons set down, or its own way. */
+  function moveCat(cat: ArenaCat, dt: number) {
+    if (time < cat.stunUntil) {
+      // Held still, an elite loses its wind-up: it must begin again.
+      if (cat.windUntil > 0) {
+        cat.windUntil = 0;
+        stopWinding(cat);
+        cat.nextAttackAt = time + config.eliteAttack.cooldownMs;
+      }
+      return;
+    }
+    const slowed = time < cat.slowUntil;
+    const speed = cat.speed;
+    if (slowed) cat.speed = speed * SLOW_FACTOR;
+    walkCat(cat, dt);
+    cat.speed = speed;
   }
 
   /** A cat's step, its own way. */
-  function moveCat(cat: ArenaCat, dt: number) {
+  function walkCat(cat: ArenaCat, dt: number) {
     const target = nearestKeeper(cat.x, cat.y);
     const dx = target.x - cat.x;
     const dy = target.y - cat.y;
     const d = Math.hypot(dx, dy) || 1;
     const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
     if (gait === 'sit') return;
+    if (cat.elite && eliteAttacks(cat, target, d)) return;
+    if (cat.variety === 'mega' && megaPounces(cat, target, d)) return;
+    const toy = lureOf(cat);
+    if (toy) {
+      const tx = toy.x - cat.x;
+      const ty = toy.y - cat.y;
+      const td = Math.hypot(tx, ty);
+      // It comes for the toy and mills about it.
+      if (td > 8) {
+        const stepLength = Math.min(cat.speed * 1.2 * dt, td);
+        cat.x += (tx / td) * stepLength;
+        cat.y += (ty / td) * stepLength;
+      }
+      return;
+    }
     if (gait === 'zoom') {
       // A new way now and then: roughly at him, give or take a right angle.
       if (time >= cat.turnAt) {
@@ -888,7 +1402,7 @@ export function createArena(options: {
         hit = true;
         if (time >= k.untouchableUntil) {
           k.resolve = Math.max(k.resolve - shot.drain, 0);
-          k.untouchableUntil = time + config.hero.untouchableMs;
+          k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
             type: -1,
@@ -912,7 +1426,7 @@ export function createArena(options: {
   /** Homesickness from a weapon of `kind`: nothing, to a cat it passes through. */
   function hurt(cat: ArenaCat, amount: number, kind: WeaponKind) {
     if (cat.variety && VARIETIES[cat.variety].immuneTo?.includes(kind)) return;
-    cat.homesickness += amount;
+    cat.homesickness += time < cat.vulnUntil ? amount * SCORCH_FACTOR : amount;
   }
 
   /** Indices of this step's cats bigger than the cats' size (not in the grid). */
@@ -1010,11 +1524,15 @@ export function createArena(options: {
   }
 
   function launch(
-    p: Omit<Projectile, 'touched' | 'splits' | 'owner'> & { splits?: number; owner?: number }
+    p: Omit<Projectile, 'touched' | 'splits' | 'owner' | 'retargetAt'> & {
+      splits?: number;
+      owner?: number;
+    }
   ) {
     const projectile = spareProjectiles.pop() ?? ({ touched: [] } as unknown as Projectile);
     Object.assign(projectile, p);
     projectile.splits = p.splits ?? 0;
+    projectile.retargetAt = 0;
     projectile.owner = p.owner ?? hero.index;
     projectile.touched.length = 0;
     projectiles.push(projectile);
@@ -1090,6 +1608,7 @@ export function createArena(options: {
         }
       }
       hero.gulpAt = time + s.durationMs;
+      hero.gulpDamage = s.damage;
       return true;
     }
     if (kind === 'pull') {
@@ -1105,6 +1624,97 @@ export function createArena(options: {
           cat.y = hero.y + ((cat.y - hero.y) * keep) / d;
         }
         hurt(cat, s.damage, 'pull');
+      }
+      return true;
+    }
+    if (kind === 'sweep') {
+      let base: number;
+      if (aimed) base = Math.atan2(towards(aimed).y, towards(aimed).x);
+      else {
+        const [i] = nearest(hero, s.area, 1);
+        if (i === undefined) return false;
+        base = Math.atan2(aim(cats[i]).y, aim(cats[i]).x);
+      }
+      // So many sectors, evenly round him; from four they tile the circle.
+      const half = Math.min(0.95, Math.PI / s.count);
+      for (let k = 0; k < s.count; k++) {
+        sweeps.push({
+          x: hero.x,
+          y: hero.y,
+          angle: base + (k * 2 * Math.PI) / s.count,
+          reach: s.area,
+          half,
+          until: time + 240,
+        });
+      }
+      for (const i of within(hero, s.area)) {
+        const cat = cats[i];
+        const toCat = Math.atan2(cat.y - hero.y, cat.x - hero.x);
+        let struck = false;
+        for (let k = 0; k < s.count && !struck; k++) {
+          const turn = base + (k * 2 * Math.PI) / s.count;
+          const apart = Math.abs(Math.atan2(Math.sin(toCat - turn), Math.cos(toCat - turn)));
+          struck = apart <= half;
+        }
+        if (!struck) continue;
+        hurt(cat, s.damage, 'sweep');
+        // Knocked back, but not the big ones.
+        if (cat.radius <= config.cats.radius * 1.5) {
+          const d = Math.hypot(cat.x - hero.x, cat.y - hero.y) || 1;
+          cat.x += ((cat.x - hero.x) / d) * s.speed;
+          cat.y += ((cat.y - hero.y) / d) * s.speed;
+        }
+        if (id === 'peacock-tail' && cat.radius <= config.cats.radius * 1.5) {
+          cat.stunUntil = Math.max(cat.stunUntil, time + s.durationMs);
+        }
+      }
+      return true;
+    }
+    if (kind === 'lure') {
+      let at: Vec;
+      if (aimed && Math.hypot(aimed.x - hero.x, aimed.y - hero.y) <= 650) at = aimed;
+      else {
+        const [i] = nearest(hero, 450, 1);
+        if (i === undefined) return false;
+        at = { x: cats[i].x, y: cats[i].y };
+      }
+      for (let k = 0; k < s.count; k++) {
+        // The first on the spot, the rest in a ring round it.
+        const turn = (k * 2 * Math.PI) / s.count;
+        const ring = k === 0 ? 0 : 50;
+        addPatch({
+          kind: 'toy',
+          weapon: id,
+          x: at.x + Math.cos(turn) * ring,
+          y: at.y + Math.sin(turn) * ring,
+          radius: s.area,
+          reach: s.speed,
+          until: time + s.durationMs,
+          damage: s.damage,
+          capacity: 0,
+          finale: id === 'squeak-symphony' ? s.damage * 8 : 0,
+          moat: false,
+        });
+      }
+      return true;
+    }
+    if (kind === 'trap') {
+      const targets = nearest(hero, 520, s.count);
+      if (targets.length === 0) return false;
+      for (const i of targets) {
+        addPatch({
+          kind: 'box',
+          weapon: id,
+          x: cats[i].x,
+          y: cats[i].y,
+          radius: s.area,
+          reach: 0,
+          until: time + s.durationMs,
+          damage: s.damage,
+          capacity: s.pierce,
+          finale: 0,
+          moat: id === 'cardboard-castle',
+        });
       }
       return true;
     }
@@ -1148,6 +1758,8 @@ export function createArena(options: {
           vy: Math.sin(turn) * s.speed,
           pierce: s.pierce,
           until: time + (s.durationMs * s.area) / 70,
+          // Monsoon: every eighth droplet leaves a puddle where it ends.
+          splits: id === 'monsoon' && k % 8 === 0 ? 1 : 0,
         });
       }
       return true;
@@ -1181,30 +1793,271 @@ export function createArena(options: {
     });
   }
 
+  function addPatch(patch: Patch) {
+    if (patches.length >= PATCH_CAP) patches.shift();
+    patches.push(patch);
+  }
+
+  /** The Hair Dryer's jets this step: cats in them are blown back, and hurt, all the time. */
+  function blowAir(id: WeaponId, s: WeaponStats, dt: number) {
+    let base: number;
+    if (hero.aim) base = Math.atan2(towards(hero.aim).y, towards(hero.aim).x);
+    else {
+      // The nearest cat is looked for five times a second; between, the jet holds its way.
+      if (time >= hero.jetAt) {
+        hero.jetAt = time + 200;
+        const [i] = nearest(hero, s.area * 1.4, 1);
+        hero.jetAngle =
+          i === undefined
+            ? hero.facing > 0
+              ? 0
+              : Math.PI
+            : Math.atan2(aim(cats[i]).y, aim(cats[i]).x);
+      }
+      base = hero.jetAngle;
+    }
+    const first = jets.length;
+    for (let k = 0; k < s.count; k++) {
+      jets.push({
+        x: hero.x,
+        y: hero.y,
+        angle: base + (k * 2 * Math.PI) / s.count,
+        reach: s.area,
+        half: 0.5,
+      });
+    }
+    for (const i of within(hero, s.area)) {
+      const cat = cats[i];
+      const toCat = Math.atan2(cat.y - hero.y, cat.x - hero.x);
+      let inside = false;
+      for (let k = first; k < jets.length && !inside; k++) {
+        const apart = Math.abs(
+          Math.atan2(Math.sin(toCat - jets[k].angle), Math.cos(toCat - jets[k].angle))
+        );
+        inside = apart <= jets[k].half;
+      }
+      if (!inside) continue;
+      hurt(cat, s.damage * dt, 'blow');
+      if (cat.radius <= config.cats.radius * 1.5) {
+        const d = Math.hypot(cat.x - hero.x, cat.y - hero.y) || 1;
+        cat.x += ((cat.x - hero.x) / d) * s.speed * dt;
+        cat.y += ((cat.y - hero.y) / d) * s.speed * dt;
+      }
+      if (id === 'scorch-dryer') cat.vulnUntil = time + 2500;
+    }
+  }
+
+  /** What his weapons set down works, and gives out. */
+  function updatePatches(dt: number) {
+    for (let n = patches.length - 1; n >= 0; n--) {
+      const p = patches[n];
+      if (time >= p.until) {
+        if (p.finale > 0) {
+          for (const i of within(p, p.radius * 1.6)) hurt(cats[i], p.finale, 'lure');
+        }
+        patches.splice(n, 1);
+        continue;
+      }
+      if (p.kind === 'toy') {
+        for (const i of within(p, p.radius)) hurt(cats[i], p.damage * dt, 'lure');
+      } else if (p.kind === 'puddle') {
+        for (const i of within(p, p.radius)) {
+          hurt(cats[i], p.damage * dt, 'burst');
+          cats[i].slowUntil = Math.max(cats[i].slowUntil, time + 100);
+        }
+      } else {
+        // A box takes the cats in it, up to its capacity, and keeps them.
+        let held = 0;
+        for (const i of within(p, p.radius)) {
+          const cat = cats[i];
+          if (held >= p.capacity) break;
+          if (cat.radius > config.cats.radius * 1.5) continue;
+          held++;
+          cat.stunUntil = Math.max(cat.stunUntil, time + 100);
+          hurt(cat, p.damage * dt, 'trap');
+        }
+        if (p.moat) {
+          for (const i of within(p, p.radius * 2)) {
+            cats[i].slowUntil = Math.max(cats[i].slowUntil, time + 100);
+          }
+        }
+      }
+    }
+    for (let n = sweeps.length - 1; n >= 0; n--) {
+      if (time >= sweeps[n].until) sweeps.splice(n, 1);
+    }
+  }
+
+  /** How far the weapons that go for the nearest cat look for it, px, by kind (null: they do not aim). */
+  function lookRange(id: WeaponId, s: WeaponStats): number | null {
+    switch (WEAPONS[id].kind) {
+      case 'beam':
+      case 'chain':
+      case 'web':
+      case 'sweep':
+        return s.area;
+      case 'spread':
+      case 'burst':
+        return 650;
+      case 'lure':
+        return 450;
+      case 'trap':
+        return 520;
+      case 'blow':
+        // Where the jet looks for a cat (blowAir): the tool points where the air goes.
+        return s.area * 1.4;
+      default:
+        return null;
+    }
+  }
+
+  /** Where this Keeper looks: the crosshair, else the cat his first aiming weapon would fire at. */
+  function updateAim() {
+    if (hero.aim) {
+      hero.aimAngle = Math.atan2(towards(hero.aim).y, towards(hero.aim).x);
+      return;
+    }
+    if (time < hero.lookAt) return;
+    hero.lookAt = time + 200;
+    hero.aimAngle = null;
+    for (const [id, held] of activeWeapons(hero)) {
+      const range = lookRange(id, weaponStats(id, held.level, hero.mods));
+      if (range === null) continue;
+      const [i] = nearest(hero, range, 1);
+      if (i !== undefined) {
+        const way = aim(cats[i]);
+        hero.aimAngle = Math.atan2(way.y, way.x);
+      }
+      return;
+    }
+  }
+
+  /** One weapon, this step: blades and zones all the time, the rest when they are ready. */
+  function runWeapon(id: WeaponId, held: { level: number; readyAt: number }, dt: number) {
+    const s = weaponStats(id, held.level, hero.mods);
+    const kind = WEAPONS[id].kind;
+    if (kind === 'orbit') {
+      // Each blade, all the time, to every cat it passes through.
+      for (const blade of bladesOf(s)) {
+        for (const i of within(blade, BLADE_RADIUS)) hurt(cats[i], s.damage * dt, 'orbit');
+      }
+      // The Bottomless Saucer also spills: a wave of milk from each saucer, outward.
+      if (id === 'bottomless-saucer' && time >= hero.waveAt) {
+        hero.waveAt = time + MILK_WAVE_EVERY_MS;
+        for (const saucer of bladesOf(s)) {
+          const out = Math.atan2(saucer.y - hero.y, saucer.x - hero.x);
+          launch({
+            weapon: id,
+            bit: true,
+            x: saucer.x,
+            y: saucer.y,
+            vx: Math.cos(out) * MILK_WAVE_SPEED,
+            vy: Math.sin(out) * MILK_WAVE_SPEED,
+            radius: 16,
+            damage: s.damage * 0.5,
+            pierce: 6,
+            until: time + 800,
+          });
+        }
+      }
+    } else if (kind === 'zone') {
+      for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
+    } else if (kind === 'blow') {
+      blowAir(id, s, dt);
+    } else if (time >= held.readyAt && fire(id, s)) {
+      held.readyAt = time + s.cooldownMs;
+      events.push({ kind: 'fired', weapon: id });
+    }
+  }
+
+  /** What a fused weapon adds to what its two parents go on doing. */
+  function fusedExtra(id: WeaponId, held: Held) {
+    if (time < held.readyAt) return;
+    const s = weaponStats(id, held.level, hero.mods);
+    if (id === 'thunderstorm') {
+      // Lightning: the wet (slowed) cats first, then the nearest.
+      const near = nearest(hero, s.area, Infinity);
+      if (near.length === 0) return;
+      const wet = near.filter((i) => cats[i].slowUntil > time);
+      const dry = near.filter((i) => cats[i].slowUntil <= time);
+      for (const i of [...wet, ...dry].slice(0, s.count)) {
+        // Lightning is still a laser's: whatever refuses lasers refuses it.
+        hurt(cats[i], s.damage, 'beam');
+        beams.push({
+          from: { x: hero.x, y: hero.y },
+          to: { x: cats[i].x, y: cats[i].y },
+          until: time + s.durationMs,
+        });
+      }
+    } else if (id === 'scorching-maw') {
+      // Everything the pull reaches is scorched.
+      const reached = within(hero, s.area);
+      if (reached.length === 0) return;
+      for (const i of reached) cats[i].vulnUntil = Math.max(cats[i].vulnUntil, time + s.durationMs);
+    } else if (id === 'yarn-feast') {
+      // The whole table goes after the cats: a ring of crumbs that chase.
+      if (nearest(hero, 650, 1).length === 0) return;
+      for (let k = 0; k < s.count; k++) {
+        const turn = (k * 2 * Math.PI) / s.count;
+        launch({
+          weapon: 'banquet',
+          bit: true,
+          x: hero.x,
+          y: hero.y,
+          vx: Math.cos(turn) * s.speed,
+          vy: Math.sin(turn) * s.speed,
+          radius: s.area,
+          damage: s.damage,
+          pierce: s.pierce,
+          until: time + s.durationMs,
+        });
+      }
+    } else if (id === 'milk-symphony') {
+      // Every toy in earshot spills milk, outward.
+      const toys = patches.filter((p) => p.kind === 'toy');
+      if (toys.length === 0) return;
+      for (const toy of toys) {
+        for (let k = 0; k < s.count; k++) {
+          const turn = (k * 2 * Math.PI) / s.count;
+          launch({
+            weapon: 'bottomless-saucer',
+            bit: true,
+            x: toy.x,
+            y: toy.y,
+            vx: Math.cos(turn) * s.speed,
+            vy: Math.sin(turn) * s.speed,
+            radius: s.area,
+            damage: s.damage,
+            pierce: s.pierce,
+            until: time + s.durationMs,
+          });
+        }
+      }
+    }
+    held.readyAt = time + s.cooldownMs;
+  }
+
+  /** Every weapon he holds that works by itself, a fused one as its two parents. */
+  function* activeWeapons(k: Keeper): Generator<[WeaponId, { level: number; readyAt: number }]> {
+    for (const [id, held] of k.weapons) {
+      if (held.parts) yield* held.parts;
+      else yield [id, held];
+    }
+  }
+
   function swingWeapons(dt: number) {
+    updateAim();
     if (time >= hero.gulpAt) {
       hero.gulpAt = Infinity;
-      const gulp = hero.weapons.get('forbidden-catnip-vacuum');
-      if (gulp) {
-        const s = weaponStats('forbidden-catnip-vacuum', gulp.level, hero.mods);
-        for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area))
-          hurt(cats[i], s.damage, 'gulp');
+      for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area)) {
+        hurt(cats[i], hero.gulpDamage, 'gulp');
       }
     }
     for (const [id, held] of hero.weapons) {
-      const s = weaponStats(id, held.level, hero.mods);
-      const kind = WEAPONS[id].kind;
-      if (kind === 'orbit') {
-        // Each blade, all the time, to every cat it passes through.
-        for (const blade of bladesOf(s)) {
-          for (const i of within(blade, BLADE_RADIUS)) hurt(cats[i], s.damage * dt, 'orbit');
-        }
-      } else if (kind === 'zone') {
-        for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
-      } else if (time >= held.readyAt && fire(id, s)) {
-        held.readyAt = time + s.cooldownMs;
-        events.push({ kind: 'fired', weapon: id });
-      }
+      if (held.parts) {
+        for (const [part, partHeld] of held.parts) runWeapon(part, partHeld, dt);
+        fusedExtra(id, held);
+      } else runWeapon(id, held, dt);
     }
   }
 
@@ -1224,6 +2077,28 @@ export function createArena(options: {
       const p = projectiles[n];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      // A Banquet crumb goes for the nearest cat it has not touched, looking afresh now and then.
+      if (p.bit && p.weapon === 'banquet' && time >= p.retargetAt) {
+        p.retargetAt = time + 120;
+        // The nearest cat it has not touched (one pass, nothing allocated).
+        gather(p.x, p.y, 320);
+        let best = -1;
+        let bestD = 320 * 320;
+        for (const i of near) {
+          const c = cats[i];
+          if (p.touched.includes(c.id)) continue;
+          const d = (c.x - p.x) ** 2 + (c.y - p.y) ** 2;
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+          }
+        }
+        if (best >= 0) {
+          const d = Math.sqrt(bestD) || 1;
+          p.vx = ((cats[best].x - p.x) / d) * 380;
+          p.vy = ((cats[best].y - p.y) / d) * 380;
+        }
+      }
       if (p.weapon === 'yarn-ball' || p.weapon === 'yarn-apocalypse') {
         // Off the edges of the screen, as he walks.
         let bounced = false;
@@ -1264,17 +2139,35 @@ export function createArena(options: {
         if (p.pierce <= 0 || p.touched.includes(cat.id)) continue;
         p.touched.push(cat.id);
         hurt(cat, p.damage, WEAPONS[p.weapon].kind);
+        // The Yarn Apocalypse's balls tangle the cats they pass through.
+        if (p.weapon === 'yarn-apocalypse')
+          cat.slowUntil = Math.max(cat.slowUntil, time + TANGLE_MS);
         p.pierce--;
       }
       if (p.pierce <= 0 || time >= p.until) {
-        // A hairball bursts into smaller ones where it ends.
-        if (p.weapon === 'hairball' && !p.bit) {
+        // A hairball (or a tub) bursts into smaller ones where it ends.
+        if (WEAPONS[p.weapon].kind === 'burst' && !p.bit) {
           const owner = keepers[p.owner];
-          const s = weaponStats('hairball', owner.weapons.get('hairball')?.level ?? 1, owner.mods);
+          const s = weaponStats(p.weapon, owner.weapons.get(p.weapon)?.level ?? 1, owner.mods);
+          if (p.weapon === 'jacuzzi') {
+            addPatch({
+              kind: 'puddle',
+              weapon: p.weapon,
+              x: p.x,
+              y: p.y,
+              radius: PUDDLE_RADIUS,
+              reach: 0,
+              until: time + PUDDLE_MS,
+              damage: s.damage / 3,
+              capacity: 0,
+              finale: 0,
+              moat: false,
+            });
+          }
           for (let k = 0; k < s.count; k++) {
             const turn = (k * 2 * Math.PI) / s.count;
             launch({
-              weapon: 'hairball',
+              weapon: p.weapon,
               owner: p.owner,
               bit: true,
               x: p.x,
@@ -1288,6 +2181,45 @@ export function createArena(options: {
             });
           }
         }
+        // A Banquet treat that fed a cat leaves a crumb that goes after another.
+        if (
+          p.weapon === 'banquet' &&
+          !p.bit &&
+          p.touched.length > 0 &&
+          projectiles.length < CRUMB_LIMIT
+        ) {
+          launch({
+            weapon: 'banquet',
+            owner: p.owner,
+            bit: true,
+            x: p.x,
+            y: p.y,
+            vx: 0,
+            vy: 0,
+            radius: p.radius * 0.7,
+            damage: p.damage * 0.5,
+            pierce: 2,
+            until: time + 900,
+          });
+          // It knows the cats its treat fed: it goes after another.
+          projectiles[projectiles.length - 1].touched.push(...p.touched);
+        }
+        // A Monsoon droplet marked for it leaves a puddle that slows the cats in it.
+        if (p.weapon === 'monsoon' && p.splits > 0) {
+          addPatch({
+            kind: 'puddle',
+            weapon: p.weapon,
+            x: p.x,
+            y: p.y,
+            radius: RAIN_PUDDLE_RADIUS,
+            reach: 0,
+            until: time + RAIN_PUDDLE_MS,
+            damage: p.damage / 3,
+            capacity: 0,
+            finale: 0,
+            moat: false,
+          });
+        }
         projectiles[n] = projectiles[projectiles.length - 1];
         projectiles.pop();
         spareProjectiles.push(p);
@@ -1297,16 +2229,61 @@ export function createArena(options: {
 
   // --------------------------------------------------------------- experience
 
+  /** Pickups lying about are drawn in like gems; taken, they work. */
+  function gatherPickups(dt: number) {
+    for (let i = pickups.length - 1; i >= 0; i--) {
+      const p = pickups[i];
+      if (time >= p.until) {
+        pickups.splice(i, 1);
+        continue;
+      }
+      const k = nearestKeeper(p.x, p.y);
+      const dx = k.x - p.x;
+      const dy = k.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 14) {
+        if (d <= config.gems.pickup * k.mods.pickup) {
+          // Slower than a gem, so there is time to see it.
+          const move = Math.min(config.gems.speed * 0.6 * dt, d);
+          p.x += (dx / d) * move;
+          p.y += (dy / d) * move;
+        }
+        continue;
+      }
+      pickups.splice(i, 1);
+      pickupsTaken++;
+      lastPickup = p.kind;
+      events.push({ kind: 'pickup-taken', pickup: p.kind, player: k.index });
+      if (p.kind === 'fish') {
+        k.resolve = Math.min(
+          k.resolve + config.pickups.fishShare * maxResolveOf(k),
+          maxResolveOf(k)
+        );
+      } else if (p.kind === 'magnet') {
+        magnetUntil = time + config.pickups.magnetMs;
+      } else {
+        // The cats on the screen stop (the big ones, a Mega Cat, are not stopped by a bell).
+        const cam = camera();
+        const reach = (Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom;
+        for (const cat of cats) {
+          if (cat.radius > config.cats.radius * 1.5) continue;
+          if (Math.hypot(cat.x - cam.x, cat.y - cam.y) > reach) continue;
+          cat.stunUntil = Math.max(cat.stunUntil, time + config.pickups.bellMs);
+        }
+      }
+    }
+  }
+
   function gatherGems(dt: number) {
     for (let i = gems.length - 1; i >= 0; i--) {
       const gem = gems[i];
       const k = nearestKeeper(gem.x, gem.y);
-      const reach = config.gems.pickup * k.mods.pickup;
+      const reach = time < magnetUntil ? Infinity : config.gems.pickup * k.mods.pickup;
       const dx = k.x - gem.x;
       const dy = k.y - gem.y;
       const d = Math.hypot(dx, dy);
       if (d <= 14) {
-        xp += gem.value;
+        xp += gem.value * k.mods.xp;
         gems[i] = gems[gems.length - 1];
         gems.pop();
       } else if (d <= reach) {
@@ -1331,12 +2308,19 @@ export function createArena(options: {
       hero = opener;
       chests.splice(i, 1);
       events.push({ kind: 'chest', x: chest.x, y: chest.y });
-      // A weapon ready to evolve does, in its place; otherwise a level-up.
-      const evolution = evolutionFor(
-        new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const)),
-        hero.passives
-      );
-      if (evolution) {
+      // Two evolved weapons that fuse do, in their place; else a weapon ready to
+      // evolve does; otherwise a level-up.
+      const carried = new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const));
+      const fusion = fusionFor(carried);
+      const evolution = fusion ? null : evolutionFor(carried, hero.passives);
+      if (fusion) {
+        const parts = new Map(
+          fusion.from.map((id) => [id, { level: MAX_WEAPON_LEVEL, readyAt: time }] as const)
+        );
+        for (const id of fusion.from) hero.weapons.delete(id);
+        hero.weapons.set(fusion.to, { level: MAX_WEAPON_LEVEL, readyAt: time, parts });
+        events.push({ kind: 'fusion', from: fusion.from, to: fusion.to });
+      } else if (evolution) {
         hero.weapons.delete(evolution.from);
         hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
         events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
@@ -1344,6 +2328,18 @@ export function createArena(options: {
     }
     hero = keepers[0];
     if (pending > 0 && !choosing) offer();
+  }
+
+  /** After a Keeper's choice or skip: the next player chooses for the same level, then the next level. */
+  function nextChooser() {
+    if (chooser + 1 < keepers.length) {
+      chooser++;
+      offer();
+    } else {
+      chooser = 0;
+      pending--;
+      if (pending > 0) offer();
+    }
   }
 
   /** The waiting level-up's choices, for the Keeper whose turn it is. */
@@ -1449,7 +2445,7 @@ export function createArena(options: {
           if (cat.drain === 0) continue;
           if ((cat.x - k.x) ** 2 + (cat.y - k.y) ** 2 > reachOf(cat) ** 2) continue;
           k.resolve = Math.max(k.resolve - cat.drain, 0);
-          k.untouchableUntil = time + config.hero.untouchableMs;
+          k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
             type: cat.type,
@@ -1493,16 +2489,19 @@ export function createArena(options: {
       }
 
       // Their weapons; what flies; then every cat homesick enough goes home.
+      jets.length = 0;
       for (const k of keepers) {
         if (!standing(k)) continue;
         hero = k;
         swingWeapons(dt);
       }
       hero = keepers[0];
+      updatePatches(dt);
       moveProjectiles(dt);
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
       gatherGems(dt);
+      gatherPickups(dt);
 
       // The time goal: the Matriarch comes, and ends the run when she reaches one.
       if (time >= config.timeGoalMs) {
@@ -1511,15 +2510,60 @@ export function createArena(options: {
           const reach =
             (Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin;
           matriarch = { x: cam.x - reach, y: cam.y };
+          matriarchNextAt = time + config.bossAttack.summon.firstMs;
           events.push({ kind: 'matriarch' });
         }
         const target = nearestKeeper(matriarch.x, matriarch.y);
         const dx = target.x - matriarch.x;
         const dy = target.y - matriarch.y;
         const d = Math.hypot(dx, dy) || 1;
-        const move = Math.min(config.matriarch.speed * dt, d);
-        matriarch.x += (dx / d) * move;
-        matriarch.y += (dy / d) * move;
+        const call = config.bossAttack.summon;
+        let calling = false;
+        if (matriarchWind > 0) {
+          calling = true;
+          if (time >= matriarchWind) {
+            // The kittens come, in a ring round where he stood.
+            matriarchWind = 0;
+            windingUp--;
+            matriarchNextAt = time + call.everyMs;
+            let came = 0;
+            for (let k = 0; k < call.kittens && cats.length < config.cats.hardCap; k++) {
+              const turn = (k * 2 * Math.PI) / call.kittens;
+              spawnVariety('kitten', {
+                x: matriarchAim.x + Math.cos(turn) * call.ringRadius,
+                y: matriarchAim.y + Math.sin(turn) * call.ringRadius,
+              });
+              came++;
+            }
+            events.push({
+              kind: 'boss-summon',
+              x: matriarchAim.x,
+              y: matriarchAim.y,
+              kittens: came,
+            });
+            calling = false;
+          }
+        } else if (time >= matriarchNextAt && d > call.minDistance) {
+          matriarchWind = time + call.windUpMs;
+          matriarchAim = { x: target.x, y: target.y };
+          windUpsBegun++;
+          bossWindUpsBegun++;
+          windingUp++;
+          calling = true;
+          events.push({
+            kind: 'wind-up',
+            x: matriarch.x,
+            y: matriarch.y,
+            type: -1,
+            shape: 'blast',
+          });
+        }
+        // She stands still while she calls.
+        if (!calling) {
+          const move = Math.min(config.matriarch.speed * dt, d);
+          matriarch.x += (dx / d) * move;
+          matriarch.y += (dy / d) * move;
+        }
         if (d <= config.matriarch.reach) end('goal');
       }
     },
@@ -1549,16 +2593,45 @@ export function createArena(options: {
       }
       hero = keepers[0];
       choosing = null;
-      // In co-op the next player chooses for the same level; then the next level.
-      if (chooser + 1 < keepers.length) {
-        chooser++;
-        offer();
-      } else {
-        chooser = 0;
-        pending--;
-        if (pending > 0) offer();
-      }
+      nextChooser();
     },
+
+    /**
+     * Asks for new choices instead of these, if he has a reroll left: false if not. The
+     * new ones are not the same as the old, when the pool allows.
+     */
+    reroll(): boolean {
+      const k = keepers[chooser];
+      if (!choosing || k.rerollsLeft <= 0) return false;
+      k.rerollsLeft--;
+      const before = choosing.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+      for (let tries = 0; tries < 6; tries++) {
+        offer();
+        const now = choosing!.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+        if (now !== before) break;
+      }
+      return true;
+    },
+
+    /**
+     * Takes no choice and a little experience instead (a share of what the next level
+     * needs), if he has a skip left: false if not.
+     */
+    skip(): boolean {
+      const k = keepers[chooser];
+      if (!choosing || k.skipsLeft <= 0) return false;
+      k.skipsLeft--;
+      xp += xpToNext(level) * config.levelUp.skipXpShare;
+      choosing = null;
+      nextChooser();
+      return true;
+    },
+
+    /** What the Keeper whose choice waits has left to ask for. */
+    levelUpUses: (): { rerolls: number; skips: number } => ({
+      rerolls: keepers[chooser].rerollsLeft,
+      skips: keepers[chooser].skipsLeft,
+    }),
 
     /** Whose choice the waiting level-up is: 0 for player 1, 1 for player 2. */
     chooser: (): number => chooser,
@@ -1579,6 +2652,12 @@ export function createArena(options: {
     cats: (): readonly ArenaCat[] => cats,
     projectiles: (): readonly Projectile[] => projectiles,
     gems: (): readonly Gem[] => gems,
+    /** The pickups lying about. */
+    pickups: (): readonly Pickup[] => pickups,
+    /** Lays a pickup (a test's way to have one where it wants). */
+    layPickup(kind: PickupKind, at: Vec) {
+      pickups.push({ x: at.x, y: at.y, kind, until: time + config.pickups.lifeMs });
+    },
     beams: (): readonly { from: Vec; to: Vec }[] => beams,
     /** Where the Can Opener's blades are, and the Thunderous Vacuum's reach (or null). */
     blades: (): Vec[] => {
@@ -1586,7 +2665,7 @@ export function createArena(options: {
       for (const k of keepers) {
         if (!standing(k)) continue;
         hero = k;
-        for (const [id, held] of k.weapons) {
+        for (const [id, held] of activeWeapons(k)) {
           if (WEAPONS[id].kind === 'orbit')
             all.push(...bladesOf(weaponStats(id, held.level, k.mods)));
         }
@@ -1605,6 +2684,68 @@ export function createArena(options: {
       }),
     /** The shared camera (one Keeper: on him, at the screen's own zoom). */
     camera,
+    /** Every elite's attack winding up now, for the view to warn with. */
+    telegraphs: (): Telegraph[] => {
+      const all: Telegraph[] = [];
+      if (windingUp === 0) return all;
+      if (matriarchWind > 0 && matriarch) {
+        const call = config.bossAttack.summon;
+        all.push({
+          shape: 'blast',
+          x: matriarch.x,
+          y: matriarch.y,
+          aimX: matriarchAim.x,
+          aimY: matriarchAim.y,
+          radius: call.ringRadius,
+          length: 0,
+          width: 0,
+          progress: Math.min(1, Math.max(0, 1 - (matriarchWind - time) / call.windUpMs)),
+        });
+      }
+      for (const cat of cats) {
+        if (cat.windUntil <= 0) continue;
+        if (cat.variety === 'mega') {
+          const a = config.bossAttack.pounce;
+          all.push({
+            shape: 'blast',
+            x: cat.x,
+            y: cat.y,
+            aimX: cat.aimX,
+            aimY: cat.aimY,
+            radius: a.radius,
+            length: 0,
+            width: 0,
+            progress: Math.min(1, Math.max(0, 1 - (cat.windUntil - time) / a.windUpMs)),
+          });
+          continue;
+        }
+        const attack = attackOf(cat);
+        if (!attack) continue;
+        const a = config.eliteAttack;
+        all.push({
+          shape: attack.shape,
+          x: cat.x,
+          y: cat.y,
+          aimX: cat.aimX,
+          aimY: cat.aimY,
+          radius: attack.shape === 'line' ? 0 : attack.radius,
+          length: attack.shape === 'line' ? attack.radius : 0,
+          width: a.lineWidth,
+          progress: Math.min(
+            1,
+            Math.max(
+              0,
+              1 - (cat.windUntil - time) / (attack.shape === 'ring' ? a.ringWindUpMs : a.windUpMs)
+            )
+          ),
+        });
+      }
+      return all;
+    },
+    /** What his weapons have set down (toys, boxes, puddles), and this step's swings and jets. */
+    patches: (): readonly Patch[] => patches,
+    sweeps: (): readonly Sweep[] => sweeps,
+    jets: (): readonly Jet[] => jets,
     matriarch: (): Vec | null => matriarch,
     chests: (): readonly Vec[] => chests,
     shots: (): readonly { x: number; y: number }[] => shots,
@@ -1614,6 +2755,8 @@ export function createArena(options: {
       const active = first.effect && time < first.effect.until ? first.effect.effect.kind : null;
       return {
         time,
+        /** The run's length: when the Matriarch comes, ms. */
+        goalMs: config.timeGoalMs,
         status,
         outcome,
         /** Player 1's Keeper (the only one, alone). */
@@ -1633,6 +2776,10 @@ export function createArena(options: {
           resolve: k.resolve,
           maxResolve: maxResolveOf(k),
           facing: k.facing,
+          rerollsLeft: k.rerollsLeft,
+          skipsLeft: k.skipsLeft,
+          /** The way he looks, radians (the screen's): his aim, else the way he walks. */
+          lookAngle: k.aimAngle ?? k.walkAngle,
           untouchable: time < k.untouchableUntil,
           effect: k.effect && time < k.effect.until ? k.effect.effect.kind : null,
           down: !standing(k),
@@ -1643,6 +2790,17 @@ export function createArena(options: {
         })),
         chooser,
         cats: cats.length,
+        /** How many elites are winding up an attack now. */
+        windUps: windingUp,
+        /** Pickups lying about, taken so far, and the last one taken. */
+        pickups: pickups.length,
+        pickupsTaken,
+        lastPickup,
+        bossWindUpsBegun,
+        /** The boss that is winding up an attack: the Mega Cat's pounce, or the Matriarch's call. */
+        bossWindUp:
+          matriarchWind > 0 ? ('summon' as const) : megaWinding > 0 ? ('pounce' as const) : null,
+        windUpsBegun,
         sentHome,
         level,
         xp,

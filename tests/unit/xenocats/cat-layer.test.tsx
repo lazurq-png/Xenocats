@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CATS_PAUSED_FLAG,
   SHAKE_CLASS,
   SHAKE_MS,
   type Xenocats,
@@ -201,6 +202,43 @@ describe('XenocatCatsProvider', () => {
       });
       expect(screen.getByTestId('xenocat-page').classList.contains(SHAKE_CLASS)).toBe(false);
     }
+  });
+});
+
+describe('the test pause', () => {
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>)[CATS_PAUSED_FLAG];
+  });
+
+  it('starts no cat while the window flag is set: a summon is refused, and nothing comes on its own', async () => {
+    (window as unknown as Record<string, unknown>)[CATS_PAUSED_FLAG] = true;
+    render(
+      <XenocatCursorProvider now={() => clock} seed={7}>
+        <XenocatCatsProvider config={{ firstSpawnMs: [0, 0] }}>
+          <Capture />
+        </XenocatCatsProvider>
+      </XenocatCursorProvider>
+    );
+    act(() => {
+      expect(cats.summon('void-tabby')).toBe(false);
+    });
+    clock = 60_000;
+    await frames(5);
+    expect(screen.queryAllByTestId('xenocat')).toHaveLength(0);
+    expect(cats.count()).toBe(0);
+  });
+
+  it('is off without the flag: cats come on their own', async () => {
+    render(
+      <XenocatCursorProvider now={() => clock} seed={7}>
+        <XenocatCatsProvider config={{ firstSpawnMs: [0, 0] }}>
+          <Capture />
+        </XenocatCatsProvider>
+      </XenocatCursorProvider>
+    );
+    clock = 60_000;
+    await frames(5);
+    expect(screen.queryAllByTestId('xenocat').length).toBeGreaterThan(0);
   });
 });
 
