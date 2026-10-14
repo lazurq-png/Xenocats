@@ -68,10 +68,11 @@ const GROUPS: Record<string, string[]> = {
     'change-password',
     'cat-states',
     'dashboard-range',
+    'signup',
   ],
   customers: ['customers'],
   invoices: ['invoices-filter', 'invoice-detail', 'invoice-export', 'invoices', 'own-data'],
-  survival: ['survival', 'benchmark'],
+  survival: ['survival', 'benchmark', 'leaderboard'],
 };
 
 // The groups with a spec that uses DEMO_USER (cat-attacks: cats-link).
@@ -125,6 +126,9 @@ export default defineConfig<{ catsPaused: boolean }>({
       // whatever .env sets.
       LOGIN_MAX_FAILURES: '5',
       LOGIN_LOCK_MINUTES: '15',
+      // Every account the tests make comes from one address (no proxy in front of
+      // `next dev`), so the sign-up limit (2 a day by default) is lifted.
+      SIGNUP_MAX_PER_DAY: '100000',
       // Overrides .env, which Next would otherwise load: the server must use the test schema.
       ...(database ? { POSTGRES_URL: database } : {}),
     },

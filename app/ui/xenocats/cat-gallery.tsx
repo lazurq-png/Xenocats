@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { memo, useCallback, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, memo, useCallback, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/app/ui/button';
 import { XenocatCatsProvider, useXenocats } from './cat-layer';
 import { catArt } from './cat-art';
@@ -14,13 +14,15 @@ import { entryFor, getGuide, getServerGuide, isEmptyGuide, subscribeGuide } from
  * Every cat type with two Summon buttons: awake, to pounce as soon as it arrives,
  * or asleep, to nap and wake first as the dashboard's cats do (and show both poses'
  * artwork). Cats only come when summoned here, so the page is calm to browse and
- * predictable to test. Above them, Fight a cat: a link to the game's own page.
+ * predictable to test. Above them, Fight a cat: a link to the game's own page, and
+ * below it the game's `leaderboard` (a server component, leaderboard.tsx).
  */
-export default function CatGallery() {
+export default function CatGallery({ leaderboard }: { leaderboard?: ReactNode }) {
   return (
     <XenocatCursorProvider>
       <XenocatCatsProvider autoSpawn={false}>
         <FightLinks />
+        {leaderboard}
         <Roster />
       </XenocatCatsProvider>
     </XenocatCursorProvider>

@@ -2,12 +2,26 @@ import { z } from 'zod';
 
 // Kept out of actions.ts: a 'use server' module may only export async functions,
 // and importing it opens a database connection. Tests import these directly.
+
+/** The largest amount an invoice can have, dollars (the database checks it too, migration 0007). */
+export const MAX_AMOUNT = 1_000_000;
+
 export const FormSchema = z.object({
   id: z.string(),
   customerId: z.string({
     invalid_type_error: 'Please select a customer.',
   }),
-  amount: z.coerce.number().gt(0, { message: 'Please enter an amount greater than $0' }),
+  // Stored in whole cents (INT), so at least one cent once rounded, and bounded.
+  amount: z.coerce
+    .number()
+    .gt(0, { message: 'Please enter an amount greater than $0' })
+    // (Zero and below have the message above; this is for what rounds to nothing.)
+    .refine((amount) => amount <= 0 || Math.round(amount * 100) >= 1, {
+      message: 'Please enter an amount of at least $0.01.',
+    })
+    .refine((amount) => amount <= MAX_AMOUNT, {
+      message: 'An amount can be at most $1,000,000.',
+    }),
   status: z.enum(['pending', 'paid'], {
     invalid_type_error: 'Please select an invoice status.',
   }),
@@ -66,7 +80,10 @@ export const CustomerForm = z.object({
     .string({ invalid_type_error: 'Please enter a name.' })
     .trim()
     .min(1, { message: 'Please enter a name.' })
-    .max(255, { message: 'A name can be at most 255 characters.' }),
+    .max(255, { message: 'A name can be at most 255 characters.' })
+    .refine((name) => isPlainText(name), {
+      message: 'A name cannot contain invisible or control characters.',
+    }),
   email: z
     .string({ invalid_type_error: 'Please enter an email address.' })
     .trim()
@@ -117,3 +134,94 @@ export const ChangePasswordForm = z
     path: ['newPassword'],
     message: 'The new password must differ from the current one.',
   });
+
+/** A username, as an account is made with one (the database checks the same, migration 0006). */
+export const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,20}$/;
+
+/**
+ * The sign-up form: a username and a password typed twice. The password follows the
+ * same rules as a changed one: at least 8 characters, at most 72 bytes.
+ */
+export const SignUpForm = z
+  .object({
+    username: z
+      .string({ invalid_type_error: 'Please choose a username.' })
+      .trim()
+      .regex(USERNAME_PATTERN, {
+        message: 'A username is 3 to 20 letters, digits, "_" or "-".',
+      }),
+    password: z
+      .string({ invalid_type_error: 'Please choose a password.' })
+      .min(8, { message: 'A password needs at least 8 characters.' })
+      .refine((password) => new TextEncoder().encode(password).length <= BCRYPT_MAX_BYTES, {
+        message: 'A password can be at most 72 bytes long.',
+      }),
+    confirmPassword: z.string({ invalid_type_error: 'Please type the password again.' }),
+  })
+  .refine((form) => form.password === form.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'The two passwords do not match.',
+  });
+
+/**
+ * Characters nobody can see, or that change how the text around them is shown:
+ * control characters, zero-width and direction marks (U+202E writes what follows
+ * backwards), line and paragraph separators, private-use and lone surrogates. Text a
+ * person types and others read is refused with any of them in it.
+ */
+const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}]/u;
+
+/** Whether `text` has none of the HIDDEN_CHARACTERS. */
+export const isPlainText = (text: string) => !HIDDEN_CHARACTERS.test(text);
+
+/** Survival's run lengths, in minutes (arena-storage.ts offers the same). */
+export const RunMinutes = z.union([z.literal(5), z.literal(10), z.literal(15)]);
+
+/**
+ * A name on the public leaderboard: 1 to 20 letters (of any language), digits,
+ * spaces and _ . ' -, its spaces trimmed and runs of them made one. Nothing else, so
+ * no name can hide characters, look like markup or pass for another by a trick of
+ * the text's direction.
+ */
+export const LeaderboardName = z
+  .string({ invalid_type_error: 'Please enter a name.' })
+  .transform((name) => name.normalize('NFC').trim().replace(/\s+/g, ' '))
+  .pipe(
+    z
+      .string()
+      .min(1, { message: 'Please enter a name.' })
+      .max(20, { message: 'A name can be at most 20 characters.' })
+      .regex(/^[\p{L}\p{M}\p{N} _.'-]+$/u, {
+        message: "A name is letters, digits, spaces and _ . ' - only.",
+      })
+  );
+
+/**
+ * A finished Survival run, as the game sends it to the leaderboard: the run the
+ * server started for it (startSurvivalRun), the name the player typed, how long it
+ * lasted and the cats sent home. Its length is the started run's, never the game's
+ * say; the database refuses a time longer than the run has really lasted.
+ */
+export const SurvivalRun = z.object({
+  runId: z.string().uuid(),
+  name: LeaderboardName,
+  timeMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(15 * 60_000),
+  sentHome: z.number().int().min(0).max(1_000_000),
+});
+export type SurvivalRun = z.input<typeof SurvivalRun>;
+
+/** How long a search can be: anything past it is ignored. */
+export const SEARCH_MAX_LENGTH = 100;
+
+/**
+ * A search as an ILIKE pattern that finds it anywhere: cut to SEARCH_MAX_LENGTH,
+ * with % and _ (and the escape, \) matched as themselves, not as wildcards.
+ */
+export const containsPattern = (query: unknown) =>
+  `%${String(query ?? '')
+    .slice(0, SEARCH_MAX_LENGTH)
+    .replace(/[\\%_]/g, '\\$&')}%`;

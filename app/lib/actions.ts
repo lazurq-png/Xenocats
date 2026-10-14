@@ -4,16 +4,21 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import bcryptjs from 'bcryptjs';
 import postgres from 'postgres';
-import { auth, signIn } from '@/auth';
+import { auth, signIn, signOut } from '@/auth';
 import { AuthError, type CredentialsSignin } from 'next-auth';
 import { BCRYPT_COST } from '@/app/lib/password-check';
-import { LOCKED, claimAttempt, clearFailures, loginKey, loginLimits } from '@/app/lib/login-limit';
+import { LOCKED, claimAttempt, clearFailures, loginLimits } from '@/app/lib/login-limit';
+import { claimSignUp, clientAddress, clientKey, signUpLimit } from '@/app/lib/sign-up-limit';
+import { headers } from 'next/headers';
 import {
   ChangePasswordForm,
   CreateInvoice,
   CustomerForm,
   CustomerId,
   InvoiceId,
+  RunMinutes,
+  SignUpForm,
+  SurvivalRun,
   UpdateInvoice,
   dueDateProblem,
 } from '@/app/lib/schemas';
@@ -367,7 +372,7 @@ export async function authenticate(prevState: string | undefined, formData: Form
         case 'CredentialsSignin':
           if ((error as CredentialsSignin).code === LOCKED) {
             // Not how long: the time left differs from lock to lock.
-            return 'Too many failed logins for this email. Try again later.';
+            return 'Too many failed logins for this account. Try again later.';
           }
           return 'Invalid credentials.';
         default:
@@ -376,6 +381,139 @@ export async function authenticate(prevState: string | undefined, formData: Form
     }
     throw error;
   }
+}
+
+export type SignUpState = {
+  errors?: {
+    username?: string[];
+    password?: string[];
+    confirmPassword?: string[];
+  };
+  message?: string | null;
+};
+
+/**
+ * Makes an account from a username and a password (SignUpForm), stored as a bcrypt
+ * hash, then signs it in. It starts with no customers and so no invoices: every
+ * account sees only its own (migration 0005).
+ */
+export async function signUp(prevState: SignUpState, formData: FormData): Promise<SignUpState> {
+  const validatedFields = SignUpForm.safeParse({
+    username: formData.get('username'),
+    password: formData.get('password'),
+    confirmPassword: formData.get('confirmPassword'),
+  });
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Your account was not created.',
+    };
+  }
+
+  const { username, password } = validatedFields.data;
+  try {
+    // At most signUpLimit() a day from one address, a taken name counted too, so
+    // neither accounts nor taken names can be churned through (sign-up-limit.ts).
+    const client = clientKey(clientAddress(await headers()));
+    if (!(await claimSignUp(sql, client, signUpLimit()))) {
+      return { message: 'Too many accounts were made from here today. Try again tomorrow.' };
+    }
+    const hash = await bcryptjs.hash(password, BCRYPT_COST);
+    // The unique index on lower(username) settles two sign-ups for one name at once.
+    const inserted = await sql`
+      INSERT INTO users (name, username, password)
+      VALUES (${username}, ${username}, ${hash})
+      ON CONFLICT DO NOTHING`;
+    if (inserted.count === 0) {
+      return {
+        errors: { username: ['That username is taken.'] },
+        message: 'Your account was not created.',
+      };
+    }
+  } catch (error) {
+    console.error('Database Error:', error);
+    return { message: 'Database Error: Failed to create the account.' };
+  }
+
+  // Signed in as the login form does; it redirects (by throwing) to the dashboard.
+  try {
+    await signIn('credentials', { login: username, password, redirectTo: '/dashboard' });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return { message: 'Your account was created, but signing in failed. Please log in.' };
+    }
+    throw error;
+  }
+  return {};
+}
+
+/**
+ * Starts a Survival run of `minutes` for the signed-in player, as the game starts
+ * one, and gives its id, or null (signed out, a length there is none of, or the
+ * database refused). It replaces the player's run in progress, if any: one at a
+ * time. The run's length and start are the server's from here on.
+ */
+export async function startSurvivalRun(minutes: unknown): Promise<string | null> {
+  const owner = await signedInUser();
+  if (!owner) return null;
+  const length = RunMinutes.safeParse(minutes);
+  if (!length.success) return null;
+  try {
+    const [run] = await sql<{ id: string }[]>`
+      INSERT INTO survival_runs (user_id, run_minutes)
+      VALUES (${owner}, ${length.data})
+      ON CONFLICT (user_id) WHERE finished_at IS NULL DO UPDATE SET
+        id = gen_random_uuid(), run_minutes = EXCLUDED.run_minutes, started_at = now()
+      RETURNING id`;
+    return run.id;
+  } catch (error) {
+    console.error('Database Error:', error);
+    return null;
+  }
+}
+
+/** What became of a run sent to the leaderboard. */
+export type SurvivalRunResult = 'saved' | 'signed-out' | 'invalid' | 'error';
+
+/** How far a run's time may run ahead of the server's clock: the start's round trip, ms. */
+const START_ALLOWANCE_MS = 2000;
+/** More cats than this a second is no run anyone played. */
+const MAX_CATS_PER_SECOND = 100;
+/** The most runs one player can finish in an hour. */
+const MAX_RUNS_PER_HOUR = 60;
+
+/**
+ * Finishes a run startSurvivalRun started, under the name the player typed for it:
+ * on the leaderboard from now on. Only the signed-in player's own run in progress,
+ * once; never with a time longer than its length, or than the time since it started
+ * (give or take the start's round trip), nor more cats than that time allows; and at
+ * most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes nothing.
+ */
+export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult> {
+  const owner = await signedInUser();
+  if (!owner) return 'signed-out';
+  const validated = SurvivalRun.safeParse(run);
+  if (!validated.success) return 'invalid';
+  const { runId, name, timeMs, sentHome } = validated.data;
+  try {
+    const finished = await sql`
+      UPDATE survival_runs SET
+        name = ${name}, time_ms = ${timeMs}, sent_home = ${sentHome}, finished_at = now()
+      WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL
+        AND ${timeMs}::int <= run_minutes * 60000
+        AND ${timeMs}::int <= EXTRACT(EPOCH FROM now() - started_at) * 1000 + ${START_ALLOWANCE_MS}
+        AND ${sentHome}::int <= ${timeMs}::int / 1000.0 * ${MAX_CATS_PER_SECOND} + 10
+        AND (
+          SELECT count(*) FROM survival_runs AS recent
+          WHERE recent.user_id = ${owner} AND recent.finished_at > now() - interval '1 hour'
+        ) < ${MAX_RUNS_PER_HOUR}`;
+    if (finished.count === 0) return 'invalid';
+  } catch (error) {
+    console.error('Database Error:', error);
+    return 'error';
+  }
+  revalidatePath('/cats');
+  return 'saved';
 }
 
 export type PasswordState = {
@@ -400,9 +538,9 @@ export async function changePassword(
   prevState: PasswordState,
   formData: FormData
 ): Promise<PasswordState> {
-  const session = await auth();
-  const email = session?.user?.email;
-  if (!email) return { message: 'You must be logged in to change your password.' };
+  // By the session's id: an account made with a username has no email.
+  const id = await signedInUser();
+  if (!id) return { message: 'You must be logged in to change your password.' };
 
   const validatedFields = ChangePasswordForm.safeParse({
     currentPassword: formData.get('currentPassword'),
@@ -417,13 +555,13 @@ export async function changePassword(
   }
 
   const { currentPassword, newPassword } = validatedFields.data;
-  const key = `change-password:${loginKey(email)}`;
+  const key = `change-password:${id}`;
   try {
     if (!(await claimAttempt(sql, key, loginLimits()))) {
       return { message: 'Too many failed attempts for this account. Try again later.' };
     }
     const [user] = await sql<{ id: string; password: string }[]>`
-      SELECT id, password FROM users WHERE email = ${email}`;
+      SELECT id, password FROM users WHERE id = ${id}`;
     if (!user || !(await bcryptjs.compare(currentPassword, user.password))) {
       return {
         errors: { currentPassword: ['That is not your current password.'] },
@@ -432,10 +570,17 @@ export async function changePassword(
     }
     await clearFailures(sql, key);
     const hash = await bcryptjs.hash(newPassword, BCRYPT_COST);
-    await sql`UPDATE users SET password = ${hash} WHERE id = ${user.id}`;
+    // A new session version ends every session of the account, wherever it is
+    // signed in (auth.config.ts): anyone who knew the old password is out.
+    await sql`
+      UPDATE users SET password = ${hash}, session_version = session_version + 1
+      WHERE id = ${user.id}`;
   } catch (error) {
     console.error('Database Error:', error);
     return { message: 'Database Error: Failed to change the password.' };
   }
+  // This session ended with the rest: to the login, to sign in with the new password.
+  // (signOut redirects by throwing, so it is outside the try.)
+  await signOut({ redirectTo: '/login?password-changed=1' });
   return { done: true, message: 'Your password has been changed.' };
 }

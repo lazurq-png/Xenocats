@@ -5,8 +5,13 @@
 export type User = {
   id: string;
   name: string;
-  email: string;
+  /** Null for an account made with a username (migration 0006). */
+  email: string | null;
+  /** Null for an account made before usernames: it logs in with its email. */
+  username: string | null;
   password: string;
+  /** Raised when the password changes, which ends every session (migration 0008). */
+  session_version: number;
 };
 
 export type Customer = {
@@ -126,4 +131,15 @@ export type InvoiceDetail = {
   customer_id: string;
   name: string;
   email: string;
+};
+
+/** A run on Survival's leaderboard: a player's best of its length, and its place. */
+export type LeaderboardRow = {
+  run_minutes: 5 | 10 | 15;
+  place: number;
+  /** The viewer's own. */
+  mine: boolean;
+  name: string;
+  time_ms: number;
+  sent_home: number;
 };

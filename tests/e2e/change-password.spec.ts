@@ -4,7 +4,7 @@ import { type Page, expect, test } from './fixtures';
 
 // Changing the password on the settings page, against the test schema
 // global-setup.ts rebuilds, as a user of the test's own (written straight into
-// the schema: there is no sign-up page), so the demo user others log in as keeps
+// the schema), so the demo user others log in as keeps
 // its password.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 
@@ -41,8 +41,9 @@ async function submit(page: Page, current: string, next: string, confirm = next)
   await page.getByRole('button', { name: 'Change Password' }).click();
 }
 
-test('a logged-in user changes their password: the new one works, the old one no longer', async ({
+test('a logged-in user changes their password: signed out everywhere, the new one works, the old one no longer', async ({
   page,
+  browser,
 }) => {
   test.setTimeout(90_000);
   const email = await createUser();
@@ -75,11 +76,34 @@ test('a logged-in user changes their password: the new one works, the old one no
     'currentPassword-error'
   );
 
-  await submit(page, OLD, NEW);
-  await expect(page.getByText('Your password has been changed.')).toBeVisible();
+  // The same account signed in elsewhere: another browser with the session.
+  const elsewhere = await browser.newContext({ storageState: await page.context().storageState() });
+  // Its cats paused, as the fixture pauses them on `page`.
+  await elsewhere.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__xenocatsPaused = true;
+  });
+  const other = await elsewhere.newPage();
+  await other.goto('/dashboard');
+  await expect(other).toHaveURL(/\/dashboard$/);
 
-  // Signed out: the old password is refused, the new one lets the user in.
-  await page.context().clearCookies();
+  await submit(page, OLD, NEW);
+  // Signed out here, sent to the login with a word on why...
+  await expect(page).toHaveURL(/\/login\?password-changed=1$/, { timeout: 15_000 });
+  await expect(
+    page.getByText('Your password was changed and you were signed out everywhere.')
+  ).toBeVisible();
+  await page.goto('/dashboard');
+  await expect(page).toHaveURL(/\/login/);
+  // ...and everywhere else: the other browser's session is over too, its next page
+  // the login (and the login stays put: no bounce back to the dashboard).
+  await other.goto('/dashboard');
+  await expect(other).toHaveURL(/\/login/);
+  await other.goto('/login');
+  await expect(other.getByRole('button', { name: /log in/i })).toBeVisible();
+  await expect(other).toHaveURL(/\/login$/);
+  await elsewhere.close();
+
+  // The old password is refused, the new one lets the user in.
   await logIn(page, email, OLD);
   await expect(page.getByText('Invalid credentials.')).toBeVisible();
   await logIn(page, email, NEW);

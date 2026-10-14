@@ -43,6 +43,11 @@ vi.mock('@/auth', () => ({ auth, signIn: vi.fn() }));
 vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
+// The address a sign-up comes from, for the sign-up limit (a test sets its own).
+const { clientIp } = vi.hoisted(() => ({ clientIp: { value: '10.0.0.0' } }));
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ 'x-real-ip': clientIp.value }),
+}));
 
 /** The demo user, who owns every seeded customer (migration 0005, scripts/db.mjs). */
 const owner = users[0].id;
@@ -528,6 +533,193 @@ describe.skipIf(!url)('two accounts', () => {
   });
 });
 
+// Accounts made with a username (signUp, and its limit a day), and Survival's
+// leaderboard (startSurvivalRun, recordSurvivalRun, fetchLeaderboard), against the
+// same schema. The seed has no runs: every run here is this block's.
+describe.skipIf(!url)('accounts and the leaderboard', () => {
+  let sql: postgres.Sql;
+  let data: typeof import('@/app/lib/data');
+  let actions: typeof import('@/app/lib/actions');
+  const stamp = Date.now().toString(36);
+  const username = `kit${stamp}`;
+  let player: string;
+  let rival: string;
+  const signUpForm = (name: string) => {
+    const form = new FormData();
+    form.set('username', name);
+    form.set('password', 'a-good-password');
+    form.set('confirmPassword', 'a-good-password');
+    return form;
+  };
+  const addUser = async (name: string) =>
+    (
+      await sql`INSERT INTO users (name, username, password) VALUES (${name}, ${name}, 'x')
+        RETURNING id`
+    )[0].id as string;
+  /** A run of `minutes` started (as the game starts one) `ago` ms ago, for `id`. */
+  const started = async (id: string, minutes: number, ago = 20 * 60_000) => {
+    auth.mockResolvedValue({ user: { id } });
+    const runId = await actions.startSurvivalRun(minutes);
+    await sql`
+      UPDATE survival_runs SET started_at = now() - make_interval(secs => ${ago / 1000})
+      WHERE id = ${runId}`;
+    return runId!;
+  };
+  /** A run of `minutes` played to its end and saved by `id`. */
+  const played = async (
+    id: string,
+    minutes: number,
+    timeMs: number,
+    sentHome: number,
+    name: string
+  ) => actions.recordSurvivalRun({ runId: await started(id, minutes), name, timeMs, sentHome });
+
+  beforeAll(async () => {
+    sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
+    process.env.POSTGRES_URL = url!;
+    // The default limit, whatever the environment says.
+    process.env.SIGNUP_MAX_PER_DAY = '2';
+    // As behind a proxy that sets X-Real-IP: each test's sign-ups come from its own address.
+    process.env.TRUSTED_PROXY_HEADER = 'x-real-ip';
+    data = await import('@/app/lib/data');
+    actions = await import('@/app/lib/actions');
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM users WHERE username LIKE ${`%${stamp}`}`;
+    await sql.end();
+  });
+
+  it('signUp makes an account with no email, and refuses its username in any case', async () => {
+    clientIp.value = `10.0.0.1-${stamp}`;
+    expect(await actions.signUp({}, signUpForm(username))).toEqual({});
+    const [user] = await sql`SELECT id, email FROM users WHERE username = ${username}`;
+    expect(user.email).toBeNull();
+    player = user.id;
+    // An account starts with nothing of its own.
+    expect(await data.fetchCustomers(player)).toEqual([]);
+    expect(await data.fetchInvoicesPages(player, '')).toBe(0);
+
+    const again = await actions.signUp({}, signUpForm(username.toUpperCase()));
+    expect(again.errors?.username).toEqual(['That username is taken.']);
+    const [{ count }] = await sql`
+      SELECT count(*)::int AS count FROM users WHERE lower(username) = lower(${username})`;
+    expect(count).toBe(1);
+  });
+
+  it('two sign-ups a day from one address, a taken name counted too; another address is not held back', async () => {
+    // The address above has used both of its sign-ups (one made, one taken).
+    const third = await actions.signUp({}, signUpForm(`a${stamp}`));
+    expect(third).toEqual({
+      message: 'Too many accounts were made from here today. Try again tomorrow.',
+    });
+    expect(await sql`SELECT 1 FROM users WHERE username = ${`a${stamp}`}`).toHaveLength(0);
+    // Kept as a keyed hash, never the address itself.
+    expect(await sql`SELECT 1 FROM sign_up_limits WHERE client LIKE ${`%${stamp}%`}`).toHaveLength(
+      0
+    );
+
+    clientIp.value = `10.0.0.2-${stamp}`;
+    expect(await actions.signUp({}, signUpForm(`b${stamp}`))).toEqual({});
+    rival = (await sql`SELECT id FROM users WHERE username = ${`b${stamp}`}`)[0].id;
+  });
+
+  it('a run is saved once, under the length the server started it with, never faster than real time', async () => {
+    auth.mockResolvedValue({ user: { id: player } });
+    // Just started: a minute of play has not passed yet.
+    const fresh = await actions.startSurvivalRun(5);
+    expect(
+      await actions.recordSurvivalRun({ runId: fresh, name: 'Fast', timeMs: 60_000, sentHome: 1 })
+    ).toBe('invalid');
+
+    const runId = await started(player, 5);
+    // Longer than the run's length (the server's 5 minutes, whatever the game says).
+    expect(
+      await actions.recordSurvivalRun({ runId, name: 'Long', timeMs: 300_001, sentHome: 1 })
+    ).toBe('invalid');
+    // More cats than a minute of play could send home.
+    expect(
+      await actions.recordSurvivalRun({ runId, name: 'Many', timeMs: 60_000, sentHome: 100_000 })
+    ).toBe('invalid');
+    expect(
+      await actions.recordSurvivalRun({ runId, name: 'Short', timeMs: 60_000, sentHome: 10 })
+    ).toBe('saved');
+    // Once.
+    expect(
+      await actions.recordSurvivalRun({ runId, name: 'Again', timeMs: 70_000, sentHome: 10 })
+    ).toBe('invalid');
+    // Only the player's own.
+    const own = await started(player, 5);
+    auth.mockResolvedValue({ user: { id: rival } });
+    expect(
+      await actions.recordSurvivalRun({ runId: own, name: 'Theirs', timeMs: 1000, sentHome: 0 })
+    ).toBe('invalid');
+    // Starting another run replaces the one in progress.
+    const first = await started(player, 10);
+    await started(player, 10);
+    auth.mockResolvedValue({ user: { id: player } });
+    expect(
+      await actions.recordSurvivalRun({ runId: first, name: 'Old', timeMs: 1000, sentHome: 0 })
+    ).toBe('invalid');
+    const [{ open }] = await sql`
+      SELECT count(*)::int AS open FROM survival_runs WHERE user_id = ${player} AND finished_at IS NULL`;
+    expect(open).toBe(1);
+  });
+
+  it('the board has each player’s best run of each length; the viewer’s own best has its place', async () => {
+    expect(await played(player, 5, 240_000, 5, 'Long')).toBe('saved');
+    expect(await played(rival, 5, 240_000, 9, 'Rival')).toBe('saved');
+    expect(await played(player, 10, 600_000, 300, 'Ten')).toBe('saved');
+
+    const { board, mine } = await data.fetchLeaderboard(player);
+    // The player's shorter run ('Short', above) is not on it: only each player's best.
+    expect(
+      board[5].map((row) => [row.place, row.name, row.time_ms, row.sent_home, row.mine])
+    ).toEqual([
+      [1, 'Rival', 240_000, 9, false],
+      [2, 'Long', 240_000, 5, true],
+    ]);
+    expect(mine[5]).toMatchObject({ place: 2, name: 'Long' });
+    expect(mine[10]).toEqual({
+      run_minutes: 10,
+      place: 1,
+      name: 'Ten',
+      time_ms: 600_000,
+      sent_home: 300,
+      mine: true,
+    });
+    expect(board[15]).toEqual([]);
+    expect(mine[15]).toBeNull();
+
+    const anonymous = await data.fetchLeaderboard(null);
+    expect(anonymous.board[5].map((row) => row.mine)).toEqual([false, false]);
+    expect(anonymous.mine).toEqual({ 5: null, 10: null, 15: null });
+  });
+
+  it('the board shows the top LEADERBOARD_SIZE; a viewer below them still sees their place', async () => {
+    for (let i = 0; i < data.LEADERBOARD_SIZE; i++) {
+      const id = await addUser(`p${i}${stamp}`);
+      await sql`
+        INSERT INTO survival_runs (user_id, run_minutes, finished_at, name, time_ms, sent_home)
+        VALUES (${id}, 15, now(), ${`Player ${i}`}, ${600_000 + i * 1000}, 0)`;
+    }
+    expect(await played(player, 15, 1000, 0, 'Last')).toBe('saved');
+    const { board, mine } = await data.fetchLeaderboard(player);
+    expect(board[15]).toHaveLength(data.LEADERBOARD_SIZE);
+    expect(board[15][0].name).toBe(`Player ${data.LEADERBOARD_SIZE - 1}`);
+    expect(board[15].some((row) => row.mine)).toBe(false);
+    expect(mine[15]).toMatchObject({ place: data.LEADERBOARD_SIZE + 1, name: 'Last' });
+  });
+
+  it('searches match % and _ as themselves, not as wildcards', async () => {
+    // The seed has no customer, and no invoice, with a % or an _ in what is searched.
+    expect(await data.fetchFilteredCustomers(owner, '%')).toEqual([]);
+    expect(await data.fetchFilteredCustomers(owner, '_')).toEqual([]);
+    expect(await data.fetchInvoicesPages(owner, '%')).toBe(0);
+    expect(await data.fetchInvoicesForExport(owner, '_')).toEqual([]);
+  });
+});
+
 // The login lockout's statements (app/lib/login-limit.ts) against the same schema,
 // which the file-level beforeAll rebuilds; each test on an email of its own.
 describe.skipIf(!url)('the login lockout in the database', () => {
@@ -700,6 +892,75 @@ describe.skipIf(!url)('migrations on existing rows', () => {
     await expect(sql`DELETE FROM users WHERE id = ${first}`).rejects.toThrow(
       /customers_owner_id_fkey/
     );
+  });
+
+  it('0006 keeps existing accounts logging in by email, adds usernames, the sign-up limit and runs; 0007 bounds new amounts', async () => {
+    await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
+    await sql`CREATE SCHEMA xenocats_vitest_migrations`;
+    for (const name of [
+      '0001_init.sql',
+      '0002_invoice_keys_and_indexes.sql',
+      '0003_invoice_due_dates.sql',
+      '0004_login_failures.sql',
+      '0005_customer_owners.sql',
+    ]) {
+      await sql.unsafe(migration(name));
+    }
+    const old = await addUser('old@example.com');
+    const [{ id: customer }] = await sql`
+      INSERT INTO customers (name, email, image_url, owner_id)
+      VALUES ('Old', 'old@example.com', '/x.png', ${old}) RETURNING id`;
+    // An invoice from before the bounds, out of them.
+    await sql`
+      INSERT INTO invoices (customer_id, amount, status, date) VALUES (${customer}, 0, 'paid', '2024-01-01')`;
+    for (const name of [
+      '0006_accounts_and_leaderboard.sql',
+      '0007_invoice_amount_bounds.sql',
+      '0008_session_versions.sql',
+    ]) {
+      await sql.begin((tx) => tx.unsafe(migration(name)));
+    }
+
+    const [kept] = await sql`SELECT email, username, session_version FROM users WHERE id = ${old}`;
+    // Its sessions from before carry no version, read as 0: they stay signed in.
+    expect({ ...kept }).toEqual({ email: 'old@example.com', username: null, session_version: 0 });
+    await sql`INSERT INTO users (name, username, password) VALUES ('Kit', 'Kit', 'x')`;
+    await expect(
+      sql`INSERT INTO users (name, username, password) VALUES ('kit', 'KIT', 'x')`
+    ).rejects.toThrow(/users_username_key/);
+    await expect(
+      sql`INSERT INTO users (name, username, password) VALUES ('a', 'a@b.c', 'x')`
+    ).rejects.toThrow(/users_username_check/);
+    await expect(sql`INSERT INTO users (name, password) VALUES ('Nobody', 'x')`).rejects.toThrow(
+      /users_login_check/
+    );
+
+    // A run is finished all at once, within its length, under a name with nothing hidden.
+    const finish = (name: string, timeMs: number) => sql`
+      INSERT INTO survival_runs (user_id, run_minutes, finished_at, name, time_ms, sent_home)
+      VALUES (${old}, 5, now(), ${name}, ${timeMs}, 1)`;
+    await finish('Old', 300_000);
+    await expect(finish('Old', 300_001)).rejects.toThrow(/survival_runs_check/);
+    await expect(finish('  ', 1000)).rejects.toThrow(/survival_runs_name_check/);
+    await expect(finish('‮gnirts', 1000)).rejects.toThrow(/survival_runs_name_check/);
+    await expect(finish('a​b', 1000)).rejects.toThrow(/survival_runs_name_check/);
+    await expect(
+      sql`INSERT INTO survival_runs (user_id, run_minutes, finished_at) VALUES (${old}, 5, now())`
+    ).rejects.toThrow(/survival_runs_finished_check/);
+    // One run in progress per player.
+    await sql`INSERT INTO survival_runs (user_id, run_minutes) VALUES (${old}, 5)`;
+    await expect(
+      sql`INSERT INTO survival_runs (user_id, run_minutes) VALUES (${old}, 10)`
+    ).rejects.toThrow(/survival_runs_open_key/);
+
+    // New invoices are held to the bounds; the old one is kept as it was.
+    for (const amount of [0, 100_000_001]) {
+      await expect(
+        sql`INSERT INTO invoices (customer_id, amount, status, date)
+            VALUES (${customer}, ${amount}, 'paid', '2024-01-02')`
+      ).rejects.toThrow(/invoices_amount_check/);
+    }
+    expect(await sql`SELECT 1 FROM invoices WHERE amount = 0`).toHaveLength(1);
   });
 
   it('0005 on an empty database (no customers) needs no user', async () => {

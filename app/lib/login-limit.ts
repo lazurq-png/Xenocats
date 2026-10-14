@@ -25,7 +25,8 @@ export function loginLimits(env: Record<string, string | undefined> = process.en
   };
 }
 
-function positiveInteger(value: string | undefined, fallback: number) {
+/** A whole number above zero from the environment, or `fallback`. */
+export function positiveInteger(value: string | undefined, fallback: number) {
   const number = Number(value);
   return value && Number.isInteger(number) && number > 0 ? number : fallback;
 }

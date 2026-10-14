@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { authConfig } from '@/auth.config';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const { isCurrentSession } = vi.hoisted(() => ({ isCurrentSession: vi.fn() }));
+vi.mock('@/app/lib/session-version', () => ({ isCurrentSession }));
+
+const { authConfig } = await import('@/auth.config');
 
 type Authorized = (params: {
   auth: { user?: object } | null;
@@ -74,5 +77,34 @@ describe('session', () => {
   it('a token without one gives a session without one', () => {
     const result = session({ session: { user: { email: 'a@b.c' }, expires: '' }, token: {} });
     expect(result.user?.id).toBeUndefined();
+  });
+});
+
+describe('jwt', () => {
+  beforeEach(() => isCurrentSession.mockReset());
+  type Jwt = (params: {
+    token: { sub?: string; sessionVersion?: number };
+    user?: { session_version?: number };
+  }) => Promise<object | null>;
+  const jwt = authConfig.callbacks.jwt as unknown as Jwt;
+
+  it('puts the account’s session version in the token at login, without asking the database', async () => {
+    expect(await jwt({ token: { sub: 'u1' }, user: { session_version: 3 } })).toEqual({
+      sub: 'u1',
+      sessionVersion: 3,
+    });
+    expect(isCurrentSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps a token whose version is still the account’s', async () => {
+    isCurrentSession.mockResolvedValueOnce(true);
+    const token = { sub: 'u1', sessionVersion: 3 };
+    expect(await jwt({ token })).toBe(token);
+    expect(isCurrentSession).toHaveBeenCalledWith('u1', 3);
+  });
+
+  it('drops a token from before a password change: signed out', async () => {
+    isCurrentSession.mockResolvedValueOnce(false);
+    expect(await jwt({ token: { sub: 'u1', sessionVersion: 2 } })).toBeNull();
   });
 });

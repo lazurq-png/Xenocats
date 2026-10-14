@@ -58,6 +58,8 @@ import {
   writeProgress,
 } from './progression';
 import { ProgressionPanel, useProgress } from './progression-view';
+import { LeaderboardEntry } from './leaderboard-entry';
+import { startSurvivalRun } from '@/app/lib/actions';
 import { createRandom, freshSeed } from './random';
 import { CROWD_ARSENAL, FUSION_START, PICKUPS_HOOK_CHANCE, parseTestHooks } from './test-hooks';
 import { GameSettings } from './game-settings';
@@ -202,8 +204,22 @@ function subscribeBest(onChange: () => void) {
   return () => window.removeEventListener('storage', onChange);
 }
 
-export default function ArenaGame({ touch = false }: { touch?: boolean }) {
+export default function ArenaGame({
+  touch = false,
+  signedIn = false,
+}: {
+  touch?: boolean;
+  /** Whether the player is logged in: only then can a run go on the leaderboard. */
+  signedIn?: boolean;
+}) {
   const [screen, setScreen] = useState<Screen>('start');
+  // Whether the run in progress (or just over) can go on the leaderboard.
+  const [ranked, setRanked] = useState(true);
+  // Counts the runs, so each one's results ask for its name afresh.
+  const [runCount, setRunCount] = useState(0);
+  // The server's id for the run (startSurvivalRun), once it has given one; null for
+  // a run that is not on the leaderboard.
+  const [runId, setRunId] = useState<Promise<string | null>>(() => Promise.resolve(null));
   const [hud, setHud] = useState<Hud | null>(null);
   const [showFps, setShowFps] = useState(false);
   const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
@@ -329,12 +345,23 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
       window.location.search,
       freshSeed
     );
+    setRunCount((count) => count + 1);
     const chosen = readLength();
     lengthRef.current = chosen;
     setRunLength(chosen);
     const lengthed = runLengthConfig(chosen);
     speedRef.current = speed;
     crowdRef.current = crowd !== null || elite;
+    // A hook that changes the game, or its clock, keeps the run off the leaderboard
+    // (a seed and the frame counter do not).
+    const rankable =
+      speed === 1 && boss === null && crowd === null && !elite && !fusion && !pickups;
+    setRanked(rankable);
+    // A run that can go on the leaderboard is started on the server now: its length
+    // and its start are the server's, and its time cannot outrun the real one.
+    setRunId(
+      signedIn && rankable ? startSurvivalRun(chosen).catch(() => null) : Promise.resolve(null)
+    );
     setShowFps(fps);
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
@@ -455,12 +482,20 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
 
   // Focus: into the play area when a run starts (and back after a choice), onto the
-  // first choice at a level-up, onto Resume when paused, onto Play again when over.
+  // first choice at a level-up, onto Resume when paused, and when over onto the
+  // leaderboard's name, or Play again.
   useEffect(() => {
     if (screen === 'playing') areaRef.current?.focus();
     if (screen === 'choosing') choiceRef.current?.querySelector('button')?.focus();
     if (screen === 'paused') pauseRef.current?.querySelector('button')?.focus();
-    if (screen === 'results') resultsRef.current?.querySelector('button')?.focus();
+    if (screen === 'results') {
+      // The name for the leaderboard, when the run can go on it; otherwise Play again.
+      const results = resultsRef.current;
+      (
+        results?.querySelector<HTMLElement>('#leaderboard-name') ??
+        results?.querySelector<HTMLElement>('[data-play-again]')
+      )?.focus();
+    }
   }, [screen, choices]);
 
   // While a run lasts its play area covers the page: everything else is inert, so
@@ -1352,6 +1387,15 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
             <dt className="text-aura">Tufts of fur gathered</dt>
             <dd data-testid="survival-result-tufts">{result.earned}</dd>
           </dl>
+          <LeaderboardEntry
+            key={runCount}
+            runId={runId}
+            minutes={runLength}
+            timeMs={result.time}
+            sentHome={result.sentHome}
+            signedIn={signedIn}
+            ranked={ranked}
+          />
           {result.keepers.length > 1 && (
             <ul data-testid="survival-result-keepers" className="mt-3 space-y-1 text-sm text-white">
               {result.keepers.map((k, i) => (
@@ -1388,7 +1432,7 @@ export default function ArenaGame({ touch = false }: { touch?: boolean }) {
               ))}
             </ul>
           )}
-          <Button className="mt-4" onClick={start}>
+          <Button className="mt-4" onClick={start} data-play-again>
             Play again
           </Button>
         </section>

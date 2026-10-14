@@ -2,12 +2,15 @@ import { Metadata } from 'next';
 import Link from 'next/link';
 import XenocatLogo from '@/app/ui/xenocat-logo';
 import FightPage from '@/app/ui/xenocats/fight-page';
+import { auth } from '@/auth';
 
 export const metadata: Metadata = {
   title: 'Survival',
 };
 
-export default function Page() {
+export default async function Page() {
+  // Open to everyone; a signed-in player can put a run on the leaderboard.
+  const signedIn = !!(await auth())?.user?.id;
   return (
     <div className="xenocat-stars min-h-screen bg-void-landing">
       <a
@@ -29,7 +32,7 @@ export default function Page() {
           </Link>
         </header>
         <div id="main-content" tabIndex={-1} className="focus-visible:outline-none">
-          <FightPage />
+          <FightPage signedIn={signedIn} />
         </div>
       </main>
     </div>
