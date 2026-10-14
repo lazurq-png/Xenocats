@@ -516,7 +516,7 @@ these additions.
    run, and keep working locally. No PRs, ever. Local-only runs skip this step.
 
    **CI runs only on the merge.** The workflow is triggered by pushes to
-   `Nightrun` and `main` and pull requests into them
+   `Nightrun` and `dev` and pull requests into `Nightrun`, `dev` or `main`
    (`.github/workflows/ci.yml`), never by a task branch's own push. So the
    push of `Nightrun` above is what CI checks: one run per task, on the
    merged state.

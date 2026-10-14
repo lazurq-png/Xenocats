@@ -103,7 +103,8 @@ change it cannot place; take that, and never shrink its selection by hand. A
 new spec must name the routes it visits as paths (`page.goto('/cats')`, a
 `toHaveURL` regex) so the selector can find it; `tests/unit/affected-tests.test.ts`
 fails for a spec no route reaches. CI runs the full suites on every push to
-`Nightrun`, `dev` or `main` (and pull requests into any of them).
+`Nightrun` or `dev` and every pull request into `Nightrun`, `dev` or `main` (not
+on the merge into `main`, which only deploys).
 
 ---
 

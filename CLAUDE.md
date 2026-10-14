@@ -296,7 +296,9 @@ the schema as `?search_path=`. The schema is defined by `db/migrations/*.sql`;
 no production database yet: one is built later with `db:migrate`, by a human.
 
 **CI** (`.github/workflows/ci.yml`) runs only where work is merged: on pushes
-to `Nightrun`, `dev` and `main` and on pull requests into any of them. A push of any other
+to `Nightrun` and `dev` and on pull requests into `Nightrun`, `dev` or `main`.
+Merging into `main` runs nothing (its pull request was tested; the merge only
+deploys, through Vercel). A push of any other
 branch, a night run's task branches included, runs nothing; those are checked
 locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
 over a migrated and seeded `xenocats` schema, then every browser test against
