@@ -1,12 +1,14 @@
 name: CI
 
-# Only where work is merged: into Nightrun (an unattended run fast-forwards each
-# finished task onto it and pushes it, then polls; or a pull request into it), into
-# dev (supervised work, pushed or by pull request, as Nightrun) and into main. A task
-# branch's own push runs nothing: it was checked locally first.
+# Each change is tested once, before it is merged: on a pull request into Nightrun,
+# dev or main, and on a push to Nightrun (an unattended run fast-forwards each
+# finished task onto it and pushes it, then polls) or to dev (supervised work).
+# Merging into main runs nothing: its pull request was tested, and the merge only
+# deploys (Vercel's own Git integration, vercel.json). A task branch's own push
+# runs nothing either: it was checked locally first.
 on:
   push:
-    branches: [Nightrun, dev, main]
+    branches: [Nightrun, dev]
   pull_request:
     branches: [Nightrun, dev, main]
 
