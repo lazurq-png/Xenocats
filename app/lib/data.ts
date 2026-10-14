@@ -8,9 +8,10 @@ import {
   InvoiceForm,
   InvoicesTable,
   LatestInvoiceRaw,
+  LeaderboardRow,
   MonthTotals,
 } from './definitions';
-import type { InvoiceStatusFilter } from './schemas';
+import { type InvoiceStatusFilter, containsPattern } from './schemas';
 import { formatCurrency } from './utils';
 import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard';
 
@@ -187,11 +188,11 @@ export async function fetchFilteredInvoices(
       JOIN customers ON invoices.customer_id = customers.id
       WHERE customers.owner_id = ${owner}
       AND (
-        customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`} OR
-        invoices.amount::text ILIKE ${`%${query}%`} OR
-        invoices.date::text ILIKE ${`%${query}%`} OR
-        invoices.status ILIKE ${`%${query}%`}
+        customers.name ILIKE ${containsPattern(query)} OR
+        customers.email ILIKE ${containsPattern(query)} OR
+        invoices.amount::text ILIKE ${containsPattern(query)} OR
+        invoices.date::text ILIKE ${containsPattern(query)} OR
+        invoices.status ILIKE ${containsPattern(query)}
       )
       AND ${matchesStatus(status)}
       ORDER BY invoices.date DESC
@@ -241,11 +242,11 @@ export async function fetchInvoicesForExport(
       JOIN customers ON invoices.customer_id = customers.id
       WHERE customers.owner_id = ${owner}
       AND (
-        customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`} OR
-        invoices.amount::text ILIKE ${`%${query}%`} OR
-        invoices.date::text ILIKE ${`%${query}%`} OR
-        invoices.status ILIKE ${`%${query}%`}
+        customers.name ILIKE ${containsPattern(query)} OR
+        customers.email ILIKE ${containsPattern(query)} OR
+        invoices.amount::text ILIKE ${containsPattern(query)} OR
+        invoices.date::text ILIKE ${containsPattern(query)} OR
+        invoices.status ILIKE ${containsPattern(query)}
       )
       AND ${matchesStatus(status)}
       ORDER BY invoices.date DESC
@@ -268,11 +269,11 @@ export async function fetchInvoicesPages(
     JOIN customers ON invoices.customer_id = customers.id
     WHERE customers.owner_id = ${owner}
     AND (
-      customers.name ILIKE ${`%${query}%`} OR
-      customers.email ILIKE ${`%${query}%`} OR
-      invoices.amount::text ILIKE ${`%${query}%`} OR
-      invoices.date::text ILIKE ${`%${query}%`} OR
-      invoices.status ILIKE ${`%${query}%`}
+      customers.name ILIKE ${containsPattern(query)} OR
+      customers.email ILIKE ${containsPattern(query)} OR
+      invoices.amount::text ILIKE ${containsPattern(query)} OR
+      invoices.date::text ILIKE ${containsPattern(query)} OR
+      invoices.status ILIKE ${containsPattern(query)}
     )
     AND ${matchesStatus(status)}
   `;
@@ -385,7 +386,7 @@ export async function fetchFilteredCustomers(owner: string, query: string) {
 		FROM customers
 		LEFT JOIN invoices ON customers.id = invoices.customer_id
 		WHERE customers.owner_id = ${owner}
-		  AND (customers.name ILIKE ${`%${query}%`} OR customers.email ILIKE ${`%${query}%`})
+		  AND (customers.name ILIKE ${containsPattern(query)} OR customers.email ILIKE ${containsPattern(query)})
 		GROUP BY customers.id, customers.name, customers.email, customers.image_url
 		ORDER BY customers.name ASC
 	  `;
@@ -400,5 +401,49 @@ export async function fetchFilteredCustomers(owner: string, query: string) {
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch customer table.');
+  }
+}
+
+/** How many runs each of the leaderboard's lengths shows. */
+export const LEADERBOARD_SIZE = 10;
+
+/**
+ * Survival's leaderboard, the one read that is nobody's own. For each length (5, 10
+ * and 15 minutes): each player's best finished run, ranked longest first, then most
+ * cats sent home, then the earliest; the top LEADERBOARD_SIZE (`board`), and the
+ * `viewer`'s own best with its place (`mine`, null without one or without a
+ * viewer). Each run under the name typed for it; nothing about an account is read.
+ */
+export async function fetchLeaderboard(viewer: string | null) {
+  try {
+    const rows = await sql<LeaderboardRow[]>`
+      WITH best AS (
+        SELECT DISTINCT ON (run_minutes, user_id)
+          run_minutes, user_id, name, time_ms, sent_home, finished_at
+        FROM survival_runs
+        WHERE finished_at IS NOT NULL
+        ORDER BY run_minutes, user_id, time_ms DESC, sent_home DESC, finished_at
+      ), placed AS (
+        SELECT best.*, row_number() OVER (
+          PARTITION BY run_minutes ORDER BY time_ms DESC, sent_home DESC, finished_at
+        )::int AS place
+        FROM best
+      )
+      SELECT run_minutes, place, name, time_ms, sent_home,
+        COALESCE(user_id = ${viewer}::uuid, false) AS mine
+      FROM placed
+      WHERE place <= ${LEADERBOARD_SIZE} OR user_id = ${viewer}::uuid
+      ORDER BY run_minutes, place
+    `;
+    const board: Record<5 | 10 | 15, LeaderboardRow[]> = { 5: [], 10: [], 15: [] };
+    const mine: Record<5 | 10 | 15, LeaderboardRow | null> = { 5: null, 10: null, 15: null };
+    for (const row of rows) {
+      if (row.place <= LEADERBOARD_SIZE) board[row.run_minutes].push(row);
+      if (row.mine) mine[row.run_minutes] = row;
+    }
+    return { board, mine };
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch the leaderboard.');
   }
 }

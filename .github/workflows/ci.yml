@@ -1,13 +1,14 @@
 name: CI
 
 # Only where work is merged: into Nightrun (an unattended run fast-forwards each
-# finished task onto it and pushes it, then polls; or a pull request into it) and
-# into main. A task branch's own push runs nothing: it was checked locally first.
+# finished task onto it and pushes it, then polls; or a pull request into it), into
+# dev (supervised work, pushed or by pull request, as Nightrun) and into main. A task
+# branch's own push runs nothing: it was checked locally first.
 on:
   push:
-    branches: [Nightrun, main]
+    branches: [Nightrun, dev, main]
   pull_request:
-    branches: [Nightrun, main]
+    branches: [Nightrun, dev, main]
 
 permissions:
   contents: read
@@ -37,7 +38,7 @@ jobs:
           tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
           tests/unit/csv tests/unit/export-route tests/unit/invoice-status
           tests/unit/login-limit tests/unit/password-check tests/unit/credentials tests/unit/cat-error tests/unit/affected-tests
-          tests/unit/forms
+          tests/unit/forms tests/unit/input-safeguards
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
         run: >-

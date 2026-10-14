@@ -3,8 +3,8 @@ import postgres from 'postgres';
 import { type Page, expect, test } from './fixtures';
 
 // The login lockout, against the test schema global-setup.ts rebuilds. Each test
-// makes a user of its own (written straight into the test schema: there is no
-// sign-up page), so the demo user others log in as is never locked. That a
+// makes a user of its own (written straight into the test schema, with an email,
+// which a sign-up has none of), so the demo user others log in as is never locked. That a
 // successful login starts the count again is credentials.test.ts and data.test.ts.
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 
@@ -49,7 +49,7 @@ test(`after ${maxFailures} failed logins the email is refused, even with the rig
 
   await logIn(page, email.toUpperCase(), PASSWORD);
   await expect(
-    page.getByText('Too many failed logins for this email. Try again later.')
+    page.getByText('Too many failed logins for this account. Try again later.')
   ).toBeVisible();
   await expect(page).toHaveURL(/\/login/);
 });

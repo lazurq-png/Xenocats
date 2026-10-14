@@ -19,10 +19,11 @@ const hasFinePointer = () =>
 /**
  * The game's page, /cats/survival: the arena (arena-view.tsx). It needs neither the
  * page's cats nor its fake cursor, so neither runs there. On a touch screen (no
- * precise pointer) it is walked with the movement pad.
+ * precise pointer) it is walked with the movement pad. `signedIn`: whether a run can
+ * go on the leaderboard.
  */
-export default function FightPage() {
+export default function FightPage({ signedIn }: { signedIn: boolean }) {
   // The server cannot know: it renders the desktop game, and a touch screen swaps it.
   const fine = useSyncExternalStore(subscribePointer, hasFinePointer, () => true);
-  return <ArenaGame touch={!fine} />;
+  return <ArenaGame touch={!fine} signedIn={signedIn} />;
 }

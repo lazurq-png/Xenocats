@@ -19,7 +19,12 @@ npm run dev
 The app reads `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` from `.env`, and
 optionally `LOGIN_MAX_FAILURES` and `LOGIN_LOCK_MINUTES`: after that many
 failed logins in a row an email is refused for that many minutes (default 5
-and 15). The checks (lint, type check, unit and browser tests, build) are listed in
+and 15). `SIGNUP_MAX_PER_DAY` caps the accounts made from one address a day
+(default 2). The address is believed only from a proxy that sets it: on Vercel
+`X-Real-IP`; elsewhere set `TRUSTED_PROXY_HEADER` to `x-real-ip` or
+`x-forwarded-for` (the last entry), and only if the proxy in front of the app
+overwrites that header. Without one, every client shares the one daily limit.
+The checks (lint, type check, unit and browser tests, build) are listed in
 `CLAUDE.md` §9.
 
 ## Design

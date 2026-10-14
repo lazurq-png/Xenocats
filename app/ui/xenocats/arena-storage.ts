@@ -185,3 +185,22 @@ export function subscribeGraphics(onChange: () => void) {
     window.removeEventListener('storage', onChange);
   };
 }
+
+/** The name last put on the leaderboard, offered again at the end of the next run. */
+export const SURVIVAL_NAME_KEY = 'xenocats:survival:v1:leaderboard-name';
+
+export function readLeaderboardName(): string {
+  try {
+    return (window.localStorage.getItem(SURVIVAL_NAME_KEY) ?? '').slice(0, 20);
+  } catch {
+    return '';
+  }
+}
+
+export function writeLeaderboardName(name: string) {
+  try {
+    window.localStorage.setItem(SURVIVAL_NAME_KEY, name);
+  } catch {
+    // Storage blocked: the name is typed again next time.
+  }
+}

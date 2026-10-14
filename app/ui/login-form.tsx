@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  EnvelopeIcon,
+  UserIcon,
   EyeIcon,
   EyeSlashIcon,
   LockClosedIcon,
@@ -10,6 +10,7 @@ import {
 import { useActionState, useState } from 'react';
 import { authenticate } from '@/app/lib/actions';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 const inputClass =
   'peer block h-[46px] w-full rounded-lg border border-[#2d3052] bg-[#070d22] pl-12 text-[13.2px] font-medium text-white placeholder:text-aura-login focus:border-aura-login focus:ring-aura-login';
@@ -19,6 +20,8 @@ const iconClass =
 export default function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  // Signed out everywhere by a password change (changePassword).
+  const passwordChanged = searchParams.has('password-changed');
   const [errorMessage, formAction, isPending] = useActionState(authenticate, undefined);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -32,20 +35,28 @@ export default function LoginForm() {
         <span className="text-aura-login">stargazer</span>
         <span className="text-plasma">.</span>
       </h1>
+      {passwordChanged && (
+        <p role="status" className="mt-4 text-sm text-plasma">
+          Your password was changed and you were signed out everywhere. Log in with your new
+          password.
+        </p>
+      )}
 
-      <label className="mb-2 mt-9 block text-[13.2px] font-semibold text-white" htmlFor="email">
-        Email
+      <label className="mb-2 mt-9 block text-[13.2px] font-semibold text-white" htmlFor="login">
+        Username or email
       </label>
       <div className="relative">
         <input
           className={inputClass}
-          id="email"
-          type="email"
-          name="email"
-          placeholder="you@example.com"
+          id="login"
+          type="text"
+          name="login"
+          autoComplete="username"
+          autoCapitalize="none"
+          placeholder="Your username"
           required
         />
-        <EnvelopeIcon className={iconClass} />
+        <UserIcon className={iconClass} />
       </div>
 
       <label className="mb-2 mt-6 block text-[13.9px] font-semibold text-white" htmlFor="password">
@@ -60,6 +71,7 @@ export default function LoginForm() {
           placeholder="Enter password"
           required
           minLength={6}
+          autoComplete="current-password"
         />
         <LockClosedIcon className={iconClass} />
         <button
@@ -88,6 +100,12 @@ export default function LoginForm() {
           </>
         )}
       </div>
+      <p className="mt-2 text-sm text-aura-login">
+        New here?{' '}
+        <Link href="/signup" className="font-semibold text-white underline hover:text-plasma">
+          Create an account
+        </Link>
+      </p>
     </form>
   );
 }

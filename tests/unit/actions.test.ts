@@ -3,16 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Nothing here reaches a database or a real session: `postgres`, `@/auth` and the
 // Next.js runtime helpers the actions call are all replaced with fakes.
-const { sql, auth, signIn, revalidatePath, redirect } = vi.hoisted(() => ({
+const { sql, auth, signIn, signOut, revalidatePath, redirect } = vi.hoisted(() => ({
   sql: vi.fn(),
   auth: vi.fn(),
   signIn: vi.fn(),
+  signOut: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
 
 vi.mock('postgres', () => ({ default: () => sql }));
-vi.mock('@/auth', () => ({ auth, signIn }));
+vi.mock('@/auth', () => ({ auth, signIn, signOut }));
 vi.mock('next-auth', () => ({
   AuthError: class AuthError extends Error {
     type = 'CredentialsSignin';
@@ -21,6 +22,9 @@ vi.mock('next-auth', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath }));
 vi.mock('next/navigation', () => ({ redirect }));
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ 'x-real-ip': '203.0.113.7' }),
+}));
 
 const { addDays } = await import('@/app/lib/schemas');
 
@@ -34,6 +38,9 @@ const {
   deleteCustomer,
   authenticate,
   changePassword,
+  signUp,
+  recordSurvivalRun,
+  startSurvivalRun,
 } = await import('@/app/lib/actions');
 
 /** A customer's id: the database decides whether it is the user's own. */
@@ -425,10 +432,10 @@ describe('authenticate', () => {
     expect(await authenticate(undefined, new FormData())).toBe('Invalid credentials.');
   });
 
-  it('says when the email is locked out', async () => {
+  it('says when the login name is locked out', async () => {
     signIn.mockRejectedValue(await failure('locked'));
     expect(await authenticate(undefined, new FormData())).toBe(
-      'Too many failed logins for this email. Try again later.'
+      'Too many failed logins for this account. Try again later.'
     );
   });
 });
@@ -471,6 +478,7 @@ describe('changePassword', () => {
     const result = await changePassword({}, passwordForm());
     expect(result.errors?.currentPassword).toEqual(['That is not your current password.']);
     expect(statements().some((text) => text.includes('UPDATE users'))).toBe(false);
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   it('refuses while the account is locked out, before comparing', async () => {
@@ -493,9 +501,10 @@ describe('changePassword', () => {
       message: 'Your password has been changed.',
     });
     // Counted apart from logins, so failed logins cannot block a change.
-    expect(sql.mock.calls[0][1]).toBe('change-password:user@example.com');
-    // Looked up by the session's email, never by anything the form sends.
-    expect(sql.mock.calls[1].slice(1)).toEqual(['user@example.com']);
+    expect(sql.mock.calls[0][1]).toBe('change-password:u1');
+    // Looked up by the session's id (an account may have no email), never by
+    // anything the form sends.
+    expect(sql.mock.calls[1].slice(1)).toEqual(['u1']);
     const update = sql.mock.calls.find((call) =>
       (call[0] as string[]).join('?').includes('UPDATE users')
     )!;
@@ -503,5 +512,173 @@ describe('changePassword', () => {
     expect(id).toBe('u1');
     expect(stored).not.toContain('new-password-1');
     expect(await bcryptjs.compare('new-password-1', stored)).toBe(true);
+    // Every session of the account ends, this one too: off to the login.
+    expect((update[0] as string[]).join('?')).toContain('session_version = session_version + 1');
+    expect(signOut).toHaveBeenCalledWith({ redirectTo: '/login?password-changed=1' });
+  });
+});
+
+describe('signUp', () => {
+  const signUpForm = (fields: Record<string, string> = {}) => {
+    const form = new FormData();
+    const values = {
+      username: 'Nebula_Kit',
+      password: 'a-good-password',
+      confirmPassword: 'a-good-password',
+      ...fields,
+    };
+    for (const [key, value] of Object.entries(values)) form.set(key, value);
+    return form;
+  };
+
+  /** The sign-up limit's count for this address: the first today unless said otherwise. */
+  const counted = (signUps = 1) => sql.mockResolvedValueOnce([{ sign_ups: signUps }]);
+
+  it('makes the account with a bcrypt hash and no email, then signs it in', async () => {
+    counted();
+    sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
+    // (In the app it redirects, by throwing; here it just returns.)
+    signIn.mockResolvedValueOnce(undefined);
+    expect(await signUp({}, signUpForm({ username: '  Nebula_Kit ' }))).toEqual({});
+    const [strings, name, username, hash] = sql.mock.calls[1] as [string[], ...string[]];
+    expect(strings.join('?')).toContain('INSERT INTO users (name, username, password)');
+    expect([name, username]).toEqual(['Nebula_Kit', 'Nebula_Kit']);
+    expect(hash).not.toContain('a-good-password');
+    expect(await bcryptjs.compare('a-good-password', hash)).toBe(true);
+    expect(signIn).toHaveBeenCalledWith('credentials', {
+      login: 'Nebula_Kit',
+      password: 'a-good-password',
+      redirectTo: '/dashboard',
+    });
+  });
+
+  it('counts the sign-up under a hash of the address, never the address itself', async () => {
+    counted();
+    sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
+    signIn.mockResolvedValueOnce(undefined);
+    await signUp({}, signUpForm());
+    const [strings, key] = sql.mock.calls[0] as [string[], string];
+    expect(strings.join('?')).toContain('INSERT INTO sign_up_limits');
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    expect(key).not.toContain('203.0.113.7');
+  });
+
+  it('refuses a sign-up past the limit a day from one address, and makes nothing', async () => {
+    counted(3);
+    expect(await signUp({}, signUpForm())).toEqual({
+      message: 'Too many accounts were made from here today. Try again tomorrow.',
+    });
+    expect(sql).toHaveBeenCalledTimes(1);
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it('refuses a taken username, and signs nobody in', async () => {
+    counted();
+    sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    const result = await signUp({}, signUpForm());
+    expect(result.errors?.username).toEqual(['That username is taken.']);
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it('refuses an invalid form before touching the database', async () => {
+    for (const [fields, field, message] of [
+      [{ username: 'ab' }, 'username', 'A username is 3 to 20 letters, digits, "_" or "-".'],
+      [
+        { username: 'me@example.com' },
+        'username',
+        'A username is 3 to 20 letters, digits, "_" or "-".',
+      ],
+      [
+        { username: 'change-password:u1' },
+        'username',
+        'A username is 3 to 20 letters, digits, "_" or "-".',
+      ],
+      [
+        { password: 'short', confirmPassword: 'short' },
+        'password',
+        'A password needs at least 8 characters.',
+      ],
+      [
+        { password: 'x'.repeat(73), confirmPassword: 'x'.repeat(73) },
+        'password',
+        'A password can be at most 72 bytes long.',
+      ],
+      [{ confirmPassword: 'something-else' }, 'confirmPassword', 'The two passwords do not match.'],
+    ] as const) {
+      const result = await signUp({}, signUpForm(fields));
+      expect(result.errors?.[field]).toEqual([message]);
+    }
+    expect(sql).not.toHaveBeenCalled();
+    expect(signIn).not.toHaveBeenCalled();
+  });
+});
+
+describe('startSurvivalRun', () => {
+  it('starts a run of a real length for the signed-in player, and gives its id', async () => {
+    auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce([{ id: 'run-1' }]);
+    expect(await startSurvivalRun(10)).toBe('run-1');
+    expect(sql.mock.calls[0].slice(1)).toEqual(['u1', 10]);
+  });
+
+  it('starts nothing signed out, or for a length there is none of', async () => {
+    auth.mockResolvedValue(null);
+    expect(await startSurvivalRun(5)).toBeNull();
+    auth.mockResolvedValue(signedIn);
+    for (const minutes of [7, '5', null, 5.5]) expect(await startSurvivalRun(minutes)).toBeNull();
+    expect(sql).not.toHaveBeenCalled();
+  });
+});
+
+describe('recordSurvivalRun', () => {
+  const runId = 'c0ffee00-0000-4000-8000-0000000000aa';
+  const run = { runId, name: '  Comet   Tail ', timeMs: 312_000, sentHome: 87 };
+
+  it('refuses without a session, and writes nothing', async () => {
+    auth.mockResolvedValue(null);
+    expect(await recordSurvivalRun(run)).toBe('signed-out');
+    expect(sql).not.toHaveBeenCalled();
+  });
+
+  it('finishes the player’s own run, under the typed name tidied, and only once', async () => {
+    auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
+    expect(await recordSurvivalRun(run)).toBe('saved');
+    const [strings, ...values] = sql.mock.calls[0] as [string[], ...unknown[]];
+    const text = strings.join('?');
+    expect(text).toContain('UPDATE survival_runs');
+    // Its own, unfinished, within its length and the time since it started.
+    expect(text).toMatch(/user_id = \? AND finished_at IS NULL/);
+    expect(text).toContain('run_minutes * 60000');
+    expect(text).toContain('now() - started_at');
+    expect(values.slice(0, 5)).toEqual(['Comet Tail', 312_000, 87, runId, 'u1']);
+    expect(revalidatePath).toHaveBeenCalledWith('/cats');
+  });
+
+  it('says invalid when the database finds no such run to finish', async () => {
+    auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    expect(await recordSurvivalRun(run)).toBe('invalid');
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('refuses a run no game could have reported, and writes nothing', async () => {
+    auth.mockResolvedValue(signedIn);
+    for (const bad of [
+      { ...run, name: '   ' },
+      { ...run, name: 'x'.repeat(21) },
+      { ...run, name: '‮gnirts' },
+      { ...run, name: 'a​b' },
+      { ...run, name: 'admin\u0000' },
+      { ...run, name: '<script>' },
+      { ...run, runId: 'not-a-uuid' },
+      { ...run, timeMs: 15 * 60_000 + 1 },
+      { ...run, timeMs: -1 },
+      { ...run, sentHome: 1.5 },
+      'not a run',
+    ]) {
+      expect(await recordSurvivalRun(bad)).toBe('invalid');
+    }
+    expect(sql).not.toHaveBeenCalled();
   });
 });

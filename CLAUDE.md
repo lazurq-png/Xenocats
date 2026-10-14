@@ -256,8 +256,9 @@ the `xenocats_test` schema on the database `POSTGRES_URL` names, and the test
 server uses that schema, so browser tests may log in and submit forms. Every spec imports `test` from `tests/e2e/fixtures.ts`, whose `catsPaused` option (true by default) sets a window flag before each page loads so the dashboard's cats do not come: only the `cat-attacks` project (the specs that need a cat to come or be summoned) turns it off, and every other group waits for that project. A run of a few named specs sets `E2E_NO_CAT_DEPS=1` to skip the wait (`--no-deps` would also skip the login setup). Without
 a `POSTGRES_URL`, or with `E2E_NO_DATABASE=1` when the server is unreachable
 (off its network), the tests that need it skip; otherwise an unreachable server
-fails the whole suite. Locally it runs two browsers at once (`E2E_WORKERS=1`
-for one, when memory is short); CI keeps Playwright's default.
+fails the whole suite. It runs Playwright's default number of browsers at once
+(half the cores), locally and in CI; `E2E_WORKERS` sets another (`E2E_WORKERS=1`
+when memory is short). Only a night run limits it, to 2 (the night-run skill).
 `E2E_SERVER=start npm run test:e2e` runs the same tests against `next start`
 instead, which needs an existing `npm run build`. When `next dev` detects an AI
 agent, it rewrites the Next.js agent-rules block at the end of `AGENTS.md`. The
@@ -295,7 +296,7 @@ the schema as `?search_path=`. The schema is defined by `db/migrations/*.sql`;
 no production database yet: one is built later with `db:migrate`, by a human.
 
 **CI** (`.github/workflows/ci.yml`) runs only where work is merged: on pushes
-to `Nightrun` and `main` and on pull requests into either. A push of any other
+to `Nightrun`, `dev` and `main` and on pull requests into any of them. A push of any other
 branch, a night run's task branches included, runs nothing; those are checked
 locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
 over a migrated and seeded `xenocats` schema, then every browser test against

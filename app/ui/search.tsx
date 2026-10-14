@@ -3,6 +3,7 @@
 import { MagnifyingGlassIcon } from '@heroicons/react/20/solid';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import { useDebouncedCallback } from 'use-debounce';
+import { SEARCH_MAX_LENGTH } from '@/app/lib/schemas';
 
 export default function Search({ placeholder }: { placeholder: string }) {
   const searchParams = useSearchParams();
@@ -29,6 +30,7 @@ export default function Search({ placeholder }: { placeholder: string }) {
         id="search"
         className="peer block w-full rounded-xl border border-line bg-panel py-[9px] pl-10 text-sm text-white placeholder:text-aura/70 focus:border-aura focus:ring-aura"
         placeholder={placeholder}
+        maxLength={SEARCH_MAX_LENGTH}
         onChange={(e) => {
           handleSearch(e.target.value);
         }}

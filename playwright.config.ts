@@ -30,14 +30,10 @@ const server =
     ? `npx next start -p ${PORT}`
     : `npx next dev --turbopack -p ${PORT}`;
 
-// Locally, two browsers at once unless E2E_WORKERS says otherwise: Playwright's
-// default (half the cores, four here) beside the test server ran an 8 GB machine
-// out of memory. CI keeps the default.
-const workers = process.env.E2E_WORKERS
-  ? Number(process.env.E2E_WORKERS)
-  : process.env.CI
-    ? undefined
-    : 2;
+// Playwright's default (half the cores) unless E2E_WORKERS says otherwise. An
+// unattended night run sets it (2, or 1 when memory is short: the night-run skill),
+// since the default beside the test server has run an 8 GB machine out of memory.
+const workers = process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : undefined;
 
 // E2E_NO_CAT_DEPS=1 drops the groups' wait for the cat-attacks group, for a run of a few
 // named specs (npm run test:affected, CI's dev-server job): Playwright runs a project's
@@ -68,10 +64,11 @@ const GROUPS: Record<string, string[]> = {
     'change-password',
     'cat-states',
     'dashboard-range',
+    'signup',
   ],
   customers: ['customers'],
   invoices: ['invoices-filter', 'invoice-detail', 'invoice-export', 'invoices', 'own-data'],
-  survival: ['survival', 'benchmark'],
+  survival: ['survival', 'benchmark', 'leaderboard'],
 };
 
 // The groups with a spec that uses DEMO_USER (cat-attacks: cats-link).
@@ -125,6 +122,9 @@ export default defineConfig<{ catsPaused: boolean }>({
       // whatever .env sets.
       LOGIN_MAX_FAILURES: '5',
       LOGIN_LOCK_MINUTES: '15',
+      // Every account the tests make comes from one address (no proxy in front of
+      // `next dev`), so the sign-up limit (2 a day by default) is lifted.
+      SIGNUP_MAX_PER_DAY: '100000',
       // Overrides .env, which Next would otherwise load: the server must use the test schema.
       ...(database ? { POSTGRES_URL: database } : {}),
     },

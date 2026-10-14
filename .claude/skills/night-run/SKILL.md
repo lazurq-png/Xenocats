@@ -720,10 +720,11 @@ this order:
    never a reason to skip a check: a task whose gate has not run is not
    committed (§2 step 1).
 
-**Browser runs use two workers**, the local default in `playwright.config.ts`.
-From the first time in a run that Claude Code stops a job for low memory, every
-later browser run uses `E2E_WORKERS=1` (prefix the command); record when that
-began.
+**Browser runs use two workers**: prefix every browser run with `E2E_WORKERS=2`
+(`playwright.config.ts` otherwise takes Playwright's default, half the cores,
+which has run this machine out of memory). From the first time in a run that
+Claude Code stops a job for low memory, every later browser run uses
+`E2E_WORKERS=1` instead; record when that began.
 
 **When Claude Code stops a job for low memory**, follow what it says. If it
 says not to restart the job unless asked, do not, even when a later check

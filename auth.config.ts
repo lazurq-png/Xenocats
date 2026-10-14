@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from 'next-auth';
+import { isCurrentSession } from '@/app/lib/session-version';
 
 export const authConfig = {
   pages: {
@@ -20,6 +21,26 @@ export const authConfig = {
         return Response.redirect(new URL('/dashboard', nextUrl));
       }
       return true;
+    },
+    /**
+     * At login, the account's session version and an id of the login's own go into
+     * the token; on every later request a token whose version is no longer the
+     * account's (the password was changed since), or whose id was signed out, is
+     * dropped: signed out, its cookie with it. Here, not only in
+     * auth.ts, so proxy.ts sees the same: a session the pages refuse is not one it
+     * would send back to them.
+     */
+    async jwt({ token, user }) {
+      if (user) {
+        token.sessionVersion = (user as { session_version?: number }).session_version ?? 0;
+        // This login's own id, which signing out revokes (auth.ts, events.signOut).
+        token.sessionId = crypto.randomUUID();
+        return token;
+      }
+      if (!token.sub) return token;
+      return (await isCurrentSession(token.sub, token.sessionVersion, token.sessionId))
+        ? token
+        : null;
     },
     /** The user's id, from the token signed at login (`sub`), on the session. */
     session({ session, token }) {

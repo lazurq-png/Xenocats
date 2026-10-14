@@ -2,6 +2,8 @@ import { Metadata } from 'next';
 import Link from 'next/link';
 import XenocatLogo from '@/app/ui/xenocat-logo';
 import CatGallery from '@/app/ui/xenocats/cat-gallery';
+import Leaderboard from '@/app/ui/xenocats/leaderboard';
+import { Suspense } from 'react';
 
 export const metadata: Metadata = {
   title: 'Cats',
@@ -38,7 +40,15 @@ export default function Page() {
             to try it.
           </p>
         </div>
-        <CatGallery />
+        <CatGallery
+          leaderboard={
+            <Suspense
+              fallback={<p className="mb-12 text-sm text-aura">Loading the leaderboard…</p>}
+            >
+              <Leaderboard />
+            </Suspense>
+          }
+        />
       </main>
     </div>
   );
