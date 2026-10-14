@@ -1,13 +1,14 @@
 name: CI
 
 # Only where work is merged: into Nightrun (an unattended run fast-forwards each
-# finished task onto it and pushes it, then polls; or a pull request into it) and
-# into main. A task branch's own push runs nothing: it was checked locally first.
+# finished task onto it and pushes it, then polls; or a pull request into it), into
+# dev (supervised work, pushed or by pull request, as Nightrun) and into main. A task
+# branch's own push runs nothing: it was checked locally first.
 on:
   push:
-    branches: [Nightrun, main]
+    branches: [Nightrun, dev, main]
   pull_request:
-    branches: [Nightrun, main]
+    branches: [Nightrun, dev, main]
 
 permissions:
   contents: read
