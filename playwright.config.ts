@@ -30,14 +30,10 @@ const server =
     ? `npx next start -p ${PORT}`
     : `npx next dev --turbopack -p ${PORT}`;
 
-// Locally, two browsers at once unless E2E_WORKERS says otherwise: Playwright's
-// default (half the cores, four here) beside the test server ran an 8 GB machine
-// out of memory. CI keeps the default.
-const workers = process.env.E2E_WORKERS
-  ? Number(process.env.E2E_WORKERS)
-  : process.env.CI
-    ? undefined
-    : 2;
+// Playwright's default (half the cores) unless E2E_WORKERS says otherwise. An
+// unattended night run sets it (2, or 1 when memory is short: the night-run skill),
+// since the default beside the test server has run an 8 GB machine out of memory.
+const workers = process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : undefined;
 
 // E2E_NO_CAT_DEPS=1 drops the groups' wait for the cat-attacks group, for a run of a few
 // named specs (npm run test:affected, CI's dev-server job): Playwright runs a project's

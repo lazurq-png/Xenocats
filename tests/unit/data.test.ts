@@ -720,6 +720,60 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
   });
 });
 
+// Whether a session is still current (app/lib/session-version.ts), against the same
+// schema: the account's session version, and the sessions signed out.
+describe.skipIf(!url)('sessions in the database', () => {
+  let sql: postgres.Sql;
+  let sessions: typeof import('@/app/lib/session-version');
+  const stamp = Date.now().toString(36);
+  let id: string;
+  const inAnHour = () => Math.floor(Date.now() / 1000) + 3600;
+
+  beforeAll(async () => {
+    sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
+    process.env.POSTGRES_URL = url!;
+    sessions = await import('@/app/lib/session-version');
+    [{ id }] = await sql`
+      INSERT INTO users (name, username, password) VALUES (${`s${stamp}`}, ${`s${stamp}`}, 'x')
+      RETURNING id`;
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM users WHERE id = ${id}`;
+    await sql`DELETE FROM revoked_sessions WHERE id LIKE ${`%${stamp}`}`;
+    await sql.end();
+  });
+
+  it('a session is current until its account’s version moves on, or it is signed out', async () => {
+    expect(await sessions.isCurrentSession(id, 0, `a${stamp}`)).toBe(true);
+    // From before session ids and versions: none of either, read as 0 and never revoked.
+    expect(await sessions.isCurrentSession(id, undefined, undefined)).toBe(true);
+    // An account that is not there.
+    expect(await sessions.isCurrentSession('00000000-0000-4000-8000-000000000000', 0, 'x')).toBe(
+      false
+    );
+
+    // Signed out: that session only.
+    await sessions.revokeSession(`a${stamp}`, inAnHour());
+    await sessions.revokeSession(`a${stamp}`, inAnHour());
+    expect(await sessions.isCurrentSession(id, 0, `a${stamp}`)).toBe(false);
+    expect(await sessions.isCurrentSession(id, 0, `b${stamp}`)).toBe(true);
+
+    // The password changed: every session of the account.
+    await sql`UPDATE users SET session_version = session_version + 1 WHERE id = ${id}`;
+    expect(await sessions.isCurrentSession(id, 0, `b${stamp}`)).toBe(false);
+    expect(await sessions.isCurrentSession(id, 1, `b${stamp}`)).toBe(true);
+  });
+
+  it('a revocation past its session’s expiry is cleared when another is made', async () => {
+    await sql`
+      INSERT INTO revoked_sessions (id, expires_at) VALUES (${`old${stamp}`}, now() - interval '1 day')`;
+    await sessions.revokeSession(`c${stamp}`, inAnHour());
+    expect(await sql`SELECT 1 FROM revoked_sessions WHERE id = ${`old${stamp}`}`).toHaveLength(0);
+    expect(await sql`SELECT 1 FROM revoked_sessions WHERE id = ${`c${stamp}`}`).toHaveLength(1);
+  });
+});
+
 // The login lockout's statements (app/lib/login-limit.ts) against the same schema,
 // which the file-level beforeAll rebuilds; each test on an email of its own.
 describe.skipIf(!url)('the login lockout in the database', () => {
@@ -917,6 +971,7 @@ describe.skipIf(!url)('migrations on existing rows', () => {
       '0006_accounts_and_leaderboard.sql',
       '0007_invoice_amount_bounds.sql',
       '0008_session_versions.sql',
+      '0009_revoked_sessions.sql',
     ]) {
       await sql.begin((tx) => tx.unsafe(migration(name)));
     }

@@ -83,28 +83,29 @@ describe('session', () => {
 describe('jwt', () => {
   beforeEach(() => isCurrentSession.mockReset());
   type Jwt = (params: {
-    token: { sub?: string; sessionVersion?: number };
+    token: { sub?: string; sessionVersion?: number; sessionId?: string };
     user?: { session_version?: number };
-  }) => Promise<object | null>;
+  }) => Promise<{ sessionId?: string } | null>;
   const jwt = authConfig.callbacks.jwt as unknown as Jwt;
 
-  it('puts the account’s session version in the token at login, without asking the database', async () => {
-    expect(await jwt({ token: { sub: 'u1' }, user: { session_version: 3 } })).toEqual({
-      sub: 'u1',
-      sessionVersion: 3,
-    });
+  it('puts the account’s session version and a fresh session id in the token at login, without asking the database', async () => {
+    const first = await jwt({ token: { sub: 'u1' }, user: { session_version: 3 } });
+    expect(first).toEqual({ sub: 'u1', sessionVersion: 3, sessionId: expect.any(String) });
+    const second = await jwt({ token: { sub: 'u1' }, user: { session_version: 3 } });
+    // Each login its own: signing out of one leaves the others.
+    expect(second?.sessionId).not.toBe(first?.sessionId);
     expect(isCurrentSession).not.toHaveBeenCalled();
   });
 
-  it('keeps a token whose version is still the account’s', async () => {
+  it('keeps a token that is still current', async () => {
     isCurrentSession.mockResolvedValueOnce(true);
-    const token = { sub: 'u1', sessionVersion: 3 };
+    const token = { sub: 'u1', sessionVersion: 3, sessionId: 's1' };
     expect(await jwt({ token })).toBe(token);
-    expect(isCurrentSession).toHaveBeenCalledWith('u1', 3);
+    expect(isCurrentSession).toHaveBeenCalledWith('u1', 3, 's1');
   });
 
-  it('drops a token from before a password change: signed out', async () => {
+  it('drops a token that is no longer current (password changed, or signed out): signed out', async () => {
     isCurrentSession.mockResolvedValueOnce(false);
-    expect(await jwt({ token: { sub: 'u1', sessionVersion: 2 } })).toBeNull();
+    expect(await jwt({ token: { sub: 'u1', sessionVersion: 2, sessionId: 's1' } })).toBeNull();
   });
 });

@@ -30,7 +30,9 @@ test('an account made with a username is signed in, sees none of the demo data, 
 
   // Its own invoices only: it has none, and the demo user's are not among them.
   await page.goto('/dashboard/invoices');
-  await expect(page.getByRole('heading', { name: 'Invoices' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Invoices', exact: true })).toBeVisible();
+  // Waited for, so the list has loaded before anything is said to be missing from it.
+  await expect(page.getByRole('heading', { name: 'No invoices found' })).toBeVisible();
   await expect(page.getByText('Evil Rabbit')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Sign out' }).click();
@@ -44,16 +46,21 @@ test('an account made with a username is signed in, sees none of the demo data, 
   await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
 });
 
-test('a username already taken is refused, whatever its case', async ({ page }) => {
+test('a username already taken is refused, whatever its case', async ({ page, browser }) => {
   test.setTimeout(90_000);
   const username = freshUsername();
   await signUp(page, username);
   await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
-  await page.context().clearCookies();
 
-  await signUp(page, username.toUpperCase());
-  await expect(page.getByText('That username is taken.')).toBeVisible();
-  await expect(page).toHaveURL(/\/signup$/);
+  // Someone else, in a browser of their own. (Not this one with its cookies
+  // cleared: under `next start` a dashboard prefetch still in flight sets the
+  // session cookie again, and the sign-up would be a signed-in user's.)
+  const other = await browser.newContext();
+  const otherPage = await other.newPage();
+  await signUp(otherPage, username.toUpperCase());
+  await expect(otherPage.getByText('That username is taken.')).toBeVisible();
+  await expect(otherPage).toHaveURL(/\/signup$/);
+  await other.close();
 });
 
 test('the login page leads to /signup, and /signup back to the login', async ({ page }) => {
