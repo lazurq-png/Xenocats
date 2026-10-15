@@ -1474,7 +1474,7 @@ export default function ArenaGame({
           data-graphics={graphics}
           data-crosshair={hud?.crosshair ?? ''}
           data-zoom={hud?.zoom ?? ''}
-          className={`fixed inset-0 z-[9998] select-none overflow-hidden bg-void outline-none${
+          className={`fixed inset-0 z-9998 select-none overflow-hidden bg-void outline-none${
             aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
           }`}
         >
@@ -1631,7 +1631,7 @@ export default function ArenaGame({
                           data-level={choice.kind === 'restore' ? '' : choice.level}
                           data-tier={tier?.tier ?? ''}
                           onClick={() => choose(i)}
-                          className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma"
+                          className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
                         >
                           <span className="font-semibold text-plasma">{i + 1}.</span>{' '}
                           <span className={`font-semibold ${tier?.className ?? ''}`}>{name}</span>{' '}
@@ -1668,7 +1668,7 @@ export default function ArenaGame({
                     data-uses={uses.rerolls}
                     disabled={uses.rerolls <= 0}
                     onClick={reroll}
-                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
+                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
                   >
                     Reroll ({uses.rerolls} left)
                   </button>
@@ -1678,7 +1678,7 @@ export default function ArenaGame({
                     data-uses={uses.skips}
                     disabled={uses.skips <= 0}
                     onClick={skip}
-                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
+                    className="rounded-lg border border-line bg-void/70 px-3 py-2 text-sm font-semibold text-cream hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma disabled:opacity-50"
                   >
                     Skip, for some experience ({uses.skips} left)
                   </button>

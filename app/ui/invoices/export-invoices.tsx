@@ -19,7 +19,7 @@ export default function ExportInvoices({
     // `download` attribute, so an expired session shows the login page, not a file.
     <a
       href={`/dashboard/invoices/export${search ? `?${search}` : ''}`}
-      className="flex h-10 flex-none items-center gap-2 rounded-xl border border-line px-3 text-sm font-medium text-aura transition-colors hover:border-aura hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma"
+      className="flex h-10 flex-none items-center gap-2 rounded-xl border border-line px-3 text-sm font-medium text-aura transition-colors hover:border-aura hover:text-white focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma"
     >
       <ArrowDownTrayIcon className="h-5" />
       <span className="hidden md:block">Export CSV</span>

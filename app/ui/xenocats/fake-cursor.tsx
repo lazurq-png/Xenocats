@@ -321,7 +321,7 @@ export function XenocatCursorProvider({
     [controller, theatre, random, enabled]
   );
 
-  const layer = 'pointer-events-none fixed left-0 top-0 z-[9999] origin-top-left';
+  const layer = 'pointer-events-none fixed left-0 top-0 z-9999 origin-top-left';
 
   return (
     <CursorContext.Provider value={api}>
@@ -362,7 +362,7 @@ export function CursorShape({ kind }: { kind: CursorKind }) {
   switch (kind) {
     case 'pointer':
       return (
-        <svg width="22" height="24" viewBox="0 0 22 24" className="-translate-x-[7px]">
+        <svg width="22" height="24" viewBox="0 0 22 24" className="translate-x-[-7px]">
           <path
             d="M7 1.5c1.1 0 2 .9 2 2V10l1.2-.3c1-.2 1.9.3 2.2 1.2l.1.3 1.1-.2c1-.2 1.9.4 2.1 1.3l1-.1c1.1-.1 2 .7 2 1.8V17c0 3.6-2.9 6.5-6.5 6.5h-1.4c-2.2 0-4.2-1.1-5.4-2.9L2 15.2c-.6-.9-.3-2.1.6-2.6.8-.5 1.8-.3 2.4.4l0 0V3.5c0-1.1.9-2 2-2Z"
             fill="#111827"
@@ -376,7 +376,7 @@ export function CursorShape({ kind }: { kind: CursorKind }) {
           width="12"
           height="22"
           viewBox="0 0 12 22"
-          className="-translate-x-[6px] -translate-y-[11px]"
+          className="translate-x-[-6px] translate-y-[-11px]"
         >
           <path
             d="M2 1.5h3l1 1 1-1h3M6 2.5v17M2 20.5h3l1-1 1 1h3"

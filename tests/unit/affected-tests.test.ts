@@ -49,7 +49,7 @@ describe('affected-tests', () => {
     'auth.ts',
     'proxy.ts',
     'app/lib/placeholder-data.ts',
-    'tailwind.config.ts',
+    'postcss.config.js',
     'next.config.ts',
     'tests/e2e/global-setup.ts',
     'app/ui/no-such-file.tsx', // deleted

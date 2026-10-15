@@ -100,7 +100,7 @@ export default function SignUpForm() {
       <FieldErrors id="confirmPassword-error" errors={state.errors?.confirmPassword} />
 
       <button
-        className="mt-7 flex h-[46px] w-full items-center justify-center rounded-lg bg-plasma text-[17px] font-bold text-black shadow-glow transition hover:bg-plasma-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+        className="mt-7 flex h-[46px] w-full items-center justify-center rounded-lg bg-plasma text-[17px] font-bold text-black shadow-glow transition hover:bg-plasma-dim focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
         aria-disabled={isPending}
       >
         Create account

@@ -57,7 +57,7 @@ dashboard; the course's look and assets have since been replaced.
 | Mutations | `app/lib/actions.ts` — Server Actions (`'use server'`), validated with zod |
 | Types | `app/lib/definitions.ts` |
 | Auth | `auth.ts` (NextAuth v5 beta, credentials + bcrypt), `auth.config.ts` (the `authorized` callback), `proxy.ts` (runs it on every request outside its matcher's exclusions) |
-| UI | `app/ui/**` — Tailwind 3, `@heroicons/react`, `clsx` |
+| UI | `app/ui/**` — Tailwind 4 (theme in `app/ui/global.css`), `@heroicons/react`, `clsx` |
 | Schema and seed data | `db/migrations/*.sql`, `scripts/db.mjs` (`npm run db:migrate` / `db:seed` / `db:reset`), `app/lib/placeholder-data.ts` |
 
 There is no ORM and no ADR record of decisions. The schema is the numbered SQL

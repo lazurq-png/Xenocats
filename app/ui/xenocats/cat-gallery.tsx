@@ -30,7 +30,7 @@ export default function CatGallery({ leaderboard }: { leaderboard?: ReactNode })
 }
 
 const GAME_LINK =
-  'flex h-10 items-center rounded-xl bg-plasma px-4 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma active:bg-plasma-dim';
+  'flex h-10 items-center rounded-xl bg-plasma px-4 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma active:bg-plasma-dim';
 
 /** The game, Survival, on a page of its own. */
 function FightLinks() {
@@ -83,7 +83,7 @@ function Roster() {
         <h2 id="guide-heading" className="font-display text-2xl font-semibold text-cream">
           Field guide
         </h2>
-        <p data-testid="guide-summary" className="mt-2 min-h-[3.75rem] max-w-2xl text-sm text-aura">
+        <p data-testid="guide-summary" className="mt-2 min-h-15 max-w-2xl text-sm text-aura">
           {isEmptyGuide(guide)
             ? "Your field guide is empty: you haven't met any cats yet. They turn up on the dashboard while you work, or summon one below to meet it. Each card will keep count of how often you've met that cat and survived its attack."
             : `You have met ${metCount} of the ${CAT_TYPES.length} cats. Each card counts how often you've met that cat and survived its attack.`}

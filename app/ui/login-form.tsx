@@ -79,7 +79,7 @@ export default function LoginForm() {
           onClick={() => setShowPassword((shown) => !shown)}
           aria-label={showPassword ? 'Hide password' : 'Show password'}
           aria-pressed={showPassword}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-aura-login transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-aura-login"
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm p-1 text-aura-login transition hover:text-white focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-aura-login"
         >
           {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
         </button>
@@ -87,7 +87,7 @@ export default function LoginForm() {
 
       <input type="hidden" name="redirectTo" value={callbackUrl} />
       <button
-        className="mt-7 flex h-[46px] w-full items-center justify-center rounded-lg bg-plasma text-[17px] font-bold text-black shadow-glow transition hover:bg-plasma-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+        className="mt-7 flex h-[46px] w-full items-center justify-center rounded-lg bg-plasma text-[17px] font-bold text-black shadow-glow transition hover:bg-plasma-dim focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
         aria-disabled={isPending}
       >
         Log in

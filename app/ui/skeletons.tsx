@@ -1,10 +1,10 @@
 // Loading animation
 const shimmer =
-  'before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent';
+  'before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-linear-to-r before:from-transparent before:via-white/10 before:to-transparent';
 
 export function CardSkeleton() {
   return (
-    <div className={`${shimmer} relative overflow-hidden rounded-xl bg-panel p-2 shadow-sm`}>
+    <div className={`${shimmer} relative overflow-hidden rounded-xl bg-panel p-2 shadow-xs`}>
       <div className="flex p-4">
         <div className="h-5 w-5 rounded-md bg-panel-raised" />
         <div className="ml-2 h-6 w-16 rounded-md bg-panel-raised text-sm font-medium" />
@@ -103,30 +103,30 @@ export function TableRowSkeleton() {
       <td className="relative overflow-hidden whitespace-nowrap py-3 pl-6 pr-3">
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-panel"></div>
-          <div className="h-6 w-24 rounded bg-panel"></div>
+          <div className="h-6 w-24 rounded-sm bg-panel"></div>
         </div>
       </td>
       {/* Email */}
       <td className="whitespace-nowrap px-3 py-3">
-        <div className="h-6 w-32 rounded bg-panel"></div>
+        <div className="h-6 w-32 rounded-sm bg-panel"></div>
       </td>
       {/* Amount */}
       <td className="whitespace-nowrap px-3 py-3">
-        <div className="h-6 w-16 rounded bg-panel"></div>
+        <div className="h-6 w-16 rounded-sm bg-panel"></div>
       </td>
       {/* Date */}
       <td className="whitespace-nowrap px-3 py-3">
-        <div className="h-6 w-16 rounded bg-panel"></div>
+        <div className="h-6 w-16 rounded-sm bg-panel"></div>
       </td>
       {/* Status */}
       <td className="whitespace-nowrap px-3 py-3">
-        <div className="h-6 w-16 rounded bg-panel"></div>
+        <div className="h-6 w-16 rounded-sm bg-panel"></div>
       </td>
       {/* Actions */}
       <td className="whitespace-nowrap py-3 pl-6 pr-3">
         <div className="flex justify-end gap-3">
-          <div className="h-[38px] w-[38px] rounded bg-panel"></div>
-          <div className="h-[38px] w-[38px] rounded bg-panel"></div>
+          <div className="h-[38px] w-[38px] rounded-sm bg-panel"></div>
+          <div className="h-[38px] w-[38px] rounded-sm bg-panel"></div>
         </div>
       </td>
     </tr>
@@ -139,18 +139,18 @@ export function InvoicesMobileSkeleton() {
       <div className="flex items-center justify-between border-b border-line pb-8">
         <div className="flex items-center">
           <div className="mr-2 h-8 w-8 rounded-full bg-panel"></div>
-          <div className="h-6 w-16 rounded bg-panel"></div>
+          <div className="h-6 w-16 rounded-sm bg-panel"></div>
         </div>
-        <div className="h-6 w-16 rounded bg-panel"></div>
+        <div className="h-6 w-16 rounded-sm bg-panel"></div>
       </div>
       <div className="flex w-full items-center justify-between pt-4">
         <div>
-          <div className="h-6 w-16 rounded bg-panel"></div>
-          <div className="mt-2 h-6 w-24 rounded bg-panel"></div>
+          <div className="h-6 w-16 rounded-sm bg-panel"></div>
+          <div className="mt-2 h-6 w-24 rounded-sm bg-panel"></div>
         </div>
         <div className="flex justify-end gap-2">
-          <div className="h-10 w-10 rounded bg-panel"></div>
-          <div className="h-10 w-10 rounded bg-panel"></div>
+          <div className="h-10 w-10 rounded-sm bg-panel"></div>
+          <div className="h-10 w-10 rounded-sm bg-panel"></div>
         </div>
       </div>
     </div>

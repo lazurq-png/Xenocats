@@ -49,4 +49,4 @@ export default function CatState({
 
 /** The plasma button-link the states lead on with. */
 export const catStateLinkClass =
-  'rounded-xl bg-plasma px-4 py-2 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma';
+  'rounded-xl bg-plasma px-4 py-2 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma';
