@@ -7,7 +7,7 @@
 // highest level's. A passive's levels 1 to 5 are tiers 1 to 5, the same scale.
 //
 // Colour is never the only signal: the tier's name is written beside the name, with the
-// level. The colours are the theme's `tier` tokens (tailwind.config.ts); each keeps the
+// level. The colours are the theme's `tier` tokens (app/ui/global.css); each keeps the
 // text's contrast (WCAG AA, 4.5 : 1) against the dark panels they are drawn on, which
 // the 'colour of how far' tests in tests/unit/xenocats/arsenal.test.ts check from the tokens
 // themselves.

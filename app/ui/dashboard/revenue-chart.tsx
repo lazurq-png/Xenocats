@@ -22,7 +22,7 @@ export default async function RevenueChart({ range }: { range: Range }) {
         alt=""
         width={114}
         height={113}
-        className="pointer-events-none absolute -top-[17px] left-1/2 hidden w-[114px] -translate-x-1/2 sm:block"
+        className="pointer-events-none absolute top-[-17px] left-1/2 hidden w-[114px] -translate-x-1/2 sm:block"
       />
       <div className="flex items-start justify-between">
         <div>

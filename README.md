@@ -32,6 +32,6 @@ The checks (lint, type check, unit and browser tests, build) are listed in
 The visual design comes from the Canva mockup "Xenocat Analytics website
 mockup": a midnight background, lime and violet accents, Orbitron headings,
 Montserrat on the public pages and Roboto in the dashboard. Its colours are
-Tailwind tokens in `tailwind.config.ts` (`void`, `panel`, `line`, `plasma`,
+Tailwind tokens in the `@theme` block of `app/ui/global.css` (`void`, `panel`, `line`, `plasma`,
 `aura`, `cream`), its fonts are in `app/ui/fonts.tsx`, and its artwork (cats,
 hero, logo marks, avatars) is in `public/xenocats/`.

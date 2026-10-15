@@ -9,7 +9,7 @@ export function CreateCustomer() {
   return (
     <Link
       href="/dashboard/customers/create"
-      className="flex h-10 items-center rounded-xl bg-plasma px-4 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma"
+      className="flex h-10 items-center rounded-xl bg-plasma px-4 text-sm font-semibold text-void transition hover:shadow-glow focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma"
     >
       <span className="sr-only md:not-sr-only">Create Customer</span>{' '}
       <PlusIcon className="h-5 md:ml-4" />

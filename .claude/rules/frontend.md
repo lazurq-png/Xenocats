@@ -116,9 +116,9 @@ Do not assume desktop-only behavior unless the product explicitly is desktop-onl
   skeletons in `skeletons.tsx`, fonts in `fonts.tsx` (Orbitron `font-display`, Montserrat `font-sans`,
   Roboto `font-ui` for the dashboard), the logo in
   `xenocat-logo.tsx`, `customer-avatar.tsx`, and `@heroicons/react` (solid sets)
-  for icons. Styling is Tailwind 3 utility classes (with `@tailwindcss/forms`)
+  for icons. Styling is Tailwind 4 utility classes (with `@tailwindcss/forms`)
   and `clsx` for conditional classes, using the colour tokens in
-  `tailwind.config.ts` (`void`, `panel`, `line`, `plasma`, `aura`, `cream`) rather
+  the `@theme` block of `app/ui/global.css` (`void`, `panel`, `line`, `plasma`, `aura`, `cream`) rather
   than raw Tailwind greys and blues. The site is dark-only and follows the Canva
   mockup "Xenocat Analytics website mockup"; its artwork is in `public/xenocats/`.
 - **States use the App Router file conventions:** `loading.tsx` (with

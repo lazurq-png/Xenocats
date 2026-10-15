@@ -1,6 +1,88 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@plugin '@tailwindcss/forms';
+
+/* Sampled from the Canva mockup ("Xenocat Analytics website mockup"). */
+@theme {
+  --color-void: #070b14;
+  --color-void-login: #04051f;
+  --color-void-landing: #040a19;
+
+  --color-panel: #0a0e1c;
+  --color-panel-raised: #12162b;
+  --color-panel-glass: rgba(43, 43, 73, 0.16);
+
+  --color-line: #2d2f47;
+
+  --color-plasma: #c1e838;
+  --color-plasma-dim: #aacf22;
+
+  --color-aura: #9d86ff;
+  --color-aura-login: #8c88ff;
+  --color-aura-link: #7a7ff1;
+
+  --color-cream: #e0e0b3;
+
+  /* How far a Survival weapon or passive has come (app/ui/xenocats/item-tier.ts): each
+     keeps 4.5 : 1 against the dark panels it is drawn on. */
+  --color-tier-1: #9ca3af;
+  --color-tier-2: #7dd3fc;
+  --color-tier-3: #9d86ff;
+  --color-tier-4: #c1e838;
+  --color-tier-5: #fbbf24;
+  --color-tier-6: #fb923c;
+  --color-tier-7: #f472b6;
+
+  /* next/font's families (app/ui/fonts.tsx). */
+  --font-display: var(--font-orbitron), sans-serif;
+  --font-sans: var(--font-montserrat), sans-serif;
+  --font-ui: var(--font-roboto), sans-serif;
+
+  /* Tailwind CSS v3's line heights, fixed lengths rather than v4's ratios to the size, so
+     an element that sets a size of its own beside one of these (`text-3xl
+     md:text-[40px]`) keeps the line height it had. */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+
+  --shadow-glow: 0 0 28px -2px rgba(193, 232, 56, 0.55);
+  --shadow-halo: 0 0 80px -10px rgba(140, 136, 255, 0.55);
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  /* Tailwind CSS v4 gives buttons the default cursor; v3 gave them a pointer. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 /* The whole site is night-side; each page adds its own sky (stars, glow). */
 @layer base {
@@ -18,8 +100,17 @@
 
   /* Keyboard focus is always visible: a lime ring, unless a control draws its own. */
   :focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-plasma;
+    @apply outline-solid outline-2 outline-offset-2 outline-plasma;
   }
+}
+
+/* @tailwindcss/forms fills a checked box or radio with its text colour, from the base
+   layer. Every one here also sets `bg-void border-line`, and v4's utilities layer
+   outranks the base layer whatever the selector, so this stays outside the layers. */
+[type='checkbox']:checked,
+[type='radio']:checked {
+  border-color: transparent;
+  background-color: currentColor;
 }
 
 /* A scatter of stars for the public pages, layered over their background colour.

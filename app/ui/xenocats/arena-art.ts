@@ -1,5 +1,5 @@
 // The Survival arena's own artwork, drawn by the run as SVG in the site's palette
-// (tailwind.config.ts): the heroes (the Keeper and the characters re-dressed, in five directions) and
+// (the theme in global.css): the heroes (the Keeper and the characters re-dressed, in five directions) and
 // the varieties of cat. Placeholders until a Superdesign pass. The twenty xenocat
 // types keep their own artwork (cat-art.ts), unchanged.
 
