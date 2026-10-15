@@ -6,8 +6,8 @@ name: CI
 # Merging into main runs nothing: its pull request was tested, and the merge only
 # deploys (Vercel's own Git integration, vercel.json). A task branch's own push
 # runs nothing either: it was checked locally first. A pull request from dev into
-# main whose merge is exactly a commit CI already passed on dev skips the tests
-# (the `tested` job); any other pull request into main runs them all.
+# main whose merge holds exactly the files of a commit CI already passed on dev
+# skips the tests (the `tested` job); any other pull request into main runs them all.
 on:
   push:
     branches: [Nightrun, dev]
@@ -19,7 +19,8 @@ permissions:
 
 jobs:
   # Says whether this run would repeat one that passed: a pull request from dev
-  # into main where main has nothing dev lacks (so the merge is dev's tip as it
+  # into main where main changes no file since it last took dev (its own commits
+  # are only the merges of earlier releases, so the merge holds dev's tip as it
   # is) and CI passed on the push of that very commit to dev. Anything else, a
   # dev run still going or failed included, runs the tests.
   tested:
@@ -44,10 +45,12 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          behind=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BASE...$HEAD" --jq .behind_by)
+          # The files main changed since its common ancestor with dev (no list, no skip).
+          changed=$(gh api "repos/$GITHUB_REPOSITORY/compare/$HEAD...$BASE" \
+            --jq '.files | if type == "array" then length else error("no file list") end')
           passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=dev&event=push&status=success&head_sha=$HEAD" --jq .total_count)
-          echo "main has $behind commit(s) dev lacks; $passed passed CI run(s) on dev at $HEAD"
-          if [ "$behind" = 0 ] && [ "$passed" -gt 0 ]; then
+          echo "main changes $changed file(s) dev lacks; $passed passed CI run(s) on dev at $HEAD"
+          if [ "$changed" = 0 ] && [ "$passed" -gt 0 ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
