@@ -31,8 +31,7 @@ You have no Edit or Write tool. Use Bash only to inspect: `git diff`, `git log`,
 `git show`, reading files, and running the two fast checks when you need
 evidence for a finding: `npm run lint` and `npx next typegen && npx tsc --noEmit`
 (typegen first: stale route types under `.next/` fail `tsc` for no reason in
-the code). Node is not on `PATH`; prefix commands as the global `CLAUDE.md`
-describes.
+the code). Node is on `PATH`; no prefix is needed.
 
 Never run `npm run build`, the tests (`npm test`, `npm run test:e2e`) or
 `npm run dev`. The implementer runs them, often at the same moment you are

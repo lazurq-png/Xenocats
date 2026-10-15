@@ -30,10 +30,16 @@ const server =
     ? `npx next start -p ${PORT}`
     : `npx next dev --turbopack -p ${PORT}`;
 
-// Playwright's default (half the cores) unless E2E_WORKERS says otherwise. An
-// unattended night run sets it (2, or 1 when memory is short: the night-run skill),
-// since the default beside the test server has run an 8 GB machine out of memory.
-const workers = process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : undefined;
+// E2E_WORKERS if set; otherwise 4 locally and Playwright's default (half the
+// cores) in CI. Locally the default (6 on the development PC) loads the CPU
+// beside the test server enough to fail the timing-sensitive Survival specs; 4
+// passes them and finishes sooner. A night run sets it explicitly (4, or 2 after
+// a low-memory stop: the night-run skill).
+const workers = process.env.E2E_WORKERS
+  ? Number(process.env.E2E_WORKERS)
+  : process.env.CI
+    ? undefined
+    : 4;
 
 // E2E_NO_CAT_DEPS=1 drops the groups' wait for the cat-attacks group, for a run of a few
 // named specs (npm run test:affected, CI's dev-server job): Playwright runs a project's

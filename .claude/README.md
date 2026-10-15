@@ -36,8 +36,8 @@ npx prettier --check <changed files>    # never `npm run format`, which rewrites
 ```
 
 `npm run dev` runs the app. It needs `.env` (`POSTGRES_URL`, `AUTH_SECRET`,
-`AUTH_URL`). `POSTGRES_URL` is a development database on the local network
-(schema `xenocats`; the browser tests rebuild their own `xenocats_test`). The
+`AUTH_URL`). `POSTGRES_URL` is a development PostgreSQL 17 on this PC
+(`localhost:5432`, TLS on; schema `xenocats`; the browser tests rebuild their own `xenocats_test`). The
 schema lives in `db/migrations/`; `npm run db:migrate`, `db:seed` and `db:reset`
 manage it.
 
