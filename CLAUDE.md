@@ -298,8 +298,11 @@ tests `xenocats_vitest`. The URL carries
 the schema as `?search_path=`. The schema is defined by `db/migrations/*.sql`;
 `npm run db:migrate` applies new ones, `db:seed` loads
 `app/lib/placeholder-data.ts`, and `db:reset` rebuilds a schema from scratch.
-`seed` and `reset` refuse any host outside the private network ranges. There is
-no production database yet: one is built later with `db:migrate`, by a human.
+`seed` and `reset` refuse any host outside the private network ranges. The
+**production database** is Neon PostgreSQL, used by Vercel's preview and
+production deployments; treat its data as real. No build or deploy migrates it:
+a new migration reaches it only when a human runs `db:migrate` against it.
+Never point `.env` at it, and never seed or reset it.
 
 **CI** (`.github/workflows/ci.yml`) runs only where work is merged: on pushes
 to `Nightrun` and `dev` and on pull requests into `Nightrun`, `dev` or `main`.
