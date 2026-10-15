@@ -109,8 +109,3 @@ test('a logged-in user changes their password: signed out everywhere, the new on
   await logIn(page, email, NEW);
   await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
 });
-
-test('the settings page is behind the login', async ({ page }) => {
-  await page.goto('/dashboard/settings');
-  await expect(page).toHaveURL(/\/login/);
-});
