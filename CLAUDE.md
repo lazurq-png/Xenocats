@@ -308,8 +308,9 @@ Never point `.env` at it, and never seed or reset it.
 to `Nightrun` and `dev` and on pull requests into `Nightrun`, `dev` or `main`.
 Merging into `main` runs nothing (its pull request was tested; the merge only
 deploys, through Vercel). A pull request from `dev` into `main` skips the
-tests when `main` has nothing `dev` lacks and CI already passed on that exact `dev`
-commit (the workflow's *tested* job); any other pull request into `main` runs them. A push of any other
+tests when `main` changes no file `dev` lacks (its own commits are only the
+merges of earlier releases) and CI already passed on that exact `dev` commit (the
+workflow's *tested* job); any other pull request into `main` runs them. A push of any other
 branch, a night run's task branches included, runs nothing; those are checked
 locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
 over a migrated and seeded `xenocats` schema, then every browser test against
