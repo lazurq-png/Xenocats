@@ -51,5 +51,10 @@
   },
   "allowScripts": {
     "unrs-resolver": false
+  },
+  "overrides": {
+    "@next/eslint-plugin-next": {
+      "fast-glob": "npm:tinyglobby@^0.2.17"
+    }
   }
 }
