@@ -67,15 +67,7 @@ describe('claimAttempt', () => {
       expect(await claimAttempt(fakeSql(() => [{ attempt }]).sql, 'a@b.c', limits)).toBe(allowed);
     }
   });
-
-  it('holds the limit when many attempts arrive at once', async () => {
-    // The database numbers concurrent upserts one after another; so does this fake.
-    const { sql } = fakeSql((call) => [{ attempt: call }]);
-    const results = await Promise.all(
-      Array.from({ length: limits.maxFailures + 3 }, () => claimAttempt(sql, 'a@b.c', limits))
-    );
-    expect(results.filter(Boolean)).toHaveLength(limits.maxFailures);
-  });
+  // Many attempts at once are held to N against a real database: data.test.ts.
 });
 
 describe('clearFailures', () => {

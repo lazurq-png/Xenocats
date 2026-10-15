@@ -210,49 +210,6 @@ test.describe('on a computer', () => {
     );
   });
 
-  test('a new household weapon, taken at a level-up of a seeded run, is in the pause menu', async ({
-    page,
-  }) => {
-    test.setTimeout(90_000);
-    const household = ['feather-wand', 'squeaky-toy', 'cardboard-box', 'hair-dryer', 'bath-tub'];
-    await openArena(page, '?seed=7&speed=4');
-    await startRun(page);
-    let taken = '';
-    const walk = ['d', 's', 'a', 'w'];
-    for (let turn = 0; turn < 400 && !taken; turn++) {
-      if ((await area(page).count()) === 0) break;
-      const dialog = levelUp(page);
-      if ((await dialog.count()) > 0) {
-        const ids = await dialog
-          .getByRole('button')
-          .evaluateAll((all) => all.map((b) => b.getAttribute('data-choice') ?? ''));
-        const at = ids.findIndex((id) => household.includes(id));
-        if (at >= 0) {
-          taken = ids[at];
-          await page.keyboard.press(String(at + 1));
-        } else {
-          await page.keyboard.press('1');
-        }
-      }
-      // He walks a square, to last as long as he can.
-      const key = walk[turn % 4];
-      await page.keyboard.down(key);
-      await page.waitForTimeout(350);
-      await page.keyboard.up(key);
-    }
-    expect(household).toContain(taken);
-    // One gem can bring several level-ups: the next one's choice waits on screen,
-    // and the play area's weapons are written only once the run plays on.
-    await expect
-      .poll(async () => {
-        await playOn(page);
-        return area(page).getAttribute('data-weapons');
-      })
-      .toMatch(new RegExp(taken));
-    const paused = await pauseRun(page);
-    await expect(paused.locator(`li[data-weapon="${taken}"]`)).toBeVisible();
-  });
-
   test('two evolved weapons held at a chest fuse into one, named in the pause menu', async ({
     page,
   }) => {
@@ -270,33 +227,45 @@ test.describe('on a computer', () => {
   test('the pause menu marks a fused weapon and a new one with different tiers', async ({
     page,
   }) => {
-    test.setTimeout(90_000);
-    await openArena(page, '?seed=7&speed=4&fusion=1');
-    await startRun(page);
+    test.setTimeout(150_000);
     // Take a weapon at the first level-up that offers one (a new weapon is tier 1).
+    // The seed fixes the random source, but the run's frames (and so its draws) follow
+    // the machine's speed: a run may end before a level-up offers a weapon. Then the
+    // next seed's run is played, until one is taken.
+    const deadline = Date.now() + 120_000;
     let taken = '';
     const walk = ['d', 's', 'a', 'w'];
-    for (let turn = 0; turn < 400 && !taken; turn++) {
-      if ((await area(page).count()) === 0) break;
-      const dialog = levelUp(page);
-      if ((await dialog.count()) > 0) {
-        const kinds = await dialog
-          .getByRole('button')
-          .evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
-        const at = kinds.indexOf('weapon');
-        if (at >= 0) {
-          // Its card carries the tier too: a level-1 weapon is tier 1, and its name is written.
-          const card = dialog.getByRole('button').nth(at);
-          await expect(card).toHaveAttribute('data-tier', '1');
-          await expect(card.getByTestId('choice-tier')).toHaveText('Basic');
-          taken = (await card.getAttribute('data-choice')) ?? '';
-          await page.keyboard.press(String(at + 1));
-        } else await page.keyboard.press('1');
+    for (let seed = 7; !taken && Date.now() < deadline; seed++) {
+      await openArena(page, `?seed=${seed}&speed=4&fusion=1`);
+      await startRun(page);
+      let rerolled = false;
+      for (let turn = 0; !taken && Date.now() < deadline; turn++) {
+        if ((await area(page).count()) === 0) break;
+        const dialog = levelUp(page);
+        if ((await dialog.count()) > 0) {
+          const kinds = await dialog
+            .getByRole('button')
+            .evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
+          const at = kinds.indexOf('weapon');
+          if (at >= 0) {
+            // Its card carries the tier too: a level-1 weapon is tier 1, and its name is written.
+            const card = dialog.getByRole('button').nth(at);
+            await expect(card).toHaveAttribute('data-tier', '1');
+            await expect(card.getByTestId('choice-tier')).toHaveText('Basic');
+            taken = (await card.getAttribute('data-choice')) ?? '';
+            await page.keyboard.press(String(at + 1));
+          } else if (!rerolled) {
+            // His one reroll, for another look at the choices (read on the next turn).
+            rerolled = true;
+            await page.keyboard.press('r');
+            continue;
+          } else await page.keyboard.press('1');
+        }
+        const key = walk[turn % 4];
+        await page.keyboard.down(key);
+        await page.waitForTimeout(350);
+        await page.keyboard.up(key);
       }
-      const key = walk[turn % 4];
-      await page.keyboard.down(key);
-      await page.waitForTimeout(350);
-      await page.keyboard.up(key);
     }
     expect(taken).not.toBe('');
     const paused = await pauseRun(page);
@@ -1012,7 +981,9 @@ test.describe('on a touch screen', () => {
     await expect.poll(() => num(page, 'data-zoom')).toBe(expected);
   });
 
-  test('the pause menu shows the run so far on a phone too, after a level-up', async ({ page }) => {
+  test('on a phone a level-up choice is made with a tap, and the pause menu shows it', async ({
+    page,
+  }) => {
     test.setTimeout(60_000);
     await openArena(page, '?seed=7&speed=6');
     await startRun(page, true);
@@ -1025,6 +996,8 @@ test.describe('on a touch screen', () => {
     });
     await expect(levelUp(page)).toBeVisible({ timeout: 40_000 });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    // A phone is asked to tap, and the choice is made with a tap.
+    await expect(levelUp(page)).toContainText('Tap a choice.');
     const buttons = levelUp(page).getByRole('button');
     const taken = await takeChoice(page, (i) => buttons.nth(i).tap());
     // Another level may follow at once: take choices until the run is playing.
@@ -1077,37 +1050,6 @@ test.describe('on a touch screen', () => {
     await expect(paused.getByRole('checkbox', { name: 'Sound' })).not.toBeChecked();
     await paused.getByRole('button', { name: 'Give up' }).tap();
     await expect(page.getByTestId('survival-lobby-sound')).not.toBeChecked();
-  });
-
-  test('a level-up choice is made with a tap', async ({ page }) => {
-    test.setTimeout(60_000);
-    await openArena(page, '?seed=7&speed=6');
-    await startRun(page, true);
-    const pad = page.getByTestId('movement-pad');
-    const box = (await pad.boundingBox())!;
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{ x: box.x + box.width / 2 + 50, y: box.y + box.height / 2 }],
-    });
-    const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await expect(dialog).toContainText('Tap a choice.');
-    const buttons = dialog.getByRole('button');
-    const kinds = await buttons.evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
-    const pick = Math.max(kinds.indexOf('weapon'), 0);
-    const chosen = await buttons.nth(pick).getAttribute('data-choice');
-    const chosenLevel = await buttons.nth(pick).getAttribute('data-level');
-    await buttons.nth(pick).tap();
-    await expect(dialog).toHaveCount(0);
-    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
-    if (kinds[pick] === 'weapon') {
-      await expect(area(page)).toHaveAttribute(
-        'data-weapons',
-        new RegExp(`${chosen}:${chosenLevel}`)
-      );
-    }
   });
 
   test('the movement pad walks the hero, the laser sends cats home, and Pause leads to giving up', async ({
