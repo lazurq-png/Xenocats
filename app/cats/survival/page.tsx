@@ -15,7 +15,7 @@ export default async function Page() {
     <div className="xenocat-stars min-h-screen bg-void-landing">
       <a
         href="#main-content"
-        className="sr-only rounded-xl bg-plasma px-4 py-2 font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[10000]"
+        className="sr-only rounded-xl bg-plasma px-4 py-2 font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-10000"
       >
         Skip to main content
       </a>
@@ -31,7 +31,7 @@ export default async function Page() {
             Back to the cats
           </Link>
         </header>
-        <div id="main-content" tabIndex={-1} className="focus-visible:outline-none">
+        <div id="main-content" tabIndex={-1} className="focus-visible:outline-hidden">
           <FightPage signedIn={signedIn} />
         </div>
       </main>

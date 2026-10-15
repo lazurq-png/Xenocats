@@ -93,7 +93,7 @@ export default function EditInvoiceForm({
               name="dueDate"
               type="date"
               defaultValue={invoice.due_date}
-              className="peer block w-full rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white [color-scheme:dark] focus:border-aura focus:ring-aura"
+              className="peer block w-full rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white scheme-dark focus:border-aura focus:ring-aura"
               aria-describedby="due-date-help due-date-error"
             />
             <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-aura peer-focus:text-plasma" />

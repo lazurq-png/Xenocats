@@ -40,7 +40,7 @@ export function GameSettings({ where, touch }: { where: 'lobby' | 'pause'; touch
             // need before sound can start (the run's own Start found it off).
             if (event.target.checked) sharedSoundPlayer().unlock();
           }}
-          className="rounded border-line bg-void text-aura focus:ring-aura"
+          className="rounded-sm border-line bg-void text-aura focus:ring-aura"
         />
         Sound
       </label>

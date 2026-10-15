@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   ARENA_CONFIG,
@@ -35,7 +36,15 @@ import {
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import { TIER_CLASS, TIER_NAMES, type Tier, tierOf, tierStyle } from '@/app/ui/xenocats/item-tier';
-import tailwind from '@/tailwind.config';
+
+// The theme's colour tokens, as the @theme block in app/ui/global.css defines them.
+const themeColours: Record<string, string> = Object.fromEntries(
+  [
+    ...readFileSync(new URL('../../../app/ui/global.css', import.meta.url), 'utf8').matchAll(
+      /--color-([\w-]+):\s*([^;]+);/g
+    ),
+  ].map(([, name, value]) => [name, value.trim()])
+);
 
 const config = (a: { config: ArenaConfig }) => a.config;
 const stats8 = (id: WeaponId) => weaponStats(id, MAX_WEAPON_LEVEL, modifiers(new Map()));
@@ -1901,10 +1910,10 @@ describe('the colour of how far an item has come', () => {
   it('every tier has its own name and its own colour class, and they are the theme’s tokens', () => {
     expect(new Set(tiers.map((t) => TIER_NAMES[t])).size).toBe(7);
     expect(new Set(tiers.map((t) => TIER_CLASS[t])).size).toBe(7);
-    const colours = (tailwind.theme?.extend?.colors as Record<string, Record<string, string>>).tier;
+    const colours = Object.entries(themeColours).filter(([name]) => name.startsWith('tier-'));
     for (const t of tiers) expect(TIER_CLASS[t]).toBe(`text-tier-${t}`);
-    expect(Object.keys(colours).map(Number).sort()).toEqual(tiers);
-    expect(new Set(Object.values(colours)).size).toBe(7);
+    expect(colours.map(([name]) => Number(name.slice('tier-'.length))).sort()).toEqual(tiers);
+    expect(new Set(colours.map(([, value]) => value)).size).toBe(7);
     expect(tierStyle({ kind: 'weapon', id: 'cat-treats', level: 8 })).toEqual({
       tier: 5,
       name: TIER_NAMES[5],
@@ -1913,7 +1922,6 @@ describe('the colour of how far an item has come', () => {
   });
 
   it('each colour keeps WCAG AA contrast (4.5 : 1) against the panels it is drawn on', () => {
-    const colors = tailwind.theme?.extend?.colors as Record<string, Record<string, string>>;
     const luminance = (hex: string) => {
       const [r, g, b] = [1, 3, 5]
         .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -1924,10 +1932,12 @@ describe('the colour of how far an item has come', () => {
       const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
       return (hi + 0.05) / (lo + 0.05);
     };
-    const backgrounds = [colors.void.DEFAULT, colors.panel.DEFAULT, colors.panel.raised];
+    const backgrounds = [themeColours.void, themeColours.panel, themeColours['panel-raised']];
     for (const t of tiers) {
       for (const bg of backgrounds) {
-        expect(ratio(colors.tier[t], bg), `tier ${t} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+        expect(ratio(themeColours[`tier-${t}`], bg), `tier ${t} on ${bg}`).toBeGreaterThanOrEqual(
+          4.5
+        );
       }
     }
   });

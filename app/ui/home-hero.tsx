@@ -10,7 +10,7 @@ export default function HomeHero() {
     <div
       role="img"
       aria-label="The Xenocat Analytics dashboard, circled by an orbit, with an alien cat asleep on top of it"
-      className="relative mx-auto aspect-[847/721] w-full max-w-[847px] select-none"
+      className="relative mx-auto aspect-847/721 w-full max-w-[847px] select-none"
     >
       {/* the violet glow the art sits in */}
       <div className="absolute left-[14%] top-[30%] h-[62%] w-[74%] rounded-[40%] bg-aura/25 blur-3xl" />

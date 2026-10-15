@@ -19,7 +19,7 @@ export default function LoginPage() {
           width={131}
           height={113}
           priority
-          className="absolute -top-[96px] right-[30px] w-[131px]"
+          className="absolute top-[-96px] right-[30px] w-[131px]"
         />
         <Suspense>
           <LoginForm />

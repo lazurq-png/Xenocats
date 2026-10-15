@@ -14,7 +14,7 @@ export default function Page() {
     <div className="xenocat-stars min-h-screen bg-void-landing">
       <a
         href="#main-content"
-        className="sr-only rounded-xl bg-plasma px-4 py-2 font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[10000]"
+        className="sr-only rounded-xl bg-plasma px-4 py-2 font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-10000"
       >
         Skip to main content
       </a>
@@ -31,7 +31,7 @@ export default function Page() {
           </Link>
         </header>
         {/* The skip link's target: past the header's links, to the cats. */}
-        <div id="main-content" tabIndex={-1} className="mb-6 focus-visible:outline-none">
+        <div id="main-content" tabIndex={-1} className="mb-6 focus-visible:outline-hidden">
           <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">
             The <span className="text-plasma">cats</span>
           </h1>

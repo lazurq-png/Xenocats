@@ -26,7 +26,7 @@ export default function Page() {
             <div className="mt-8 flex flex-wrap items-center gap-8">
               <Link
                 href="/login"
-                className="flex h-[68px] w-[250px] items-center justify-between rounded-2xl bg-plasma px-16 pr-6 text-[20.8px] font-semibold text-black shadow-glow transition hover:bg-plasma-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-plasma"
+                className="flex h-[68px] w-[250px] items-center justify-between rounded-2xl bg-plasma px-16 pr-6 text-[20.8px] font-semibold text-black shadow-glow transition hover:bg-plasma-dim focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-plasma"
               >
                 <span>Log in</span>
                 <ArrowRightIcon className="w-7" aria-hidden="true" />
@@ -39,7 +39,7 @@ export default function Page() {
               </Link>
             </div>
           </div>
-          <div className="w-full lg:-mt-[128px] lg:ml-auto lg:w-[62%]">
+          <div className="w-full lg:mt-[-128px] lg:ml-auto lg:w-[62%]">
             <HomeHero />
           </div>
         </main>

@@ -241,7 +241,14 @@ test.describe('on a computer', () => {
       await page.keyboard.up(key);
     }
     expect(household).toContain(taken);
-    await expect(area(page)).toHaveAttribute('data-weapons', new RegExp(taken));
+    // One gem can bring several level-ups: the next one's choice waits on screen,
+    // and the play area's weapons are written only once the run plays on.
+    await expect
+      .poll(async () => {
+        await playOn(page);
+        return area(page).getAttribute('data-weapons');
+      })
+      .toMatch(new RegExp(taken));
     const paused = await pauseRun(page);
     await expect(paused.locator(`li[data-weapon="${taken}"]`)).toBeVisible();
   });

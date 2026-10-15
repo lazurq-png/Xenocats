@@ -57,7 +57,7 @@ dashboard; the course's look and assets have since been replaced.
 | Mutations | `app/lib/actions.ts` — Server Actions (`'use server'`), validated with zod |
 | Types | `app/lib/definitions.ts` |
 | Auth | `auth.ts` (NextAuth v5 beta, credentials + bcrypt), `auth.config.ts` (the `authorized` callback), `proxy.ts` (runs it on every request outside its matcher's exclusions) |
-| UI | `app/ui/**` — Tailwind 3, `@heroicons/react`, `clsx` |
+| UI | `app/ui/**` — Tailwind 4 (theme in `app/ui/global.css`), `@heroicons/react`, `clsx` |
 | Schema and seed data | `db/migrations/*.sql`, `scripts/db.mjs` (`npm run db:migrate` / `db:seed` / `db:reset`), `app/lib/placeholder-data.ts` |
 
 There is no ORM and no ADR record of decisions. The schema is the numbered SQL
@@ -307,7 +307,9 @@ Never point `.env` at it, and never seed or reset it.
 **CI** (`.github/workflows/ci.yml`) runs only where work is merged: on pushes
 to `Nightrun` and `dev` and on pull requests into `Nightrun`, `dev` or `main`.
 Merging into `main` runs nothing (its pull request was tested; the merge only
-deploys, through Vercel). A push of any other
+deploys, through Vercel). A pull request from `dev` into `main` skips the
+tests when `main` has nothing `dev` lacks and CI already passed on that exact `dev`
+commit (the workflow's *tested* job); any other pull request into `main` runs them. A push of any other
 branch, a night run's task branches included, runs nothing; those are checked
 locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
 over a migrated and seeded `xenocats` schema, then every browser test against

@@ -11,7 +11,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {/* First in the tab order: past the navigation, straight to the page. */}
           <a
             href="#main-content"
-            className="sr-only rounded-xl bg-plasma px-4 py-2 font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[10000]"
+            className="sr-only rounded-xl bg-plasma px-4 py-2 font-semibold text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-10000"
           >
             Skip to main content
           </a>
@@ -22,7 +22,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <main
               id="main-content"
               tabIndex={-1}
-              className="min-h-full px-4 py-6 focus-visible:outline-none md:rounded-bl-[40px] md:border-b md:border-l md:border-line/70 md:px-8 md:py-9"
+              className="min-h-full px-4 py-6 focus-visible:outline-hidden md:rounded-bl-[40px] md:border-b md:border-l md:border-line/70 md:px-8 md:py-9"
             >
               {children}
             </main>

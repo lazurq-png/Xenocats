@@ -5,7 +5,9 @@ name: CI
 # finished task onto it and pushes it, then polls) or to dev (supervised work).
 # Merging into main runs nothing: its pull request was tested, and the merge only
 # deploys (Vercel's own Git integration, vercel.json). A task branch's own push
-# runs nothing either: it was checked locally first.
+# runs nothing either: it was checked locally first. A pull request from dev into
+# main whose merge is exactly a commit CI already passed on dev skips the tests
+# (the `tested` job); any other pull request into main runs them all.
 on:
   push:
     branches: [Nightrun, dev]
@@ -16,8 +18,43 @@ permissions:
   contents: read
 
 jobs:
+  # Says whether this run would repeat one that passed: a pull request from dev
+  # into main where main has nothing dev lacks (so the merge is dev's tip as it
+  # is) and CI passed on the push of that very commit to dev. Anything else, a
+  # dev run still going or failed included, runs the tests.
+  tested:
+    name: Already tested on dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      # An error here (the API, say) leaves skip unset: the tests run.
+      - id: check
+        continue-on-error: true
+        if: >-
+          github.event_name == 'pull_request' && github.base_ref == 'main' &&
+          github.head_ref == 'dev' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          behind=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BASE...$HEAD" --jq .behind_by)
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=dev&event=push&status=success&head_sha=$HEAD" --jq .total_count)
+          echo "main has $behind commit(s) dev lacks; $passed passed CI run(s) on dev at $HEAD"
+          if [ "$behind" = 0 ] && [ "$passed" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
   checks:
     name: Lint, type check, unit tests
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -87,6 +124,8 @@ jobs:
 
   build:
     name: Build + browser tests (production)
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Chromium and every library it needs come with the image, instead of a
@@ -158,6 +197,8 @@ jobs:
 
   e2e:
     name: Browser tests (dev server)
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Chromium and every library it needs come with the image, instead of a
