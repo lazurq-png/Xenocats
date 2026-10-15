@@ -104,7 +104,8 @@ new spec must name the routes it visits as paths (`page.goto('/cats')`, a
 `toHaveURL` regex) so the selector can find it; `tests/unit/affected-tests.test.ts`
 fails for a spec no route reaches. CI runs the full suites on every push to
 `Nightrun` or `dev` and every pull request into `Nightrun`, `dev` or `main` (not
-on the merge into `main`, which only deploys).
+on the merge into `main`, which only deploys, nor on a pull request from `dev` into
+`main` whose exact commit already passed on `dev`).
 
 ---
 

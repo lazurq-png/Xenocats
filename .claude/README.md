@@ -43,7 +43,8 @@ manage it.
 
 CI (`.github/workflows/ci.yml`) runs three jobs on pushes to `Nightrun` and
 `dev` and on pull requests into `Nightrun`, `dev` or `main` (a merge into `main`,
-and other branches, run none):
+and other branches, run none; a pull request from `dev` into `main` skips them when
+that exact commit already passed on `dev`):
 lint + type check + unit tests; the build followed by the browser tests against
 `next start`; and the browser tests against `next dev`. The last two start the
 runner's own PostgreSQL, so CI uses no outside database and no secret.
