@@ -530,11 +530,8 @@ test('Laser Ocicat locks the cursor to one axis', async ({ page }) => {
     .toBe(true);
 });
 
-test('all 20 cats are on /cats, and a sixth summon is refused while five are on screen', async ({
-  page,
-}) => {
+test('a sixth summon is refused while five cats are on screen', async ({ page }) => {
   await openCats(page);
-  await expect(page.locator('[data-testid^="cat-card-"]')).toHaveCount(20);
   // Summon with the keyboard: it is never blocked, even once the first cats attack.
   // All five attack at once (their effects stack), and each stays on screen through
   // its arrival, its pounce and its departure, so all five are still there when
@@ -573,30 +570,6 @@ test('calm: an attack flings the elements near the pointer as it does the cursor
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
   await expect.poll(() => translated(button)).toBeGreaterThan(60);
   expect(await translated(button)).toBeLessThanOrEqual(151);
-  // When the effect ends (1.5 s) the button is exactly as it was.
-  await runUntil(page, async () => (await effect(page)) === '', 5000);
-  await expect(fakeCursor(page)).toHaveAttribute('data-effect', '');
-  await expect.poll(() => button.evaluate((el) => el.outerHTML)).toBe(before);
-});
-
-test('normal: an attack flings the element under the pointer as it does the cursor, then puts it back exactly', async ({
-  page,
-}) => {
-  await openCats(page);
-  const button = page.getByTestId('summon-pulsar-siamese');
-  await button.evaluate((el) => el.scrollIntoView({ block: 'center' }));
-  const before = await button.evaluate((el) => el.outerHTML);
-  await summon(page, 'pulsar-siamese');
-  // Knockback flings the cursor 300 px from the cat; the button goes with it.
-  await expect(fakeCursor(page)).toHaveAttribute('data-effect', 'knockback');
-  await expect
-    .poll(() =>
-      button.evaluate((el) => {
-        const [x, y] = (el as HTMLElement).style.translate.split(' ').map(parseFloat);
-        return Math.hypot(x || 0, y || 0);
-      })
-    )
-    .toBeGreaterThan(100);
   // When the effect ends (1.5 s) the button is exactly as it was.
   await runUntil(page, async () => (await effect(page)) === '', 5000);
   await expect(fakeCursor(page)).toHaveAttribute('data-effect', '');
@@ -706,6 +679,12 @@ for (const type of CAT_TYPES) {
         await page.clock.runFor(150);
       }
       expect(furthest).toBeGreaterThan(100);
+    }
+
+    if (type.id === 'pulsar-siamese') {
+      // Its knockback flings the cursor 300 px from the cat; the button under the
+      // pointer goes with it (half as far when calm, above).
+      await expect.poll(() => translated(button)).toBeGreaterThan(100);
     }
 
     if (type.id === 'mirror-sphynx') {

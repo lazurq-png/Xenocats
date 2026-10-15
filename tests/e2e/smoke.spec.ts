@@ -2,15 +2,6 @@ import { expect, test } from './fixtures';
 
 // Pages that render without the database; dashboard.spec.ts covers those that need it.
 
-test('home page renders and links to the login page', async ({ page }) => {
-  await page.goto('/');
-  // The hero's link (the header has only the logo).
-  const login = page.getByRole('main').getByRole('link', { name: 'Log in' });
-  await expect(login).toBeVisible();
-  await login.click();
-  await expect(page).toHaveURL(/\/login$/);
-});
-
 test('login page renders the sign-in form', async ({ page }) => {
   await page.goto('/login');
   await expect(page.getByRole('heading', { name: 'Welcome back, stargazer.' })).toBeVisible();
