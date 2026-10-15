@@ -7,7 +7,11 @@ Open this for schema, migration, and persistence work. Database changes are high
 ## This Repository
 
 - **A development database, no production one yet.** `POSTGRES_URL` in `.env`
-  points at a PostgreSQL on the local network whose data has no value. The app
+  points at PostgreSQL 17 on the development PC itself (`localhost:5432`, the
+  Windows service `postgresql-x64-17`), whose data has no value. TLS is on with
+  a self-signed certificate, because the app connects with `ssl: 'require'`;
+  never loosen that to suit a local server. Vercel's deployments read their own
+  `POSTGRES_URL` (Neon) from Vercel, never from `.env`. The app
   uses the schema the URL names in `?search_path=` (`xenocats`); the browser
   tests use `xenocats_test`, which they drop and rebuild on every run, and the
   database unit tests (`tests/unit/data.test.ts`) `xenocats_vitest`. Writing

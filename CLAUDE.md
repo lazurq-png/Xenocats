@@ -241,8 +241,8 @@ In this repository the checks that exist are:
 | Browser    | `npm run dev`, then open `http://localhost:3000` |
 
 Use **npm**: the lockfile is `package-lock.json`. The `pnpm` block in
-`package.json` is a leftover and nothing reads it. Node is not on `PATH`; prefix
-commands as the global `CLAUDE.md` describes. Every check needs `node_modules`,
+`package.json` is a leftover and nothing reads it. Node 24 is installed
+system-wide and on `PATH`; no prefix is needed. Every check needs `node_modules`,
 installed with `npm ci`; the browser tests also need Chromium
 (`npx playwright install chromium`).
 
@@ -255,10 +255,12 @@ deleted) fail the type check for no reason in the code.
 the `xenocats_test` schema on the database `POSTGRES_URL` names, and the test
 server uses that schema, so browser tests may log in and submit forms. Every spec imports `test` from `tests/e2e/fixtures.ts`, whose `catsPaused` option (true by default) sets a window flag before each page loads so the dashboard's cats do not come: only the `cat-attacks` project (the specs that need a cat to come or be summoned) turns it off, and every other group waits for that project. A run of a few named specs sets `E2E_NO_CAT_DEPS=1` to skip the wait (`--no-deps` would also skip the login setup). Without
 a `POSTGRES_URL`, or with `E2E_NO_DATABASE=1` when the server is unreachable
-(off its network), the tests that need it skip; otherwise an unreachable server
-fails the whole suite. It runs Playwright's default number of browsers at once
-(half the cores), locally and in CI; `E2E_WORKERS` sets another (`E2E_WORKERS=1`
-when memory is short). Only a night run limits it, to 2 (the night-run skill).
+(its service stopped), the tests that need it skip; otherwise an unreachable server
+fails the whole suite. It runs 4 browsers at once locally, and Playwright's
+default (half the cores) in CI; `E2E_WORKERS` sets another. At the local
+default of 6, the timing-sensitive Survival specs (`survival.spec.ts`) failed
+from CPU load alone and passed when rerun by themselves; at 4 they pass and the
+suite finishes sooner. A night run always uses 4 (the night-run skill).
 `E2E_SERVER=start npm run test:e2e` runs the same tests against `next start`
 instead, which needs an existing `npm run build`. When `next dev` detects an AI
 agent, it rewrites the Next.js agent-rules block at the end of `AGENTS.md`. The
@@ -286,7 +288,11 @@ the task changed.
 
 The running app, and possibly `npm run build` where a page prerenders, need
 `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` in `.env`. **`POSTGRES_URL` is a
-development database** on the local network, holding no data of value: the app
+development database**: PostgreSQL 17 on the development PC itself
+(`localhost:5432`, the Windows service `postgresql-x64-17`, TLS on with a
+self-signed certificate because the app requires TLS), holding no data of value.
+Vercel's preview and production deployments use their own `POSTGRES_URL`
+(Neon), set in Vercel and never in `.env`. The app
 uses its `xenocats` schema, the browser tests `xenocats_test`, the database unit
 tests `xenocats_vitest`. The URL carries
 the schema as `?search_path=`. The schema is defined by `db/migrations/*.sql`;
