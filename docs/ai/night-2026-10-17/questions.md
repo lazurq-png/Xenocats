@@ -21,3 +21,7 @@ Recommendation: 3 now (a small task), 1 if the board ever matters. Meanwhile: no
 ## Q4 — the "screen full of attacks" test is chaotic (from T2; no decision needed, an exploration candidate)
 
 `arsenal.test.ts` "a seeded five-minute run, choices made for it, ends with the screen full of attacks" checks one seed's peak against a fixed 30. Over seeds 1–10, its peak ranges from 22 to 152, and any change to a weapon moves which seed passes (D10). A sturdier form would be a median over several seeds, or the peak of a fixed build rather than one chosen by draws. That costs about 30 s per seed.
+
+## Q5 — patches and swatted cats have no owner in co-op (from T3's review; a proposed small task)
+
+`Patch` (toys, boxes, puddles) and a swatted cat in flight do not record which Keeper's weapon made them, so their damage uses player 1's passives (`hero` is `keepers[0]` in `updatePatches` and `bowl`), and T3's per-weapon credit checks player 1's weapons for a fusion. Giving both an `owner`, as projectiles and socks have, would make player 2's patch damage use his own passives: a gameplay change, so it is proposed rather than done.

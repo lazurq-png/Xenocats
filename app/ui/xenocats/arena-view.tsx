@@ -260,6 +260,8 @@ export default function ArenaGame({
     sentHome: number;
     earned: number;
     reached: MilestoneId[];
+    /** What each weapon held did, most homesickness first (arena.weaponReport). */
+    weapons: { id: WeaponId; name: string; homesickness: number; sentHome: number }[];
     /** In co-op: each Keeper, who he went out as, what he carried, how he ended. */
     keepers: {
       name: string;
@@ -359,6 +361,7 @@ export default function ArenaGame({
         sentHome,
         earned: after.earned,
         reached: after.reached,
+        weapons: arena.weaponReport().map((w) => ({ ...w, name: WEAPONS[w.id].name })),
         keepers: arena.state().heroes.map((h, i) => ({
           name: CHARACTERS[characters[i]].name,
           weapons: h.weapons.map((w) => ({ id: w.id, name: WEAPONS[w.id].name, level: w.level })),
@@ -1472,6 +1475,27 @@ export default function ArenaGame({
             <dt className="text-aura">Tufts of fur gathered</dt>
             <dd data-testid="survival-result-tufts">{result.earned}</dd>
           </dl>
+          {result.weapons.length > 0 && (
+            <>
+              <h3 id="survival-result-weapons" className="mt-4 text-sm font-semibold text-cream">
+                What each weapon did
+              </h3>
+              <ol
+                aria-labelledby="survival-result-weapons"
+                data-testid="survival-result-weapons"
+                className="mt-1 space-y-1 text-sm text-white"
+              >
+                {result.weapons.map((w) => (
+                  <li key={w.id} data-weapon={w.id}>
+                    <span className="font-semibold text-cream">{w.name}</span>:{' '}
+                    {Math.round(w.homesickness).toLocaleString('en-GB')} homesickness,{' '}
+                    {w.sentHome === 1 ? '1 cat' : `${w.sentHome.toLocaleString('en-GB')} cats`} sent
+                    home
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
           <LeaderboardEntry
             key={runCount}
             runId={runId}

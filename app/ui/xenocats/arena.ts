@@ -497,6 +497,10 @@ export type ArenaCat = {
   flungVy: number;
   flungDamage: number;
   flungHits: number[];
+  /** The weapon that swatted it. */
+  flungBy: WeaponId | null;
+  /** The weapon whose homesickness reached it last (credited if it goes home), or null. */
+  lastHitBy: WeaponId | null;
 };
 
 /** Something a weapon set down that stays a while: a toy, a box, a puddle. */
@@ -550,6 +554,11 @@ export type Sock = {
   showMs: number;
   owner: number;
 };
+
+/** Each evolved weapon a fusion takes in, and the fused weapon it becomes part of. */
+const FUSED_FROM = new Map<WeaponId, WeaponId>(
+  FUSIONS.flatMap((f) => f.from.map((id) => [id, f.to] as const))
+);
 
 /** A Static Sock sparks this often, ms. */
 export const SOCK_SPARK_MS = 350;
@@ -694,8 +703,9 @@ type Keeper = {
   downedAt: number | null;
   /** The Forbidden Catnip Vacuum's burst, when it comes (after its pull). */
   gulpAt: number;
-  /** What the burst after the Forbidden Catnip Vacuum's pull does. */
+  /** What the burst after the Forbidden Catnip Vacuum's pull does, and whose it is. */
   gulpDamage: number;
+  gulpBy: WeaponId | null;
 };
 
 export type ArenaEvent =
@@ -808,6 +818,7 @@ export function createArena(options: {
       downedAt: null,
       gulpAt: Infinity,
       gulpDamage: 0,
+      gulpBy: null,
     };
   }
 
@@ -830,6 +841,32 @@ export function createArena(options: {
     : [newKeeper(0, { x: 0, y: 0 }, first, config.startingPassives)];
   /** The Keeper being dealt with now: whose walk, weapons and touch. */
   let hero = keepers[0];
+  /**
+   * The weapon whose work is being done now (each place a weapon hurts sets it), and
+   * what each weapon held in the run has done: homesickness given, cats sent home
+   * (each cat to the weapon that reached it last). Counted here, so every view reads
+   * the same numbers.
+   */
+  type Tally = { homesickness: number; sentHome: number };
+  const tally = new Map<WeaponId, Tally>();
+  /** The weapon credited now (the one dealing, or the fused one it is part of), and its counts. */
+  let dealtBy: WeaponId | null = null;
+  let dealtTo: Tally | null = null;
+  /** Names the weapon whose work is done next (null: none, nothing is counted). */
+  function deal(id: WeaponId | null) {
+    if (id === null) {
+      dealtBy = null;
+      dealtTo = null;
+      return;
+    }
+    dealtBy = creditOf(id);
+    dealtTo = tally.get(dealtBy) ?? null;
+    if (!dealtTo) {
+      dealtTo = { homesickness: 0, sentHome: 0 };
+      tally.set(dealtBy, dealtTo);
+    }
+  }
+  const everHeld = new Set<WeaponId>(keepers.flatMap((k) => [...k.weapons.keys()]));
   let sentHome = 0;
   let windUpsBegun = 0;
   /** How many elites are winding up an attack now (kept, not counted: state() is read every frame). */
@@ -1009,6 +1046,8 @@ export function createArena(options: {
     cat.flungDamage = 0;
     cat.flungHits ??= [];
     cat.flungHits.length = 0;
+    cat.lastHitBy = null;
+    cat.flungBy = null;
     cats.push(cat);
     return cat;
   }
@@ -1159,6 +1198,10 @@ export function createArena(options: {
         variety: cat.variety,
       });
       sentHome++;
+      if (cat.lastHitBy) {
+        const counts = tally.get(cat.lastHitBy);
+        if (counts) counts.sentHome++;
+      }
       if (cat.windUntil > 0) stopWinding(cat);
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
       // The best Cookie Jar among the Keepers standing makes pickups likelier.
@@ -1547,7 +1590,17 @@ export function createArena(options: {
   function hurt(cat: ArenaCat, amount: number, kind: WeaponKind) {
     if (cat.variety && VARIETIES[cat.variety].immuneTo?.includes(kind)) return;
     if ((cat.elite && cat.swarm === 0) || cat.variety === 'mega') amount *= hero.mods.elite;
-    cat.homesickness += time < cat.vulnUntil ? amount * SCORCH_FACTOR : amount;
+    const given = time < cat.vulnUntil ? amount * SCORCH_FACTOR : amount;
+    cat.homesickness += given;
+    if (dealtTo === null) return;
+    dealtTo.homesickness += given;
+    cat.lastHitBy = dealtBy;
+  }
+
+  /** A weapon that is now part of a fused one he holds counts for the fused one. */
+  function creditOf(id: WeaponId): WeaponId {
+    const fused = FUSED_FROM.get(id);
+    return fused !== undefined && hero.weapons.has(fused) ? fused : id;
   }
 
   /** Indices of this step's cats bigger than the cats' size (not in the grid). */
@@ -1730,6 +1783,7 @@ export function createArena(options: {
       }
       hero.gulpAt = time + s.durationMs;
       hero.gulpDamage = s.damage;
+      hero.gulpBy = id;
       return true;
     }
     if (kind === 'pull') {
@@ -1858,6 +1912,7 @@ export function createArena(options: {
         cat.flungVx = (way.x * s.speed) / flight;
         cat.flungVy = (way.y * s.speed) / flight;
         cat.flungDamage = s.damage * SWAT_BOWL_SHARE;
+        cat.flungBy = id;
         cat.flungHits.length = 0;
         cat.flungHits.push(cat.id);
       }
@@ -2031,6 +2086,7 @@ export function createArena(options: {
         if (cat.flungHits.length > SWAT_BOWL_MAX) break;
         if (cat.flungHits.includes(other.id)) continue;
         cat.flungHits.push(other.id);
+        deal(cat.flungBy);
         hurt(other, cat.flungDamage, 'swat');
       }
     }
@@ -2077,6 +2133,7 @@ export function createArena(options: {
       if (time < sock.nextAt) continue;
       sock.nextAt = time + SOCK_SPARK_MS;
       hero = keepers[sock.owner] ?? keepers[0];
+      deal(sock.weapon);
       hurt(host, sock.damage, 'cling');
       const friend = nearestLive(sock, sock.area, host);
       if (friend) {
@@ -2111,6 +2168,7 @@ export function createArena(options: {
   function updatePatches(dt: number) {
     for (let n = patches.length - 1; n >= 0; n--) {
       const p = patches[n];
+      deal(p.weapon);
       if (time >= p.until) {
         if (p.finale > 0) {
           for (const i of within(p, p.radius * 1.6)) hurt(cats[i], p.finale, 'lure');
@@ -2202,6 +2260,7 @@ export function createArena(options: {
 
   /** One weapon, this step: blades and zones all the time, the rest when they are ready. */
   function runWeapon(id: WeaponId, held: { level: number; readyAt: number }, dt: number) {
+    deal(id);
     const s = weaponStats(id, held.level, hero.mods);
     const kind = WEAPONS[id].kind;
     if (kind === 'orbit') {
@@ -2251,6 +2310,7 @@ export function createArena(options: {
   /** What a fused weapon adds to what its two parents go on doing. */
   function fusedExtra(id: WeaponId, held: Held) {
     if (time < held.readyAt) return;
+    deal(id);
     const s = weaponStats(id, held.level, hero.mods);
     if (id === 'thunderstorm') {
       // Lightning: the wet (slowed) cats first, then the nearest.
@@ -2363,8 +2423,10 @@ export function createArena(options: {
 
   function swingWeapons(dt: number) {
     updateAim();
+    deal(null);
     if (time >= hero.gulpAt) {
       hero.gulpAt = Infinity;
+      deal(hero.gulpBy);
       for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area)) {
         hurt(cats[i], hero.gulpDamage, 'gulp');
       }
@@ -2450,8 +2512,9 @@ export function createArena(options: {
           });
         }
       }
-      // Its Keeper's passives count where it lands (hurt).
+      // Its Keeper's passives count where it lands (hurt), and its weapon is credited.
       hero = keepers[p.owner] ?? keepers[0];
+      deal(p.weapon);
       const kind = WEAPONS[p.weapon].kind;
       if (kind === 'boomerang') {
         // Halfway, it turns for his hand, and may touch every cat again on the way back.
@@ -2671,10 +2734,12 @@ export function createArena(options: {
         );
         for (const id of fusion.from) hero.weapons.delete(id);
         hero.weapons.set(fusion.to, { level: MAX_WEAPON_LEVEL, readyAt: time, parts });
+        everHeld.add(fusion.to);
         events.push({ kind: 'fusion', from: fusion.from, to: fusion.to });
       } else if (evolution) {
         hero.weapons.delete(evolution.from);
         hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
+        everHeld.add(evolution.to);
         events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
       } else pending++;
     }
@@ -2794,7 +2859,9 @@ export function createArena(options: {
       }
       moveShots(dt);
       soothe(dt);
+      deal(null);
       bowl();
+      deal(null);
 
       // Reached: one drain per moment for each Keeper, an elite's effect on top.
       for (const k of keepers) {
@@ -2858,9 +2925,14 @@ export function createArena(options: {
         swingWeapons(dt);
       }
       hero = keepers[0];
+      // Each of these names the weapon of what it works (deal), or nothing is counted.
+      deal(null);
       updatePatches(dt);
+      deal(null);
       moveProjectiles(dt);
+      deal(null);
       updateSocks();
+      deal(null);
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
       gatherGems(dt);
@@ -2944,7 +3016,10 @@ export function createArena(options: {
       if (choice.kind === 'weapon') {
         const held = hero.weapons.get(choice.id);
         if (held) held.level = choice.level;
-        else hero.weapons.set(choice.id, { level: 1, readyAt: time + 200 });
+        else {
+          hero.weapons.set(choice.id, { level: 1, readyAt: time + 200 });
+          everHeld.add(choice.id);
+        }
       } else if (choice.kind === 'passive') {
         const before = maxResolve();
         const rerollsBefore = hero.mods.rerolls;
@@ -3116,6 +3191,18 @@ export function createArena(options: {
     jets: (): readonly Jet[] => jets,
     /** The Frying Pan's swings, fading. */
     swats: (): readonly Swat[] => swats,
+    /**
+     * What each weapon held in the run did (evolved and fused ones included, every
+     * Keeper's together): homesickness given and cats sent home, most homesickness
+     * first. A weapon after it fused counts for the fused one.
+     */
+    weaponReport: (): { id: WeaponId; homesickness: number; sentHome: number }[] =>
+      [...new Set([...everHeld, ...tally.keys()])]
+        .map((id) => ({ id, homesickness: 0, sentHome: 0, ...tally.get(id) }))
+        .sort(
+          (a, b) =>
+            b.homesickness - a.homesickness || b.sentHome - a.sentHome || a.id.localeCompare(b.id)
+        ),
     /** The Static Socks clinging to cats, where those cats stand. */
     socks: (): readonly Sock[] => socks,
     matriarch: (): Vec | null => matriarch,

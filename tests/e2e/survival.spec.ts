@@ -432,16 +432,11 @@ test.describe('on a computer', () => {
     test.setTimeout(90_000);
     await openArena(page, '?seed=7&speed=3&pickups=1');
     await startRun(page);
-    await page.waitForFunction(
-      () =>
-        Number(
-          document
-            .querySelector('[data-testid="survival-area"]')
-            ?.getAttribute('data-pickups-taken')
-        ) > 0,
-      undefined,
-      { timeout: 60_000 }
-    );
+    // (num takes a level-up's first choice: one waiting would stop the run, and no pickup
+    // would ever be taken.)
+    await expect
+      .poll(() => num(page, 'data-pickups-taken'), { timeout: 60_000 })
+      .toBeGreaterThan(0);
     await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
   });
 
@@ -650,6 +645,24 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-best')).not.toHaveText(
       'Longest survived (5 minutes): none yet'
     );
+  });
+
+  test('the results say what each weapon did, the starting Laser Pointer among them', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&speed=3');
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-sent-home'), { timeout: 30_000 }).toBeGreaterThan(0);
+    await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
+    const list = page.getByRole('list', { name: 'What each weapon did' });
+    await expect(list).toBeVisible();
+    const laser = list.locator('li[data-weapon="laser-pointer"]');
+    await expect(laser).toHaveText(/^Laser Pointer: [\d,]+ homesickness, [\d,]+ cats? sent home$/);
+    // It did something: its homesickness is not 0.
+    const given = Number(
+      (await laser.textContent())!.match(/: ([\d,]+) homesickness/)![1].replace(/,/g, '')
+    );
+    expect(given).toBeGreaterThan(0);
   });
 
   test('WASD walks the hero', async ({ page }) => {
