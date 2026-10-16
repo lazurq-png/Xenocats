@@ -112,6 +112,8 @@ test.describe('signed in', () => {
     await expect(row).toContainText(time);
     await expect(page.getByTestId('leaderboard-5').getByText(typed)).toHaveCount(0);
     await expect(page.getByTestId('leaderboard-15').getByText(typed)).toHaveCount(0);
+    await expect(page.getByTestId('leaderboard-0').getByText(typed)).toHaveCount(0);
+    await expect(page.getByTestId('leaderboard-0')).toContainText('Endless');
     // The player's personal best of each length.
     await expect(page.getByTestId('personal-best-10')).toContainText(`${time}`);
     await expect(page.getByTestId('personal-best-10')).toContainText(`as ${typed}`);

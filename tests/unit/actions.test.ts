@@ -26,7 +26,7 @@ vi.mock('next/headers', () => ({
   headers: async () => new Headers({ 'x-real-ip': '203.0.113.7' }),
 }));
 
-const { addDays } = await import('@/app/lib/schemas');
+const { addDays, MAX_RUN_MS } = await import('@/app/lib/schemas');
 
 const {
   createInvoice,
@@ -621,11 +621,20 @@ describe('startSurvivalRun', () => {
     expect(sql.mock.calls[0].slice(1)).toEqual(['u1', 10]);
   });
 
+  it('starts an endless run as minutes 0', async () => {
+    auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce([{ id: 'run-2' }]);
+    expect(await startSurvivalRun(0)).toBe('run-2');
+    expect(sql.mock.calls[0].slice(1)).toEqual(['u1', 0]);
+  });
+
   it('starts nothing signed out, or for a length there is none of', async () => {
     auth.mockResolvedValue(null);
     expect(await startSurvivalRun(5)).toBeNull();
     auth.mockResolvedValue(signedIn);
-    for (const minutes of [7, '5', null, 5.5]) expect(await startSurvivalRun(minutes)).toBeNull();
+    for (const minutes of [7, '5', null, 5.5, -1, '0']) {
+      expect(await startSurvivalRun(minutes)).toBeNull();
+    }
     expect(sql).not.toHaveBeenCalled();
   });
 });
@@ -650,9 +659,18 @@ describe('recordSurvivalRun', () => {
     // Its own, unfinished, within its length and the time since it started.
     expect(text).toMatch(/user_id = \? AND finished_at IS NULL/);
     expect(text).toContain('run_minutes * 60000');
+    // An endless run (minutes 0) is held to the time since it started alone.
+    expect(text).toContain('run_minutes = 0 OR');
     expect(text).toContain('now() - started_at');
     expect(values.slice(0, 5)).toEqual(['Comet Tail', 312_000, 87, runId, 'u1']);
     expect(revalidatePath).toHaveBeenCalledWith('/cats');
+  });
+
+  it('sends an endless run longer than any timed one on to the database to judge', async () => {
+    auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
+    expect(await recordSurvivalRun({ ...run, timeMs: 2 * 3_600_000 })).toBe('saved');
+    expect(sql).toHaveBeenCalledTimes(1);
   });
 
   it('says invalid when the database finds no such run to finish', async () => {
@@ -672,7 +690,7 @@ describe('recordSurvivalRun', () => {
       { ...run, name: 'admin\u0000' },
       { ...run, name: '<script>' },
       { ...run, runId: 'not-a-uuid' },
-      { ...run, timeMs: 15 * 60_000 + 1 },
+      { ...run, timeMs: MAX_RUN_MS + 1 },
       { ...run, timeMs: -1 },
       { ...run, sentHome: 1.5 },
       'not a run',

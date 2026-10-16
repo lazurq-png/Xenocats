@@ -409,7 +409,7 @@ export const LEADERBOARD_SIZE = 10;
 
 /**
  * Survival's leaderboard, the one read that is nobody's own. For each length (5, 10
- * and 15 minutes): each player's best finished run, ranked longest first, then most
+ * and 15 minutes, and 0 for endless): each player's best finished run, ranked longest first, then most
  * cats sent home, then the earliest; the top LEADERBOARD_SIZE (`board`), and the
  * `viewer`'s own best with its place (`mine`, null without one or without a
  * viewer). Each run under the name typed for it; nothing about an account is read.
@@ -435,8 +435,18 @@ export async function fetchLeaderboard(viewer: string | null) {
       WHERE place <= ${LEADERBOARD_SIZE} OR user_id = ${viewer}::uuid
       ORDER BY run_minutes, place
     `;
-    const board: Record<5 | 10 | 15, LeaderboardRow[]> = { 5: [], 10: [], 15: [] };
-    const mine: Record<5 | 10 | 15, LeaderboardRow | null> = { 5: null, 10: null, 15: null };
+    const board: Record<LeaderboardRow['run_minutes'], LeaderboardRow[]> = {
+      5: [],
+      10: [],
+      15: [],
+      0: [],
+    };
+    const mine: Record<LeaderboardRow['run_minutes'], LeaderboardRow | null> = {
+      5: null,
+      10: null,
+      15: null,
+      0: null,
+    };
     for (const row of rows) {
       if (row.place <= LEADERBOARD_SIZE) board[row.run_minutes].push(row);
       if (row.mine) mine[row.run_minutes] = row;

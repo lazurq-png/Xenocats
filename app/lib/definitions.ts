@@ -135,7 +135,8 @@ export type InvoiceDetail = {
 
 /** A run on Survival's leaderboard: a player's best of its length, and its place. */
 export type LeaderboardRow = {
-  run_minutes: 5 | 10 | 15;
+  /** 0: an endless run. */
+  run_minutes: 0 | 5 | 10 | 15;
   place: number;
   /** The viewer's own. */
   mine: boolean;

@@ -182,6 +182,9 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-time')).toContainText('/ 10:00');
     const paused = await pauseRun(page);
     await expect(paused.getByTestId('survival-pause-length')).toHaveText('10:00');
+    // A ten-minute run holds eight of each.
+    await expect(paused.getByTestId('survival-pause-weapon-slots')).toHaveText('Weapons 1 of 8');
+    await expect(paused.getByTestId('survival-pause-passive-slots')).toHaveText('Passives 0 of 8');
     await paused.getByRole('button', { name: 'Give up' }).click();
     await expect(page.getByTestId('survival-results')).toHaveAttribute('data-outcome', 'gave-up');
     await expect(page.getByTestId('survival-result-length')).toHaveText('10:00');
@@ -190,6 +193,27 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-best')).toHaveText(
       'Longest survived (5 minutes): none yet'
     );
+  });
+
+  test('an endless run has no time goal and no limit on slots', async ({ page }) => {
+    await openArena(page, '?seed=7&speed=3');
+    await page.getByTestId('survival-length-0').check();
+    await expect(page.getByTestId('survival-best')).toHaveText(
+      'Longest survived (Endless): none yet'
+    );
+    await startRun(page);
+    await expect(page.getByTestId('survival-time')).toContainText('(endless)');
+    const paused = await pauseRun(page);
+    await expect(paused.getByTestId('survival-pause-length')).toHaveText('Endless');
+    await expect(paused.getByTestId('survival-pause-weapon-slots')).toHaveText(
+      'Weapons 1, no limit'
+    );
+    await expect(paused.getByTestId('survival-pause-passive-slots')).toHaveText(
+      'Passives 0, no limit'
+    );
+    await paused.getByRole('button', { name: 'Give up' }).click();
+    await expect(page.getByTestId('survival-results')).toHaveAttribute('data-outcome', 'gave-up');
+    await expect(page.getByTestId('survival-result-length')).toHaveText('Endless');
   });
 
   test('an elite near the Keeper winds up an attack the HUD data shows', async ({ page }) => {
@@ -861,8 +885,8 @@ test.describe('on a computer', () => {
       .toBe(true);
     const codex = page.getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
-    // Eleven evolutions, four fusions and the secret cat: one found, the rest unknown.
-    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(15);
+    // Seventeen evolutions, seven fusions and the secret cat: one found, the rest unknown.
+    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(24);
     // Kept after a reload; he goes out as the Night Porter, with the Spray Bottle.
     await page.reload();
     await expect(porter).toBeChecked();

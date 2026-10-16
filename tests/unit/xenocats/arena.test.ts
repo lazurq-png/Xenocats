@@ -605,7 +605,9 @@ describe('the run length', () => {
     expect(runLengthConfig(5)).toEqual({
       timeGoalMs: 300_000,
       schedule: { ...SCHEDULE, bosses: [120_000, 240_000] },
+      slots: ARENA_CONFIG.slots,
     });
+    expect(ARENA_CONFIG.slots).toEqual({ weapons: 6, passives: 6 });
     expect(SCHEDULE.bosses).toEqual([120_000, 240_000]);
     const play = (config: Partial<ArenaConfig>) => {
       const a = arena({ ...unbreakable, stepMs: 50, schedule: SCHEDULE, ...config }, 3);
@@ -622,6 +624,59 @@ describe('the run length', () => {
     expect(runLengthConfig(15).schedule?.bosses).toEqual(
       [1, 2, 3, 4, 5, 6, 7].map((n) => n * 120_000)
     );
+  });
+
+  it('a longer run holds more: 8 weapons and 8 passives at ten minutes, 10 of each at fifteen', () => {
+    expect(runLengthConfig(10).slots).toEqual({ weapons: 8, passives: 8 });
+    expect(runLengthConfig(15).slots).toEqual({ weapons: 10, passives: 10 });
+  });
+
+  it('a ten-minute run offers a seventh weapon where a five-minute one offers none', () => {
+    // Six weapons held: does any level-up offer a new one?
+    const six: WeaponId[] = [
+      'laser-pointer',
+      'cat-treats',
+      'spray-bottle',
+      'yarn-ball',
+      'can-opener',
+      'feather-wand',
+    ];
+    // A chest under him at the start: opened at once, it brings a level-up's offer.
+    // Over twenty seeds, whether any offer has a weapon he does not hold.
+    const offersNew = (minutes: number) =>
+      Array.from({ length: 20 }, (_, seed) => {
+        const a = arena(
+          {
+            escalation: [[0, 0]],
+            startingWeapons: six,
+            startingChests: 1,
+            chestReach: ARENA_CONFIG.chestReach,
+            ...runLengthConfig(minutes),
+          },
+          seed + 1
+        );
+        a.step(still);
+        return a.choices()!.some((c) => c.kind === 'weapon' && c.level === 1);
+      }).some(Boolean);
+    expect(offersNew(5)).toBe(false);
+    expect(offersNew(10)).toBe(true);
+    expect(offersNew(0)).toBe(true);
+  });
+
+  it('endless: no goal, so no Matriarch; the Mega Cats keep coming; no limit on slots', () => {
+    const endless = runLengthConfig(0);
+    expect(endless.timeGoalMs).toBe(Infinity);
+    expect(endless.slots).toEqual({ weapons: Infinity, passives: Infinity });
+    const bosses = endless.schedule!.bosses;
+    expect(bosses.slice(0, 3)).toEqual([120_000, 240_000, 360_000]);
+    // Every two minutes, for far longer than anyone plays.
+    expect(bosses[bosses.length - 1]).toBeGreaterThan(20 * 3_600_000);
+    const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]], ...endless });
+    runTo(a, 920_000);
+    expect(a.matriarch()).toBeNull();
+    expect(a.state().status).toBe('playing');
+    expect(a.state().goalMs).toBe(Infinity);
+    expect(a.state().slots.weapons).toBe(Infinity);
   });
 
   it('the Matriarch comes at the chosen time, not at five minutes', () => {
@@ -725,17 +780,19 @@ describe('the best time per run length', () => {
     return store;
   };
 
-  it('a stored length is five, ten or fifteen, else five', () => {
+  it('a stored length is five, ten, fifteen or endless (0), else five', () => {
     expect(parseLength('10')).toBe(10);
     expect(parseLength('15')).toBe(15);
     expect(parseLength('5')).toBe(5);
-    for (const raw of [null, '', '7', 'abc', '10.5', '-5'])
+    expect(parseLength('0')).toBe(0);
+    for (const raw of [null, '', '7', 'abc', '10.5', '-5', 'endless'])
       expect(parseLength(raw), String(raw)).toBe(5);
   });
 
   it('five minutes keeps the old key, so a best from before counts as the five-minute best', () => {
     expect(bestKey(5)).toBe(SURVIVAL_BEST_KEY);
-    expect(new Set([bestKey(5), bestKey(10), bestKey(15)]).size).toBe(3);
+    expect(new Set([bestKey(5), bestKey(10), bestKey(15), bestKey(0)]).size).toBe(4);
+    expect(bestKey(0)).toBe(`${SURVIVAL_BEST_KEY}:endless`);
     const store = stubStorage();
     store.set(SURVIVAL_BEST_KEY, '250000');
     expect(readBest()).toBe(250_000);
@@ -763,6 +820,9 @@ describe('the best time per run length', () => {
     expect(readLength()).toBe(15);
     expect(told).toBe(1);
     stop();
+    // Endless (0) is kept too.
+    writeLength(0);
+    expect(readLength()).toBe(0);
     writeLength(5);
     expect(told).toBe(1);
     expect(readLength()).toBe(5);

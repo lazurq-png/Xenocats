@@ -24,6 +24,8 @@
 import {
   BASE_WEAPONS,
   type Choice,
+  DEFAULT_SLOTS,
+  type Slots,
   MAX_WEAPON_LEVEL,
   type Modifiers,
   type PassiveId,
@@ -201,6 +203,8 @@ export type ArenaConfig = {
   chestReach: number;
   /** The base weapons a level-up may offer (the progression keeps some back). */
   availableWeapons: readonly WeaponId[];
+  /** How many weapons and passives each Keeper can hold: more in a longer run. */
+  slots: Slots;
   /** What the run brings from before (progression.ts): multipliers, revivals, and more rerolls and skips. */
   boost: { might: number; pickup: number; revivals: number; rerolls: number; skips: number };
   /**
@@ -316,6 +320,7 @@ export const ARENA_CONFIG: ArenaConfig = {
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
   availableWeapons: BASE_WEAPONS,
+  slots: DEFAULT_SLOTS,
   boost: { might: 1, pickup: 1, revivals: 0, rerolls: 0, skips: 0 },
   levelUp: { rerolls: 1, skips: 1, skipXpShare: 0.3 },
   secretCat: { afterMs: 60_000, stillMs: 20_000 },
@@ -329,15 +334,37 @@ export const ARENA_CONFIG: ArenaConfig = {
   cellSize: 64,
 };
 
+/** The weapons and passives a run of each length lets him hold. */
+export const SLOTS_BY_LENGTH: Readonly<Record<number, Slots>> = {
+  5: DEFAULT_SLOTS,
+  10: { weapons: 8, passives: 8 },
+  15: { weapons: 10, passives: 10 },
+};
+
+/** An endless run (minutes 0) has no time goal and no limit on slots. */
+export const ENDLESS_SLOTS: Slots = { weapons: Infinity, passives: Infinity };
+
+/** How long an endless run's schedule of Mega Cats reaches, ms: far past any run. */
+const ENDLESS_SCHEDULE_MS = 24 * 3_600_000;
+
 /**
  * What a run of `minutes` changes in the config: its time goal (when the Matriarch
- * comes) and a Mega Cat every two minutes before it. Five minutes is the config as it is.
+ * comes), a Mega Cat every two minutes before it, and the slots it has. Five minutes
+ * is the config as it is. Minutes 0 is an endless run: the Matriarch never comes,
+ * the Mega Cats keep coming, the cats keep toughening, and he can hold any number of
+ * weapons and passives.
  */
 export function runLengthConfig(minutes: number): Partial<ArenaConfig> {
-  const goal = minutes * 60_000;
+  const endless = minutes === 0;
+  const goal = endless ? Infinity : minutes * 60_000;
   const bosses: number[] = [];
-  for (let at = 120_000; at < goal; at += 120_000) bosses.push(at);
-  return { timeGoalMs: goal, schedule: { ...SCHEDULE, bosses } };
+  const last = endless ? ENDLESS_SCHEDULE_MS : goal;
+  for (let at = 120_000; at < last; at += 120_000) bosses.push(at);
+  return {
+    timeGoalMs: goal,
+    schedule: { ...SCHEDULE, bosses },
+    slots: endless ? ENDLESS_SLOTS : (SLOTS_BY_LENGTH[minutes] ?? DEFAULT_SLOTS),
+  };
 }
 
 /** How many cats the arena aims to hold `ms` into the run. */
@@ -494,6 +521,8 @@ export type Jet = { x: number; y: number; angle: number; reach: number; half: nu
 
 /** A scorched cat takes this much more from every weapon. */
 export const SCORCH_FACTOR = 1.5;
+/** A cat the Heatwave Fan's blades touch stays scorched this long, ms. */
+export const HEATWAVE_SCORCH_MS = 2000;
 /** A puddle, or a castle's moat, slows the cats in it to this share of their speed. */
 export const SLOW_FACTOR = 0.5;
 /** Most patches on the field at once; the oldest give way. */
@@ -721,7 +750,7 @@ export function createArena(options: {
       jetAngle: 0,
       jetAt: 0,
       waveAt: 0,
-      rerollsLeft: config.levelUp.rerolls + config.boost.rerolls,
+      rerollsLeft: config.levelUp.rerolls + config.boost.rerolls + modifiers(passives).rerolls,
       skipsLeft: config.levelUp.skips + config.boost.skips,
       aimAngle: null,
       lookAt: 0,
@@ -1068,7 +1097,10 @@ export function createArena(options: {
       sentHome++;
       if (cat.windUntil > 0) stopWinding(cat);
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
-      const left = pickupFor(cat.id, config.pickups.chance);
+      // The best Cookie Jar among the Keepers standing makes pickups likelier.
+      let luck = 1;
+      for (const k of keepers) if (standing(k)) luck = Math.max(luck, k.mods.luck);
+      const left = pickupFor(cat.id, config.pickups.chance * luck);
       if (left && pickups.length < config.pickups.cap) {
         pickups.push({ x: cat.x, y: cat.y, kind: left, until: time + config.pickups.lifeMs });
         events.push({ kind: 'pickup-left', pickup: left, x: cat.x, y: cat.y });
@@ -1151,7 +1183,7 @@ export function createArena(options: {
       for (const k of keepers) {
         if (!standing(k) || time < k.untouchableUntil) continue;
         if (Math.hypot(k.x - cat.aimX, k.y - cat.aimY) > a.radius + config.hero.reach / 2) continue;
-        k.resolve = Math.max(k.resolve - cat.drain, 0);
+        k.resolve = Math.max(k.resolve - cat.drain * k.mods.drain, 0);
         k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
         events.push({
           kind: 'hero-hit',
@@ -1401,7 +1433,7 @@ export function createArena(options: {
         }
         hit = true;
         if (time >= k.untouchableUntil) {
-          k.resolve = Math.max(k.resolve - shot.drain, 0);
+          k.resolve = Math.max(k.resolve - shot.drain * k.mods.drain, 0);
           k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
@@ -1423,9 +1455,14 @@ export function createArena(options: {
 
   // ------------------------------------------------------------------ the weapons
 
-  /** Homesickness from a weapon of `kind`: nothing, to a cat it passes through. */
+  /**
+   * Homesickness from a weapon of `kind`: nothing, to a cat it passes through. An
+   * elite (not a swarm's kitten) or a Mega Cat takes more by the Reading Glasses of
+   * the Keeper whose weapon it is (`hero`; for what lies on the ground, player 1).
+   */
   function hurt(cat: ArenaCat, amount: number, kind: WeaponKind) {
     if (cat.variety && VARIETIES[cat.variety].immuneTo?.includes(kind)) return;
+    if ((cat.elite && cat.swarm === 0) || cat.variety === 'mega') amount *= hero.mods.elite;
     cat.homesickness += time < cat.vulnUntil ? amount * SCORCH_FACTOR : amount;
   }
 
@@ -1664,7 +1701,11 @@ export function createArena(options: {
           cat.x += ((cat.x - hero.x) / d) * s.speed;
           cat.y += ((cat.y - hero.y) / d) * s.speed;
         }
-        if (id === 'peacock-tail' && cat.radius <= config.cats.radius * 1.5) {
+        // The Peacock Tail strikes them still; the Cast-Iron Skillet dazes them.
+        if (
+          (id === 'peacock-tail' || id === 'cast-iron-skillet') &&
+          cat.radius <= config.cats.radius * 1.5
+        ) {
           cat.stunUntil = Math.max(cat.stunUntil, time + s.durationMs);
         }
       }
@@ -1939,7 +1980,13 @@ export function createArena(options: {
     if (kind === 'orbit') {
       // Each blade, all the time, to every cat it passes through.
       for (const blade of bladesOf(s)) {
-        for (const i of within(blade, BLADE_RADIUS)) hurt(cats[i], s.damage * dt, 'orbit');
+        for (const i of within(blade, BLADE_RADIUS)) {
+          hurt(cats[i], s.damage * dt, 'orbit');
+          // The Heatwave Fan's blades scorch what they touch.
+          if (id === 'heatwave-fan') {
+            cats[i].vulnUntil = Math.max(cats[i].vulnUntil, time + HEATWAVE_SCORCH_MS);
+          }
+        }
       }
       // The Bottomless Saucer also spills: a wave of milk from each saucer, outward.
       if (id === 'bottomless-saucer' && time >= hero.waveAt) {
@@ -1961,7 +2008,11 @@ export function createArena(options: {
         }
       }
     } else if (kind === 'zone') {
-      for (const i of within(hero, s.area)) hurt(cats[i], s.damage * dt, 'zone');
+      for (const i of within(hero, s.area)) {
+        hurt(cats[i], s.damage * dt, 'zone');
+        // Near the Grandfather Clock, time drags: the cats slow.
+        if (id === 'grandfather-clock') cats[i].slowUntil = Math.max(cats[i].slowUntil, time + 100);
+      }
     } else if (kind === 'blow') {
       blowAir(id, s, dt);
     } else if (time >= held.readyAt && fire(id, s)) {
@@ -2011,6 +2062,44 @@ export function createArena(options: {
           pierce: s.pierce,
           until: time + s.durationMs,
         });
+      }
+    } else if (id === 'grand-slam') {
+      // The court lights up: a spark from him to each of the nearest cats.
+      const near = nearest(hero, s.area, s.count);
+      if (near.length === 0) return;
+      for (const i of near) {
+        hurt(cats[i], s.damage, 'chain');
+        const to = { x: cats[i].x, y: cats[i].y };
+        beams.push({ from: { x: hero.x, y: hero.y }, to, until: time + s.durationMs });
+      }
+    } else if (id === 'kitchen-sink') {
+      // Pickles all round him, outward.
+      if (nearest(hero, 650, 1).length === 0) return;
+      for (let k = 0; k < s.count; k++) {
+        const turn = (k * 2 * Math.PI) / s.count;
+        launch({
+          weapon: 'pickle-jar',
+          bit: true,
+          x: hero.x,
+          y: hero.y,
+          vx: Math.cos(turn) * s.speed,
+          vy: Math.sin(turn) * s.speed,
+          radius: s.area,
+          damage: s.damage,
+          pierce: s.pierce,
+          until: time + s.durationMs,
+        });
+      }
+    } else if (id === 'clockwork-gale') {
+      // A moment that will not pass: every cat near him stands still (not the big ones).
+      const reached = within(hero, s.area);
+      if (reached.length === 0) return;
+      for (const i of reached) {
+        const cat = cats[i];
+        hurt(cat, s.damage, 'zone');
+        if (cat.radius <= config.cats.radius * 1.5) {
+          cat.stunUntil = Math.max(cat.stunUntil, time + s.durationMs);
+        }
       }
     } else if (id === 'milk-symphony') {
       // Every toy in earshot spills milk, outward.
@@ -2134,6 +2223,8 @@ export function createArena(options: {
           });
         }
       }
+      // Its Keeper's passives count where it lands (hurt).
+      hero = keepers[p.owner] ?? keepers[0];
       for (const i of within(p, p.radius)) {
         const cat = cats[i];
         if (p.pierce <= 0 || p.touched.includes(cat.id)) continue;
@@ -2225,6 +2316,7 @@ export function createArena(options: {
         spareProjectiles.push(p);
       }
     }
+    hero = keepers[0];
   }
 
   // --------------------------------------------------------------- experience
@@ -2296,6 +2388,12 @@ export function createArena(options: {
       xp -= xpToNext(level);
       level++;
       pending++;
+      // A Hot Water Bottle gives some Resolve back at each level.
+      for (const k of keepers) {
+        if (standing(k) && k.mods.levelHeal > 0) {
+          k.resolve = Math.min(k.resolve + k.mods.levelHeal, maxResolveOf(k));
+        }
+      }
       events.push({ kind: 'level-up', level });
     }
     for (let i = chests.length - 1; i >= 0; i--) {
@@ -2346,7 +2444,14 @@ export function createArena(options: {
   function offer() {
     const k = keepers[chooser];
     const held = new Map([...k.weapons].map(([id, w]) => [id, w.level] as const));
-    choosing = offerChoices(held, k.passives, k.mods.choices, random, config.availableWeapons);
+    choosing = offerChoices(
+      held,
+      k.passives,
+      k.mods.choices,
+      random,
+      config.availableWeapons,
+      config.slots
+    );
   }
 
   return {
@@ -2444,7 +2549,7 @@ export function createArena(options: {
           // (The Neighbour's Cat drains nothing: it only sits there.)
           if (cat.drain === 0) continue;
           if ((cat.x - k.x) ** 2 + (cat.y - k.y) ** 2 > reachOf(cat) ** 2) continue;
-          k.resolve = Math.max(k.resolve - cat.drain, 0);
+          k.resolve = Math.max(k.resolve - cat.drain * k.mods.drain, 0);
           k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
@@ -2584,10 +2689,12 @@ export function createArena(options: {
         else hero.weapons.set(choice.id, { level: 1, readyAt: time + 200 });
       } else if (choice.kind === 'passive') {
         const before = maxResolve();
+        const rerollsBefore = hero.mods.rerolls;
         hero.passives.set(choice.id, choice.level);
         hero.mods = boosted(modifiers(hero.passives));
-        // More Resolve to hold: he gains what was added.
+        // More Resolve to hold: he gains what was added; and the Loaded Dice's rerolls.
         hero.resolve += maxResolve() - before;
+        hero.rerollsLeft += hero.mods.rerolls - rerollsBefore;
       } else {
         hero.resolve = Math.min(hero.resolve + 30, maxResolve());
       }
@@ -2673,14 +2780,17 @@ export function createArena(options: {
       hero = keepers[0];
       return all;
     },
-    /** Each standing Keeper's Thunderous Vacuum: where, and how far it reaches. */
-    zones: (): { x: number; y: number; radius: number }[] =>
+    /** Each standing Keeper's zones (the Thunderous Vacuum, the clocks): where, and how far they reach. */
+    zones: (): { x: number; y: number; radius: number; weapon: WeaponId }[] =>
       keepers.flatMap((k) => {
-        const held = k.weapons.get('thunderous-vacuum');
-        if (!held || !standing(k)) return [];
-        return [
-          { x: k.x, y: k.y, radius: weaponStats('thunderous-vacuum', held.level, k.mods).area },
-        ];
+        if (!standing(k)) return [];
+        const all: { x: number; y: number; radius: number; weapon: WeaponId }[] = [];
+        for (const [id, held] of activeWeapons(k)) {
+          if (WEAPONS[id].kind !== 'zone') continue;
+          const radius = weaponStats(id, held.level, k.mods).area;
+          all.push({ x: k.x, y: k.y, radius, weapon: id });
+        }
+        return all;
       }),
     /** The shared camera (one Keeper: on him, at the screen's own zoom). */
     camera,
@@ -2755,8 +2865,10 @@ export function createArena(options: {
       const active = first.effect && time < first.effect.until ? first.effect.effect.kind : null;
       return {
         time,
-        /** The run's length: when the Matriarch comes, ms. */
+        /** The run's length: when the Matriarch comes, ms (Infinity: an endless run). */
         goalMs: config.timeGoalMs,
+        /** How many weapons and passives each Keeper can hold. */
+        slots: config.slots,
         status,
         outcome,
         /** Player 1's Keeper (the only one, alone). */
