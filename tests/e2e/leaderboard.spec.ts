@@ -1,9 +1,10 @@
+import { DEMO_USER } from './demo-user';
 import { type Page, expect, test } from './fixtures';
 
 // Survival's leaderboard: a run is named at its end and put on its length's board,
-// which /cats shows with the player's personal best. Signed out, or with a hook that
-// changes the game or its clock (`?speed=`), it is not. `?seed=` fixes the run; a
-// ranked run plays in real time, as the server holds it to.
+// which /cats shows with the player's personal best. Signed out, or with any test
+// hook in the URL (`?seed=` included), it is not. A ranked run plays in real time,
+// as the server holds it to.
 
 const area = (page: Page) => page.getByTestId('survival-area');
 
@@ -51,7 +52,7 @@ async function playThenGiveUp(page: Page, ms = 1500) {
 test('signed out, the run is not saved: the results offer a login, and Play again has focus', async ({
   page,
 }) => {
-  await page.goto('/cats/survival?seed=7');
+  await page.goto('/cats/survival');
   await startRun(page);
   await playThenGiveUp(page);
   const entry = page.getByTestId('leaderboard-entry');
@@ -61,13 +62,34 @@ test('signed out, the run is not saved: the results offer a login, and Play agai
   await expect(page.getByRole('button', { name: 'Play again' }).last()).toBeFocused();
 });
 
-test('a run with a hook that changes the game or its clock is not ranked', async ({ page }) => {
+test('a run with a hook that changes the game or its clock is not ranked, and says which', async ({
+  page,
+}) => {
   await page.goto('/cats/survival?seed=7&speed=3');
   await startRun(page);
   await playThenGiveUp(page);
   await expect(page.getByTestId('leaderboard-entry')).toHaveText(
-    'A run with test settings is not ranked on the leaderboard.'
+    'Not ranked on the leaderboard: this run used test settings (?seed=, ?speed=).'
   );
+});
+
+test.describe('signed in, with only a seed', () => {
+  test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
+  test.use({ storageState: DEMO_USER });
+
+  test('a seeded run reaching its results offers no leaderboard entry', async ({ page }) => {
+    // Signed in, or the entry would be held back for that reason instead.
+    await page.goto('/dashboard');
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto('/cats/survival?seed=7');
+    await startRun(page);
+    await playThenGiveUp(page);
+    await expect(page.getByTestId('leaderboard-entry')).toHaveText(
+      'Not ranked on the leaderboard: this run used test settings (?seed=).'
+    );
+    await expect(page.getByRole('textbox')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save to the leaderboard' })).toHaveCount(0);
+  });
 });
 
 test.describe('signed in', () => {
@@ -87,7 +109,7 @@ test.describe('signed in', () => {
     await page.getByRole('button', { name: 'Create account' }).click();
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
 
-    await page.goto('/cats/survival?seed=7');
+    await page.goto('/cats/survival');
     await page.waitForLoadState('networkidle');
     await page.getByTestId('survival-length-10').check();
     await startRun(page);

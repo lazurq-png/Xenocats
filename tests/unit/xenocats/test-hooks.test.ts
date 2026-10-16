@@ -5,6 +5,7 @@ import {
   FUSION_START,
   MAX_CROWD,
   PICKUPS_HOOK_CHANCE,
+  activeTestHooks,
   parseTestHooks,
 } from '@/app/ui/xenocats/test-hooks';
 
@@ -114,5 +115,37 @@ describe('the URL test hooks', () => {
     }
     // Absurdly late is harmless: a boss at Infinity never comes.
     expect(hooks('?boss=1e306').boss).toBe(Infinity);
+  });
+});
+
+describe('a run with a test hook is never ranked', () => {
+  it('a URL with no usable hook puts none in effect: the run is rankable', () => {
+    for (const search of ['', '?', '?other=1', '?seed=0', '?speed=1', '?fps=0', '?crowd=abc']) {
+      expect(activeTestHooks(search), search).toEqual([]);
+    }
+  });
+
+  it('each hook alone is in effect, the seed and the frame counter included', () => {
+    const one: [string, string][] = [
+      ['?seed=7', 'seed'],
+      ['?speed=3', 'speed'],
+      ['?boss=0', 'boss'],
+      ['?fps=1', 'fps'],
+      ['?crowd=300', 'crowd'],
+      ['?elite=1', 'elite'],
+      ['?fusion=1', 'fusion'],
+      ['?pickups=1', 'pickups'],
+    ];
+    for (const [search, name] of one) expect(activeTestHooks(search), search).toEqual([name]);
+  });
+
+  it('several are named in a fixed order, whatever order the URL has', () => {
+    expect(activeTestHooks('?pickups=1&speed=2&seed=9')).toEqual(['seed', 'speed', 'pickups']);
+  });
+
+  it('every hook parseTestHooks reads is one activeTestHooks can name', () => {
+    // A hook added to TestHooks without a name here would let its runs be ranked.
+    const all = '?seed=7&speed=3&boss=1&fps=1&crowd=5&elite=1&fusion=1&pickups=1';
+    expect(activeTestHooks(all)).toHaveLength(Object.keys(hooks('')).length);
   });
 });

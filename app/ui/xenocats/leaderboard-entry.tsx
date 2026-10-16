@@ -18,8 +18,8 @@ const MESSAGES: Record<Exclude<SurvivalRunResult, 'saved'>, string> = {
 /**
  * On the results of a run: the name to put it on its length's leaderboard under
  * (offered again from the last one), for a signed-in player. `runId` is the run the
- * server started for it (startSurvivalRun). A run that used a test hook that
- * changes the game or its clock is not ranked.
+ * server started for it (startSurvivalRun). A run that used any test hook
+ * (`testHooks`, their names: activeTestHooks) is not ranked, and says which.
  */
 export function LeaderboardEntry({
   runId,
@@ -27,14 +27,14 @@ export function LeaderboardEntry({
   timeMs,
   sentHome,
   signedIn,
-  ranked,
+  testHooks,
 }: {
   runId: Promise<string | null>;
   minutes: RunLength;
   timeMs: number;
   sentHome: number;
   signedIn: boolean;
-  ranked: boolean;
+  testHooks: readonly string[];
 }) {
   const [name, setName] = useState(readLeaderboardName);
   const [status, setStatus] = useState<SurvivalRunResult | 'saving' | null>(null);
@@ -42,10 +42,12 @@ export function LeaderboardEntry({
   const [savedAs, setSavedAs] = useState('');
   const [problem, setProblem] = useState('');
 
-  if (!ranked) {
+  if (testHooks.length > 0) {
     return (
       <p data-testid="leaderboard-entry" className="mt-4 text-sm text-aura">
-        A run with test settings is not ranked on the leaderboard.
+        {`Not ranked on the leaderboard: this run used test settings (${testHooks
+          .map((hook) => `?${hook}=`)
+          .join(', ')}).`}
       </p>
     );
   }

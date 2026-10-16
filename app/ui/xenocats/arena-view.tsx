@@ -63,7 +63,13 @@ import { ProgressionPanel, useProgress } from './progression-view';
 import { LeaderboardEntry } from './leaderboard-entry';
 import { startSurvivalRun } from '@/app/lib/actions';
 import { createRandom, freshSeed } from './random';
-import { CROWD_ARSENAL, FUSION_START, PICKUPS_HOOK_CHANCE, parseTestHooks } from './test-hooks';
+import {
+  CROWD_ARSENAL,
+  FUSION_START,
+  PICKUPS_HOOK_CHANCE,
+  activeTestHooks,
+  parseTestHooks,
+} from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
 import {
@@ -230,8 +236,9 @@ export default function ArenaGame({
   signedIn?: boolean;
 }) {
   const [screen, setScreen] = useState<Screen>('start');
-  // Whether the run in progress (or just over) can go on the leaderboard.
-  const [ranked, setRanked] = useState(true);
+  // The test hooks in effect for the run in progress (or just over): any keeps it
+  // off the leaderboard.
+  const [testHooks, setTestHooks] = useState<string[]>([]);
   // Counts the runs, so each one's results ask for its name afresh.
   const [runCount, setRunCount] = useState(0);
   // The server's id for the run (startSurvivalRun), once it has given one; null for
@@ -369,11 +376,11 @@ export default function ArenaGame({
     const lengthed = runLengthConfig(chosen);
     speedRef.current = speed;
     crowdRef.current = crowd !== null || elite;
-    // A hook that changes the game, or its clock, keeps the run off the leaderboard
-    // (a seed and the frame counter do not).
-    const rankable =
-      speed === 1 && boss === null && crowd === null && !elite && !fusion && !pickups;
-    setRanked(rankable);
+    // Any test hook keeps the run off the leaderboard: they are live for everyone,
+    // and a seed alone lets a run be practised until it is known by heart.
+    const hooksInEffect = activeTestHooks(window.location.search);
+    const rankable = hooksInEffect.length === 0;
+    setTestHooks(hooksInEffect);
     // A run that can go on the leaderboard is started on the server now: its length
     // and its start are the server's, and its time cannot outrun the real one.
     setRunId(
@@ -1414,7 +1421,7 @@ export default function ArenaGame({
             timeMs={result.time}
             sentHome={result.sentHome}
             signedIn={signedIn}
-            ranked={ranked}
+            testHooks={testHooks}
           />
           {result.keepers.length > 1 && (
             <ul data-testid="survival-result-keepers" className="mt-3 space-y-1 text-sm text-white">
