@@ -1,13 +1,15 @@
 # Pages
 
-# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 3.4 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
+# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4.3.3 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
 
 Dashboard pages also render inside `app/dashboard/layout.tsx` (tree under /dashboard). All pages render inside `app/layout.tsx`.
 
 ## (dashboard shell)
+
 Shared dashboard layout
 Entry: `app/dashboard/layout.tsx`
 Dependencies:
+
 - app/ui/dashboard/sidenav.tsx
   - app/ui/dashboard/nav-links.tsx
     - app/ui/dashboard/nav-styles.ts
@@ -39,16 +41,20 @@ Dependencies:
 - app/ui/xenocats/fake-cursor.tsx (see above)
 
 ## /
+
 Public landing: hero with orbit art (HomeHero), logo, CTA to login.
 Entry: `app/page.tsx`
 Dependencies:
+
 - app/ui/xenocat-logo.tsx
 - app/ui/home-hero.tsx
 
 ## /login
+
 Login card (LoginForm, credentials) over starry background.
 Entry: `app/login/page.tsx`
 Dependencies:
+
 - app/ui/xenocat-logo.tsx
 - app/ui/login-form.tsx
   - app/lib/actions.ts
@@ -58,9 +64,11 @@ Dependencies:
     - app/lib/schemas.ts
 
 ## /cats
+
 Public cat gallery: every alien cat with a Summon button (CatGallery).
 Entry: `app/cats/page.tsx`
 Dependencies:
+
 - app/ui/xenocat-logo.tsx
 - app/ui/xenocats/cat-gallery.tsx
   - app/ui/button.tsx
@@ -90,9 +98,11 @@ Dependencies:
   - app/ui/xenocats/fake-cursor.tsx (see above)
 
 ## /dashboard
+
 Overview: stat cards, revenue chart, latest invoices, range select.
 Entry: `app/dashboard/(overview)/page.tsx`
 Dependencies:
+
 - app/ui/dashboard/revenue-chart.tsx
   - app/lib/data.ts
     - app/lib/definitions.ts
@@ -116,9 +126,11 @@ Dependencies:
 - app/lib/dashboard.ts (see above)
 
 ## /dashboard/invoices
+
 Invoice table with search + pagination + create button.
 Entry: `app/dashboard/invoices/page.tsx`
 Dependencies:
+
 - app/ui/invoices/pagination.tsx
   - app/lib/utils.ts
 - app/ui/search.tsx
@@ -141,9 +153,11 @@ Dependencies:
 - app/lib/data.ts (see above)
 
 ## /dashboard/invoices/create
+
 Create invoice form.
 Entry: `app/dashboard/invoices/create/page.tsx`
 Dependencies:
+
 - app/ui/invoices/create-form.tsx
   - app/lib/definitions.ts
   - app/ui/button.tsx
@@ -159,9 +173,11 @@ Dependencies:
   - app/lib/dashboard.ts
 
 ## /dashboard/invoices/[id]/edit
+
 Edit invoice form.
 Entry: `app/dashboard/invoices/[id]/edit/page.tsx`
 Dependencies:
+
 - app/ui/invoices/edit-form.tsx
   - app/lib/definitions.ts
   - app/ui/button.tsx
@@ -177,8 +193,9 @@ Dependencies:
   - app/lib/dashboard.ts
 
 ## /dashboard/customers
+
 Customers table.
 Entry: `app/dashboard/customers/page.tsx`
 Dependencies:
-- (none)
 
+- (none)

@@ -1,8 +1,9 @@
 # Layouts
 
-# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 3.4 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
+# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4.3.3 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
 
 ## RootLayout
+
 - Path: `app/layout.tsx`
 - Root html/body; applies font variables, font-sans, global.css.
 
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ```
 
 ## Dashboard layout
+
 - Path: `app/dashboard/layout.tsx`
 - App shell: 228px SideNav + framed content area (rounded-bl-[40px], border-line); wraps cat + fake-cursor providers.
 
@@ -59,6 +61,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 ```
 
 ## SideNav
+
 - Path: `app/ui/dashboard/sidenav.tsx`
 - Sidebar: logo, nav links, sign-out (Server Action).
 
@@ -107,6 +110,7 @@ export default function SideNav() {
 ```
 
 ## NavLinks
+
 - Path: `app/ui/dashboard/nav-links.tsx`
 - Client nav links with active state from usePathname.
 
@@ -158,6 +162,7 @@ export default function NavLinks() {
 ```
 
 ## nav-styles
+
 - Path: `app/ui/dashboard/nav-styles.ts`
 - Shared nav item class strings.
 

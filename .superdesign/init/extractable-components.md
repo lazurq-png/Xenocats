@@ -1,10 +1,11 @@
 # Extractable components
 
-# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 3.4 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
+# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4.3.3 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
 
 ## Layout components
 
 ## SideNav
+
 - Source: `app/ui/dashboard/sidenav.tsx` (+ `nav-links.tsx`, `nav-styles.ts`)
 - Category: layout
 - Description: Dashboard sidebar (228px on md+, top bar on mobile): Xenocat logo, Home/Invoices/Customers links, sign-out
@@ -12,6 +13,7 @@
 - Hardcoded: logo, link labels, heroicons, all classes
 
 ## DashboardShell
+
 - Source: `app/dashboard/layout.tsx`
 - Category: layout
 - Description: bg-void page with sidebar + framed content area (border-l/border-b line, rounded-bl-[40px])
@@ -19,6 +21,7 @@
 - Hardcoded: layout classes
 
 ## PublicHeader
+
 - Source: `app/cats/page.tsx` (header element), `app/page.tsx`
 - Category: layout
 - Description: Logo on the left, violet underlined text link on the right, over starfield
@@ -28,6 +31,7 @@
 ## Basic components
 
 ## Button
+
 - Source: `app/ui/button.tsx`
 - Category: basic
 - Description: Lime plasma pill button
@@ -35,6 +39,7 @@
 - Hardcoded: classes
 
 ## InvoiceStatus
+
 - Source: `app/ui/invoices/status.tsx`
 - Category: basic
 - Description: Paid / pending badge
@@ -42,6 +47,7 @@
 - Hardcoded: icons, colors
 
 ## Search
+
 - Source: `app/ui/search.tsx`
 - Category: basic
 - Description: Search input with magnifier icon
@@ -49,6 +55,7 @@
 - Hardcoded: icon, classes
 
 ## Breadcrumbs
+
 - Source: `app/ui/invoices/breadcrumbs.tsx`
 - Category: basic
 - Description: Breadcrumb trail with active last item
@@ -56,6 +63,7 @@
 - Hardcoded: separator, classes
 
 ## Pagination
+
 - Source: `app/ui/invoices/pagination.tsx`
 - Category: basic
 - Description: Previous / numbered / next page links
@@ -63,6 +71,7 @@
 - Hardcoded: arrows, classes
 
 ## CustomerAvatar
+
 - Source: `app/ui/customer-avatar.tsx`
 - Category: basic
 - Description: Round customer avatar
@@ -70,6 +79,7 @@
 - Hardcoded: size, ring classes
 
 ## CatCard
+
 - Source: `app/ui/xenocats/cat-gallery.tsx` (roster item) + `cat-sprite.tsx` / `cat-art.ts`
 - Category: basic
 - Description: One alien cat card: artwork/sprite, name, number, what it does, Summon button

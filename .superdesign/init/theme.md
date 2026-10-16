@@ -1,26 +1,26 @@
 # Theme
 
-# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 3.4 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
+# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4.3.3 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
 
 ## Part 1: Token summary
 
 Dark-only. Tailwind tokens (tailwind.config.ts `theme.extend`), sampled from the Canva mockup "Xenocat Analytics website mockup":
 
-| Token | Value | Use |
-|---|---|---|
-| `void` | #070b14 | dashboard background |
-| `void-login` | #04051f | login background |
-| `void-landing` | #040a19 | landing / cats background |
-| `panel` | #0a0e1c | cards/panels |
-| `panel-raised` | #12162b | raised panels, inputs |
-| `panel-glass` | rgba(43,43,73,0.16) | glass panels |
-| `line` | #2d2f47 | borders / dividers |
-| `plasma` | #c1e838 | primary accent (lime): buttons, highlights |
-| `plasma-dim` | #aacf22 | primary hover |
-| `aura` | #9d86ff | secondary accent (violet) |
-| `aura-login` | #8c88ff | login accent |
-| `aura-link` | #7a7ff1 | links |
-| `cream` | #e0e0b3 | display headings |
+| Token          | Value               | Use                                        |
+| -------------- | ------------------- | ------------------------------------------ |
+| `void`         | #070b14             | dashboard background                       |
+| `void-login`   | #04051f             | login background                           |
+| `void-landing` | #040a19             | landing / cats background                  |
+| `panel`        | #0a0e1c             | cards/panels                               |
+| `panel-raised` | #12162b             | raised panels, inputs                      |
+| `panel-glass`  | rgba(43,43,73,0.16) | glass panels                               |
+| `line`         | #2d2f47             | borders / dividers                         |
+| `plasma`       | #c1e838             | primary accent (lime): buttons, highlights |
+| `plasma-dim`   | #aacf22             | primary hover                              |
+| `aura`         | #9d86ff             | secondary accent (violet)                  |
+| `aura-login`   | #8c88ff             | login accent                               |
+| `aura-link`    | #7a7ff1             | links                                      |
+| `cream`        | #e0e0b3             | display headings                           |
 
 Fonts: `font-display` Orbitron (headings), `font-sans` Montserrat (public pages), `font-ui` Roboto 400/500/700 (dashboard).
 Shadows: `shadow-glow` 0 0 28px -2px rgba(193,232,56,.55) (lime glow); `shadow-halo` 0 0 80px -10px rgba(140,136,255,.55) (violet halo).
@@ -32,6 +32,7 @@ Cat palettes (per cat, `CAT_TYPES` in app/ui/xenocats/cat-types.ts): body / bell
 ## Part 2: Raw sources
 
 ### tailwind.config.ts
+
 ```ts
 import type { Config } from 'tailwindcss';
 
@@ -79,6 +80,7 @@ export default config;
 ```
 
 ### app/ui/fonts.tsx
+
 ```tsx
 import { Montserrat, Orbitron, Roboto } from 'next/font/google';
 
@@ -95,6 +97,7 @@ export const ui = Roboto({
 ```
 
 ### app/ui/global.css
+
 ```css
 @tailwind base;
 @tailwind components;
