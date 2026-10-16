@@ -1,8 +1,9 @@
 # Components
 
-# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 3.4 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
+# Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4.3.3 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
 
 ## Button
+
 - Path: `app/ui/button.tsx`
 - Primary lime (plasma) pill button; spreads native button props.
 - Props: children, className, ...ButtonHTMLAttributes
@@ -30,6 +31,7 @@ export function Button({ children, className, ...rest }: ButtonProps) {
 ```
 
 ## CustomerAvatar
+
 - Path: `app/ui/customer-avatar.tsx`
 - Round customer image (next/image) with fallback.
 - Props: see source
@@ -66,6 +68,7 @@ export default function CustomerAvatar({ name, size = 28 }: { name: string; size
 ```
 
 ## XenocatLogo
+
 - Path: `app/ui/xenocat-logo.tsx`
 - Brand mark + "Xenocat Analytics" wordmark.
 - Props: see source
@@ -142,6 +145,7 @@ export default function XenocatLogo({
 ```
 
 ## Search
+
 - Path: `app/ui/search.tsx`
 - Client search input, URL-synced (?query), debounced.
 - Props: placeholder
@@ -190,6 +194,7 @@ export default function Search({ placeholder }: { placeholder: string }) {
 ```
 
 ## CreateInvoice / UpdateInvoice / DeleteInvoice
+
 - Path: `app/ui/invoices/buttons.tsx`
 - Invoice action buttons/links.
 - Props: id
@@ -240,6 +245,7 @@ export function DeleteInvoice({ id }: { id: string }) {
 ```
 
 ## InvoiceStatus
+
 - Path: `app/ui/invoices/status.tsx`
 - Pending/paid status badge.
 - Props: status
@@ -267,6 +273,7 @@ export default function InvoiceStatus({ status }: { status: string }) {
 ```
 
 ## Pagination
+
 - Path: `app/ui/invoices/pagination.tsx`
 - URL-synced page links.
 - Props: totalPages
@@ -397,6 +404,7 @@ function PaginationArrow({
 ```
 
 ## Breadcrumbs
+
 - Path: `app/ui/invoices/breadcrumbs.tsx`
 - Breadcrumb trail.
 - Props: breadcrumbs: {label, href, active?}[]
@@ -434,6 +442,7 @@ export default function Breadcrumbs({ breadcrumbs }: { breadcrumbs: Breadcrumb[]
 ```
 
 ## RangeSelect
+
 - Path: `app/ui/dashboard/range-select.tsx`
 - Dashboard date-range select (URL-synced).
 - Props: see source
@@ -481,6 +490,7 @@ export default function RangeSelect() {
 ```
 
 ## Skeletons
+
 - Path: `app/ui/skeletons.tsx`
 - Loading skeletons for cards, chart, tables, invoices.
 - Props: none
@@ -698,6 +708,7 @@ export function InvoicesTableSkeleton() {
 ```
 
 ## fonts
+
 - Path: `app/ui/fonts.tsx`
 - next/font definitions exposed as CSS variables.
 
@@ -717,6 +728,7 @@ export const ui = Roboto({
 ```
 
 ## CAT_TYPES (cat roster)
+
 - Path: `app/ui/xenocats/cat-types.ts`
 - All 20 alien cats: name, palette {body, belly, glow, accent}, look {build, ears, pattern, antenna, eyes}, entrance/exit.
 
@@ -1046,6 +1058,7 @@ export function catTypeById(id: string): CatType | undefined {
 ```
 
 ## CatSprite
+
 - Path: `app/ui/xenocats/cat-sprite.tsx`
 - 72x72 SVG alien cat assembled from palette + look; uses raster art when available.
 - Props: palette, look, pose: awake|asleep, size, art
@@ -1663,6 +1676,7 @@ function AsleepPattern({ palette: p, look }: Parts) {
 ```
 
 ## CAT_ART
+
 - Path: `app/ui/xenocats/cat-art.ts`
 - Raster artwork per cat/pose (public/xenocats/cats/<id>-<pose>.webp, 512x512 transparent, made in Canva).
 
