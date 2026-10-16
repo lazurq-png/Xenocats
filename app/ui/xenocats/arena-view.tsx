@@ -23,10 +23,12 @@ import {
 } from './arsenal';
 import {
   type AimMode,
+  ENDLESS,
   RUN_LENGTHS,
   type RunLength,
   bestOf,
   clockText,
+  lengthName,
   readAim,
   readBest,
   readGraphics,
@@ -106,6 +108,16 @@ const SHOT_COLOR: Record<string, string> = {
   'bottomless-saucer': '#f5f0e0',
   'bath-tub': '#7dd3fc',
   jacuzzi: '#38bdf8',
+  'tennis-ball': '#d9f99d',
+  'serve-machine': '#bef264',
+  cucumber: '#86efac',
+  'pickle-jar': '#4ade80',
+};
+
+/** How each weapon's zone is drawn (r, g, b); the Thunderous Vacuum's is the default. */
+const ZONE_COLOR: Record<string, string> = {
+  'alarm-clock': '251, 191, 36',
+  'grandfather-clock': '217, 119, 6',
 };
 
 /** How long an evolution's announcement stays, ms. */
@@ -168,7 +180,12 @@ type Hud = {
   }[];
 };
 
-const LENGTH_WORDS: Record<RunLength, string> = { 5: 'Five', 10: 'Ten', 15: 'Fifteen' };
+/** A run that reached its goal, by its length (an endless run has none to reach). */
+const LENGTH_WORDS: Record<Exclude<RunLength, typeof ENDLESS>, string> = {
+  5: 'Five',
+  10: 'Ten',
+  15: 'Fifteen',
+};
 
 const OUTCOME_TEXT: Record<ArenaOutcome, string> = {
   spent: 'His Resolve is spent. The cats remain.',
@@ -686,9 +703,10 @@ export default function ArenaGame({
         context.fill();
       }
 
-      // The Thunderous Vacuum's reach, and the gems lying about.
+      // The zones' reach (the Thunderous Vacuum, the clocks), and the gems lying about.
       for (const zone of arena.zones()) {
-        context.fillStyle = `rgba(157, 134, 255, ${0.1 + 0.04 * Math.sin(time / 180)})`;
+        const rgb = ZONE_COLOR[zone.weapon] ?? '157, 134, 255';
+        context.fillStyle = `rgba(${rgb}, ${0.1 + 0.04 * Math.sin(time / 180)})`;
         context.beginPath();
         context.arc(zone.x - camX, zone.y - camY, zone.radius, 0, 2 * Math.PI);
         context.fill();
@@ -1344,7 +1362,7 @@ export default function ArenaGame({
                 onChange={() => writeLength(minutes)}
                 className="border-line bg-void text-aura focus:ring-aura"
               />
-              {minutes} minutes
+              {lengthName(minutes)}
             </label>
           ))}
         </div>
@@ -1355,7 +1373,7 @@ export default function ArenaGame({
           {screen === 'results' ? 'Play again' : 'Start Survival'}
         </Button>
         <p data-testid="survival-best" data-best={best ?? ''} className="text-sm text-aura">
-          Longest survived ({length} minutes): {best === null ? 'none yet' : clockText(best)}
+          Longest survived ({lengthName(length)}): {best === null ? 'none yet' : clockText(best)}
         </p>
       </div>
 
@@ -1373,7 +1391,7 @@ export default function ArenaGame({
             The run is over
           </h2>
           <p role="status" className="mt-2 text-sm text-plasma">
-            {outcome === 'goal'
+            {outcome === 'goal' && runLength !== ENDLESS
               ? `${LENGTH_WORDS[runLength]} minutes, and the night is survived. The cats remain.`
               : OUTCOME_TEXT[outcome]}
           </p>
@@ -1381,7 +1399,9 @@ export default function ArenaGame({
             <dt className="text-aura">Time survived</dt>
             <dd data-testid="survival-result-time">{clockText(result.time)}</dd>
             <dt className="text-aura">Run length</dt>
-            <dd data-testid="survival-result-length">{clockText(runLength * 60_000)}</dd>
+            <dd data-testid="survival-result-length">
+              {runLength === ENDLESS ? 'Endless' : clockText(runLength * 60_000)}
+            </dd>
             <dt className="text-aura">Cats sent home</dt>
             <dd data-testid="survival-result-sent-home">{result.sentHome}</dd>
             <dt className="text-aura">Tufts of fur gathered</dt>
@@ -1517,7 +1537,8 @@ export default function ArenaGame({
               </p>
             )}
             <p data-testid="survival-time">
-              Time {clockText(hud?.time ?? 0)} / {clockText(runLength * 60_000)}
+              Time {clockText(hud?.time ?? 0)}
+              {runLength === ENDLESS ? ' (endless)' : ` / ${clockText(runLength * 60_000)}`}
             </p>
             <div className="flex items-center gap-2">
               <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>

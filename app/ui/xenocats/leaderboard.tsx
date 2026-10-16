@@ -3,7 +3,7 @@ import { connection } from 'next/server';
 import { auth } from '@/auth';
 import { fetchLeaderboard } from '@/app/lib/data';
 import type { LeaderboardRow } from '@/app/lib/definitions';
-import { RUN_LENGTHS, clockText } from './arena-storage';
+import { RUN_LENGTHS, type RunLength, clockText, lengthName } from './arena-storage';
 
 /** The viewer's best run of a length, with its place; or that there is none yet. */
 function PersonalBest({ minutes, best }: { minutes: number; best: LeaderboardRow | null }) {
@@ -32,7 +32,7 @@ function Board({
   best,
   signedIn,
 }: {
-  minutes: number;
+  minutes: RunLength;
   rows: LeaderboardRow[];
   best: LeaderboardRow | null;
   signedIn: boolean;
@@ -45,7 +45,7 @@ function Board({
       className="rounded-2xl border border-line bg-panel p-5"
     >
       <h3 id={heading} className="font-display text-xl font-semibold text-cream">
-        {minutes} minutes
+        {lengthName(minutes)}
       </h3>
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-aura">No runs yet. Be the first.</p>
@@ -120,7 +120,7 @@ export default async function Leaderboard() {
         in, you name your run at the end of it.
       </p>
       {leaderboard ? (
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {RUN_LENGTHS.map((minutes) => (
             <Board
               key={minutes}

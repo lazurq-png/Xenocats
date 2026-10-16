@@ -485,7 +485,8 @@ const MAX_RUNS_PER_HOUR = 60;
 /**
  * Finishes a run startSurvivalRun started, under the name the player typed for it:
  * on the leaderboard from now on. Only the signed-in player's own run in progress,
- * once; never with a time longer than its length, or than the time since it started
+ * once; never with a time longer than its length (an endless run, minutes 0, has
+ * none), or than the time since it started
  * (give or take the start's round trip), nor more cats than that time allows; and at
  * most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes nothing.
  */
@@ -500,7 +501,7 @@ export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult
       UPDATE survival_runs SET
         name = ${name}, time_ms = ${timeMs}, sent_home = ${sentHome}, finished_at = now()
       WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL
-        AND ${timeMs}::int <= run_minutes * 60000
+        AND (run_minutes = 0 OR ${timeMs}::int <= run_minutes * 60000)
         AND ${timeMs}::int <= EXTRACT(EPOCH FROM now() - started_at) * 1000 + ${START_ALLOWANCE_MS}
         AND ${sentHome}::int <= ${timeMs}::int / 1000.0 * ${MAX_CATS_PER_SECOND} + 10
         AND (

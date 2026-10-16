@@ -1,6 +1,7 @@
-// What the Keeper can carry in Survival (arena.ts): fourteen weapons that fire on their
+// What the Keeper can carry in Survival (arena.ts): twenty weapons that fire on their
 // own, up to level 8, and passives that make him or his weapons better, up to level
-// 5; at most six of each. Each level-up offers three choices (four with the Lucky
+// 5; at most six of each in a five-minute run, more in a longer one, and no limit in
+// an endless one (Slots). Each level-up offers three choices (four with the Lucky
 // Bell), drawn from what he does not yet have at its highest level. A weapon at its
 // highest level, held with its passive, evolves when he opens a chest (EVOLUTIONS).
 // Pure data and rules, no DOM: arena.ts makes the weapons fire.
@@ -9,8 +10,14 @@ import type { Random } from './random';
 
 export const MAX_WEAPON_LEVEL = 8;
 export const MAX_PASSIVE_LEVEL = 5;
+/** The slots of a five-minute run (the game's own); a longer run has more (Slots). */
 export const WEAPON_SLOTS = 6;
 export const PASSIVE_SLOTS = 6;
+
+/** How many weapons and passives he can hold at once (Infinity: no limit). */
+export type Slots = { weapons: number; passives: number };
+
+export const DEFAULT_SLOTS: Slots = { weapons: WEAPON_SLOTS, passives: PASSIVE_SLOTS };
 
 export type WeaponId =
   | 'laser-pointer'
@@ -27,6 +34,12 @@ export type WeaponId =
   | 'cardboard-box'
   | 'hair-dryer'
   | 'bath-tub'
+  | 'tennis-ball'
+  | 'frying-pan'
+  | 'static-sock'
+  | 'cucumber'
+  | 'ceiling-fan'
+  | 'alarm-clock'
   // Evolved: never offered, only reached by evolution.
   | 'infinite-laser'
   | 'forbidden-catnip-vacuum'
@@ -39,11 +52,20 @@ export type WeaponId =
   | 'cardboard-castle'
   | 'scorch-dryer'
   | 'jacuzzi'
+  | 'serve-machine'
+  | 'cast-iron-skillet'
+  | 'static-storm'
+  | 'pickle-jar'
+  | 'heatwave-fan'
+  | 'grandfather-clock'
   // Fused: two evolved weapons made one at a chest (FUSIONS); never offered.
   | 'thunderstorm'
   | 'scorching-maw'
   | 'yarn-feast'
-  | 'milk-symphony';
+  | 'milk-symphony'
+  | 'grand-slam'
+  | 'kitchen-sink'
+  | 'clockwork-gale';
 
 export type PassiveId =
   | 'rubber-chicken'
@@ -59,7 +81,13 @@ export type PassiveId =
   | 'slippers'
   | 'cushion'
   | 'fish-bowl'
-  | 'tin-foil';
+  | 'tin-foil'
+  | 'tape-measure'
+  | 'oven-mitts'
+  | 'reading-glasses'
+  | 'cookie-jar'
+  | 'hot-water-bottle'
+  | 'loaded-dice';
 
 /** A weapon at one level, before the passives. */
 export type WeaponStats = {
@@ -156,9 +184,16 @@ export type WeaponInfo = {
  * The stats of a fused weapon are its own extra, not its parents' (they keep firing
  * as they did): every `cooldownMs`, `count` of its own things of `damage`.
  */
-const FUSED_WEAPONS: Readonly<
-  Record<'thunderstorm' | 'scorching-maw' | 'yarn-feast' | 'milk-symphony', WeaponInfo>
-> = {
+type FusedId =
+  | 'thunderstorm'
+  | 'scorching-maw'
+  | 'yarn-feast'
+  | 'milk-symphony'
+  | 'grand-slam'
+  | 'kitchen-sink'
+  | 'clockwork-gale';
+
+const FUSED_WEAPONS: Readonly<Record<FusedId, WeaponInfo>> = {
   thunderstorm: {
     name: 'Thunderstorm',
     description: 'The laser web and the monsoon, together. Lightning finds the wet cats first.',
@@ -221,6 +256,55 @@ const FUSED_WEAPONS: Readonly<
       speed: 380,
       durationMs: 800,
       pierce: 6,
+    }),
+  },
+  'grand-slam': {
+    name: 'Grand Slam',
+    description:
+      'Every ball served with a charge in it. Now and then the whole court lights up, cat to cat.',
+    kind: 'fused',
+    unit: 'strike',
+    levels: fixed({
+      cooldownMs: 1800,
+      damage: 140,
+      area: 480,
+      count: 8,
+      speed: 0,
+      durationMs: 200,
+      pierce: 99,
+    }),
+  },
+  'kitchen-sink': {
+    name: 'Kitchen Sink',
+    description:
+      'Everything but, and then that too. The skillet swings; the pickles fly out all round him.',
+    kind: 'fused',
+    unit: 'slice',
+    levels: fixed({
+      cooldownMs: 2400,
+      damage: 220,
+      area: 18,
+      count: 20,
+      speed: 420,
+      durationMs: 900,
+      pierce: 4,
+    }),
+  },
+  'clockwork-gale': {
+    name: 'Clockwork Gale',
+    description:
+      'The fan, the clock, and a moment that will not pass. Now and then every cat near him stops still.',
+    kind: 'fused',
+    unit: 'stop',
+    levels: fixed({
+      cooldownMs: 5000,
+      damage: 80,
+      area: 420,
+      count: 1,
+      speed: 0,
+      // How long the cats stand still, ms.
+      durationMs: 1800,
+      pierce: 99,
     }),
   },
 };
@@ -506,6 +590,125 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       ]
     ),
   },
+  'tennis-ball': {
+    name: 'Tennis Ball',
+    description: 'Served hard at the nearest cat. It goes straight through, and on to the next.',
+    kind: 'spread',
+    unit: 'ball',
+    levels: ladder(
+      { cooldownMs: 1700, damage: 24, area: 11, count: 1, speed: 560, durationMs: 1200, pierce: 4 },
+      [
+        { count: 1 },
+        { damage: 8, pierce: 1 },
+        { cooldownMs: -300 },
+        { count: 1, speed: 80 },
+        { damage: 8, pierce: 2 },
+        { cooldownMs: -300, area: 3 },
+        { count: 1, damage: 8, pierce: 2 },
+      ]
+    ),
+  },
+  'frying-pan': {
+    name: 'Frying Pan',
+    description: 'A short swing, and a ringing sound. The cats it meets go a long way back.',
+    kind: 'sweep',
+    unit: 'swing',
+    levels: ladder(
+      // Speed is how far a cat is knocked back, px.
+      {
+        cooldownMs: 1800,
+        damage: 30,
+        area: 110,
+        count: 1,
+        speed: 140,
+        durationMs: 200,
+        pierce: 99,
+      },
+      [
+        { damage: 10 },
+        { count: 1 },
+        { cooldownMs: -300 },
+        { area: 25, speed: 30 },
+        { damage: 10 },
+        { count: 1, cooldownMs: -200 },
+        { damage: 12, area: 25 },
+      ]
+    ),
+  },
+  'static-sock': {
+    name: 'Static Sock',
+    description: 'Rubbed on the carpet until it crackles. The spark leaps from cat to cat.',
+    kind: 'chain',
+    unit: 'jump',
+    levels: ladder(
+      { cooldownMs: 1400, damage: 14, area: 170, count: 4, speed: 0, durationMs: 160, pierce: 99 },
+      [
+        { count: 2 },
+        { damage: 5 },
+        { cooldownMs: -250 },
+        { count: 2, area: 30 },
+        { damage: 5 },
+        { cooldownMs: -250, count: 1 },
+        { count: 2, damage: 6, area: 30 },
+      ]
+    ),
+  },
+  cucumber: {
+    name: 'Cucumber',
+    description: 'No cat has ever trusted one. Thrown, it bursts into slices, and they all run.',
+    kind: 'burst',
+    unit: 'slice',
+    levels: ladder(
+      { cooldownMs: 2400, damage: 26, area: 15, count: 5, speed: 300, durationMs: 1000, pierce: 1 },
+      [
+        { count: 1 },
+        { damage: 8 },
+        { cooldownMs: -400 },
+        { count: 2, area: 3 },
+        { damage: 8, speed: 60 },
+        { cooldownMs: -400, durationMs: 200 },
+        { count: 2, damage: 10, area: 3 },
+      ]
+    ),
+  },
+  'ceiling-fan': {
+    name: 'Ceiling Fan',
+    description: 'Wide blades that turn slowly round him. No cat walks under one willingly.',
+    kind: 'orbit',
+    unit: 'blade',
+    levels: ladder(
+      // Damage a second, to every cat a blade passes through; speed is its turn, rad/s.
+      { cooldownMs: 0, damage: 45, area: 85, count: 2, speed: 1.8, durationMs: 0, pierce: 99 },
+      [
+        { damage: 15 },
+        { count: 1 },
+        { area: 15 },
+        { speed: 0.5, damage: 10 },
+        { count: 1 },
+        { area: 15, damage: 15 },
+        { count: 1, speed: 0.5 },
+      ]
+    ),
+  },
+  'alarm-clock': {
+    name: 'Alarm Clock',
+    description: 'It rings, and rings, and does not stop. Every cat near him wishes it would.',
+    kind: 'zone',
+    unit: 'ring',
+    levels: ladder(
+      // Damage a second, to every cat in reach.
+      { cooldownMs: 0, damage: 7, area: 150, count: 1, speed: 0, durationMs: 0, pierce: 99 },
+      [
+        { damage: 3 },
+        { area: 25 },
+        { damage: 3 },
+        { area: 25 },
+        { damage: 4 },
+        { area: 25 },
+        { damage: 5, area: 25 },
+      ]
+    ),
+  },
   'infinite-laser': {
     name: 'Infinite Laser',
     description: 'The red dot, without end. The screen is a web of it.',
@@ -685,6 +888,99 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       pierce: 1,
     }),
   },
+  'serve-machine': {
+    name: 'Serve Machine',
+    description: 'It never tires, and it never misses. A volley of balls, through everything.',
+    kind: 'spread',
+    unit: 'ball',
+    levels: fixed({
+      cooldownMs: 700,
+      damage: 60,
+      area: 15,
+      count: 7,
+      speed: 760,
+      durationMs: 1400,
+      pierce: 14,
+    }),
+  },
+  'cast-iron-skillet': {
+    name: 'Cast-Iron Skillet',
+    description: 'Heavy, and hot. A swing all the way round him, and every cat it rings is dazed.',
+    kind: 'sweep',
+    unit: 'swing',
+    levels: fixed({
+      cooldownMs: 900,
+      damage: 120,
+      area: 190,
+      // Four sectors: all the way round him.
+      count: 4,
+      speed: 220,
+      // How long a cat it rings stands dazed, ms.
+      durationMs: 1200,
+      pierce: 99,
+    }),
+  },
+  'static-storm': {
+    name: 'Static Storm',
+    description: 'The whole house crackles. Sparks leap from cat to cat and never seem to land.',
+    kind: 'chain',
+    unit: 'jump',
+    levels: fixed({
+      cooldownMs: 450,
+      damage: 36,
+      area: 260,
+      count: 18,
+      speed: 0,
+      durationMs: 200,
+      pierce: 99,
+    }),
+  },
+  'pickle-jar': {
+    name: 'Pickle Jar',
+    description: 'A whole jar of them, thrown. Brine everywhere, and the cats cannot stand it.',
+    kind: 'burst',
+    unit: 'slice',
+    levels: fixed({
+      cooldownMs: 1300,
+      damage: 70,
+      area: 22,
+      count: 14,
+      speed: 340,
+      durationMs: 1200,
+      pierce: 2,
+    }),
+  },
+  'heatwave-fan': {
+    name: 'Heatwave Fan',
+    description:
+      'The fan, blowing hot. A cat its blades touch is scorched, and takes more from everything.',
+    kind: 'orbit',
+    unit: 'blade',
+    levels: fixed({
+      cooldownMs: 0,
+      damage: 130,
+      area: 125,
+      count: 6,
+      speed: 2.8,
+      durationMs: 0,
+      pierce: 99,
+    }),
+  },
+  'grandfather-clock': {
+    name: 'Grandfather Clock',
+    description: 'Every chime is a minute long. Cats near him slow to a crawl, and grow homesick.',
+    kind: 'zone',
+    unit: 'ring',
+    levels: fixed({
+      cooldownMs: 0,
+      damage: 30,
+      area: 280,
+      count: 1,
+      speed: 0,
+      durationMs: 0,
+      pierce: 99,
+    }),
+  },
 };
 
 /**
@@ -705,6 +1001,12 @@ export const EVOLUTIONS: readonly Evolution[] = [
   { from: 'cardboard-box', with: 'slippers', to: 'cardboard-castle' },
   { from: 'hair-dryer', with: 'tin-foil', to: 'scorch-dryer' },
   { from: 'bath-tub', with: 'fish-bowl', to: 'jacuzzi' },
+  { from: 'tennis-ball', with: 'tape-measure', to: 'serve-machine' },
+  { from: 'frying-pan', with: 'oven-mitts', to: 'cast-iron-skillet' },
+  { from: 'static-sock', with: 'reading-glasses', to: 'static-storm' },
+  { from: 'cucumber', with: 'cookie-jar', to: 'pickle-jar' },
+  { from: 'ceiling-fan', with: 'hot-water-bottle', to: 'heatwave-fan' },
+  { from: 'alarm-clock', with: 'loaded-dice', to: 'grandfather-clock' },
 ];
 
 /**
@@ -719,6 +1021,9 @@ export const FUSIONS: readonly Fusion[] = [
   { from: ['forbidden-catnip-vacuum', 'scorch-dryer'], to: 'scorching-maw' },
   { from: ['yarn-apocalypse', 'banquet'], to: 'yarn-feast' },
   { from: ['bottomless-saucer', 'squeak-symphony'], to: 'milk-symphony' },
+  { from: ['serve-machine', 'static-storm'], to: 'grand-slam' },
+  { from: ['cast-iron-skillet', 'pickle-jar'], to: 'kitchen-sink' },
+  { from: ['heatwave-fan', 'grandfather-clock'], to: 'clockwork-gale' },
 ];
 
 /** The weapons a level-up may offer: all but the evolved and the fused ones. */
@@ -762,7 +1067,7 @@ export function evolutionFor(
 export type PassiveInfo = {
   name: string;
   description: string;
-  /** Usually MAX_PASSIVE_LEVEL; the Lucky Bell has one. */
+  /** Usually MAX_PASSIVE_LEVEL; the Lucky Bell has one, the Loaded Dice three. */
   maxLevel: number;
 };
 
@@ -837,6 +1142,36 @@ export const PASSIVES: Readonly<Record<PassiveId, PassiveInfo>> = {
     description: 'A hat, for reasons. The tricks of the elite cats wear off sooner.',
     maxLevel: MAX_PASSIVE_LEVEL,
   },
+  'tape-measure': {
+    name: 'Tape Measure',
+    description: 'He has worked out the distances. What his weapons throw flies faster.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'oven-mitts': {
+    name: 'Oven Mitts',
+    description: 'Thick, and quilted. A cat that reaches him takes less of his Resolve.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'reading-glasses': {
+    name: 'Reading Glasses',
+    description: 'He looks closer. The elites and the Mega Cats grow more homesick.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'cookie-jar': {
+    name: 'Cookie Jar',
+    description: 'Never quite empty. The cats sent home leave more behind them.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'hot-water-bottle': {
+    name: 'Hot Water Bottle',
+    description: 'Tucked under the coat. Each level he reaches, some Resolve returns.',
+    maxLevel: MAX_PASSIVE_LEVEL,
+  },
+  'loaded-dice': {
+    name: 'Loaded Dice',
+    description: 'They land how he likes. Another reroll, for the rest of the run.',
+    maxLevel: 3,
+  },
 };
 
 /** What the passives held add up to. */
@@ -862,6 +1197,18 @@ export type Modifiers = {
   xp: number;
   /** The share an elite's effect on him is cut by. */
   guard: number;
+  /** Multiplies how fast what a weapon throws flies (THROWN). */
+  velocity: number;
+  /** Multiplies the Resolve a cat (or its shot, or a boss) drains from him. */
+  drain: number;
+  /** Multiplies the Homesickness his weapons give elites and Mega Cats. */
+  elite: number;
+  /** Multiplies how often a cat sent home leaves a pickup. */
+  luck: number;
+  /** Resolve he regains at each level reached. */
+  levelHeal: number;
+  /** Rerolls added to what he has left. */
+  rerolls: number;
 };
 
 export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
@@ -881,14 +1228,24 @@ export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
     grace: 120 * level('cushion'),
     xp: 1 + 0.12 * level('fish-bowl'),
     guard: 0.15 * level('tin-foil'),
+    velocity: 1 + 0.12 * level('tape-measure'),
+    drain: 1 - 0.08 * level('oven-mitts'),
+    elite: 1 + 0.15 * level('reading-glasses'),
+    luck: 1 + 0.3 * level('cookie-jar'),
+    levelHeal: 4 * level('hot-water-bottle'),
+    rerolls: level('loaded-dice'),
   };
 }
+
+/** The kinds whose speed is how fast what they throw flies (Tape Measure's). */
+const THROWN: readonly WeaponKind[] = ['spread', 'burst', 'arc', 'bounce'];
 
 /** A weapon's stats at `level`, with the passives' modifiers. */
 export function weaponStats(id: WeaponId, level: number, mods: Modifiers): WeaponStats {
   const base = WEAPONS[id].levels[Math.min(Math.max(level, 1), MAX_WEAPON_LEVEL) - 1];
   return {
     ...base,
+    speed: THROWN.includes(WEAPONS[id].kind) ? base.speed * mods.velocity : base.speed,
     cooldownMs: base.cooldownMs * mods.cooldown,
     damage: base.damage * mods.might,
     area: base.area * mods.area,
@@ -920,7 +1277,8 @@ export function offerChoices(
   passives: ReadonlyMap<PassiveId, number>,
   count: number,
   random: Random,
-  available: readonly WeaponId[] = BASE_WEAPONS
+  available: readonly WeaponId[] = BASE_WEAPONS,
+  slots: Slots = DEFAULT_SLOTS
 ): Choice[] {
   const pool: Choice[] = [];
   const absorbed = absorbedBy(weapons);
@@ -932,13 +1290,13 @@ export function offerChoices(
     }
     const level = weapons.get(id);
     if (level === undefined) {
-      if (weapons.size < WEAPON_SLOTS) pool.push({ kind: 'weapon', id, level: 1 });
+      if (weapons.size < slots.weapons) pool.push({ kind: 'weapon', id, level: 1 });
     } else if (level < MAX_WEAPON_LEVEL) pool.push({ kind: 'weapon', id, level: level + 1 });
   }
   for (const id of Object.keys(PASSIVES) as PassiveId[]) {
     const level = passives.get(id);
     if (level === undefined) {
-      if (passives.size < PASSIVE_SLOTS) pool.push({ kind: 'passive', id, level: 1 });
+      if (passives.size < slots.passives) pool.push({ kind: 'passive', id, level: 1 });
     } else if (level < PASSIVES[id].maxLevel) pool.push({ kind: 'passive', id, level: level + 1 });
   }
   if (pool.length === 0) return [{ kind: 'restore' }];
@@ -1052,6 +1410,12 @@ const MODIFIER_WORDS: { [K in keyof Modifiers]: (step: number) => string } = {
   grace: (step) => `untouchable ${Math.round(step)} ms longer after a hit`,
   xp: (step) => `+${Math.round(step * 100)}% experience from gems`,
   guard: (step) => `elite effects on him last ${Math.round(step * 100)}% shorter`,
+  velocity: (step) => `what his weapons throw flies ${Math.round(step * 100)}% faster`,
+  drain: (step) => `cats drain ${Math.round(-step * 100)}% less Resolve`,
+  elite: (step) => `+${Math.round(step * 100)}% homesickness to elites and Mega Cats`,
+  luck: (step) => `cats leave pickups ${Math.round(step * 100)}% more often`,
+  levelHeal: (step) => `+${tenth(step)} Resolve at every level`,
+  rerolls: (step) => `+${step} reroll${step === 1 ? '' : 's'}`,
 };
 
 /**
@@ -1119,6 +1483,7 @@ export type Loadout = {
     /** What the next level adds (levelChanges), or null at the top or evolved. */
     next: string | null;
   }[];
+  /** Infinity in a run with no limit; so is freePassiveSlots. */
   freeWeaponSlots: number;
   passives: { id: PassiveId; name: string; level: number; maxLevel: number; gives: string }[];
   freePassiveSlots: number;
@@ -1152,7 +1517,8 @@ export type Loadout = {
 
 export function loadout(
   weapons: readonly { id: WeaponId; level: number }[],
-  passives: readonly { id: PassiveId; level: number }[]
+  passives: readonly { id: PassiveId; level: number }[],
+  slots: Slots = DEFAULT_SLOTS
 ): Loadout {
   const weaponLevels = new Map(weapons.map((w) => [w.id, w.level] as const));
   const passiveLevels = new Map(passives.map((p) => [p.id, p.level] as const));
@@ -1176,7 +1542,7 @@ export function loadout(
         next: changes.length > 0 ? `${capitalise(changes.join(', '))}.` : null,
       };
     }),
-    freeWeaponSlots: Math.max(WEAPON_SLOTS - weapons.length, 0),
+    freeWeaponSlots: Math.max(slots.weapons - weapons.length, 0),
     passives: passives.map(({ id, level }) => ({
       id,
       name: PASSIVES[id].name,
@@ -1184,7 +1550,7 @@ export function loadout(
       maxLevel: PASSIVES[id].maxLevel,
       gives: `${capitalise(passiveTotal(id, level).join(', '))}.`,
     })),
-    freePassiveSlots: Math.max(PASSIVE_SLOTS - passives.length, 0),
+    freePassiveSlots: Math.max(slots.passives - passives.length, 0),
     fusions: FUSIONS.filter(
       (f) => !weaponLevels.has(f.to) && f.from.some((id) => weaponLevels.has(id))
     ).map((f) => {
@@ -1199,8 +1565,8 @@ export function loadout(
         !weaponLevels.has(e.to) &&
         (weaponLevels.has(e.from) || passiveLevels.has(e.with)) &&
         // A piece he lacks must have a slot to come into, or it is out of reach.
-        (weaponLevels.has(e.from) || weapons.length < WEAPON_SLOTS) &&
-        (passiveLevels.has(e.with) || passives.length < PASSIVE_SLOTS)
+        (weaponLevels.has(e.from) || weapons.length < slots.weapons) &&
+        (passiveLevels.has(e.with) || passives.length < slots.passives)
     ).map((e) => {
       const level = weaponLevels.get(e.from);
       const missing: string[] = [];

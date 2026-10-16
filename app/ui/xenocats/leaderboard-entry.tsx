@@ -6,7 +6,7 @@ import { Button } from '@/app/ui/button';
 import { type SurvivalRunResult, recordSurvivalRun } from '@/app/lib/actions';
 import { LeaderboardName } from '@/app/lib/schemas';
 import type { RunLength } from './arena-storage';
-import { readLeaderboardName, writeLeaderboardName } from './arena-storage';
+import { boardName, readLeaderboardName, writeLeaderboardName } from './arena-storage';
 
 const MESSAGES: Record<Exclude<SurvivalRunResult, 'saved'>, string> = {
   'signed-out': 'You are no longer logged in: log in to put your runs on the leaderboard.',
@@ -66,7 +66,7 @@ export function LeaderboardEntry({
   if (status === 'saved') {
     return (
       <p data-testid="leaderboard-entry" role="status" className="mt-4 text-sm text-plasma">
-        On the {minutes}-minute leaderboard as {savedAs}.{' '}
+        On {boardName(minutes)} as {savedAs}.{' '}
         <Link href="/cats" className="font-semibold text-cream underline hover:text-plasma">
           See the leaderboard
         </Link>
@@ -110,7 +110,7 @@ export function LeaderboardEntry({
   return (
     <form data-testid="leaderboard-entry" onSubmit={save} className="mt-4" noValidate>
       <label htmlFor="leaderboard-name" className="block text-sm font-semibold text-cream">
-        Your name on the {minutes}-minute leaderboard
+        Your name on {boardName(minutes)}
       </label>
       <div className="mt-1 flex flex-wrap gap-2">
         <input

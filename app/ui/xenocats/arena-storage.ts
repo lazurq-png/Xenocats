@@ -3,9 +3,23 @@
 
 import { type Graphics, parseGraphics } from './graphics';
 
-/** The run lengths on offer, in minutes (the first is the game's own). */
-export const RUN_LENGTHS = [5, 10, 15] as const;
+/**
+ * The run lengths on offer, in minutes (the first is the game's own). 0 is an endless
+ * run: no time goal, no limit on slots (arena.ts, runLengthConfig).
+ */
+export const RUN_LENGTHS = [5, 10, 15, 0] as const;
 export type RunLength = (typeof RUN_LENGTHS)[number];
+
+/** An endless run's length. */
+export const ENDLESS = 0;
+
+/** A run length as the game names it: "5 minutes", or "Endless". */
+export const lengthName = (length: RunLength) =>
+  length === ENDLESS ? 'Endless' : `${length} minutes`;
+
+/** A run length's leaderboard, as a sentence names it: "the 5-minute leaderboard". */
+export const boardName = (length: RunLength) =>
+  `the ${length === ENDLESS ? 'Endless' : `${length}-minute`} leaderboard`;
 
 /**
  * The longest five-minute run survived, ms. Version 2: the arena (the wave game kept
@@ -15,7 +29,9 @@ export const SURVIVAL_BEST_KEY = 'xenocats:survival:v2:best-ms';
 
 /** Where the best time of a run of this length is kept. */
 export const bestKey = (length: RunLength) =>
-  length === 5 ? SURVIVAL_BEST_KEY : `${SURVIVAL_BEST_KEY}:${length}`;
+  length === 5
+    ? SURVIVAL_BEST_KEY
+    : `${SURVIVAL_BEST_KEY}:${length === ENDLESS ? 'endless' : length}`;
 
 /** A stored best time, or null for none (missing, corrupt, or not a sane time). */
 export function parseBest(raw: string | null): number | null {
@@ -54,7 +70,8 @@ const lengthListeners = new Set<() => void>();
 let lengthInMemory: RunLength | null = null;
 
 export function readLength(): RunLength {
-  if (lengthInMemory) return lengthInMemory;
+  // (Endless is 0: kept in memory, it counts.)
+  if (lengthInMemory !== null) return lengthInMemory;
   try {
     return parseLength(window.localStorage.getItem(SURVIVAL_LENGTH_KEY));
   } catch {

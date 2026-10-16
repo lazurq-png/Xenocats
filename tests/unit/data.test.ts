@@ -693,7 +693,29 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
 
     const anonymous = await data.fetchLeaderboard(null);
     expect(anonymous.board[5].map((row) => row.mine)).toEqual([false, false]);
-    expect(anonymous.mine).toEqual({ 5: null, 10: null, 15: null });
+    expect(anonymous.mine).toEqual({ 0: null, 5: null, 10: null, 15: null });
+  });
+
+  it('an endless run (minutes 0) is held to the time since it started alone, on a board of its own', async () => {
+    // Started two hours ago: an hour and a half is longer than any timed run, and allowed.
+    const runId = await started(player, 0, 2 * 3_600_000);
+    expect(
+      await actions.recordSurvivalRun({ runId, name: 'Endless', timeMs: 5_400_000, sentHome: 900 })
+    ).toBe('saved');
+    // Never longer than the time since it started.
+    const fresh = await started(player, 0, 60_000);
+    expect(
+      await actions.recordSurvivalRun({
+        runId: fresh,
+        name: 'Too long',
+        timeMs: 600_000,
+        sentHome: 1,
+      })
+    ).toBe('invalid');
+    const { board, mine } = await data.fetchLeaderboard(player);
+    expect(board[0].map((row) => [row.name, row.time_ms])).toEqual([['Endless', 5_400_000]]);
+    expect(mine[0]).toMatchObject({ run_minutes: 0, place: 1 });
+    expect(board[5].some((row) => row.name === 'Endless')).toBe(false);
   });
 
   it('the board shows the top LEADERBOARD_SIZE; a viewer below them still sees their place', async () => {
@@ -948,7 +970,7 @@ describe.skipIf(!url)('migrations on existing rows', () => {
     );
   });
 
-  it('0006 keeps existing accounts logging in by email, adds usernames, the sign-up limit and runs; 0007 bounds new amounts', async () => {
+  it('0006 keeps existing accounts logging in by email, adds usernames, the sign-up limit and runs; 0007 bounds new amounts; 0010 lets endless runs in', async () => {
     await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
     await sql`CREATE SCHEMA xenocats_vitest_migrations`;
     for (const name of [
@@ -1016,6 +1038,21 @@ describe.skipIf(!url)('migrations on existing rows', () => {
       ).rejects.toThrow(/invoices_amount_check/);
     }
     expect(await sql`SELECT 1 FROM invoices WHERE amount = 0`).toHaveLength(1);
+
+    // 0010: the runs there were are kept; an endless run (0) has no length to be
+    // held to; a timed one still is; no other length is one.
+    await sql.begin((tx) => tx.unsafe(migration('0010_endless_runs.sql')));
+    expect(await sql`SELECT run_minutes, time_ms FROM survival_runs WHERE name = 'Old'`).toEqual([
+      { run_minutes: 5, time_ms: 300_000 },
+    ]);
+    await sql`
+      INSERT INTO survival_runs (user_id, run_minutes, finished_at, name, time_ms, sent_home)
+      VALUES (${old}, 0, now(), 'Endless', 3600000, 1)`;
+    await expect(finish('Old', 300_001)).rejects.toThrow(/survival_runs_check/);
+    await expect(
+      sql`INSERT INTO survival_runs (user_id, run_minutes, finished_at, name, time_ms, sent_home)
+          VALUES (${old}, 7, now(), 'Seven', 1000, 1)`
+    ).rejects.toThrow(/survival_runs_run_minutes_check/);
   });
 
   it('0005 on an empty database (no customers) needs no user', async () => {

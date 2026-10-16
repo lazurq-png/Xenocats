@@ -174,8 +174,11 @@ const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}]/u;
 /** Whether `text` has none of the HIDDEN_CHARACTERS. */
 export const isPlainText = (text: string) => !HIDDEN_CHARACTERS.test(text);
 
-/** Survival's run lengths, in minutes (arena-storage.ts offers the same). */
-export const RunMinutes = z.union([z.literal(5), z.literal(10), z.literal(15)]);
+/** Survival's run lengths, in minutes; 0 is an endless run (arena-storage.ts offers the same). */
+export const RunMinutes = z.union([z.literal(0), z.literal(5), z.literal(10), z.literal(15)]);
+
+/** The longest time a Survival run can send, ms: a day (an endless run has no length). */
+export const MAX_RUN_MS = 24 * 3_600_000;
 
 /**
  * A name on the public leaderboard: 1 to 20 letters (of any language), digits,
@@ -205,11 +208,7 @@ export const LeaderboardName = z
 export const SurvivalRun = z.object({
   runId: z.string().uuid(),
   name: LeaderboardName,
-  timeMs: z
-    .number()
-    .int()
-    .min(0)
-    .max(15 * 60_000),
+  timeMs: z.number().int().min(0).max(MAX_RUN_MS),
   sentHome: z.number().int().min(0).max(1_000_000),
 });
 export type SurvivalRun = z.input<typeof SurvivalRun>;

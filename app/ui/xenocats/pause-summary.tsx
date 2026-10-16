@@ -1,6 +1,6 @@
 import type { Arena } from './arena';
 import { clockText } from './arena-storage';
-import { WEAPONS, loadout } from './arsenal';
+import { type Slots, WEAPONS, loadout } from './arsenal';
 import { tierStyle } from './item-tier';
 
 type ArenaState = ReturnType<Arena['state']>;
@@ -30,7 +30,11 @@ export function PauseSummary({ state }: { state: ArenaState }) {
         {(
           [
             ['Time', 'time', clockText(state.time)],
-            ['Run length', 'length', clockText(state.goalMs)],
+            [
+              'Run length',
+              'length',
+              Number.isFinite(state.goalMs) ? clockText(state.goalMs) : 'Endless',
+            ],
             ['Level', 'level', `${state.level} (${state.xp} of ${state.xpToNext} to the next)`],
             ['Resolve', 'resolve', resolve],
             ['Sent home', 'sent-home', String(state.sentHome)],
@@ -48,6 +52,7 @@ export function PauseSummary({ state }: { state: ArenaState }) {
         <KeeperLoadout
           key={i}
           hero={hero}
+          slots={state.slots}
           index={i}
           title={coop ? `Player ${i + 1}` : 'What he carries'}
         />
@@ -56,8 +61,22 @@ export function PauseSummary({ state }: { state: ArenaState }) {
   );
 }
 
-function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; title: string }) {
-  const view = loadout(hero.weapons, hero.passives);
+/** "3 of 8", or "3, no limit" in an endless run. */
+const slotText = (held: number, free: number) =>
+  Number.isFinite(free) ? `${held} of ${held + free}` : `${held}, no limit`;
+
+function KeeperLoadout({
+  hero,
+  slots,
+  index,
+  title,
+}: {
+  hero: Hero;
+  slots: Slots;
+  index: number;
+  title: string;
+}) {
+  const view = loadout(hero.weapons, hero.passives, slots);
   const heading = `survival-pause-keeper-${index + 1}-heading`;
   return (
     <section data-testid={`survival-pause-keeper-${index + 1}`} aria-labelledby={heading}>
@@ -65,7 +84,7 @@ function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; titl
         {title}
       </h3>
       <h4 className="mt-2 font-semibold text-cream" data-testid="survival-pause-weapon-slots">
-        Weapons {view.weapons.length} of {view.weapons.length + view.freeWeaponSlots}
+        Weapons {slotText(view.weapons.length, view.freeWeaponSlots)}
       </h4>
       <ul className="mt-1 grid gap-1">
         {view.weapons.map((w) => {
@@ -83,7 +102,7 @@ function KeeperLoadout({ hero, index, title }: { hero: Hero; index: number; titl
         })}
       </ul>
       <h4 className="mt-3 font-semibold text-cream" data-testid="survival-pause-passive-slots">
-        Passives {view.passives.length} of {view.passives.length + view.freePassiveSlots}
+        Passives {slotText(view.passives.length, view.freePassiveSlots)}
       </h4>
       {view.passives.length === 0 ? (
         <p className="mt-1 text-xs">None yet.</p>
