@@ -123,7 +123,8 @@ export const VARIETIES: Readonly<Record<VarietyId, Variety>> = {
     homesickness: 90,
     drain: 9,
     radius: 16,
-    immuneTo: ['beam', 'chain'],
+    // The Static Sock's sparks too, as when they leapt like a chain.
+    immuneTo: ['beam', 'chain', 'cling'],
   },
   mega: {
     name: 'Mega Cat',

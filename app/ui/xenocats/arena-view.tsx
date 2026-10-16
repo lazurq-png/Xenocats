@@ -10,7 +10,14 @@ import {
   createArena,
   runLengthConfig,
 } from './arena';
-import { HERO_BODY_SVGS, HERO_TOOL_SVGS, PATCH_SVG, PICKUP_SVG, VARIETY_SVG } from './arena-art';
+import {
+  HERO_BODY_SVGS,
+  HERO_TOOL_SVGS,
+  KIT_SVG,
+  PATCH_SVG,
+  PICKUP_SVG,
+  VARIETY_SVG,
+} from './arena-art';
 import { DRAWN_DIRECTIONS, directionOfAngle, facesAway, spriteOf } from './hero-direction';
 import {
   type Choice,
@@ -633,6 +640,16 @@ export default function ArenaGame({
         redraw
       ),
     };
+    const kitSprites = Object.fromEntries(
+      (Object.keys(KIT_SVG) as (keyof typeof KIT_SVG)[]).map((kind) => [
+        kind,
+        bitmapOf(
+          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(KIT_SVG[kind])}`,
+          64,
+          redraw
+        ),
+      ])
+    ) as Record<keyof typeof KIT_SVG, () => HTMLCanvasElement | null>;
     const guard = createFrameGuard(FRAME_GUARD);
     const held = new Set<string>();
     const flashes: Flash[] = [];
@@ -804,6 +821,18 @@ export default function ArenaGame({
         context.fill();
         context.stroke();
       }
+      // The Frying Pan, swung at the cat it swats, fading.
+      const pan = kitSprites['frying-pan']();
+      if (pan) {
+        for (const swat of arena.swats()) {
+          context.save();
+          context.globalAlpha = Math.min(Math.max(swat.until - state.time, 0) / 240, 1);
+          context.translate(swat.x - camX, swat.y - camY);
+          context.rotate(swat.angle);
+          context.drawImage(pan, 14, -20, 40, 40);
+          context.restore();
+        }
+      }
 
       // An elite's attack winding up: where it will land, filling as the moment nears.
       for (const warning of arena.telegraphs()) {
@@ -896,6 +925,21 @@ export default function ArenaGame({
             4
           );
         }
+        // Startled by a Cucumber: it shows, as it runs.
+        if (cat.fleeUntil > state.time) {
+          const startle = kitSprites.startle();
+          if (startle) context.drawImage(startle, x - 9, y - half - 24, 18, 18);
+        }
+      }
+      // The Static Socks, clinging to their cats.
+      const sock = kitSprites['static-sock']();
+      if (sock) {
+        for (const s of arena.socks()) {
+          const x = s.x - camX;
+          const y = s.y - camY;
+          if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+          context.drawImage(sock, x - 2, y - 14, 22, 22);
+        }
       }
 
       // The Laser Cats' shots.
@@ -911,6 +955,20 @@ export default function ArenaGame({
         const x = shot.x - camX;
         const y = shot.y - camY;
         if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+        // A tennis ball, and a whole cucumber (its slices are plain), spin as they fly.
+        const kit =
+          shot.weapon === 'tennis-ball' || (shot.weapon === 'cucumber' && !shot.bit)
+            ? kitSprites[shot.weapon]()
+            : null;
+        if (kit) {
+          const r = Math.max(shot.radius, 8);
+          context.save();
+          context.translate(x, y);
+          context.rotate(time / 80);
+          context.drawImage(kit, -r, -r, r * 2, r * 2);
+          context.restore();
+          continue;
+        }
         context.fillStyle = SHOT_COLOR[shot.weapon] ?? '#e0e0b3';
         context.beginPath();
         context.arc(x, y, Math.max(shot.radius * 0.6, 3), 0, 2 * Math.PI);

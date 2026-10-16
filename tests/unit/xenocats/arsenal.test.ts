@@ -224,7 +224,7 @@ describe('every upgrade says what it does, and does it', () => {
     expect(describeChoice({ kind: 'weapon', id: 'laser-pointer', level: 1 }).change).toBeNull();
     // Scissors names what it adds to: the vacuums pull and hum as one, whatever it says.
     expect(describeChoice({ kind: 'passive', id: 'scissors', level: 1 }).change).toBe(
-      '+1 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble or slice for each weapon that fires them.'
+      '+1 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble, spark or slice for each weapon that fires them.'
     );
     expect(describeChoice({ kind: 'restore' }).change).toBeNull();
   });
@@ -547,16 +547,23 @@ describe('levels in a run', () => {
   });
 
   it('a seeded five-minute run, choices made for it, ends with the screen full of attacks', () => {
-    // (Seed 3: the arsenal grew, so seed 11's draws now give a build that throws little.)
-    const a = arena({ hero: { ...ARENA_CONFIG.hero, resolve: 1e12 }, stepMs: 50 }, 3);
+    // (Seed 4: the arsenal grew, so seed 11's draws gave a build that throws little; then the
+    // kitchen drawer's own kinds moved seed 3's busiest moment about: decisions.md, night
+    // run 2026-10-17, D9.)
+    const a = arena({ hero: { ...ARENA_CONFIG.hero, resolve: 1e12 }, stepMs: 50 }, 4);
     let most = 0;
     while (a.state().time < 300_000) {
       const offer = a.choices();
       if (offer) {
         // As a player bent on attacks would: weapons first, the one that throws the
         // most at its best (the build, not luck, decides how full the screen gets).
+        // (A sock's count is its sparks, one after another: one thing on the screen.)
         const throws = (c: (typeof offer)[number]) =>
-          c.kind === 'weapon' ? WEAPONS[c.id].levels[MAX_WEAPON_LEVEL - 1].count : -1;
+          c.kind !== 'weapon'
+            ? -1
+            : WEAPONS[c.id].kind === 'cling'
+              ? 1
+              : WEAPONS[c.id].levels[MAX_WEAPON_LEVEL - 1].count;
         const best = offer.reduce((b, c, i) => (throws(c) > throws(offer[b]) ? i : b), 0);
         a.choose(best);
         continue;
@@ -568,7 +575,7 @@ describe('levels in a run', () => {
       // the seeded run's busiest moment about).
       if (a.state().time > 180_000) {
         // Things in flight, beams, blades, and what the household weapons make: jets,
-        // swings, toys, boxes and puddles.
+        // swings, toys, boxes and puddles, the Frying Pan's swats and the socks.
         most = Math.max(
           most,
           a.state().projectiles +
@@ -576,7 +583,9 @@ describe('levels in a run', () => {
             a.blades().length +
             a.jets().length +
             a.sweeps().length +
-            a.patches().length
+            a.patches().length +
+            a.swats().length +
+            a.socks().length
         );
       }
     }
@@ -1040,7 +1049,7 @@ describe('the pause menu: what he carries', () => {
         'Scissors',
         2,
         MAX_PASSIVE_LEVEL,
-        '+2 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble or slice for each weapon that fires them.',
+        '+2 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble, spark or slice for each weapon that fires them.',
       ],
       ['Rubber Chicken', 3, MAX_PASSIVE_LEVEL, '+30% walking speed.'],
       ['Lucky Bell', 1, 1, '+1 choice at every level.'],

@@ -692,7 +692,7 @@ test.describe('on a computer', () => {
       const change = button.getByTestId('choice-change');
       if (kind === 'passive' || (kind === 'weapon' && level > 1)) {
         await expect(change).toHaveText(
-          /^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes|Holds|What his weapons|Untouchable|Elite effects)/
+          /^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes|Holds|What his weapons|Untouchable|Elite effects|Cats drain|Cats leave)/
         );
         named++;
       } else {

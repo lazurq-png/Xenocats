@@ -17,3 +17,7 @@ T1 keeps hooked runs off the board in the client only (D6): the server cannot te
 3. **Plausibility only.** Add a floor to the cat rate (a run of 5 minutes sending home 3 cats was not played) and a cap on the level reached for the time. Cheap, catches only crude forgeries.
 
 Recommendation: 3 now (a small task), 1 if the board ever matters. Meanwhile: nothing more than T1.
+
+## Q4 — the "screen full of attacks" test is chaotic (from T2; no decision needed, an exploration candidate)
+
+`arsenal.test.ts` "a seeded five-minute run, choices made for it, ends with the screen full of attacks" checks one seed's peak against a fixed 30. Over seeds 1–10, its peak ranges from 22 to 152, and any change to a weapon moves which seed passes (D10). A sturdier form would be a median over several seeds, or the peak of a fixed build rather than one chosen by draws. That costs about 30 s per seed.
