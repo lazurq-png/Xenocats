@@ -509,8 +509,12 @@ these additions.
 
    ```bash
    git push --set-upstream origin <YYYY-MM-DD>-t<N>-<slug>
-   git push origin Nightrun
+   git push --set-upstream origin Nightrun
    ```
+
+   `--set-upstream` on `Nightrun` too: the run creates it locally (§1.2), so
+   without it the branch tracks nothing and a human's bare `git push` on it
+   fails. Setting it again on every push changes nothing.
 
    A **rejected push**: record it, push nothing further for the rest of the
    run, and keep working locally. No PRs, ever. Local-only runs skip this step.
