@@ -123,3 +123,13 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Verification.** prettier (5 files) ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (125 passed / 35 skipped), build exit 0, 26 e2e specs (154 passed / 2 skipped; the customer and invoice creating specs run the new SQL). Acceptance (D33): both caps and their messages checked by command (unit, jsdom); the SQL against a real database only through the browser tests' creates under the cap. The cap itself is never reached against a database.
 - **Reviewer.** Request changes, one Low: the form never showed the message. Fixed (D34). Re-review: approve.
 - **CI of checkpoint 1** (8a9348e): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38997431684.
+
+## E4 — started 05:20: the fusion pause-menu test without a wall-clock deadline (Q7) (kind: bugs)
+
+## E4 — The fusion pause-menu test without its long wait (Q7) (completed)
+
+- Branch `2026-10-17-e4-fusion-deadline`, base 93be7a5. Started 05:20, completed 05:30.
+- **What the code does.** `survival.spec.ts`: "the pause menu marks a fused weapon and a new one with different tiers" plays its seeded run at speed 12 instead of 4, with the reason in its comment. Nothing else changes.
+- **What it brings.** A test that took 38–96 s and ran out of its 120 s under a loaded full suite (T3's repair) now takes about 4 s, so it no longer fails for the machine's speed, and every browser run is a minute or so shorter. Decisions: D35.
+- **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (no unit test reaches a spec; exit 0), build exit 0, `survival.spec.ts` (37 passed). The test 20/20 at 10 workers. No reviewer: one test parameter (D35).
+- **CI of E3** (93be7a5): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38998356771.

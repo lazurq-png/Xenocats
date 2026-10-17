@@ -255,12 +255,15 @@ test.describe('on a computer', () => {
     // Take a weapon at the first level-up that offers one (a new weapon is tier 1).
     // The seed fixes the random source, but the run's frames (and so its draws) follow
     // the machine's speed: a run may end before a level-up offers a weapon. Then the
-    // next seed's run is played, until one is taken.
+    // next seed's run is played, until one is taken. At speed 12 each 350 ms walk below
+    // takes him far enough to gather the gems his weapons leave: the first level-up
+    // comes about 30 s into the run (3–4 s of the test), where at speed 4 it came after
+    // 2½–3 minutes and the test often took a minute or more (decisions.md, D35).
     const deadline = Date.now() + 120_000;
     let taken = '';
     const walk = ['d', 's', 'a', 'w'];
     for (let seed = 7; !taken && Date.now() < deadline; seed++) {
-      await openArena(page, `?seed=${seed}&speed=4&fusion=1`);
+      await openArena(page, `?seed=${seed}&speed=12&fusion=1`);
       await startRun(page);
       let rerolled = false;
       for (let turn = 0; !taken && Date.now() < deadline; turn++) {
