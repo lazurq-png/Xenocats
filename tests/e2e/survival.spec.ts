@@ -281,7 +281,9 @@ test.describe('on a computer', () => {
           } else if (!rerolled) {
             // His one reroll, for another look at the choices (read on the next turn).
             rerolled = true;
+            // R rerolls (the only test that presses it: D26), and the use is spent.
             await page.keyboard.press('r');
+            await expect(dialog.getByTestId('survival-reroll')).toHaveText('Reroll (0 left)');
             continue;
           } else await page.keyboard.press('1');
         }

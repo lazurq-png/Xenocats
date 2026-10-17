@@ -470,6 +470,36 @@ describe('the kitchen drawer: four ways of working no other weapon has', () => {
     expect(a.cats().some((c) => c.id === going.id)).toBe(false);
   });
 
+  it('Static Sock: the Possessed Cat, whom lasers pass through, takes nothing from its sparks', () => {
+    const a = arena({
+      ...steady,
+      schedule: {
+        arrivals: [{ from: 0, who: 'possessed', weight: 1 }],
+        swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+        bosses: [],
+      },
+      startingWeapons: ['static-sock'],
+      startingLevel: MAX_WEAPON_LEVEL,
+      escalation: [[0, 40]],
+    });
+    let socks = 0;
+    let sparks = 0;
+    while (a.state().time < 15_000) {
+      a.step(still);
+      socks = Math.max(socks, a.socks().length);
+      sparks = Math.max(sparks, a.beams().length);
+    }
+    // It clung and sparked, among Possessed Cats only, and none grew homesick.
+    expect(socks).toBeGreaterThan(0);
+    expect(sparks).toBeGreaterThan(0);
+    expect(a.cats().length).toBeGreaterThan(5);
+    for (const cat of a.cats()) expect(cat.variety).toBe('possessed');
+    expect(a.cats().reduce((sum, c) => sum + c.homesickness, 0)).toBe(0);
+    // (A cat it could hurt would be sent home and leave the field: none did.)
+    expect(a.state().sentHome).toBe(0);
+    expect(a.weaponReport()).toEqual([{ id: 'static-sock', homesickness: 0, sentHome: 0 }]);
+  });
+
   it('the four together fill the screen: a fixed build of the kitchen drawer at its best', () => {
     const a = arena({
       ...steady,
@@ -508,12 +538,16 @@ describe('the kitchen drawer: four ways of working no other weapon has', () => {
     // They run away from where it landed.
     const before = running.map((c) => ({ id: c.id, d: Math.hypot(c.x - c.fleeX, c.y - c.fleeY) }));
     for (let i = 0; i < 5; i++) a.step(still);
+    let checked = 0;
     for (const { id, d } of before) {
       const cat = a.cats().find((c) => c.id === id);
       if (cat && cat.fleeUntil > a.state().time && cat.flungUntil <= a.state().time) {
         expect(Math.hypot(cat.x - cat.fleeX, cat.y - cat.fleeY)).toBeGreaterThan(d);
+        checked++;
       }
     }
+    // (Some were still running to be checked.)
+    expect(checked).toBeGreaterThan(0);
     // Other weapons startle nobody.
     const laser = lab('laser-pointer', MAX_WEAPON_LEVEL, 120);
     while (laser.state().time < 10_000) laser.step(still);

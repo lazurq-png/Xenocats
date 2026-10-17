@@ -84,3 +84,17 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Verification.** prettier (8 files) ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (122 passed / 35 skipped), database tests (its `database:` line) 35 passed, 0 skipped; build exit 0; 26 e2e specs, 154 passed / 2 skipped. The new e2e test ran 17/17 (×4 with its spec) after it was made to check each read on its own (D29). Acceptance: all checked by command; the look of the headers is not seen.
 - **Reviewer.** Approve, no defects; it noted the `next dev` rewrite of `AGENTS.md`, reverted by the gate as each time.
 - **CI of T5** (3d92164): **CI failed**, https://github.com/lazurq-png/Xenocats/actions/runs/38987634906, job *Browser tests (dev server)* only (smoke, security headers, dashboard login). Not reproduced locally: the job's command passed 3/3 warm and 1/1 cold on T5's tree (T6 parked meanwhile). T5 does not reach those specs. Recorded, not repaired (Q8, as the 2026-10-09 run's D67); T6's run decides, and a repeat is repaired as a verification failure.
+
+## Usage-limit gap
+
+- 02:56 → 04:51: the account's usage limit. The checkpoint's range reviewer, cut off mid-review, was resumed from where it stopped. T6's CI poll had resolved meanwhile (below).
+
+## Checkpoint 1 (after T1–T6, range a62b5e4..0838c39) (completed)
+
+- Branch `2026-10-17-c1-checkpoint`, base 0838c39. Started 02:53, completed 05:05 (the gap above inside it).
+- **Tests.** Every changed behaviour has a test that fails without it, apart from the recorded gaps: art and drawing (not seen), co-op crediting of both characters (T4), a Skip click (D26). Filled now: the R key's reroll (fusion test), a Cucumber check that could check nothing, the Possessed Cat's immunity to the sock (new, mutation-checked), and no Server Action from a hooked run (leaderboard e2e). No test of removed behaviour, no duplicate. Nothing deleted. D32.
+- **Quality and security.** The reviewer on the range, security rules in scope: approve, five Low, four acted on (D31) and one known (Q5).
+- **Speed.** Base against tip, side by side (D30): simulation +7% / +3% / +5% (500 / 2000 / 6000 cats), render −5% / −2% fps (500 / 2000 cats). All under 10%; nothing to chase.
+- **Full suites.** prettier, lint (0 warnings), tsc clean; `npm test` 1020 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped.
+- **What it brings.** The first six tasks are checked as a whole: tested, reviewed for security, not slower beyond the plan's line. The gaps that remain are written down.
+- **CI of T6** (0838c39): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38988415991. T5's dev-server failure (Q8) did not repeat there.

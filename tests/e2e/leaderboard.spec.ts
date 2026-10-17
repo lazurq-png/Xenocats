@@ -82,11 +82,18 @@ test.describe('signed in, with only a seed', () => {
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto('/cats/survival?seed=7');
+    // No Server Action is called for it: the server never starts a run to rank.
+    const actions: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.headers()['next-action'])
+        actions.push(request.url());
+    });
     await startRun(page);
     await playThenGiveUp(page);
     await expect(page.getByTestId('leaderboard-entry')).toHaveText(
       'Not ranked on the leaderboard: this run used test settings (?seed=).'
     );
+    expect(actions).toEqual([]);
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Save to the leaderboard' })).toHaveCount(0);
   });
