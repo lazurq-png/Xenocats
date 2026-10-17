@@ -4,7 +4,7 @@
 // live in (localStorage, one versioned key; anything unreadable is a fresh start).
 
 import type { ArenaConfig } from './arena';
-import { BASE_WEAPONS, EVOLUTIONS, FUSIONS, WEAPONS, type WeaponId } from './arsenal';
+import { BASE_WEAPONS, EVOLUTIONS, FUSIONS, PASSIVES, WEAPONS, type WeaponId } from './arsenal';
 import { VARIETIES } from './varieties';
 
 export const PROGRESS_KEY = 'xenocats:survival:v1:progress';
@@ -85,9 +85,20 @@ export type UpgradeId =
   | 'sternness'
   | 'brisk-step'
   | 'long-arms'
-  | 'second-wind'
   | 'second-opinion'
-  | 'shrug';
+  | 'shrug'
+  | 'thick-coat'
+  | 'steady-hands'
+  | 'wide-brim'
+  | 'old-habits'
+  | 'kindly-manner'
+  | 'lint-roller'
+  | 'deep-pockets'
+  | 'patience'
+  | 'firm-no'
+  | 'lucky-coat-button'
+  | 'spare-pocket'
+  | 'second-wind';
 
 export const UPGRADES: Readonly<
   Record<UpgradeId, { name: string; description: string; maxLevel: number; baseCost: number }>
@@ -116,12 +127,6 @@ export const UPGRADES: Readonly<
     maxLevel: 3,
     baseCost: 10,
   },
-  'second-wind': {
-    name: 'Second Wind',
-    description: 'Once a run, when his Resolve is spent, half of it returns.',
-    maxLevel: 1,
-    baseCost: 80,
-  },
   'second-opinion': {
     name: 'Second Opinion',
     description: 'One more reroll at the level-ups of every run.',
@@ -133,6 +138,78 @@ export const UPGRADES: Readonly<
     description: 'One more skip at the level-ups of every run.',
     maxLevel: 3,
     baseCost: 15,
+  },
+  'thick-coat': {
+    name: 'Thick Coat',
+    description: '4% less Resolve lost to cats.',
+    maxLevel: 5,
+    baseCost: 14,
+  },
+  'steady-hands': {
+    name: 'Steady Hands',
+    description: 'His weapons fire 4% more often.',
+    maxLevel: 5,
+    baseCost: 15,
+  },
+  'wide-brim': {
+    name: 'Wide Brim',
+    description: 'Weapon effects are 5% wider.',
+    maxLevel: 5,
+    baseCost: 14,
+  },
+  'old-habits': {
+    name: 'Old Habits',
+    description: 'What his weapons leave behind lasts 6% longer.',
+    maxLevel: 5,
+    baseCost: 12,
+  },
+  'kindly-manner': {
+    name: 'Kindly Manner',
+    description: 'He gains 5% more experience.',
+    maxLevel: 5,
+    baseCost: 14,
+  },
+  'lint-roller': {
+    name: 'Lint Roller',
+    description: 'Gain 10% more tufts.',
+    maxLevel: 5,
+    baseCost: 12,
+  },
+  'deep-pockets': {
+    name: 'Deep Pockets',
+    description: 'Pickups turn up 10% more often.',
+    maxLevel: 3,
+    baseCost: 18,
+  },
+  patience: {
+    name: 'Patience',
+    description: 'He regains 1 Resolve every 5 seconds, unhurried.',
+    maxLevel: 3,
+    baseCost: 25,
+  },
+  'firm-no': {
+    name: 'Firm No',
+    description: 'One more banish to use in every run: a banished choice never comes back.',
+    maxLevel: 3,
+    baseCost: 25,
+  },
+  'lucky-coat-button': {
+    name: 'Lucky Coat Button',
+    description: 'Every level-up offers one more choice.',
+    maxLevel: 1,
+    baseCost: 100,
+  },
+  'spare-pocket': {
+    name: 'Spare Pocket',
+    description: 'He carries one more passive.',
+    maxLevel: 2,
+    baseCost: 60,
+  },
+  'second-wind': {
+    name: 'Second Wind',
+    description: 'Once a run, when his Resolve is spent, half of it returns.',
+    maxLevel: 1,
+    baseCost: 80,
   },
 };
 
@@ -203,11 +280,26 @@ export const CHARACTERS: Readonly<Record<CharacterId, Character>> = {
 /** The secret cat: comes only to a Keeper who stands still; nothing names it before then. */
 export const SECRET_CAT = 'neighbour';
 
-/** The codex's entries, in order: every evolution (one of them hidden), every fusion and the secret cat. */
-export const CODEX: readonly { id: string; name: string }[] = [
-  ...EVOLUTIONS.map((e) => ({ id: e.to, name: WEAPONS[e.to].name })),
-  ...FUSIONS.map((f) => ({ id: f.to, name: WEAPONS[f.to].name })),
-  { id: SECRET_CAT, name: VARIETIES[SECRET_CAT].name },
+export type CodexKind = 'evolution' | 'secret-evolution' | 'fusion' | 'secret-cat';
+
+/**
+ * The codex's entries, in order: every evolution (one of them hidden), every fusion and
+ * the secret cat; each with what makes it, in words.
+ */
+export const CODEX: readonly { id: string; name: string; kind: CodexKind; recipe: string }[] = [
+  ...EVOLUTIONS.map((e) => ({
+    id: e.to,
+    name: WEAPONS[e.to].name,
+    kind: e.secret ? ('secret-evolution' as const) : ('evolution' as const),
+    recipe: `${WEAPONS[e.from].name} + ${PASSIVES[e.with].name}`,
+  })),
+  ...FUSIONS.map((f) => ({
+    id: f.to,
+    name: WEAPONS[f.to].name,
+    kind: 'fusion' as const,
+    recipe: `${WEAPONS[f.from[0]].name} + ${WEAPONS[f.from[1]].name}`,
+  })),
+  { id: SECRET_CAT, name: VARIETIES[SECRET_CAT].name, kind: 'secret-cat', recipe: 'Secret cat' },
 ];
 
 // ------------------------------------------------------------------- progress
@@ -281,7 +373,8 @@ export function applyRun(
   progress: Progress,
   run: RunResult
 ): { progress: Progress; earned: number; reached: MilestoneId[] } {
-  const earned = tuftsFor(run);
+  // The Lint Roller: a tenth more a level.
+  const earned = Math.floor(tuftsFor(run) * (1 + 0.1 * (progress.upgrades['lint-roller'] ?? 0)));
   const reached = (Object.keys(MILESTONES) as MilestoneId[]).filter(
     (id) => !progress.milestones.includes(id) && MILESTONES[id].reached(run)
   );
@@ -338,11 +431,19 @@ export function availableWeapons(progress: Progress): WeaponId[] {
   });
 }
 
-/** The codex: each entry's name once found, "???" until then. */
-export function codexEntries(progress: Progress): { id: string; name: string; found: boolean }[] {
+/** The codex: each entry's name and what makes it once found, "???" and nothing until then. */
+export function codexEntries(
+  progress: Progress
+): { id: string; name: string; kind: CodexKind; recipe: string | null; found: boolean }[] {
   return CODEX.map((entry) => {
     const found = progress.found.includes(entry.id);
-    return { id: entry.id, name: found ? entry.name : '???', found };
+    return {
+      id: entry.id,
+      name: found ? entry.name : '???',
+      kind: entry.kind,
+      recipe: found ? entry.recipe : null,
+      found,
+    };
   });
 }
 
@@ -375,9 +476,20 @@ export function runConfig(
     boost: {
       might: 1 + 0.05 * level('sternness'),
       pickup: 1 + 0.1 * level('long-arms'),
+      drain: 1 - 0.04 * level('thick-coat'),
+      // 4% more often a level: each cooldown is the shorter for it.
+      cooldown: 1 / (1 + 0.04 * level('steady-hands')),
+      area: 1 + 0.05 * level('wide-brim'),
+      duration: 1 + 0.06 * level('old-habits'),
+      xp: 1 + 0.05 * level('kindly-manner'),
+      luck: 1 + 0.1 * level('deep-pockets'),
+      recovery: 0.2 * level('patience'),
+      choices: level('lucky-coat-button'),
+      passiveSlots: level('spare-pocket'),
       revivals: level('second-wind'),
       rerolls: level('second-opinion'),
       skips: level('shrug'),
+      banishes: level('firm-no'),
     },
     secondPlayer:
       second === null

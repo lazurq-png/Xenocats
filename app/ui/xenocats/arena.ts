@@ -34,6 +34,7 @@ import {
   type WeaponKind,
   type WeaponStats,
   FUSIONS,
+  choiceKey,
   evolutionFor,
   fusionFor,
   modifiers,
@@ -212,8 +213,28 @@ export type ArenaConfig = {
   availableWeapons: readonly WeaponId[];
   /** How many weapons and passives each Keeper can hold: more in a longer run. */
   slots: Slots;
-  /** What the run brings from before (progression.ts): multipliers, revivals, and more rerolls and skips. */
-  boost: { might: number; pickup: number; revivals: number; rerolls: number; skips: number };
+  /**
+   * What the run brings from before (the Tailor's work, progression.ts): multipliers on
+   * the passives' modifiers of the same names, Resolve a second and level-up choices
+   * added, more passive slots, revivals, and more rerolls, skips and banishes.
+   */
+  boost: {
+    might: number;
+    pickup: number;
+    drain: number;
+    cooldown: number;
+    area: number;
+    duration: number;
+    xp: number;
+    luck: number;
+    recovery: number;
+    choices: number;
+    passiveSlots: number;
+    revivals: number;
+    rerolls: number;
+    skips: number;
+    banishes: number;
+  };
   /**
    * At a level-up a Keeper may ask for new choices (a reroll) or take a little experience
    * and no choice (a skip): so many of each a run, and a skip is worth this share of the
@@ -331,7 +352,23 @@ export const ARENA_CONFIG: ArenaConfig = {
   chestReach: 36,
   availableWeapons: BASE_WEAPONS,
   slots: DEFAULT_SLOTS,
-  boost: { might: 1, pickup: 1, revivals: 0, rerolls: 0, skips: 0 },
+  boost: {
+    might: 1,
+    pickup: 1,
+    drain: 1,
+    cooldown: 1,
+    area: 1,
+    duration: 1,
+    xp: 1,
+    luck: 1,
+    recovery: 0,
+    choices: 0,
+    passiveSlots: 0,
+    revivals: 0,
+    rerolls: 0,
+    skips: 0,
+    banishes: 0,
+  },
   levelUp: { rerolls: 1, skips: 1, skipXpShare: 0.3 },
   secretCat: { afterMs: 60_000, stillMs: 20_000 },
   secondPlayer: null,
@@ -672,9 +709,12 @@ type Held = {
 
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
-  /** Rerolls and skips he has left this run. */
+  /** Rerolls, skips and banishes he has left this run. */
   rerollsLeft: number;
   skipsLeft: number;
+  banishesLeft: number;
+  /** What he has banished this run (choiceKey): never offered him again. */
+  banished: Set<string>;
   /**
    * Where he looks, radians (the screen's): at the crosshair, else at the cat his first
    * aiming weapon targets now (looked for five times a second), else null.
@@ -789,7 +829,17 @@ export function createArena(options: {
     ...m,
     might: m.might * config.boost.might,
     pickup: m.pickup * config.boost.pickup,
+    drain: m.drain * config.boost.drain,
+    cooldown: m.cooldown * config.boost.cooldown,
+    area: m.area * config.boost.area,
+    duration: m.duration * config.boost.duration,
+    xp: m.xp * config.boost.xp,
+    luck: m.luck * config.boost.luck,
+    recovery: m.recovery + config.boost.recovery,
+    choices: m.choices + config.boost.choices,
   });
+  /** How many weapons and passives a Keeper can hold, with the Tailor's extra pockets. */
+  const slots = { ...config.slots, passives: config.slots.passives + config.boost.passiveSlots };
 
   function newKeeper(
     index: number,
@@ -821,6 +871,8 @@ export function createArena(options: {
       waveAt: 0,
       rerollsLeft: config.levelUp.rerolls + config.boost.rerolls + modifiers(passives).rerolls,
       skipsLeft: config.levelUp.skips + config.boost.skips,
+      banishesLeft: config.boost.banishes,
+      banished: new Set(),
       aimAngle: null,
       lookAt: 0,
       walkAngle: 0,
@@ -2800,7 +2852,8 @@ export function createArena(options: {
       k.mods.choices,
       random,
       config.availableWeapons,
-      config.slots
+      slots,
+      k.banished
     );
     if (choosing.length > 0) return;
     choosing = null;
@@ -3102,10 +3155,40 @@ export function createArena(options: {
       return true;
     },
 
+    /**
+     * Banishes choice `index`, if he has a banish left: false if not. It is never offered
+     * him again this run, and a new choice takes its place (if the pool has one); the
+     * others stay as they are.
+     */
+    banish(index: number): boolean {
+      const k = keepers[chooser];
+      if (!choosing || k.banishesLeft <= 0 || index < 0 || index >= choosing.length) return false;
+      k.banishesLeft--;
+      k.banished.add(choiceKey(choosing[index].kind, choosing[index].id));
+      const onScreen = new Set([...k.banished, ...choosing.map((c) => choiceKey(c.kind, c.id))]);
+      const held = new Map([...k.weapons].map(([id, w]) => [id, w.level] as const));
+      const [replacement] = offerChoices(
+        held,
+        k.passives,
+        1,
+        random,
+        config.availableWeapons,
+        slots,
+        onScreen
+      );
+      choosing = replacement
+        ? choosing.map((c, i) => (i === index ? replacement : c))
+        : choosing.filter((_, i) => i !== index);
+      // The last choice banished, with nothing to replace it: as if nothing were left to learn.
+      if (choosing.length === 0) offer();
+      return true;
+    },
+
     /** What the Keeper whose choice waits has left to ask for. */
-    levelUpUses: (): { rerolls: number; skips: number } => ({
+    levelUpUses: (): { rerolls: number; skips: number; banishes: number } => ({
       rerolls: keepers[chooser].rerollsLeft,
       skips: keepers[chooser].skipsLeft,
+      banishes: keepers[chooser].banishesLeft,
     }),
 
     /** Whose choice the waiting level-up is: 0 for player 1, 1 for player 2. */
@@ -3252,7 +3335,7 @@ export function createArena(options: {
         /** The run's length: when the Matriarch comes, ms (Infinity: an endless run). */
         goalMs: config.timeGoalMs,
         /** How many weapons and passives each Keeper can hold. */
-        slots: config.slots,
+        slots,
         status,
         outcome,
         /** Player 1's Keeper (the only one, alone). */
@@ -3274,6 +3357,7 @@ export function createArena(options: {
           facing: k.facing,
           rerollsLeft: k.rerollsLeft,
           skipsLeft: k.skipsLeft,
+          banishesLeft: k.banishesLeft,
           /** The way he looks, radians (the screen's): his aim, else the way he walks. */
           lookAngle: k.aimAngle ?? k.walkAngle,
           untouchable: time < k.untouchableUntil,

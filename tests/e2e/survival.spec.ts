@@ -106,6 +106,22 @@ async function openArena(page: Page, query = '?seed=7') {
 }
 
 /** Starts a run; a click before hydration is lost, so click until it starts. */
+/** Opens one of the start screen's windows (Select Character, Shop, Codex) and returns it. */
+async function openWindow(page: Page, which: 'character' | 'shop' | 'codex') {
+  const window = page.getByTestId(`survival-${which}-window`);
+  await expect
+    .poll(
+      async () => {
+        // A click before hydration is lost: open until open.
+        if (!(await window.isVisible())) await page.getByTestId(`survival-open-${which}`).click();
+        return window.isVisible();
+      },
+      { timeout: 15_000 }
+    )
+    .toBe(true);
+  return window;
+}
+
 async function startRun(page: Page, tap = false) {
   await expect
     .poll(
@@ -449,6 +465,36 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
   });
 
+  test('with the Tailor’s Firm No, a level-up choice can be banished: only it is replaced, and the use is spent', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&speed=6');
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'xenocats:survival:v1:progress',
+        JSON.stringify({ version: 1, tufts: 0, upgrades: { 'firm-no': 1 }, milestones: [] })
+      )
+    );
+    await page.reload();
+    await startRun(page);
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await expect(dialog).toContainText('A banished choice never comes back this run (1 left).');
+    const choices = dialog.locator('button[data-choice]');
+    const ids = () => choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
+    const before = await ids();
+    await dialog.getByTestId('survival-banish').nth(1).click();
+    const after = await ids();
+    expect(after).toHaveLength(before.length);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).not.toBe(before[1]);
+    // None left: the Banish buttons are gone, and a choice goes on as usual.
+    await expect(dialog.getByTestId('survival-banish')).toHaveCount(0);
+    await choices.first().click();
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+  });
+
   test('a level-up can be rerolled once (new choices, the use spent), a number past the choices picks nothing, and X skips once', async ({
     page,
   }) => {
@@ -521,7 +567,14 @@ test.describe('on a computer', () => {
   }) => {
     await openArena(page);
     await expect(page.getByTestId('survival-lobby-aim-auto')).toBeChecked();
-    await page.getByTestId('survival-lobby-aim-crosshair').check();
+    // A click before hydration is lost: choose until chosen.
+    const crosshair = page.getByTestId('survival-lobby-aim-crosshair');
+    await expect
+      .poll(async () => {
+        await crosshair.click();
+        return crosshair.isChecked();
+      })
+      .toBe(true);
     await startRun(page);
     await expect(area(page)).toHaveAttribute('data-aim', 'crosshair');
     const crosshairAt = async (x: number, y: number) => {
@@ -901,24 +954,31 @@ test.describe('on a computer', () => {
       )
     );
     await page.reload();
+    const characters = await openWindow(page, 'character');
     const porter = page.getByTestId('survival-character-night-porter');
     await expect(porter).toBeEnabled();
-    // Not had: the Housekeeper is locked until engaged.
-    await expect(page.getByTestId('survival-character-housekeeper')).toBeDisabled();
-    // A click before hydration is lost: choose until chosen.
-    await expect
-      .poll(async () => {
-        await porter.check();
-        return porter.isChecked();
-      })
-      .toBe(true);
-    const codex = page.getByTestId('survival-codex');
+    // Not had: the Housekeeper is locked until engaged, and he cannot pay for her.
+    await expect(page.getByTestId('survival-character-housekeeper')).toHaveCount(0);
+    await expect(page.getByTestId('survival-buy-housekeeper')).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    // Choosing him closes the window; the button that opened it names him.
+    await porter.click();
+    await expect(characters).toBeHidden();
+    await expect(porter).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('survival-open-character')).toContainText('The Night Porter');
+    const codex = (await openWindow(page, 'codex')).getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
+    await expect(codex.getByText('Yarn Ball + Scissors')).toBeVisible();
     // Seventeen evolutions, seven fusions and the secret cat: one found, the rest unknown.
     await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(24);
+    // Esc closes it.
+    await page.keyboard.press('Escape');
+    await expect(codex).toBeHidden();
     // Kept after a reload; he goes out as the Night Porter, with the Spray Bottle.
     await page.reload();
-    await expect(porter).toBeChecked();
+    await expect(porter).toHaveAttribute('aria-pressed', 'true');
     await startRun(page);
     await expect(area(page)).toHaveAttribute('data-weapons', 'spray-bottle:1');
   });
@@ -945,6 +1005,7 @@ test.describe('on a computer', () => {
       }, milestones);
     await store(['survive-2']);
     await openArena(page);
+    await openWindow(page, 'character');
     const hairdresser = page.getByTestId('survival-character-hairdresser');
     await expect(hairdresser).toBeDisabled();
     await expect(page.getByText('Locked: Survive 10:00.')).toBeVisible();
@@ -963,13 +1024,10 @@ test.describe('on a computer', () => {
       );
     });
     await page.reload();
+    await openWindow(page, 'character');
     await expect(hairdresser).toBeEnabled();
-    await expect
-      .poll(async () => {
-        await hairdresser.check();
-        return hairdresser.isChecked();
-      })
-      .toBe(true);
+    await hairdresser.click();
+    await expect(hairdresser).toHaveAttribute('aria-pressed', 'true');
     await startRun(page);
     await expect(area(page)).toHaveAttribute('data-weapons', 'hair-dryer:1');
   });
@@ -986,6 +1044,7 @@ test.describe('on a computer', () => {
     await page.reload();
     const tufts = page.getByTestId('survival-tufts');
     await expect(tufts).toHaveAttribute('data-tufts', '25');
+    const shop = await openWindow(page, 'shop');
     const stubbornness = page.getByTestId('survival-upgrade-stubbornness');
     // A click before hydration is lost: buy until it is bought.
     await expect
@@ -1002,6 +1061,11 @@ test.describe('on a computer', () => {
       page.getByRole('button', { name: 'Buy Stubbornness level 2 for 17 tufts' })
     ).toBeDisabled();
     await expect(page.getByTestId('survival-buy-second-wind')).toBeDisabled();
+    // Second Wind is the last of his wares.
+    await expect(shop.getByRole('listitem').last()).toHaveAttribute(
+      'data-testid',
+      'survival-upgrade-second-wind'
+    );
     await page.reload();
     await expect(stubbornness).toHaveAttribute('data-level', '1');
     await expect(tufts).toHaveAttribute('data-tufts', '15');

@@ -1287,17 +1287,23 @@ export type Choice =
  * level of one held, never one at its highest level; `count` of them, all
  * different, at random. With nothing left, none.
  */
+/** A choice's weapon or passive, whatever its level: what a banish removes. */
+export const choiceKey = (kind: Choice['kind'], id: string) => `${kind}:${id}`;
+
 export function offerChoices(
   weapons: ReadonlyMap<WeaponId, number>,
   passives: ReadonlyMap<PassiveId, number>,
   count: number,
   random: Random,
   available: readonly WeaponId[] = BASE_WEAPONS,
-  slots: Slots = DEFAULT_SLOTS
+  slots: Slots = DEFAULT_SLOTS,
+  /** Never offered: what he has banished this run, and what is on screen beside a replacement. */
+  excluded: ReadonlySet<string> = new Set()
 ): Choice[] {
   const pool: Choice[] = [];
   const absorbed = absorbedBy(weapons);
   for (const id of available) {
+    if (excluded.has(choiceKey('weapon', id))) continue;
     // A weapon that has evolved is gone for good: its evolution holds its place, or a
     // fused weapon that took the evolution up.
     if (EVOLUTIONS.some((e) => e.from === id && (weapons.has(e.to) || absorbed.has(e.to)))) {
@@ -1309,6 +1315,7 @@ export function offerChoices(
     } else if (level < MAX_WEAPON_LEVEL) pool.push({ kind: 'weapon', id, level: level + 1 });
   }
   for (const id of Object.keys(PASSIVES) as PassiveId[]) {
+    if (excluded.has(choiceKey('passive', id))) continue;
     const level = passives.get(id);
     if (level === undefined) {
       if (passives.size < slots.passives) pool.push({ kind: 'passive', id, level: 1 });

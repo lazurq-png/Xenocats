@@ -261,8 +261,8 @@ export default function ArenaGame({
   } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
-  // What the Keeper whose choice waits has left to reroll and to skip.
-  const [uses, setUses] = useState({ rerolls: 0, skips: 0 });
+  // What the Keeper whose choice waits has left to reroll, to skip and to banish.
+  const [uses, setUses] = useState({ rerolls: 0, skips: 0, banishes: 0 });
   // The level the waiting choice is for (several can wait after one gem).
   const [choiceLevel, setChoiceLevel] = useState(2);
   // One Keeper, or two at one keyboard; player 2's character; whose choice it is.
@@ -511,6 +511,13 @@ export default function ArenaGame({
     if (screenRef.current !== 'choosing' || !arenaRef.current?.skip()) return;
     refresh();
   }, [refresh]);
+  const banish = useCallback(
+    (index: number) => {
+      if (screenRef.current !== 'choosing' || !arenaRef.current?.banish(index)) return;
+      refresh();
+    },
+    [refresh]
+  );
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
 
@@ -1383,6 +1390,7 @@ export default function ArenaGame({
           ? 'Walk with the pad. Tap Pause to stop for a moment.'
           : 'Walk with WASD or the arrow keys. Esc pauses.'}
       </p>
+      {!running && <ProgressionPanel />}
       {!touch && (
         <fieldset className="mt-4 text-sm text-aura">
           <legend className="font-semibold text-cream">Keepers</legend>
@@ -1477,8 +1485,6 @@ export default function ArenaGame({
           );
         })}
       </ul>
-
-      {!running && <ProgressionPanel />}
 
       {screen === 'results' && result && outcome && (
         <section
@@ -1634,6 +1640,8 @@ export default function ArenaGame({
                   {touch
                     ? 'Tap a choice.'
                     : `Press 1 to ${choices.length}, or use the arrow keys and Enter. R rerolls, X skips.`}
+                  {uses.banishes > 0 &&
+                    ` A banished choice never comes back this run (${uses.banishes} left).`}
                 </p>
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
@@ -1641,7 +1649,7 @@ export default function ArenaGame({
                     const kind = choice.kind === 'weapon' ? 'Weapon' : 'Passive';
                     const tier = tierStyle(choice);
                     return (
-                      <li key={i}>
+                      <li key={i} className="flex gap-2">
                         <button
                           type="button"
                           data-choice={choice.id}
@@ -1649,7 +1657,7 @@ export default function ArenaGame({
                           data-level={choice.level}
                           data-tier={tier.tier}
                           onClick={() => choose(i)}
-                          className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
+                          className="min-w-0 flex-1 rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
                         >
                           <span className="font-semibold text-plasma">{i + 1}.</span>{' '}
                           <span className={`font-semibold ${tier.className}`}>{name}</span>{' '}
@@ -1670,6 +1678,17 @@ export default function ArenaGame({
                             </span>
                           )}
                         </button>
+                        {uses.banishes > 0 && (
+                          <button
+                            type="button"
+                            data-testid="survival-banish"
+                            aria-label={`Banish ${name}`}
+                            onClick={() => banish(i)}
+                            className="shrink-0 rounded-xl border border-line bg-void/70 px-3 text-xs font-semibold text-cream hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
+                          >
+                            Banish
+                          </button>
+                        )}
                       </li>
                     );
                   })}
