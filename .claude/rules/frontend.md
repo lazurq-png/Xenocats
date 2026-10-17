@@ -138,8 +138,9 @@ Do not assume desktop-only behavior unless the product explicitly is desktop-onl
 After significant UI work:
 
 1. `npm run lint` and `npx next typegen && npx tsc --noEmit`
-2. `npm test`, and `npm run test:e2e` with a Playwright test in `tests/e2e/`
-   that performs the interaction the change affects
+2. a Playwright test in `tests/e2e/` that performs the interaction the change
+   affects, then the selection `npm run test:affected` prints — not the whole
+   suites (`.claude/rules/testing.md`, Test Selection)
 3. `npm run build`
 4. start the application — `npm run dev` — and inspect the rendered UI in a
    browser, at phone and desktop width

@@ -97,9 +97,15 @@ Use broader validation when the change warrants it.
 
 In this repository the module step is `npm run test:affected -- --base <ref>`
 (`scripts/affected-tests.mjs`): `vitest related` over the changed files, and
-the browser specs that visit a route the change reaches, plus the opt-in
-database tests (a `database:` line) when a query or the schema changed. It prints `FULL` for a
-change it cannot place; take that, and never shrink its selection by hand. A
+the browser specs that visit an area the change reaches (its route's first two
+segments: `/cats/survival`, `/dashboard/invoices`), plus the opt-in
+database tests (a `database:` line) when a query or the schema changed. What
+reaches the dashboard only through its cats (`app/ui/xenocats/cat-layer.tsx`)
+selects just the `cat-attacks` specs there; type-only imports are not followed.
+It prints `FULL` for a
+change it cannot place; take that, and never shrink its selection by hand. The
+selection is the stopping point: do not add a full run after it "to be safe"
+(that is what CI is for). A
 new spec must name the routes it visits as paths (`page.goto('/cats')`, a
 `toHaveURL` regex) so the selector can find it; `tests/unit/affected-tests.test.ts`
 fails for a spec no route reaches. CI runs the full suites on every push to

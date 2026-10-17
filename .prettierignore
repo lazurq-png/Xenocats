@@ -1,0 +1,9 @@
+# Prose. Prettier would pad every table to its widest cell and swap `*` bullets
+# for `-`: wider files for the agents that load them, and noisy diffs.
+*.md
+
+# Other sessions' checkouts (git worktrees), each formatted on its own branch.
+.claude/worktrees/
+
+# Next.js rewrites it in its own layout whenever it adds an include.
+tsconfig.json
