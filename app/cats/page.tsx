@@ -19,13 +19,13 @@ export default function Page() {
         Skip to main content
       </a>
       <main className="mx-auto max-w-[1366px] px-6 pb-12 pt-4 md:px-12">
-        <header className="mb-12 flex items-center justify-between gap-4">
+        <header className="mb-12 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <Link href="/" aria-label="Xenocat Analytics home">
             <XenocatLogo />
           </Link>
           <Link
             href="/dashboard"
-            className="border-b-2 border-aura-link/70 pb-1 text-[16.5px] font-semibold text-aura-link transition hover:border-aura hover:text-aura"
+            className="whitespace-nowrap border-b-2 border-aura-link/70 pb-1 text-[16.5px] font-semibold text-aura-link transition hover:border-aura hover:text-aura"
           >
             Back to the dashboard
           </Link>

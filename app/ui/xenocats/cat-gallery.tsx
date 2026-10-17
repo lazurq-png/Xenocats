@@ -37,12 +37,12 @@ function FightLinks() {
   return (
     <section
       aria-labelledby="fight-heading"
-      className="mb-10 rounded-2xl border border-line bg-panel p-6"
+      className="mb-10 max-w-lg rounded-2xl border border-line bg-panel p-6"
     >
       <h2 id="fight-heading" className="font-display text-2xl font-semibold text-cream">
         Survival Game
       </h2>
-      <p className="mt-2 max-w-2xl text-sm text-aura">
+      <p className="mt-2 text-sm text-aura">
         Walk your ranger, aim, and send the cats home before they get you.
       </p>
       <div className="mt-4 flex flex-wrap gap-4">
