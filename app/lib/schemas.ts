@@ -211,6 +211,16 @@ export const LeaderboardName = z
       .regex(/^[\p{L}\p{M}\p{N} _.'-]+$/u, {
         message: "A name is letters, digits, spaces and _ . ' - only.",
       })
+      // Marks (accents, vowel signs) belong on a letter or digit.
+      .refine((name) => !/(^|[^\p{L}\p{N}\p{M}])\p{M}/u.test(name), {
+        message: 'An accent must be on a letter.',
+      })
+      // And at most three that sit on one spot (non-spacing Mn, or enclosing Me) in a row:
+      // more stack into a tower over the leaderboard's other rows. Spacing marks (Mc) move
+      // the text along, so they are not counted: Burmese ကျော် (Kyaw) has four marks, one Mn.
+      .refine((name) => !/[\p{Mn}\p{Me}]{4}/u.test(name), {
+        message: 'A letter can carry at most three accents.',
+      })
   );
 
 /**

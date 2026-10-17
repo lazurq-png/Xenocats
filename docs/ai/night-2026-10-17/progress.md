@@ -162,3 +162,21 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Full suites.** prettier, lint (0 warnings), tsc clean; `npm test` 1025 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped.
 - **What it brings.** The exploration so far is checked as a whole, and a test that would have broken every build in three weeks no longer will.
 - **CI of E6** (bb93a87): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38999705681.
+
+## E7 — started 05:56: cat sprites rasterised at the size they are drawn (kind: speed on a weak machine)
+
+## E7 — Cat sprites rasterised at the size they are drawn (abandoned: moved no number, reverted)
+
+- Branch `2026-10-17-e7-sprite-size`, base 3ebff87, no commit. Started 05:58, ended 06:00.
+- Before it, the turn's "bugs" reading (`cat-engine.ts`'s phases and combos, the arena view's frame loop and hidden-tab handling, every event listener's removal) found nothing to change, so it made no item.
+- Tried: the xenocat and variety bitmaps made at their drawn size times the screen's pixel ratio (1 or 2), instead of 88 px and 128 px scaled down on every draw. Measured interleaved, two pairs (×4 CPU, full graphics, pixel ratio 1, where the downscale was): 500 cats 46.9 / 46.5 fps before against 46.7 / 46.3 after; 2000 cats 21.9 / 22.4 against 22.1 / 21.8. No change, so it was reverted. The browser's scaled `drawImage` is evidently not what limits this benchmark. Of the plan's candidates, only "one path and fill per colour for gems and shots" is left untried.
+
+## E8 — started 06:01: a leaderboard name cannot stack accents into a tower (kind: security and quality)
+
+## E8 — A leaderboard name cannot stack accents into a tower (completed)
+
+- Branch `2026-10-17-e8-name-marks`, base 3ebff87. Started 06:01, completed 06:13.
+- **What the code does.** `schemas.ts` (`LeaderboardName`, used by the leaderboard Server Action and its form): a combining mark must follow a letter, digit or mark ("An accent must be on a letter."), and four or more marks that sit on one spot (non-spacing Mn, or enclosing Me) in a row are refused ("A letter can carry at most three accents."). Spacing marks are not counted. `input-safeguards.test.ts`: real names that pass (Vietnamese, a decomposed ë, two marks NFC reorders, Devanagari, and four Burmese ones with four or five marks), and towers and stray marks refused, each with its message. The marks are written as code points.
+- **What it brings.** Nobody can deface the public leaderboard with a name that draws over the other rows, while names in Burmese, Devanagari, Thai and the other scripts checked still go on it. Decisions: D38.
+- **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (128 passed / 35 skipped), build exit 0, 26 e2e specs (154 passed / 2 skipped). The tower test fails under the old rule (it passes 19 marks). The board's look with a long accented name is not seen.
+- **Reviewer.** Request changes: one Medium (four-mark Burmese names were refused; now only Mn and Me are counted) and one Low (the stray-mark message); both fixed. Re-review: approve, one Low (enclosing marks), fixed.
