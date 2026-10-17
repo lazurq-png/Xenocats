@@ -281,10 +281,11 @@ it, on that job's database.
 clean exit does not mean an empty report. Read the output; do not report "lint
 passed" as though it found nothing.
 
-Formatting is per file. `npm run format` rewrites the whole repository, and not
-every file matches `.prettierrc` (e.g. `tsconfig.json`, `global.d.ts` and
-`app/dashboard/(overview)/loading.tsx` do not), so it produces a drive-by diff. Run `prettier --check` / `--write` on the files
-the task changed.
+Every file Prettier checks matches `.prettierrc`, so `npx prettier --check .`
+should pass. `.prettierignore` leaves out Markdown (Prettier would pad its
+tables), `.claude/worktrees/` (other sessions' checkouts) and `tsconfig.json`
+(Next rewrites it in its own layout); Prettier skips those even when named.
+A task still formats only the files it changed.
 
 The running app, and possibly `npm run build` where a page prerenders, need
 `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` in `.env`. **`POSTGRES_URL` is a
@@ -336,15 +337,24 @@ Start with the narrowest useful verification.
 
 Expand verification when the change has broader impact.
 
-`npm run test:affected` compares the tree with `--base` (default `main`) and
+**Run the selection, not the suites.** `npm test` and `npm run test:e2e` in
+full are for a `FULL` selection or when the user asks; CI runs every suite
+wherever work is merged, so a local full run of a change the selector placed
+proves nothing CI will not. `npm run test:affected` compares the tree with
+`--base` (by default whichever of `main`, `dev`, `Nightrun` is nearest: on one of
+them, the uncommitted work) and
 prints the tests to run: `vitest related` over the changed files, and the browser
-specs that visit a route the change reaches. For a change to a query, the schema
+specs that visit a route the change reaches. A change behind the dashboard's cats
+(`cat-layer.tsx`) selects only the cat-attacks specs there, since every other spec
+runs with the cats paused. For a change to a query, the schema
 or the database tests themselves it also prints a `database:` line, naming the
 opt-in database tests that `vitest related` would skip. When it cannot place a changed file
-(configuration, auth, the root layout, seed data, a deletion) it says `FULL`
+(configuration, auth, the root layout, seed data, the schema) it says `FULL`
 and names the file; then run the full suites. Cheap checks go first (prettier,
 lint, type check), the slow ones after, one at a time: the browser tests are
-timing-sensitive and fail under load.
+timing-sensitive and fail under load. While repairing, rerun only the failing
+test (`npx playwright test <spec> -g "<title>"`, `--last-failed`), then the
+selection once on the final state.
 
 Never report a verification result that was not actually observed.
 
