@@ -2,6 +2,81 @@
 
 Append-only. One entry per task, appended when it ends; the morning report is inserted at the top.
 
+## Morning report
+
+Written 2026-10-17 10:08, after the goal time, once the last CI poll (E12: passed) had resolved.
+
+### Goal
+
+- Plan `## Goal`: "2026-10-17 10:00" → Deadline 2026-10-17 10:00. The report was started at 10:00.
+- **What ended the run: the goal time.** The last item (E12) was completed at 10:00 sharp. The plan's six tasks were done by 02:50, and 12 exploration items and 3 checkpoints followed. The plan has an `## Exploration` section (bugs; speed on a weak machine; security and quality); it says "four kinds" and names three, and the three were rotated (D1). Its order line names tasks 7 and 8, which its task list lacks (D1).
+
+### Index
+
+| Task | Outcome | Branch | Base → tip | CI | What it brings |
+| ---- | ------- | ------ | ---------- | -- | -------------- |
+| T1 | completed | `2026-10-17-t1-hooks-unranked` | a62b5e4 → c690e7b | CI passed | No run with a test hook (seed included) goes on the leaderboard, and the results say why |
+| T2 | completed | `2026-10-17-t2-weapon-kinds` | c690e7b → ac2e365 | CI passed | Tennis Ball, Frying Pan, Static Sock and Cucumber each work in a way no other weapon does |
+| T3 | completed | `2026-10-17-t3-weapon-results` | ac2e365 → e87e678, repaired to 6731373 | CI failed, fixed in 1 cycle (checks: a test file in no CI group); passed at 6731373 | The results list what each weapon did, highest first |
+| T4 | completed | `2026-10-17-t4-character-bests` | 6731373 → 67cfa59 | CI passed | Each character's best per run length, with its day, in the lobby |
+| T5 | completed | `2026-10-17-t5-leftovers` | 67cfa59 → 3d92164 | CI failed (dev-server job, not reproduced locally; Q8); the next run, T6's, passed | A stunned Mega Cat rests its own time; two tests now able to fail; one fewer duplicate run |
+| T6 | completed | `2026-10-17-t6-customer-sort` | 3d92164 → 0838c39 | CI passed | The customers table sorts by its four totals' headers, kept in the URL |
+| Checkpoint 1 | completed | `2026-10-17-c1-checkpoint` | 0838c39 → 8a9348e | CI passed | T1–T6 reviewed for security, four test gaps closed, speed within 10% |
+| E1 | abandoned: not reproduced (55 runs) | `2026-10-17-e1-touch-flake` (local, no commit) | — | — | — |
+| E2 | abandoned: moved no number | `2026-10-17-e2-beam-path` (local, no commit) | — | — | — |
+| E3 | completed | `2026-10-17-e3-account-caps` | 8a9348e → 93be7a5 | CI passed | One account can no longer fill the database through the dashboard's actions |
+| E4 | completed | `2026-10-17-e4-fusion-deadline` | 93be7a5 → 0afca64 | CI passed | A test that took up to 96 s and ran out under load now takes 4 s |
+| E5 | abandoned: moved no number | `2026-10-17-e5-state-per-hud` (local, no commit) | — | — | — |
+| E6 | completed | `2026-10-17-e6-edit-form-message` | 0afca64 → bb93a87 | CI passed | The invoice edit form says why a save failed |
+| Checkpoint 2 | completed | `2026-10-17-c2-checkpoint` | bb93a87 → 3ebff87 | CI passed | A test that would have broken every build from 2026-11-09 defused |
+| E7 | abandoned: moved no number | `2026-10-17-e7-sprite-size` (local, no commit) | — | — | — |
+| E8 | completed | `2026-10-17-e8-name-marks` | 3ebff87 → 5647901 | CI passed | Leaderboard names cannot stack accents over other rows; Burmese names still pass |
+| E9 | abandoned: made it slower | `2026-10-17-e9-batched-fills` (local, no commit) | — | — | — |
+| E10 | completed | `2026-10-17-e10-hud-rate` | 5647901 → 4d96904 | CI passed | Found where a slow machine's frames go; +9% from the HUD's rate |
+| Checkpoint 3 | completed | `2026-10-17-c3-checkpoint` | 4d96904 → d098a91 | CI passed | E7–E10 reviewed; one test that proved nothing fixed |
+| E11 | completed | `2026-10-17-e11-hud-alone` | d098a91 → f5b1550 | CI passed | The HUD renders alone: +7–8% more, the HUD smooth again (+17–20% fps since the evening's start) |
+| E12 | completed | `2026-10-17-e12-toy-scan` | f5b1550 → 71d5148 | CI passed | The simulation step 8–10% faster with big crowds |
+
+A task's code: `git diff <base> <tip> -- . ':(exclude)docs/ai/'`. T3's repair is two commits (d96d760, the file deletion alone after a failed `git add`; then 6731373, the rest); only 6731373's tree was tested.
+
+### Questions
+
+Most consequential first (details in `questions.md`):
+
+- **Q6 (needs you):** `actionlint`, `shellcheck` and `pyflakes` are not on this machine, so no unattended run can change a workflow. Tonight's new unit tests went into existing test files instead of new ones (D21). Reinstall them, or list new files in `ci.yml` yourself.
+- **Q8 (needs a token):** CI's dev-server browser job failed once (T5's run) and passed locally warm and cold, as on 2026-10-09 (D67 there). The job's artifact would say which test failed.
+- **Q2:** a Vitest process started 2026-10-16 22:23, before the run, ran all night on one core (PIDs 11888, 16300, 7968). The run did not end it.
+- **Q3 (proposed task):** the leaderboard is protected in the client only. The server cannot tell a forged or idled run from a played one. Options are listed, from plausibility checks to server-side replay.
+- **Q9 (proposed task):** move more work out of the arena view's React render, and profile the simulation's cat loop (61% of a step) next. The four draw-side candidates moved nothing.
+- **Q5 (proposed small task):** patches and swatted cats keep no owner, so in co-op they use player 1's passives and credit.
+- **Q1, Q4, Q7 (exploration candidates):** the touch test's rare miss (not reproduced, 55 runs), the chaotic seeded "screen full" test (a fixed-build test now guards the four new kinds), and the fusion test (fixed in E4).
+
+### Clock
+
+- Run start 00:28 (baseline 00:30–00:38). Report started 10:00; the last item ended at 10:00, so nothing ran past the deadline.
+- Gaps (the account's usage limit): 02:56 → 04:51 (checkpoint 1's reviewer resumed after it) and about 07:25 → 09:51 (E12 in flight; finished after it).
+- No dev-server waits; no leftovers ended; no job stopped for low memory.
+
+### State
+
+- Run branch `Nightrun` at 71d5148, pushed. Every completed task's and checkpoint's branch is pushed. E1, E2, E5, E7 and E9 are local only, with no commits.
+- Nothing uncommitted apart from this report's own commit.
+- The build was in the gate all night. Lint warnings 0, as at the baseline.
+- No migration was written; nothing needs `db:migrate`.
+
+### What nothing has checked
+
+- **Nobody looked at any page.** Built, not seen:
+  - T2's art: the pan swung 14 px out at each swatted cat, the 22 px sock on its cat, the "!" over running cats, the spinning ball and cucumber, and the cucumber's slices, still dots.
+  - T3's results list; T4's lobby list; T6's sort headers and their arrows.
+  - E3's and E6's form messages; E11's HUD (the same markup, rendered by a new component).
+- **Covered by reading only:**
+  - T4's crediting of both characters in co-op.
+  - A Skip click at a level-up (D26).
+  - E3's cap SQL against a database at the cap. The browser tests run it only under the cap.
+  - Evolving one of T2's four weapons returns it to its old kind of behaviour (D8). That is by design, but a player may feel it as a loss.
+- **Production:** no change was run against the production (Neon) database. Nothing tonight needs a migration.
+
 ## Run start
 
 - Goal: "2026-10-17 10:00" → Deadline: 2026-10-17 10:00
@@ -237,3 +312,4 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (470 passed), build exit 0, 13 e2e specs (122 passed / 2 skipped). As the last item before the report, the full suites as well: `npm test` 1029 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped. Speed measured interleaved, three pairs (D42).
 - **Reviewer.** Approve, no findings (one naming note, D42).
 - **CI of E11** (f5b1550): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39005126855.
+- **CI of E12** (71d5148): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39015697372.
