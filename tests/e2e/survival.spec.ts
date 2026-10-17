@@ -143,7 +143,7 @@ async function startRun(page: Page, tap = false) {
 test('/cats has one Play link, and it opens Survival', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/cats');
-  const fight = page.getByRole('region', { name: 'Fight a cat' });
+  const fight = page.getByRole('region', { name: 'Survival Game' });
   await expect(fight.getByRole('link')).toHaveCount(1);
   await fight.getByRole('link', { name: 'Play' }).click();
   await expect(page).toHaveURL(/\/cats\/survival$/, { timeout: 15_000 });
