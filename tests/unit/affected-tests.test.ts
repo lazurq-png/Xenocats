@@ -10,10 +10,13 @@ describe('affected-tests', () => {
     expect(areaOf('/dashboard')).toBe('/dashboard');
     expect(areaOf('/dashboard/invoices/[id]/edit')).toBe('/dashboard/invoices');
     expect(areaOf('/cats')).toBe('/cats');
+    // Each game under /cats is an area of its own.
+    expect(areaOf('/cats/survival')).toBe('/cats/survival');
+    expect(areaOf('/dashboard/invoices/create')).toBe('/dashboard/invoices');
   });
 
   it('reads the areas a spec visits, from strings and URL regexes', () => {
-    const areas = ['/', '/cats', '/dashboard', '/dashboard/invoices', '/login'];
+    const areas = ['/', '/cats', '/cats/survival', '/dashboard', '/dashboard/invoices', '/login'];
     expect(specAreas(`await page.goto('/dashboard/invoices?page=2');`, areas)).toEqual([
       '/dashboard/invoices',
     ]);
@@ -21,8 +24,13 @@ describe('affected-tests', () => {
       '/dashboard',
     ]);
     expect(specAreas(`page.goto('/')`, areas)).toEqual(['/']);
-    // A page under an area counts for it (the games are pages of /cats).
-    expect(specAreas(`await page.goto('/cats/survival' + query);`, areas)).toEqual(['/cats']);
+    // A game is not /cats; a page deeper in an area counts for the area.
+    expect(specAreas(`await page.goto('/cats/survival' + query);`, areas)).toEqual([
+      '/cats/survival',
+    ]);
+    expect(specAreas(`page.goto('/dashboard/invoices/create')`, areas)).toEqual([
+      '/dashboard/invoices',
+    ]);
     // An asset path is not a route.
     expect(specAreas(`'/xenocats/cats/tabby.png'`, areas)).toEqual([]);
   });
@@ -35,6 +43,42 @@ describe('affected-tests', () => {
     const { e2e } = select(['app/ui/invoices/table.tsx']);
     expect(e2e.specs).toContain('tests/e2e/invoices.spec.ts');
     expect(e2e.specs).not.toContain('tests/e2e/survival.spec.ts');
+  });
+
+  it('runs only the Survival specs for a change to the Survival game', () => {
+    const { e2e } = select(['app/ui/xenocats/arena.ts']);
+    expect(e2e.specs).toContain('tests/e2e/survival.spec.ts');
+    expect(e2e.specs).not.toContain('tests/e2e/pet-cat.spec.ts');
+    expect(e2e.specs).not.toContain('tests/e2e/invoices.spec.ts');
+  });
+
+  it('runs only the cat-attacks specs on the dashboard for what its cats do', () => {
+    // sounds.ts reaches the dashboard through cat-layer.tsx alone; other specs pause the cats.
+    const { e2e } = select(['app/ui/xenocats/sounds.ts']);
+    expect(e2e.specs).toContain('tests/e2e/intensity.spec.ts'); // cat-attacks, /dashboard/settings
+    expect(e2e.specs).not.toContain('tests/e2e/invoices.spec.ts');
+    expect(e2e.specs).not.toContain('tests/e2e/customers.spec.ts');
+    // cat-layer.tsx itself runs on every dashboard page, paused or not.
+    expect(select(['app/ui/xenocats/cat-layer.tsx']).e2e.specs).toContain(
+      'tests/e2e/invoices.spec.ts'
+    );
+  });
+
+  it('runs the specs that import a changed browser-test helper', () => {
+    const { e2e } = select(['tests/e2e/demo-user.ts']);
+    expect(e2e.specs).toContain('tests/e2e/invoices.spec.ts');
+    expect(e2e.specs).not.toContain('tests/e2e/login-limit.spec.ts');
+  });
+
+  it.each([
+    'tests/unit/no-such.test.ts',
+    'tests/e2e/no-such.spec.ts',
+    'app/ui/no-such-file.tsx',
+    'app/no-such-page/page.tsx', // a deleted page no spec visits
+    'scripts/art/eyes.cjs',
+    'vercel.json',
+  ])('runs no browser test for %s', (file) => {
+    expect(select([file]).e2e).toEqual({ specs: [] });
   });
 
   it('runs a changed spec itself, and no browser test for a unit test or a document', () => {
@@ -52,7 +96,8 @@ describe('affected-tests', () => {
     'postcss.config.js',
     'next.config.ts',
     'tests/e2e/global-setup.ts',
-    'app/ui/no-such-file.tsx', // deleted
+    'db/migrations/0005_example.sql',
+    'scripts/affected-tests.mjs',
   ])('runs the whole browser suite for %s', (file) => {
     expect(select([file]).e2e.full).toBeTruthy();
   });

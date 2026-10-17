@@ -607,15 +607,17 @@ fixed points, and between them only the tests a change can affect.
 | **Working on a task** (implementing, and every repair cycle) | Only the test files being written or repaired, and the one that failed: `npx vitest run <file>`, `npx playwright test <spec> -g "<test title>"`, `npx playwright test --last-failed`. Never a whole suite. |
 | **The gate** (§2 step 1), once per task, on its final state | The selection `npm run test:affected -- --base Nightrun` prints: `vitest related` over the changed files, and the specs visiting a route the change reaches, against `next dev`. |
 | **Database tests** | `DATABASE_TESTS=1 npx vitest run tests/unit/data`, at the gate whenever the selector prints a `database:` line (a change to `app/lib/data.ts`, `db/migrations/`, `scripts/db.mjs` or the tests themselves); `--run` runs it. Otherwise only at full-suite points. Nowhere else does anything run them. |
-| **Full-suite points** | `npm test`, the database tests above, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan, or every 5th task if the plan names none; the last task before the morning report; and any gate where the selector printed `FULL`. When the build is out of the gate (§1.5), `E2E_SERVER=start` has nothing to serve: skip it, and say so in the task's entry and the report. |
+| **Full-suite points** | `npm test`, the database tests above, `npm run test:e2e` and `E2E_SERVER=start npm run test:e2e`, in full: the baseline (§1.5); each checkpoint task in the plan; and any gate where the selector printed `FULL`. Only while this run's commits do not reach CI (a local-only run, or after a rejected push) also every 5th task when the plan names no checkpoints, and the last task before the morning report: otherwise CI's run of every suite on each push to `Nightrun` (§2 step 6) is that check. When the build is out of the gate (§1.5), `E2E_SERVER=start` has nothing to serve: skip it, and say so in the task's entry and the report. |
 | **After a fix the reviewer asked for** | The gate again, on the new final state. The selection is already narrow; no separate full run. |
 
 The selector (`scripts/affected-tests.mjs`) follows each changed file through
-its importers to the App Router files that use it, reduces their routes to
-areas (`/cats`, `/login`, `/dashboard/invoices`, ...) and picks every spec whose
-text names one of those areas. It errs towards running more: a file it cannot
+its importers (type-only imports aside) to the App Router files that use it,
+reduces their routes to areas (`/cats`, `/cats/survival`, `/login`,
+`/dashboard/invoices`, ...) and picks every spec whose text names one of those
+areas; what reaches the dashboard only through its cats (`cat-layer.tsx`) picks
+only the `cat-attacks` specs there. It errs towards running more: a file it cannot
 place (configuration, `auth.ts`, `proxy.ts`, the root layout and
-`global.css`, seed data, a deleted or renamed file, anything outside `app/`,
+`global.css`, seed data, the schema, a deleted page or config file, anything outside `app/`,
 `public/` and `tests/`) selects the whole suite, and says which file did. A run
 never edits the selection to make it smaller, never skips a spec it printed,
 and never overrides a `FULL`.

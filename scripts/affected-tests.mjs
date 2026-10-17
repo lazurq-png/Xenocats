@@ -5,24 +5,29 @@
 //        (npm run test:affected -- --base Nightrun --run)
 //
 // Compares the working tree (committed, staged, unstaged and untracked) with the
-// merge base of HEAD and <ref> (default `main`), then prints:
+// merge base of HEAD and <ref>. Without --base, <ref> is whichever of `main`,
+// `dev` and `Nightrun` is nearest to HEAD: on one of those branches that is HEAD
+// itself, so the selection covers the uncommitted work and not every commit the
+// branch has that `main` lacks. Then it prints:
 //
 //   unit  `vitest related` over the changed files: Vitest follows the imports
 //         itself. The whole suite when Vitest's own configuration changed.
 //   e2e   the browser specs that visit a route the change reaches. A changed
 //         file is followed through the imports to the App Router files that
 //         use it (page, layout, route, error, ...), each route is reduced to its
-//         area (`/cats`, `/login`, `/dashboard/invoices`, ...), and a spec
-//         covers every area whose path appears in it.
+//         area (`/cats`, `/cats/survival`, `/login`, `/dashboard/invoices`, ...),
+//         and a spec covers every area whose path appears in it. What reaches
+//         the dashboard only through its cats (cat-layer.tsx) selects only the
+//         cat-attacks specs there: every other spec runs with the cats paused.
 //   database  the opt-in database tests (`tests/unit/data.test.ts`), when a
 //         query, the schema or the tests themselves changed: `npm test` and
 //         `vitest related` skip them unless DATABASE_TESTS=1 is set, so the
 //         selection names them. They write to the `xenocats_vitest` schema.
 //
 // It errs towards running more: a file it cannot place (configuration, auth,
-// the root layout, seed data, a deleted file, anything outside the known
-// folders) selects the whole e2e suite, and says why. CI still runs everything
-// on every push.
+// the root layout, seed data, the schema, a deleted page or config file,
+// anything outside the known folders) selects the whole e2e suite, and says
+// why. CI still runs everything on every push.
 //
 // --run  runs the selection: unit tests, the database tests, then browser tests
 //        (against `next dev`), stopping at the first failure; exits with that
@@ -45,15 +50,31 @@ const NO_TESTS = [
   /\.md$/,
   /^\.gitignore$/,
   /^LICENSE/,
+  /^vercel\.json$/,
+  /^\.prettierrc/,
+  /^\.prettierignore$/,
+  /^\.env\.example$/,
+  /^scripts\/art\//, // artwork tools, run by hand
+  /^scripts\/ci-database\.mjs$/, // only CI's database container runs it
 ];
 
-// Every request, the login, or the test database passes through these.
+// Every request, the login, the test database or every spec passes through these.
 const E2E_FULL = new Map([
   ['proxy.ts', 'runs on every request'],
   ['auth.ts', 'the login every logged-in spec uses'],
   ['auth.config.ts', 'decides which pages need a session'],
   ['app/lib/placeholder-data.ts', 'the seed data the browser tests run on'],
+  ['scripts/db.mjs', 'builds the schema the browser tests run on'],
+  ['playwright.config.ts', 'configures every spec'],
+  ['tests/e2e/fixtures.ts', 'every spec imports it'],
+  ['tests/e2e/global-setup.ts', 'runs before every spec'],
+  ['scripts/affected-tests.mjs', 'the selector cannot vouch for itself'],
 ]);
+
+// The dashboard's cats come through this provider (app/dashboard/layout.tsx). Every
+// spec outside the cat-attacks group runs with the cats paused (tests/e2e/fixtures.ts),
+// so a file that reaches the dashboard only through it changes nothing they see.
+const CAT_GATE = 'app/ui/xenocats/cat-layer.tsx';
 
 const UNIT_FULL = /^(vitest\.config\.\w+|package\.json|package-lock\.json|tsconfig\.json)$/;
 
@@ -89,12 +110,13 @@ function routeOf(appDir) {
   return '/' + segments.join('/');
 }
 
-// The area a route belongs to: a dashboard section, or a top-level page.
+// The area a route belongs to: its first two segments (a dashboard section, a game
+// under /cats, or a top-level page). Pages deeper than that (create, [id]/edit) are
+// reached by clicking through their area, so specs often never name them.
 export function areaOf(route) {
-  const [first, second] = route.split('/').filter(Boolean);
-  if (!first) return '/';
-  if (first === 'dashboard') return second ? `/dashboard/${second}` : '/dashboard';
-  return `/${first}`;
+  const segments = route.split('/').filter(Boolean);
+  const end = segments.findIndex((s, i) => i >= 2 || s.startsWith('['));
+  return '/' + segments.slice(0, end < 0 ? undefined : end).join('/');
 }
 
 function resolveImport(from, spec, files) {
@@ -128,7 +150,9 @@ function importersGraph(root) {
     text.set(file, content);
     if (file.endsWith('.css')) continue;
     for (const pattern of IMPORT_PATTERNS) {
-      for (const [, spec] of content.matchAll(pattern)) {
+      for (const [statement, spec] of content.matchAll(pattern)) {
+        // A type changes nothing at run time; the type check covers it.
+        if (/^(import|export)\s+type\s/.test(statement)) continue;
         const target = resolveImport(file, spec, files);
         if (!target) continue;
         if (!importers.has(target)) importers.set(target, new Set());
@@ -139,15 +163,16 @@ function importersGraph(root) {
   return { files, importers, text };
 }
 
-// The App Router files a file reaches, following importers upwards.
-function routeFilesReaching(file, importers) {
+const isRouteFile = (f) => f.startsWith('app/') && ROUTE_FILE.test(path.posix.basename(f));
+
+// The file and every file that imports it, directly or not; never past `stop`,
+// unless the file is `stop` itself.
+function importersOf(file, importers, stop) {
   const seen = new Set([file]);
   const queue = [file];
-  const found = [];
   while (queue.length) {
     const current = queue.shift();
-    if (current.startsWith('app/') && ROUTE_FILE.test(path.posix.basename(current)))
-      found.push(current);
+    if (current === stop && current !== file) continue;
     for (const parent of importers.get(current) ?? []) {
       if (!seen.has(parent)) {
         seen.add(parent);
@@ -155,7 +180,18 @@ function routeFilesReaching(file, importers) {
       }
     }
   }
-  return found;
+  return seen;
+}
+
+// The specs in playwright.config.ts's cat-attacks group, the only ones that run
+// with the cats unpaused.
+function catAttackSpecs(root) {
+  const config = readFileSync(path.join(root, 'playwright.config.ts'), 'utf8');
+  const group = config.match(/'cat-attacks':\s*\[([^\]]*)\]/);
+  if (!group) throw new Error('playwright.config.ts has no cat-attacks group');
+  return new Set(
+    [...group[1].matchAll(/'([^']+)'/g)].map(([, name]) => `tests/e2e/${name}.spec.ts`)
+  );
 }
 
 // Areas a route file affects: a page or route handler its own; a layout, error
@@ -185,19 +221,18 @@ export function specAreas(specText, allAreas) {
 // The selection for a list of changed paths (relative, `/`-separated).
 export function select(changed, root = ROOT) {
   const { files, importers, text } = importersGraph(root);
-  const routeFiles = [...files].filter(
-    (f) => f.startsWith('app/') && ROUTE_FILE.test(path.posix.basename(f))
-  );
+  const routeFiles = [...files].filter(isRouteFile);
   const allAreas = [
     ...new Set(routeFiles.map((f) => areaOf(routeOf(path.posix.dirname(f).slice(3))))),
   ].sort();
   const specDir = path.join(root, 'tests/e2e');
-  const specs = readdirSync(specDir)
-    .filter((f) => f.endsWith('.spec.ts'))
-    .map((f) => ({
-      file: `tests/e2e/${f}`,
-      areas: specAreas(readFileSync(path.join(specDir, f), 'utf8'), allAreas),
-    }));
+  const specText = new Map(
+    readdirSync(specDir)
+      .filter((f) => f.endsWith('.spec.ts'))
+      .map((f) => [`tests/e2e/${f}`, readFileSync(path.join(specDir, f), 'utf8')])
+  );
+  const specs = [...specText].map(([file, t]) => ({ file, areas: specAreas(t, allAreas) }));
+  const catSpecs = catAttackSpecs(root);
 
   const reasons = [];
   let unitFull = null;
@@ -218,21 +253,28 @@ export function select(changed, root = ROOT) {
     if (UNIT_FULL.test(file)) unitFull ??= `${file} changed`;
     else if (exists && /\.(tsx?|mjs|js)$/.test(file)) unitFiles.add(file);
 
-    if (!exists) {
-      full(file, 'deleted or renamed; its users cannot be traced');
+    if (E2E_FULL.has(file)) {
+      full(file, E2E_FULL.get(file));
+    } else if (file.startsWith('db/migrations/')) {
+      full(file, 'the schema every browser test runs on');
     } else if (file.startsWith('tests/unit/')) {
       reasons.push({ file, e2e: 'none (unit test)' });
     } else if (/^tests\/e2e\/[^/]+\.spec\.ts$/.test(file)) {
-      e2eSpecs.add(file);
-      reasons.push({ file, e2e: 'itself' });
-    } else if (E2E_FULL.has(file)) {
-      full(file, E2E_FULL.get(file));
+      if (exists) e2eSpecs.add(file);
+      reasons.push({ file, e2e: exists ? 'itself' : 'none (deleted spec)' });
+    } else if (/^tests\/e2e\/[^/]+\.ts$/.test(file)) {
+      // A helper: the specs that import it. The login setup: the specs using its session.
+      const name = file.endsWith('/auth.setup.ts') ? 'demo-user' : path.posix.basename(file, '.ts');
+      const imports = new RegExp(`from '\\./${escapeRegExp(name)}'`);
+      const picked = [...specText].filter(([, t]) => imports.test(t)).map(([f]) => f);
+      picked.forEach((s) => e2eSpecs.add(s));
+      reasons.push({ file, e2e: `the ${picked.length} spec(s) that import it` });
     } else if (file.startsWith('public/')) {
       const url = file.slice('public'.length);
       const users = [...text].filter(
         ([, t]) => t.includes(url) || t.includes(path.posix.dirname(url) + '/')
       );
-      if (!users.length) full(file, 'no source file names it');
+      if (!users.length) reasons.push({ file, e2e: 'none (no source file names it)' });
       else
         placeByRoutes(
           file,
@@ -240,26 +282,54 @@ export function select(changed, root = ROOT) {
         );
     } else if (file.startsWith('app/') && files.has(file)) {
       placeByRoutes(file, [file]);
+    } else if (file.startsWith('app/') && !exists && !isRouteFile(file)) {
+      // What imported it changed with it (or the type check fails), and is placed itself.
+      reasons.push({ file, e2e: 'none (deleted; its importers are placed)' });
+    } else if (file.startsWith('app/') && !exists) {
+      const affected = areasOfRouteFile(file, allAreas);
+      if (affected === null) full(file, `the root ${path.posix.basename(file)} was deleted`);
+      else if (specs.some((s) => s.areas.some((a) => affected.includes(a))))
+        pick(file, new Set(affected), new Set());
+      else reasons.push({ file, e2e: 'none (a deleted page no spec visits)' });
     } else {
-      full(file, 'outside the app code the selector can trace');
+      full(file, exists ? 'outside the app code the selector can trace' : 'deleted or renamed');
     }
   }
 
   function placeByRoutes(file, starts) {
     const areas = new Set();
+    const catAreas = new Set();
     for (const start of starts) {
-      for (const routeFile of routeFilesReaching(start, importers)) {
+      const reached = importersOf(start, importers);
+      const direct = importersOf(start, importers, CAT_GATE);
+      for (const routeFile of [...reached].filter(isRouteFile)) {
         const affected = areasOfRouteFile(routeFile, allAreas);
         if (affected === null)
           return full(file, `reaches the root ${path.posix.basename(routeFile)}`);
-        affected.forEach((a) => areas.add(a));
+        affected.forEach((a) => (direct.has(routeFile) ? areas : catAreas).add(a));
       }
     }
-    if (!areas.size) return full(file, 'reaches no route');
-    const picked = specs.filter((s) => s.areas.some((a) => areas.has(a))).map((s) => s.file);
-    if (!picked.length) return full(file, `no spec visits ${[...areas].join(', ')}`);
+    areas.forEach((a) => catAreas.delete(a));
+    if (!areas.size && !catAreas.size) return full(file, 'reaches no route');
+    pick(file, areas, catAreas);
+  }
+
+  // The specs visiting `areas`, and the cat-attacks specs visiting `catAreas`.
+  function pick(file, areas, catAreas) {
+    const picked = specs
+      .filter(
+        (s) =>
+          s.areas.some((a) => areas.has(a)) ||
+          (catSpecs.has(s.file) && s.areas.some((a) => catAreas.has(a)))
+      )
+      .map((s) => s.file);
+    const where = [
+      ...areas,
+      ...(catAreas.size ? [`the cats on ${[...catAreas].join(', ')}`] : []),
+    ].join(', ');
+    if (!picked.length) return full(file, `no spec visits ${where}`);
     picked.forEach((s) => e2eSpecs.add(s));
-    reasons.push({ file, e2e: `${[...areas].join(', ')} → ${picked.length} spec(s)` });
+    reasons.push({ file, e2e: `${where} → ${picked.length} spec(s)` });
   }
 
   return {
@@ -273,6 +343,24 @@ export function select(changed, root = ROOT) {
 
 function git(...args) {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+}
+
+// Of the branches work is merged into, the one with the fewest commits between
+// it and HEAD: HEAD's own branch when it is one of them.
+function nearestBase() {
+  const behind = (ref) => {
+    try {
+      const [mergeBase] = git('merge-base', ref, 'HEAD');
+      return Number(git('rev-list', '--count', `${mergeBase}..HEAD`)[0]);
+    } catch {
+      return Infinity; // no such branch here
+    }
+  };
+  const [nearest] = ['main', 'dev', 'Nightrun']
+    .map((ref) => ({ ref, n: behind(ref) }))
+    .sort((a, b) => a.n - b.n);
+  if (nearest.n === Infinity) throw new Error('none of main, dev, Nightrun exists: pass --base');
+  return nearest.ref;
 }
 
 export function commands(selection) {
@@ -294,7 +382,7 @@ export function commands(selection) {
 
 function main(argv) {
   const baseAt = argv.indexOf('--base');
-  const base = baseAt >= 0 ? argv[baseAt + 1] : 'main';
+  const base = baseAt >= 0 ? argv[baseAt + 1] : nearestBase();
   const [mergeBase] = git('merge-base', base, 'HEAD');
   const changed = [
     ...new Set([
