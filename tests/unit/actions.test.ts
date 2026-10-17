@@ -179,7 +179,7 @@ describe('with a session', () => {
     sql.mockResolvedValueOnce([{ n: 3 }]);
     const refused = {
       errors: { customerId: ['That customer does not exist.'] },
-      message: 'Failed to Create Invoice.',
+      message: 'Failed to create the invoice.',
     };
     expect(await createInvoice({}, invoiceForm())).toEqual(refused);
     // Anything but a UUID names no customer, and never reaches the database.
@@ -252,7 +252,7 @@ describe('with a session', () => {
     sql.mockResolvedValueOnce([{ date: '2026-01-10', own_customer: false }]);
     expect(await updateInvoice(invoiceId, {}, invoiceForm({ dueDate: '2026-02-09' }))).toEqual({
       errors: { customerId: ['That customer does not exist.'] },
-      message: 'Failed to Update Invoice.',
+      message: 'Failed to update the invoice.',
     });
     // Only the read.
     expect(sql).toHaveBeenCalledTimes(1);

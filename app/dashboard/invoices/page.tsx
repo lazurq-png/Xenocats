@@ -37,11 +37,16 @@ export default async function Page(props: {
           Invoices
         </h1>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-2 md:mt-8">
-        <Search placeholder="Search invoices..." />
+      {/* On a phone the search takes a row of its own; the rest would squeeze it. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2 md:mt-8 md:flex-nowrap">
+        <div className="flex w-full md:w-auto md:flex-1">
+          <Search placeholder="Search invoices..." />
+        </div>
         <StatusFilter />
-        <ExportInvoices query={query} status={status} />
-        <CreateInvoice />
+        <div className="ml-auto flex gap-2">
+          <ExportInvoices query={query} status={status} />
+          <CreateInvoice />
+        </div>
       </div>
       <Suspense key={`${query}|${currentPage}|${status}`} fallback={<InvoicesTableSkeleton />}>
         <Table query={query} currentPage={currentPage} status={status} />

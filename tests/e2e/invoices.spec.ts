@@ -28,7 +28,7 @@ async function createInvoice(page: Page, cents: number) {
   await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
   await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
   await page.getByLabel('Pending').check();
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await page.getByRole('button', { name: 'Create invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
 }
 
@@ -65,7 +65,7 @@ test('an invoice is edited, and the change is saved', async ({ page }) => {
   const newCents = uniqueCents();
   await amount.fill((newCents / 100).toFixed(2));
   await page.getByLabel('Paid').check();
-  await page.getByRole('button', { name: 'Edit Invoice' }).click();
+  await page.getByRole('button', { name: 'Edit invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
   const row = await rowsFor(page, newCents);
   await expect(row).toHaveCount(1);
@@ -89,7 +89,7 @@ test('an invoice is due when the form says: 30 days by default, never before its
   await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
   await page.getByLabel('Pending').check();
   await due.fill(addDays(today, 45));
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await page.getByRole('button', { name: 'Create invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
 
   // The list shows it, under its own heading.
@@ -108,7 +108,7 @@ test('an invoice is due when the form says: 30 days by default, never before its
 
   // Before the invoice's date: refused, in the field's own error region.
   await due.fill(addDays(today, -1));
-  await page.getByRole('button', { name: 'Edit Invoice' }).click();
+  await page.getByRole('button', { name: 'Edit invoice' }).click();
   await expect(page.locator('#due-date-error')).toHaveText(
     'The due date cannot be before the invoice date.'
   );
@@ -117,7 +117,7 @@ test('an invoice is due when the form says: 30 days by default, never before its
 
   // A later one is saved.
   await due.fill(addDays(today, 60));
-  await page.getByRole('button', { name: 'Edit Invoice' }).click();
+  await page.getByRole('button', { name: 'Edit invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
   await page.goto(editUrl);
   await page.waitForLoadState('networkidle');
@@ -154,7 +154,7 @@ test.describe('on a phone', () => {
     await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
     await page.getByLabel('Pending').check();
     await page.getByLabel('Due date').fill(addDays(today, 45));
-    await page.getByRole('button', { name: 'Create Invoice' }).click();
+    await page.getByRole('button', { name: 'Create invoice' }).click();
     await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
 
     await page.goto(`/dashboard/invoices?query=${cents}`);

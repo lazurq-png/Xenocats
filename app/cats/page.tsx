@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import XenocatLogo from '@/app/ui/xenocat-logo';
+import BackLink from '@/app/ui/back-link';
 import CatGallery from '@/app/ui/xenocats/cat-gallery';
 import Leaderboard from '@/app/ui/xenocats/leaderboard';
 import { Suspense } from 'react';
@@ -23,12 +24,7 @@ export default function Page() {
           <Link href="/" aria-label="Xenocat Analytics home">
             <XenocatLogo />
           </Link>
-          <Link
-            href="/dashboard"
-            className="whitespace-nowrap border-b-2 border-aura-link/70 pb-1 text-[16.5px] font-semibold text-aura-link transition hover:border-aura hover:text-aura"
-          >
-            Back to the dashboard
-          </Link>
+          <BackLink href="/dashboard">Back to the dashboard</BackLink>
         </header>
         {/* The skip link's target: past the header's links, to the cats. */}
         <div id="main-content" tabIndex={-1} className="mb-6 focus-visible:outline-hidden">

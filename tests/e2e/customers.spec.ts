@@ -21,7 +21,7 @@ async function createCustomer(page: Page, name: string, email: string) {
   await page.goto('/dashboard/customers/create');
   await page.getByLabel('Name').fill(name);
   await page.getByLabel('Email').fill(email);
-  await page.getByRole('button', { name: 'Create Customer' }).click();
+  await page.getByRole('button', { name: 'Create customer' }).click();
   await expect(page).toHaveURL(/\/dashboard\/customers$/, { timeout: NAVIGATION });
 }
 
@@ -49,7 +49,7 @@ test('a customer is created, edited and deleted', async ({ page }) => {
   await expect(page.getByLabel('Email')).toHaveValue(email);
   const renamed = `${name} Ltd`;
   await page.getByLabel('Name').fill(renamed);
-  await page.getByRole('button', { name: 'Save Customer' }).click();
+  await page.getByRole('button', { name: 'Save customer' }).click();
   await expect(page).toHaveURL(/\/dashboard\/customers$/, { timeout: NAVIGATION });
   row = await findCustomer(page, renamed);
   await expect(row).toHaveCount(1);
@@ -70,7 +70,7 @@ test('a customer who still has invoices cannot be deleted, and the list says why
   await page.getByLabel('Choose customer').selectOption({ label: name });
   await page.getByLabel('Choose an amount').fill('42');
   await page.getByLabel('Pending').check();
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await page.getByRole('button', { name: 'Create invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: NAVIGATION });
 
   const row = await findCustomer(page, name);

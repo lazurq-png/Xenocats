@@ -505,13 +505,13 @@ describe.skipIf(!url)('two accounts', () => {
     // An invoice for the demo user's customer: refused like an unknown customer.
     expect(await actions.createInvoice({}, invoiceForm(demoCustomer))).toEqual({
       errors: { customerId: ['That customer does not exist.'] },
-      message: 'Failed to Create Invoice.',
+      message: 'Failed to create the invoice.',
     });
     expect(
       await actions.createInvoice({}, invoiceForm('00000000-0000-4000-8000-000000000000'))
     ).toEqual({
       errors: { customerId: ['That customer does not exist.'] },
-      message: 'Failed to Create Invoice.',
+      message: 'Failed to create the invoice.',
     });
     // The demo user's invoice: as unknown as one that does not exist.
     expect(await actions.updateInvoice(demoInvoice, {}, invoiceForm(otherCustomer))).toEqual({
@@ -527,7 +527,7 @@ describe.skipIf(!url)('two accounts', () => {
     // Its own invoice, moved to the demo user's customer: refused.
     expect(await actions.updateInvoice(otherInvoice, {}, invoiceForm(demoCustomer))).toEqual({
       errors: { customerId: ['That customer does not exist.'] },
-      message: 'Failed to Update Invoice.',
+      message: 'Failed to update the invoice.',
     });
     await actions.deleteInvoice(demoInvoice);
 

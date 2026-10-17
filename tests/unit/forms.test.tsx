@@ -50,7 +50,7 @@ describe('the invoice create form', () => {
     // browser leaves out of the form, but jsdom sends as "". Disabled, the select sends
     // nothing, as a browser's does.
     (screen.getByLabelText('Choose customer') as HTMLSelectElement).disabled = true;
-    submit('Create Invoice');
+    submit('Create invoice');
     await errorFor('Choose customer', 'Please select a customer.');
     await errorFor('Choose an amount', 'Please enter an amount greater than $0');
     await errorFor('Pending', 'Please select an invoice status.');
@@ -64,7 +64,7 @@ describe('the invoice create form', () => {
     });
     fireEvent.change(screen.getByLabelText('Choose an amount'), { target: { value: '0' } });
     fireEvent.click(screen.getByLabelText('Paid'));
-    submit('Create Invoice');
+    submit('Create invoice');
     await errorFor('Choose an amount', 'Please enter an amount greater than $0');
     expect(document.getElementById('customer-error')!.textContent).toBe('');
     expect(document.getElementById('status-error')!.textContent).toBe('');
@@ -86,7 +86,7 @@ describe('the invoice create form, for an account full of invoices', () => {
     });
     fireEvent.change(screen.getByLabelText('Choose an amount'), { target: { value: '12.50' } });
     fireEvent.click(screen.getByLabelText('Paid'));
-    submit('Create Invoice');
+    submit('Create invoice');
     const message = await screen.findByText(
       'An account holds at most 10,000 invoices. Delete some to create more.'
     );
@@ -110,7 +110,7 @@ describe('the invoice edit form', () => {
     };
     render(<EditInvoiceForm invoice={invoice} customers={customers} />);
     fireEvent.change(screen.getByLabelText('Choose an amount'), { target: { value: '-5' } });
-    submit('Edit Invoice');
+    submit('Edit invoice');
     await errorFor('Choose an amount', 'Please enter an amount greater than $0');
     expect(sql).not.toHaveBeenCalled();
   });
@@ -127,7 +127,7 @@ describe('the invoice edit form', () => {
     // Deleted meanwhile: the read finds no invoice of the user's.
     sql.mockResolvedValueOnce([]);
     render(<EditInvoiceForm invoice={invoice} customers={customers} />);
-    submit('Edit Invoice');
+    submit('Edit invoice');
     const message = await screen.findByText('No such invoice.');
     expect(message.closest('[aria-live="polite"]')).not.toBeNull();
     expect(document.getElementById('amount-error')!.textContent).toBe('');
@@ -145,7 +145,7 @@ describe('the invoice edit form', () => {
     // The invoice is the user's, but its customer (deleted in another tab) is not.
     sql.mockResolvedValueOnce([{ date: '2026-10-09', own_customer: false }]);
     render(<EditInvoiceForm invoice={invoice} customers={customers} />);
-    submit('Edit Invoice');
+    submit('Edit invoice');
     await errorFor('Choose customer', 'That customer does not exist.');
   });
 });
@@ -155,7 +155,7 @@ describe('the customer form', () => {
     render(<CustomerForm />);
     // The browser's own check (type=email) would let this through; the action does not.
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'zorg@nowhere' } });
-    submit('Create Customer');
+    submit('Create customer');
     await errorFor('Name', 'Please enter a name.');
     await errorFor('Email', 'Please enter a valid email address.');
     expect(sql).not.toHaveBeenCalled();
