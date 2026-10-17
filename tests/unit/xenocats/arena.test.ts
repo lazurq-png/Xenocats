@@ -1838,7 +1838,7 @@ describe('reroll and skip at a level-up', () => {
   const ids = (a: Run) =>
     a
       .choices()!
-      .map((c) => (c.kind === 'restore' ? 'restore' : `${c.kind}:${c.id}`))
+      .map((c) => `${c.kind}:${c.id}`)
       .join(' ');
 
   it('each Keeper has one reroll and one skip a run, and the Tailor’s upgrades add to them', () => {
@@ -1864,6 +1864,24 @@ describe('reroll and skip at a level-up', () => {
     expect(a.state().level).toBe(level);
     a.choose(0);
     expect(a.state().level).toBe(level);
+  });
+
+  it('with nothing left to learn, a level-up asks nothing and the run goes on', () => {
+    // One weapon and no passives: only the laser's levels to choose.
+    const a = levelling({
+      availableWeapons: ['laser-pointer'],
+      slots: { weapons: 1, passives: 0 },
+    });
+    let asked = 0;
+    for (let i = 0; i < 8000 && a.state().level < MAX_WEAPON_LEVEL + 3; i++) {
+      if (a.choices()) {
+        asked++;
+        a.choose(0);
+      } else a.step(still);
+    }
+    expect(a.state().level).toBeGreaterThanOrEqual(MAX_WEAPON_LEVEL + 3);
+    expect(a.state().weapons).toEqual([{ id: 'laser-pointer', level: MAX_WEAPON_LEVEL }]);
+    expect(asked).toBe(MAX_WEAPON_LEVEL - 1);
   });
 
   it('a reroll is not offered when nothing waits', () => {

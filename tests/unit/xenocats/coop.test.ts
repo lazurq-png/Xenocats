@@ -156,7 +156,7 @@ describe('shared experience, own choices', () => {
     // Player 1 chooses: his arsenal changes, player 2's does not.
     const one = arsenal(0);
     const two = arsenal(1);
-    a.choose(a.choices()!.findIndex((c) => c.kind !== 'restore'));
+    a.choose(0);
     expect(arsenal(0)).not.toBe(one);
     expect(arsenal(1)).toBe(two);
     // The run still waits: now player 2, for the same level.
@@ -164,7 +164,7 @@ describe('shared experience, own choices', () => {
     expect(a.chooser()).toBe(1);
     expect(a.choiceLevel()).toBe(level);
     const oneAfter = arsenal(0);
-    a.choose(a.choices()!.findIndex((c) => c.kind !== 'restore'));
+    a.choose(0);
     expect(arsenal(1)).not.toBe(two);
     expect(arsenal(0)).toBe(oneAfter);
     expect(a.chooser()).toBe(0);

@@ -1638,38 +1638,28 @@ export default function ArenaGame({
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
                     const { name, description, change } = describeChoice(choice);
-                    const kind =
-                      choice.kind === 'weapon'
-                        ? 'Weapon'
-                        : choice.kind === 'passive'
-                          ? 'Passive'
-                          : 'Rest';
-                    const tier = choice.kind === 'restore' ? null : tierStyle(choice);
+                    const kind = choice.kind === 'weapon' ? 'Weapon' : 'Passive';
+                    const tier = tierStyle(choice);
                     return (
                       <li key={i}>
                         <button
                           type="button"
-                          data-choice={choice.kind === 'restore' ? 'restore' : choice.id}
+                          data-choice={choice.id}
                           data-kind={choice.kind}
-                          data-level={choice.kind === 'restore' ? '' : choice.level}
-                          data-tier={tier?.tier ?? ''}
+                          data-level={choice.level}
+                          data-tier={tier.tier}
                           onClick={() => choose(i)}
                           className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
                         >
                           <span className="font-semibold text-plasma">{i + 1}.</span>{' '}
-                          <span className={`font-semibold ${tier?.className ?? ''}`}>{name}</span>{' '}
-                          <span className="text-aura">({kind})</span>
-                          {tier && (
-                            <>
-                              {' '}
-                              <span
-                                data-testid="choice-tier"
-                                className={`text-xs font-semibold ${tier.className}`}
-                              >
-                                {tier.name}
-                              </span>
-                            </>
-                          )}
+                          <span className={`font-semibold ${tier.className}`}>{name}</span>{' '}
+                          <span className="text-aura">({kind})</span>{' '}
+                          <span
+                            data-testid="choice-tier"
+                            className={`text-xs font-semibold ${tier.className}`}
+                          >
+                            {tier.name}
+                          </span>
                           <span className="mt-1 block text-aura">{description}</span>
                           {change && (
                             <span

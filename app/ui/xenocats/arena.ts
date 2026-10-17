@@ -2778,17 +2778,19 @@ export function createArena(options: {
 
   /** After a Keeper's choice or skip: the next player chooses for the same level, then the next level. */
   function nextChooser() {
-    if (chooser + 1 < keepers.length) {
-      chooser++;
-      offer();
-    } else {
+    if (chooser + 1 < keepers.length) chooser++;
+    else {
       chooser = 0;
       pending--;
-      if (pending > 0) offer();
     }
+    if (pending > 0) offer();
   }
 
-  /** The waiting level-up's choices, for the Keeper whose turn it is. */
+  /**
+   * The waiting level-up's choices, for the Keeper whose turn it is. One with
+   * nothing left to learn is not asked (the run does not stop for him): a sip of
+   * Resolve, and the turn passes.
+   */
   function offer() {
     const k = keepers[chooser];
     const held = new Map([...k.weapons].map(([id, w]) => [id, w.level] as const));
@@ -2800,6 +2802,10 @@ export function createArena(options: {
       config.availableWeapons,
       config.slots
     );
+    if (choosing.length > 0) return;
+    choosing = null;
+    k.resolve = Math.min(k.resolve + 30, maxResolveOf(k));
+    nextChooser();
   }
 
   return {
@@ -3051,7 +3057,7 @@ export function createArena(options: {
           hero.weapons.set(choice.id, { level: 1, readyAt: time + 200 });
           everHeld.add(choice.id);
         }
-      } else if (choice.kind === 'passive') {
+      } else {
         const before = maxResolve();
         const rerollsBefore = hero.mods.rerolls;
         hero.passives.set(choice.id, choice.level);
@@ -3059,8 +3065,6 @@ export function createArena(options: {
         // More Resolve to hold: he gains what was added; and the Loaded Dice's rerolls.
         hero.resolve += maxResolve() - before;
         hero.rerollsLeft += hero.mods.rerolls - rerollsBefore;
-      } else {
-        hero.resolve = Math.min(hero.resolve + 30, maxResolve());
       }
       hero = keepers[0];
       choosing = null;
@@ -3075,10 +3079,10 @@ export function createArena(options: {
       const k = keepers[chooser];
       if (!choosing || k.rerollsLeft <= 0) return false;
       k.rerollsLeft--;
-      const before = choosing.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+      const before = choosing.map((c) => c.kind + c.id).join();
       for (let tries = 0; tries < 6; tries++) {
         offer();
-        const now = choosing!.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+        const now = choosing!.map((c) => c.kind + c.id).join();
         if (now !== before) break;
       }
       return true;

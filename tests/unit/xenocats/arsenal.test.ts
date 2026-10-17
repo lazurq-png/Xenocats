@@ -141,16 +141,14 @@ describe('the level-up offer', () => {
     }
   });
 
-  it('with everything at its highest, a moment of rest instead', () => {
+  it('with everything at its highest, nothing', () => {
     const weapons = new Map<WeaponId, number>(
       ALL_WEAPONS.slice(0, WEAPON_SLOTS).map((id) => [id, MAX_WEAPON_LEVEL])
     );
     const passives = new Map<PassiveId, number>(
       ALL_PASSIVES.slice(0, PASSIVE_SLOTS).map((id) => [id, PASSIVES[id].maxLevel])
     );
-    const offer = offerChoices(weapons, passives, 3, random());
-    expect(offer).toEqual([{ kind: 'restore' }]);
-    expect(describeChoice(offer[0]).name).toBe('A Moment of Rest');
+    expect(offerChoices(weapons, passives, 3, random())).toEqual([]);
   });
 
   it('every choice has a name and a line in the game’s voice', () => {
@@ -228,7 +226,6 @@ describe('every upgrade says what it does, and does it', () => {
     expect(describeChoice({ kind: 'passive', id: 'scissors', level: 1 }).change).toBe(
       '+1 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble, spark or slice for each weapon that fires them.'
     );
-    expect(describeChoice({ kind: 'restore' }).change).toBeNull();
   });
 
   it('every pick of a passive adds the same, the first included', () => {

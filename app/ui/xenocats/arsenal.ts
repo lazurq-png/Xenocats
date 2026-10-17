@@ -1280,14 +1280,12 @@ export function xpToNext(level: number): number {
 
 export type Choice =
   | { kind: 'weapon'; id: WeaponId; level: number }
-  | { kind: 'passive'; id: PassiveId; level: number }
-  /** Nothing left to offer: a sip of Resolve instead. */
-  | { kind: 'restore' };
+  | { kind: 'passive'; id: PassiveId; level: number };
 
 /**
  * A level-up's choices: new weapons or passives while there are slots, or the next
  * level of one held, never one at its highest level; `count` of them, all
- * different, at random. With nothing left, a sip of Resolve.
+ * different, at random. With nothing left, none.
  */
 export function offerChoices(
   weapons: ReadonlyMap<WeaponId, number>,
@@ -1316,7 +1314,6 @@ export function offerChoices(
       if (passives.size < slots.passives) pool.push({ kind: 'passive', id, level: 1 });
     } else if (level < PASSIVES[id].maxLevel) pool.push({ kind: 'passive', id, level: level + 1 });
   }
-  if (pool.length === 0) return [{ kind: 'restore' }];
   const picked: Choice[] = [];
   while (picked.length < count && pool.length > 0) {
     picked.push(pool.splice(random.int(0, pool.length - 1), 1)[0]);
@@ -1462,13 +1459,6 @@ export function describeChoice(choice: Choice): {
   description: string;
   change: string | null;
 } {
-  if (choice.kind === 'restore') {
-    return {
-      name: 'A Moment of Rest',
-      description: 'Nothing more to learn. Some Resolve returns.',
-      change: null,
-    };
-  }
   const info = choice.kind === 'weapon' ? WEAPONS[choice.id] : PASSIVES[choice.id];
   const changes =
     choice.kind === 'weapon'

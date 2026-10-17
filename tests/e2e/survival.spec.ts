@@ -57,7 +57,6 @@ async function expectInSummary(
   await expect(summary.getByTestId('survival-pause-passive-slots')).toHaveText(
     `Passives ${await passives.count()} of 6`
   );
-  if (taken.kind === 'restore') return;
   const row = summary.locator(
     taken.kind === 'weapon' ? `li[data-weapon="${taken.id}"]` : `li[data-passive="${taken.id}"]`
   );
