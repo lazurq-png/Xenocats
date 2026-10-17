@@ -915,6 +915,9 @@ export function createArena(options: {
   const spareProjectiles: Projectile[] = [];
   const beams: { from: Vec; to: Vec; until: number }[] = [];
   const patches: Patch[] = [];
+  // This step's toys among the patches, gathered before the cats walk (lureOf): every
+  // cat looks at these, not at every puddle and box (night run 2026-10-17, E12).
+  const toys: Patch[] = [];
   const sweeps: Sweep[] = [];
   const jets: Jet[] = [];
   const swats: Swat[] = [];
@@ -1413,11 +1416,10 @@ export function createArena(options: {
 
   /** The toy that calls this cat, if one is near enough: where it goes instead. */
   function lureOf(cat: ArenaCat): Patch | null {
-    if (patches.length === 0 || cat.variety === 'mega') return null;
+    if (toys.length === 0 || cat.variety === 'mega') return null;
     let best: Patch | null = null;
     let bestD = Infinity;
-    for (const p of patches) {
-      if (p.kind !== 'toy') continue;
+    for (const p of toys) {
       const d = (p.x - cat.x) ** 2 + (p.y - cat.y) ** 2;
       if (d <= p.reach * p.reach && d < bestD) {
         best = p;
@@ -2843,6 +2845,8 @@ export function createArena(options: {
       }
 
       // The cats walk at the nearest Keeper; the grid is rebuilt from where they stand.
+      toys.length = 0;
+      for (const p of patches) if (p.kind === 'toy') toys.push(p);
       grid.clear();
       // The few big cats (bigger than the cats' size) are kept apart, so every
       // search looks a cat's size further, not the biggest one's.

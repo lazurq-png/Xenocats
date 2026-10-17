@@ -221,3 +221,19 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (16 passed; 16 again after the reviewer's list check), build exit 0, 13 e2e specs (122 passed / 2 skipped). Before them, `survival.spec.ts` with `leaderboard.spec.ts` 41 passed. Speed measured interleaved, two rounds of three (D41). The HUD's look is not seen.
 - **Reviewer.** Approve, two Low: the tests' file (by D21) and the attribute list (now checked in full).
 - **CI of checkpoint 3** (d098a91): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39003584874.
+
+## E12 — started 07:19: a cat looks only at the toys, not at every patch, for one to come to (kind: speed on a weak machine)
+
+## Usage-limit gap
+
+- About 07:25 → 09:51: the account's usage limit, with E12 in flight (its change made and measured, its gate not yet run). Resumed at 09:51, nine minutes before the goal time: E12 finished in full (§8.4), then the report.
+
+## E12 — A cat looks only at the toys, not at every patch (completed)
+
+- Branch `2026-10-17-e12-toy-scan`, base f5b1550. Started 07:19, completed 09:59 (the gap above inside it).
+- Before it, the turn's "bugs" work was a fuzz: 10 seeded runs of 4 and 10 minutes, with up to 6,000 cats, random level-up choices and random walking. No NaN or infinity appeared in any cat, Keeper, projectile, sock or weapon tally, and every new weapon kind was among the builds. It found nothing, so no item. Then, for speed, the simulation step's phases were timed (temporary, restored): moving the cats 61%, projectiles 17%.
+- **What the code does.** `arena.ts`: each step gathers the toys among the patches once, before the cats walk, and `lureOf` looks at those alone, not at every puddle and box, for every cat.
+- **What it brings.** The Survival simulation runs 8–10% faster per step with 2,000–6,000 cats whenever puddles or boxes lie about (3% at 500), with nothing changed in play. Decisions: D42.
+- **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (470 passed), build exit 0, 13 e2e specs (122 passed / 2 skipped). As the last item before the report, the full suites as well: `npm test` 1029 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped. Speed measured interleaved, three pairs (D42).
+- **Reviewer.** Approve, no findings (one naming note, D42).
+- **CI of E11** (f5b1550): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39005126855.
