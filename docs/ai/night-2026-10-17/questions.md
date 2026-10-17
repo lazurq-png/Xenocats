@@ -26,17 +26,13 @@ Recommendation: 3 now (a small task), 1 if the board ever matters. Meanwhile: no
 
 `Patch` (toys, boxes, puddles) and a swatted cat in flight do not record which Keeper's weapon made them, so their damage uses player 1's passives (`hero` is `keepers[0]` in `updatePatches` and `bowl`), and T3's per-weapon credit checks player 1's weapons for a fusion. Giving both an `owner`, as projectiles and socks have, would make player 2's patch damage use his own passives: a gameplay change, so it is proposed rather than done.
 
-## Q6 — the workflow linters are gone from this machine (from T3's CI repair; needs a human)
-
-`actionlint`, `shellcheck` and `pyflakes` are not on `PATH` (the 2026-10-01 run had them). So a change to `.github/workflows/` cannot be verified unattended (night-run §2 step 1), and this run left `ci.yml` alone. When T3's new test file failed CI's "Every test file is in a group" check, the tests moved into files CI already runs (`arena.test.ts`; T4's into `game-settings.test.tsx`), instead of new files being listed in a group. Either reinstall the three tools (e.g. `winget install rhysd.actionlint`, `koalaman.shellcheck`, `pip install pyflakes`), or, if separate files are preferred, add `tests/unit/xenocats/weapon-report` and `tests/unit/xenocats/character-bests` to their groups in `ci.yml` and move the tests back.
-
 ## Q7 — the fusion pause-menu e2e test has a wall-clock deadline (an exploration "flaky tests" candidate)
 
 `survival.spec.ts:251` ("the pause menu marks a fused weapon and a new one with different tiers") plays seeds for up to 120 s of real time until a level-up offers a weapon. In T3's repair run (the full `next dev` suite, 4 workers, and the foreign Vitest process of Q2 busy) it ran out of time with nothing taken; it passed 5 of 5 alone. A seeded way to reach a level-up offering a weapon (e.g. a fixed offer under `?fusion=1`, or reading the offer through the arena's state) would make it independent of the machine's speed.
 
 ## Q8 — CI's dev-server browser job fails now and then, never locally (needs the job's log, which needs a token)
 
-T5's run (https://github.com/lazurq-png/Xenocats/actions/runs/38987634906, 3d92164) failed in *Browser tests (dev server)*, the step running smoke, security headers and dashboard login against `next dev`. The other three jobs passed. T5 changed the Survival arena and its tests, which those specs do not reach. Locally, the job's own command (`CI=1 E2E_NO_CAT_DEPS=1 npx playwright test tests/e2e/smoke.spec tests/e2e/security-headers.spec tests/e2e/dashboard.spec`) passed 3 of 3 warm and 1 of 1 cold (`.next` deleted). The 2026-10-09 run saw the same job fail once the same way (its D67). Its log and the uploaded `playwright-report` artifact need an authenticated download, outside what the run may do. A human with access could read which test failed in that run's artifact.
+T5's run (https://github.com/lazurq-png/Xenocats/actions/runs/38987634906, 3d92164) failed in _Browser tests (dev server)_, the step running smoke, security headers and dashboard login against `next dev`. The other three jobs passed. T5 changed the Survival arena and its tests, which those specs do not reach. Locally, the job's own command (`CI=1 E2E_NO_CAT_DEPS=1 npx playwright test tests/e2e/smoke.spec tests/e2e/security-headers.spec tests/e2e/dashboard.spec`) passed 3 of 3 warm and 1 of 1 cold (`.next` deleted). The 2026-10-09 run saw the same job fail once the same way (its D67). Its log and the uploaded `playwright-report` artifact need an authenticated download, outside what the run may do. A human with access could read which test failed in that run's artifact.
 
 ## Q9 — where the render benchmark's time goes (from E2, E5, E7, E9; a proposed task)
 

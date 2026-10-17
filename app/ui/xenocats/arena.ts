@@ -62,6 +62,13 @@ export type ArenaConfig = {
     homesicknessPerMin: number;
     speedPerMin: number;
     maxSpeedFactor: number;
+    /**
+     * An endless run never stops growing, so no Keeper outlasts it for ever. From
+     * `fromMs`, each minute compounds what a touch (or a shot) takes from his Resolve
+     * by `drainPerMin`, whenever the cat arrived; and the speed has no cap, cats that
+     * arrive later gaining `speedPerMin` a minute instead, until they outrun him.
+     */
+    endless: { fromMs: number; drainPerMin: number; speedPerMin: number };
   };
   hero: {
     /** px/s. */
@@ -254,6 +261,9 @@ export const ARENA_CONFIG: ArenaConfig = {
     homesicknessPerMin: 0.15,
     speedPerMin: 0.02,
     maxSpeedFactor: 1.3,
+    // Cats ×1.2 quick at 15:00 reach ×2.2 by 40:00, where the quickest outrun his 210 px/s;
+    // a touch takes twice as much by about 22:00, seventeen times as much by 45:00.
+    endless: { fromMs: 15 * 60_000, drainPerMin: 0.1, speedPerMin: 0.04 },
   },
   hero: { speed: 210, resolve: 100, untouchableMs: 700, reach: 30 },
   cats: {
@@ -1063,7 +1073,20 @@ export function createArena(options: {
     const minutes = Math.max(time - t.fromMs, 0) / 60_000;
     if (minutes === 0) return;
     cat.limit *= 1 + minutes * t.homesicknessPerMin;
-    cat.speed *= Math.min(1 + minutes * t.speedPerMin, t.maxSpeedFactor);
+    if (Number.isFinite(config.timeGoalMs)) {
+      cat.speed *= Math.min(1 + minutes * t.speedPerMin, t.maxSpeedFactor);
+      return;
+    }
+    const before = (Math.min(time, t.endless.fromMs) - t.fromMs) / 60_000;
+    const after = Math.max(time - t.endless.fromMs, 0) / 60_000;
+    cat.speed *= 1 + Math.max(before, 0) * t.speedPerMin + after * t.endless.speedPerMin;
+  }
+
+  /** What a touch worth `drain` takes from a Keeper now: an endless run's grows (config.toughness). */
+  function drainNow(drain: number, k: Keeper) {
+    const e = config.toughness.endless;
+    const minutes = Number.isFinite(config.timeGoalMs) ? 0 : Math.max(time - e.fromMs, 0) / 60_000;
+    return drain * k.mods.drain * (1 + e.drainPerMin) ** minutes;
   }
 
   function spawnXenocat(at: Vec) {
@@ -1293,7 +1316,7 @@ export function createArena(options: {
       for (const k of keepers) {
         if (!standing(k) || time < k.untouchableUntil) continue;
         if (Math.hypot(k.x - cat.aimX, k.y - cat.aimY) > a.radius + config.hero.reach / 2) continue;
-        k.resolve = Math.max(k.resolve - cat.drain * k.mods.drain, 0);
+        k.resolve = Math.max(k.resolve - drainNow(cat.drain, k), 0);
         k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
         events.push({
           kind: 'hero-hit',
@@ -1566,7 +1589,7 @@ export function createArena(options: {
         }
         hit = true;
         if (time >= k.untouchableUntil) {
-          k.resolve = Math.max(k.resolve - shot.drain * k.mods.drain, 0);
+          k.resolve = Math.max(k.resolve - drainNow(shot.drain, k), 0);
           k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
@@ -2881,7 +2904,7 @@ export function createArena(options: {
           // (The Neighbour's Cat drains nothing: it only sits there.)
           if (cat.drain === 0) continue;
           if ((cat.x - k.x) ** 2 + (cat.y - k.y) ** 2 > reachOf(cat) ** 2) continue;
-          k.resolve = Math.max(k.resolve - cat.drain * k.mods.drain, 0);
+          k.resolve = Math.max(k.resolve - drainNow(cat.drain, k), 0);
           k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
