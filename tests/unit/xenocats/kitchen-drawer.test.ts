@@ -543,7 +543,7 @@ describe('the kitchen drawer: four ways of working no other weapon has', () => {
         a.state().projectiles + a.beams().length + a.swats().length + a.socks().length
       );
     });
-    // As busy as the four were as spread, sweep, chain and burst (29 then, 26 now: D10).
+    // As busy as the four were as spread, sweep, chain and burst (29 then, 26 now).
     expect(most).toBeGreaterThan(20);
   });
 

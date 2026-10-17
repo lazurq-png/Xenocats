@@ -243,7 +243,7 @@ describe('keeping the horde where he is', () => {
     runTo(a, 8000);
     expect(a.cats().length).toBeGreaterThan(3);
     // The screen shows the phone's size times the camera's zoom of the arena (a phone
-    // zooms out to see more, task 7).
+    // zooms out to see more).
     const { zoom } = a.camera();
     expect(zoom).toBeGreaterThan(1);
     for (const cat of a.cats()) {

@@ -9,7 +9,8 @@ test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 test.use({ storageState: DEMO_USER });
 
 // After a submit or a link, allow for the next page still compiling under a busy
-// next dev, which builds each route on its first visit (questions.md Q7).
+// next dev, which builds each route on its first visit (a first visit has run out
+// of a shorter wait under the full suite).
 const NAVIGATION = 15_000;
 
 /** A customer name no other test (or run) uses. */

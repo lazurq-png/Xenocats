@@ -384,7 +384,8 @@ Restate it when it changes, so that it survives a context compaction.
 
 Supervised work writes **no task-state files**: nothing in `docs/ai/`. That
 directory holds night runs' state (`docs/ai/night-<YYYY-MM-DD>/`, defined by
-`.claude/skills/night-run/SKILL.md`) and older directories kept as history.
+`.claude/skills/night-run/SKILL.md`); an older run's directory is removed once its
+open items are carried to `docs/backlog.md`.
 Supervised work neither adds to it nor needs to read the night-run skill.
 
 ---

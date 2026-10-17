@@ -186,7 +186,8 @@ export const SCHEDULE: Schedule = {
   arrivals: [
     { from: 0, who: 'basic', weight: 8 },
     // The zoomies and the hissing come sooner and more often than when the xenocats
-    // were the horde: they take the place of the xenocats' strength (decisions D30).
+    // were the horde: they take the place of the xenocats' strength (seeded runs: a
+    // Keeper standing still lasts about as long as before, one walking a little longer).
     { from: 10_000, who: 'zoomies', weight: 3 },
     { from: 40_000, who: 'hissing', weight: 3 },
     { from: 90_000, who: 'box', weight: 0.4 },

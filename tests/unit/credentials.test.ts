@@ -62,7 +62,8 @@ describe('checkCredentials', () => {
     expect(
       await checkCredentials(sql, { login: 'nobody@nextmail.com', password: 'wrong!!' }, limits)
     ).toBeNull();
-    // An unknown email still costs a comparison: the time tells nothing (D80).
+    // An unknown email still costs a comparison: the time tells nothing, so it cannot
+    // show which emails have accounts.
     expect(compare).toHaveBeenCalledTimes(2);
     expect(statements.some((s) => s.includes('DELETE FROM login_failures'))).toBe(false);
   });

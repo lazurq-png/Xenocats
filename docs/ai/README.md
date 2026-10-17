@@ -5,7 +5,8 @@ Unattended night runs keep their state here, one directory per run:
 reasoning stays attached to the diff it explains.
 
 Supervised work writes nothing here: it keeps its state in the conversation
-(`CLAUDE.md` §11). Other directories here are older work, kept as history.
+(`CLAUDE.md` §11). An older run's directory is removed once its open items are
+carried to `docs/backlog.md`; git history keeps it.
 
 | File | Written by | Holds |
 | ---- | ---------- | ----- |
@@ -87,7 +88,7 @@ The run cannot fix any of these, and most of them end it silently:
 7. The session runs with permission prompts off (bypass mode), the machine will
    not sleep, and the terminal stays open: closing it ends the session. The
    run's timer lives inside the `claude` process, so it cannot fire while the
-   PC sleeps. The 2026-10-08 run lost its whole night that way (its Q6).
+   PC sleeps. The 2026-10-08 run lost its whole night that way.
 8. Start it from the Claude CLI, as the next section says, with the prompt
    below sent as one message. The `/loop` is the run's timer: it fires every 20
    minutes whenever the session is idle, however the last turn ended, so a run

@@ -1,6 +1,6 @@
 // Usage, from the repo root:
-//   node docs/ai/night-2026-10-08/fur.cjs measure <image.webp>...
-//   node docs/ai/night-2026-10-08/fur.cjs adjust <in.webp> <out.webp> <hueFrom> <hueTo> <lightness> [saturation] [hueShift]
+//   node scripts/art/fur.cjs measure <image.webp>...
+//   node scripts/art/fur.cjs adjust <in.webp> <out.webp> <hueFrom> <hueTo> <lightness> [saturation] [hueShift]
 //
 // measure: over a cat's opaque pixels, the fur's average hue, saturation and
 // lightness (HSL). "Fur" is the colourful, mid-light pixels: outlines (very dark),

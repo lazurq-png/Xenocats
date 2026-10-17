@@ -1,4 +1,4 @@
-// Usage, from the repo root: node docs/ai/cat-artwork-2026-10-07/eyes.cjs
+// Usage, from the repo root: node scripts/art/eyes.cjs
 // Cuts Hypno Rex's two spiral eyes out of its awake artwork into an overlay of the
 // same size (hypno-rex-eyes.webp), for its eyes-first entrance. The centres and
 // radius were measured on hypno-rex-awake.webp (512x512); re-measure them if that

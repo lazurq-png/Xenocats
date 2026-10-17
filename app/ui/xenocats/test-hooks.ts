@@ -1,4 +1,5 @@
-// Survival's test hooks, read from the page's URL (decisions.md, D30 and D46):
+// Survival's test hooks, read from the page's URL (a Keeper standing still in a
+// browser test is worn down long before the times they reach):
 // `?seed=` fixes the run's random source, `?speed=` (up to 50) makes time pass
 // that much faster, `?boss=` (seconds) brings a Mega Cat that early, besides the
 // schedule's. Two more serve the speed benchmarks (tests/e2e/benchmark.spec.ts):

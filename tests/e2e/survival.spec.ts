@@ -261,7 +261,7 @@ test.describe('on a computer', () => {
     // next seed's run is played, until one is taken. At speed 12 each 350 ms walk below
     // takes him far enough to gather the gems his weapons leave: the first level-up
     // comes about 30 s into the run (3–4 s of the test), where at speed 4 it came after
-    // 2½–3 minutes and the test often took a minute or more (decisions.md, D35).
+    // 2½–3 minutes and the test often took a minute or more.
     const deadline = Date.now() + 120_000;
     let taken = '';
     const walk = ['d', 's', 'a', 'w'];
@@ -287,7 +287,8 @@ test.describe('on a computer', () => {
           } else if (!rerolled) {
             // His one reroll, for another look at the choices (read on the next turn).
             rerolled = true;
-            // R rerolls (the only test that presses it: D26), and the use is spent.
+            // R rerolls (the only test that presses it: the reroll and skip test uses
+            // the button), and the use is spent.
             await page.keyboard.press('r');
             await expect(dialog.getByTestId('survival-reroll')).toHaveText('Reroll (0 left)');
             continue;

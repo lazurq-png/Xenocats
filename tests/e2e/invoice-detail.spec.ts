@@ -50,7 +50,7 @@ test('an invoice has a detail page, reached from the list', async ({ page }) => 
   ).toBeVisible();
   // Unpaid, due 30 days on: how near that is, under the due date. (The invoice is
   // dated by the UTC day, the count made by the database's day: on a database not on
-  // UTC they differ by one for some hours a day — questions.md Q12.)
+  // UTC they differ by one for some hours a day: docs/backlog.md, "One time zone".)
   await expect(page.getByTestId('invoice-due-in')).toHaveText(/^Due in (29|30|31) days$/);
 });
 

@@ -221,7 +221,7 @@ export type ArenaConfig = {
    */
   levelUp: { rerolls: number; skips: number; skipXpShare: number };
   /**
-   * The secret cat (decisions.md): once a run, from `afterMs` into it, when he has
+   * The secret cat, named nowhere until it is found: once a run, from `afterMs` into it, when he has
    * stood still for `stillMs`, it comes and sits by him.
    */
   secretCat: { afterMs: number; stillMs: number };
@@ -338,7 +338,7 @@ export const ARENA_CONFIG: ArenaConfig = {
   coop: { startGap: 80, maxZoomOut: 1.6, margin: 80, reviveMs: 30_000 },
   // The view is the browser window, not the screen: a 1366 × 768 laptop's window is
   // about 650 px tall. So a phone sees about as much as the smallest common laptop
-  // window, and every desktop window from there up is unzoomed (decisions D41): a
+  // window, and every desktop window from there up is unzoomed: a
   // 390 px phone zooms out 1.64, a 360 px one 1.78; nothing beyond 1.8.
   view: { minView: 640, maxZoom: 1.8 },
   cellSize: 64,

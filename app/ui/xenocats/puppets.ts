@@ -9,7 +9,7 @@
 // leaves a still element as it is.
 //
 // Three attacks do to an element what they cannot do to a still pointer
-// (decisions.md D4, Q3): Mirror Sphynx's Reverse mirrors it, everything inside it
+// (so that every cat does something visible to the page): Mirror Sphynx's Reverse mirrors it, everything inside it
 // back to front; Laser Ocicat's Axis lock shoots laser beams at it from the cat,
 // each shot knocking it aside along the beam; and Decoy Burmese's Decoys sets fake
 // copies of it (buttons, links and text only) where the decoy cursors would be,
