@@ -50,7 +50,7 @@ export default function Page() {
         alt=""
         width={456}
         height={176}
-        className="pointer-events-none absolute bottom-0 left-0 hidden w-[33%] max-w-[456px] lg:block"
+        className="pointer-events-none absolute bottom-0 left-0 hidden h-auto w-[33%] max-w-[456px] lg:block"
       />
     </div>
   );

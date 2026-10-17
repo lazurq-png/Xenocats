@@ -714,6 +714,12 @@ test.describe('on a computer', () => {
       (await laser.textContent())!.match(/: ([\d,]+) homesickness/)![1].replace(/,/g, '')
     );
     expect(given).toBeGreaterThan(0);
+    // A click inside the window (its padding included) leaves it open; one outside closes it.
+    const results = page.getByTestId('survival-results');
+    await results.click({ position: { x: 8, y: 8 } });
+    await expect(results).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(results).toBeHidden();
   });
 
   test('a finished run shows its time as the character’s best for its length, with the day', async ({

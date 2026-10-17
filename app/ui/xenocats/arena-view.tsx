@@ -1528,6 +1528,16 @@ export default function ArenaGame({
           data-testid="survival-results"
           data-outcome={outcome}
           onKeyDown={trapTab}
+          onClick={(event) => {
+            // A click on the backdrop (outside the window's box) closes it too.
+            const box = event.currentTarget.getBoundingClientRect();
+            const outside =
+              event.clientX < box.left ||
+              event.clientX > box.right ||
+              event.clientY < box.top ||
+              event.clientY > box.bottom;
+            if (event.target === event.currentTarget && outside) event.currentTarget.close();
+          }}
           onClose={() => lobbyActionsRef.current?.querySelector('button')?.focus()}
           className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-xl overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-left text-white backdrop:bg-void/75 sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)]"
         >
@@ -1629,7 +1639,7 @@ export default function ArenaGame({
               ))}
             </ul>
           )}
-          <Button className="mt-4" onClick={start} data-play-again>
+          <Button className="mt-6" onClick={start} data-play-again>
             Play again
           </Button>
         </dialog>
