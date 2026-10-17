@@ -107,6 +107,20 @@ export type InvoiceStatusFilter = z.infer<typeof InvoiceStatusFilter>;
 export const parseStatusFilter = (value: string | undefined): InvoiceStatusFilter | null =>
   InvoiceStatusFilter.safeParse(value).data ?? null;
 
+/**
+ * The customer list's sort, from the URL (`?sort=`, `?dir=`): one of a fixed list of
+ * columns, ascending or descending. Anything else sorts by name, ascending.
+ */
+export const CustomerSort = z.enum(['name', 'total_invoices', 'total_pending', 'total_paid']);
+export type CustomerSort = z.infer<typeof CustomerSort>;
+export const SortDirection = z.enum(['asc', 'desc']);
+export type SortDirection = z.infer<typeof SortDirection>;
+
+export const parseCustomerSort = (value: unknown): CustomerSort =>
+  CustomerSort.safeParse(value).data ?? 'name';
+export const parseSortDirection = (value: unknown): SortDirection =>
+  SortDirection.safeParse(value).data ?? 'asc';
+
 const BCRYPT_MAX_BYTES = 72;
 
 /**

@@ -8,6 +8,8 @@ import {
   UpdateInvoice,
   addDays,
   dueDateProblem,
+  parseCustomerSort,
+  parseSortDirection,
   parseStatusFilter,
 } from '@/app/lib/schemas';
 
@@ -148,6 +150,25 @@ describe('parseStatusFilter', () => {
     expect(parseStatusFilter('overdue')).toBe('overdue');
     for (const value of [undefined, '', 'PAID', 'Overdue', "paid' OR 1=1"]) {
       expect(parseStatusFilter(value)).toBeNull();
+    }
+  });
+});
+
+describe('the customer list sort, from the URL', () => {
+  it('keeps a column of the fixed list, and sorts by name for anything else', () => {
+    for (const column of ['name', 'total_invoices', 'total_pending', 'total_paid']) {
+      expect(parseCustomerSort(column)).toBe(column);
+    }
+    for (const value of [undefined, null, '', 'email', 'NAME', 'name DESC', ['total_paid'], 7]) {
+      expect(parseCustomerSort(value), String(value)).toBe('name');
+    }
+  });
+
+  it('descending only for desc; anything else is ascending', () => {
+    expect(parseSortDirection('desc')).toBe('desc');
+    expect(parseSortDirection('asc')).toBe('asc');
+    for (const value of [undefined, '', 'DESC', 'down', '1']) {
+      expect(parseSortDirection(value), String(value)).toBe('asc');
     }
   });
 });
