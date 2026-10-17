@@ -36,23 +36,6 @@ on UTC they disagree for some hours a day: an invoice created then is "due in 29
 
 Undecided (2026-10-08): fix it in the dashboard or in the database.
 
-### Real cat recordings
-
-The cats' sounds are synthesised (`app/ui/xenocats/sounds.ts`). A night run
-found four public-domain or CC0 recordings on Wikimedia Commons but could not
-add downloaded files. To do it: download the MP3 transcodes, check them, add
-them under `public/xenocats/` with their credits, and play them from
-`sounds.ts`, with the synthesised sound as the fallback.
-
-- Meow of a pleading cat (Heismark, public domain):
-  https://commons.wikimedia.org/wiki/File:Meow_of_a_pleading_cat.oga
-- Meow of a Siamese cat (freemaster2, CC0):
-  https://commons.wikimedia.org/wiki/File:Meow_of_a_Siamese_cat_-_freemaster2.wav
-- Νιάου (Tsester, CC0):
-  https://commons.wikimedia.org/wiki/File:2015-11-24.%CE%BD%CE%B9%CE%B1%CE%BF%CF%8D%CF%81%CE%B9%CF%83%CE%BC%CE%B1.%CE%9D%CE%B9%CE%AC%CE%BF%CF%85.noise_reduced.flac
-- Cat hissing (Zabuhailo, CC0):
-  https://commons.wikimedia.org/wiki/File:Cat_hissing_-_Zabuhailo.wav
-
 ### The demo login on the production database
 
 `app/lib/placeholder-data.ts` seeds the Next.js course's demo login
@@ -70,13 +53,6 @@ Start pauses, and the level-up cards, pause menu and results can be navigated
 and chosen. In co-op, a pad can be the second player. Keyboard and touch
 unchanged. Unit tests on the mapping from pad state to input (no real pad
 needed); browser tests with a stubbed `navigator.getGamepads`.
-
-### Drop the `revenue` table
-
-Nothing in the app reads it: the chart and cards are computed from invoices. A
-migration `DROP TABLE revenue` (once no deployed version reads it), and remove
-`revenue` from `app/lib/placeholder-data.ts` and the seed in `scripts/db.mjs`.
-A human applies the migration to production.
 
 ### Login lockout: what it does not cover
 
