@@ -133,3 +133,22 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **What it brings.** A test that took 38–96 s and ran out of its 120 s under a loaded full suite (T3's repair) now takes about 4 s, so it no longer fails for the machine's speed, and every browser run is a minute or so shorter. Decisions: D35.
 - **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (no unit test reaches a spec; exit 0), build exit 0, `survival.spec.ts` (37 passed). The test 20/20 at 10 workers. No reviewer: one test parameter (D35).
 - **CI of E3** (93be7a5): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38998356771.
+
+## E5 — started 05:32: the arena state read only when the HUD updates, not every frame (kind: speed on a weak machine)
+
+## E5 — The arena state read only when the HUD updates (abandoned: moved no number, reverted)
+
+- Branch `2026-10-17-e5-state-per-hud`, base 0afca64, no commit. Started 05:32, ended 05:36.
+- Tried: skipping the HUD's `arena.state()` (which maps the heroes and weapons and scans every cat for the boss bar) on frames where the HUD does not update. The HUD was already limited to about 7 updates a second, which answers the plan's candidate. The render benchmark looked better at first (46.8 / 45.7 fps at 500 cats and 23.6 / 22.6 at 2000, against 43.9–44.5 and 21.1–22.4 earlier tonight). Measured interleaved (without the change, then with it), the two were identical: 46.0 / 46.0 and 21.9 / 21.8. The earlier difference was the machine. Reverted. `draw` builds its own `state()` each frame too, so the cost saved was only ever one of two.
+- Lesson kept for the rest of the run: compare speed only interleaved, before and after in turn, never against figures from earlier in the night.
+
+## E6 — started 05:36: the invoice edit form shows why a save failed (kind: security and quality)
+
+## E6 — The invoice edit form shows why a save failed (completed)
+
+- Branch `2026-10-17-e6-edit-form-message`, base 0afca64. Started 05:36, completed 05:40.
+- **What the code does.** `edit-form.tsx`: a live region for a message that comes with no field error (signed out, not an invoice, the invoice gone meanwhile, a database error), and a `customer-error` region beside the customer select, named by its `aria-describedby`, for a customer the action refuses. `forms.test.tsx`: two jsdom tests through the real action, the invoice gone ("No such invoice." in a live region) and its customer no longer the user's ("That customer does not exist." beside the field).
+- **What it brings.** Saving an invoice that cannot be saved no longer does nothing: the user is told why, and a screen reader says so. Decisions: D36.
+- **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (`forms.test.tsx` 7 passed), build exit 0, 11 e2e specs (35 passed). The first new test fails without the region (checked). The look of the messages is not seen.
+- **Reviewer.** Approve, one Low: a refused customer was still silent. Fixed, with the second test (D36).
+- **CI of E4** (0afca64): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38999120604.

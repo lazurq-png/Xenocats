@@ -110,6 +110,40 @@ describe('the invoice edit form', () => {
     await errorFor('Choose an amount', 'Please enter an amount greater than $0');
     expect(sql).not.toHaveBeenCalled();
   });
+
+  it('says so when the invoice is gone, in a region read out when it changes', async () => {
+    const invoice = {
+      id: 'deadbeef-0000-4000-8000-000000000002',
+      customer_id: customers[0].id,
+      amount: 12.5,
+      status: 'pending' as const,
+      date: '2026-10-09',
+      due_date: '2026-11-08',
+    };
+    // Deleted meanwhile: the read finds no invoice of the user's.
+    sql.mockResolvedValueOnce([]);
+    render(<EditInvoiceForm invoice={invoice} customers={customers} />);
+    submit('Edit Invoice');
+    const message = await screen.findByText('No such invoice.');
+    expect(message.closest('[aria-live="polite"]')).not.toBeNull();
+    expect(document.getElementById('amount-error')!.textContent).toBe('');
+  });
+
+  it('says so beside the customer when the one chosen is no longer the user’s', async () => {
+    const invoice = {
+      id: 'deadbeef-0000-4000-8000-000000000003',
+      customer_id: customers[0].id,
+      amount: 12.5,
+      status: 'pending' as const,
+      date: '2026-10-09',
+      due_date: '2026-11-08',
+    };
+    // The invoice is the user's, but its customer (deleted in another tab) is not.
+    sql.mockResolvedValueOnce([{ date: '2026-10-09', own_customer: false }]);
+    render(<EditInvoiceForm invoice={invoice} customers={customers} />);
+    submit('Edit Invoice');
+    await errorFor('Choose customer', 'That customer does not exist.');
+  });
 });
 
 describe('the customer form', () => {
