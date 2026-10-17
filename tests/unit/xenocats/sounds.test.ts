@@ -10,6 +10,7 @@ import {
   setSoundEnabled,
   sharedSoundPlayer,
   soundsFor,
+  vary,
 } from '@/app/ui/xenocats/sounds';
 
 afterEach(() => {
@@ -51,12 +52,22 @@ describe('every cat type has its sounds', () => {
     expect(new Set(wakes).size).toBe(CAT_TYPES.length);
     expect(new Set(arrivals).size).toBe(CAT_TYPES.length);
   });
+
+  it('every purr is one long rumble, not two', () => {
+    for (const type of CAT_TYPES) {
+      const { purr } = soundsFor(type);
+      // Its noise and its voice start together and last the whole purr.
+      expect(new Set(purr.map((t) => t.at)).size, type.id).toBe(1);
+      for (const t of purr) expect(t.duration, type.id).toBeGreaterThanOrEqual(1);
+    }
+  });
 });
 
 /** A stand-in AudioContext that counts what it is asked to play. */
 function fakeContext() {
   const param = () => ({
     setValueAtTime: vi.fn(),
+    linearRampToValueAtTime: vi.fn(),
     exponentialRampToValueAtTime: vi.fn(),
     setValueCurveAtTime: vi.fn(),
   });
@@ -71,12 +82,20 @@ function fakeContext() {
       return Promise.resolve();
     }),
     oscillators: 0,
-    noises: 0,
+    throats: 0,
+    buffers: 0,
+    rooms: 0,
     createGain: () => ({ ...node(), gain: param() }),
     filters: 0,
     createOscillator: () => {
       ctx.oscillators++;
-      return { ...node(), type: 'sine', frequency: param(), detune: param() };
+      return {
+        ...node(),
+        type: 'sine',
+        frequency: param(),
+        detune: param(),
+        setPeriodicWave: vi.fn(() => ctx.throats++),
+      };
     },
     createBiquadFilter: () => {
       ctx.filters++;
@@ -86,9 +105,14 @@ function fakeContext() {
       getChannelData: () => new Float32Array(length),
     }),
     createBufferSource: () => {
-      ctx.noises++;
+      ctx.buffers++;
       return { ...node(), buffer: null, loop: false };
     },
+    createConvolver: () => {
+      ctx.rooms++;
+      return { ...node(), buffer: null };
+    },
+    createPeriodicWave: vi.fn(() => ({})),
   };
   return ctx;
 }
@@ -113,14 +137,36 @@ describe('the player', () => {
     expect(ctx.resume).toHaveBeenCalled();
     const knockback = ATTACK_SOUNDS.knockback;
     expect(player.play(knockback)).toBe(true);
-    // A voice is an oscillator, and so is each vibrato and each pulse moving it.
     const count = (test: (t: Sound[number]) => boolean) => knockback.filter(test).length;
+    const voiced = count((t) => t.wave !== 'noise');
+    const breaths = count((t) => t.wave === 'noise');
+    // A voice is an oscillator, and so is each vibrato and pulse moving it, and the
+    // beat that breath under a voice pulses at.
     expect(ctx.oscillators).toBe(
-      count((t) => t.wave !== 'noise') + count((t) => !!t.vibrato) + count((t) => !!t.pulse)
+      voiced + count((t) => !!t.vibrato) + count((t) => !!t.pulse) + count((t) => !!t.sync)
     );
-    expect(ctx.noises).toBe(count((t) => t.wave === 'noise'));
-    // Every formant of every tone is a band of its own.
-    expect(ctx.filters).toBe(knockback.reduce((n, t) => n + (t.formants?.length ?? 0), 0));
+    // Breath is a buffer, and so are the two wanderings (pitch, loudness) of each voice.
+    expect(ctx.buffers).toBe(breaths + voiced * 2);
+    // Every formant of every tone is a band of its own, each tone with a mouth has a
+    // low-pass after them, and the room has its own.
+    const mouths = count((t) => !!t.formants?.length);
+    const bands = knockback.reduce((n, t) => n + (t.formants?.length ?? 0), 0);
+    expect(ctx.filters).toBe(bands + mouths + 1);
+  });
+
+  it('builds the room and the throat once, and gives every voice a throat', () => {
+    const ctx = fakeContext();
+    const player = createSoundPlayer(
+      () => ctx as never,
+      () => true
+    );
+    player.unlock();
+    const meow = ATTACK_SOUNDS.reverse;
+    expect(player.play(meow)).toBe(true);
+    expect(player.play(meow)).toBe(true);
+    expect(ctx.rooms).toBe(1);
+    expect(ctx.createPeriodicWave).toHaveBeenCalledTimes(1);
+    expect(ctx.throats).toBe(2 * meow.filter((t) => t.wave === 'sawtooth').length);
   });
 
   it('queues nothing on a context that is still suspended, and asks it to run', () => {
@@ -187,6 +233,28 @@ describe('the player', () => {
     );
     player.unlock();
     expect(player.play(beep)).toBe(false);
+  });
+});
+
+describe('every play a little different', () => {
+  const sound = ATTACK_SOUNDS.reverse;
+
+  it('changes nothing at the middle of its range', () => {
+    expect(vary(sound, () => 0.5)).toEqual(sound);
+  });
+
+  it('moves every tone of a sound together: pitch, length, mouth and breath', () => {
+    const high = vary(sound, () => 1);
+    const pitch = 2 ** (60 / 1200);
+    high.forEach((t, i) => {
+      const was = sound[i];
+      expect(t.freq).toBeCloseTo(was.freq * pitch, 6);
+      expect(t.duration).toBeCloseTo(was.duration * 1.08, 6);
+      expect(t.at).toBeCloseTo(was.at * 1.08, 6);
+      expect(t.gain).toBeLessThanOrEqual(1);
+      expect(t.formants?.[0].path[0]).toBeCloseTo((was.formants?.[0].path[0] ?? 0) * 1.04, 6);
+      if (was.sync) expect(t.sync?.[0]).toBeCloseTo(was.sync[0] * pitch, 6);
+    });
   });
 });
 
