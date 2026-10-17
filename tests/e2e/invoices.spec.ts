@@ -32,10 +32,13 @@ async function createInvoice(page: Page, cents: number) {
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
 }
 
-/** The invoice list's rows for that amount (the search matches cents). */
+/**
+ * The invoice list's rows for that amount (the search matches cents). Visible ones
+ * only: while the table streams in, a hidden copy of it can be in the page too.
+ */
 async function rowsFor(page: Page, cents: number) {
   await page.goto(`/dashboard/invoices?query=${cents}`);
-  return page.locator('table tbody tr').filter({ hasText: dollars(cents) });
+  return page.locator('table tbody tr').filter({ hasText: dollars(cents), visible: true });
 }
 
 test('an invoice is created and listed', async ({ page }) => {
