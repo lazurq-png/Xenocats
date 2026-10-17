@@ -424,7 +424,7 @@ these additions.
      Warnings do not spend the three-cycle budget (§6).
    - **Formatting** applies to the task's own files only: `npx prettier --write
      <those files>`. Never `npm run format`, which rewrites the whole
-     repository, and not every file there matches `.prettierrc`.
+     repository: a file another change left unformatted is not this task's.
    - **Say what ran behaviour.** A clean type check and build prove the code
      compiles, not that it does what the task asked; only tests run it. Say
      which acceptance criteria (§1.0) a test covers and which only the

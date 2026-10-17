@@ -281,12 +281,11 @@ it, on that job's database.
 clean exit does not mean an empty report. Read the output; do not report "lint
 passed" as though it found nothing.
 
-Formatting is per file. `npm run format` rewrites the whole repository, and not
-every file matches `.prettierrc` (e.g. `tsconfig.json`, `global.d.ts` and
-`app/dashboard/(overview)/loading.tsx` do not), so it produces a drive-by diff. Run `prettier --check` / `--write` on the files
-the task changed. `.prettierignore` leaves out Markdown (Prettier would pad its
-tables) and `.claude/worktrees/` (other sessions' checkouts); Prettier skips
-those files even when named.
+Every file Prettier checks matches `.prettierrc`, so `npx prettier --check .`
+should pass. `.prettierignore` leaves out Markdown (Prettier would pad its
+tables), `.claude/worktrees/` (other sessions' checkouts) and `tsconfig.json`
+(Next rewrites it in its own layout); Prettier skips those even when named.
+A task still formats only the files it changed.
 
 The running app, and possibly `npm run build` where a page prerenders, need
 `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` in `.env`. **`POSTGRES_URL` is a

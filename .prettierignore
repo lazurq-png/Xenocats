@@ -4,3 +4,6 @@
 
 # Other sessions' checkouts (git worktrees), each formatted on its own branch.
 .claude/worktrees/
+
+# Next.js rewrites it in its own layout whenever it adds an include.
+tsconfig.json
