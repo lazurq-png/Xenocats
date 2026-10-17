@@ -284,7 +284,9 @@ passed" as though it found nothing.
 Formatting is per file. `npm run format` rewrites the whole repository, and not
 every file matches `.prettierrc` (e.g. `tsconfig.json`, `global.d.ts` and
 `app/dashboard/(overview)/loading.tsx` do not), so it produces a drive-by diff. Run `prettier --check` / `--write` on the files
-the task changed.
+the task changed. `.prettierignore` leaves out Markdown (Prettier would pad its
+tables) and `.claude/worktrees/` (other sessions' checkouts); Prettier skips
+those files even when named.
 
 The running app, and possibly `npm run build` where a page prerenders, need
 `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` in `.env`. **`POSTGRES_URL` is a
