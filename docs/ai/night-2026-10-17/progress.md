@@ -152,3 +152,13 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (`forms.test.tsx` 7 passed), build exit 0, 11 e2e specs (35 passed). The first new test fails without the region (checked). The look of the messages is not seen.
 - **Reviewer.** Approve, one Low: a refused customer was still silent. Fixed, with the second test (D36).
 - **CI of E4** (0afca64): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38999120604.
+
+## Checkpoint 2 (after E1–E6, range 8a9348e..bb93a87) (completed)
+
+- Branch `2026-10-17-c2-checkpoint`, base bb93a87. Started 05:41, completed 05:54. One item late: due after E5, run after E6 (D37).
+- **Tests.** Every changed behaviour in the range has a test that fails without it (the reviewer's reading, and the run's own checks in D33–D36). The exception: the caps' SQL is never reached against a database at the cap. No test of removed behaviour, no duplicate. One test was a time bomb (below), fixed. A scan of the other tests for fixed dates found no other.
+- **Quality and security.** The reviewer on the range, security rules in scope: request changes, one Medium. E3's cap test used a fixed due date and would have failed from 2026-11-09. Fixed and checked with the clock moved to 2026-12-01 (D37). Nothing else.
+- **Speed.** No Survival code in the range. Simulation and render match checkpoint 1 (D37); nothing to chase.
+- **Full suites.** prettier, lint (0 warnings), tsc clean; `npm test` 1025 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped.
+- **What it brings.** The exploration so far is checked as a whole, and a test that would have broken every build in three weeks no longer will.
+- **CI of E6** (bb93a87): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38999705681.

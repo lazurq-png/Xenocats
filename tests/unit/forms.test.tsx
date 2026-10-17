@@ -18,6 +18,7 @@ vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 const { default: CreateInvoiceForm } = await import('@/app/ui/invoices/create-form');
 const { default: EditInvoiceForm } = await import('@/app/ui/invoices/edit-form');
 const { default: CustomerForm } = await import('@/app/ui/customers/customer-form');
+const { addDays } = await import('@/app/lib/schemas');
 
 const customers = [{ id: 'c0ffee00-0000-4000-8000-000000000001', name: 'Amy Burns' }];
 
@@ -76,7 +77,10 @@ describe('the invoice create form, for an account full of invoices', () => {
     // The insert's own cap held it back, and the account holds the most it may.
     sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
     sql.mockResolvedValueOnce([{ n: 10_000 }]);
-    render(<CreateInvoiceForm customers={customers} dueDate="2026-11-08" />);
+    // Due a month from today: the action dates the invoice by the clock, so a fixed
+    // date would one day be before it, and the due-date check would answer instead.
+    const due = addDays(new Date().toISOString().slice(0, 10), 30);
+    render(<CreateInvoiceForm customers={customers} dueDate={due} />);
     fireEvent.change(screen.getByLabelText('Choose customer'), {
       target: { value: customers[0].id },
     });
