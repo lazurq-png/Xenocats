@@ -35,9 +35,12 @@ import {
   type RunLength,
   bestOf,
   clockText,
+  dayText,
   lengthName,
   readAim,
   readBest,
+  readCharacterBest,
+  recordCharacterRun,
   readGraphics,
   readGraphicsAuto,
   readLength,
@@ -229,6 +232,18 @@ function bitmapOf(src: string, size: number, onReady: () => void): () => HTMLCan
   return () => ready;
 }
 
+/**
+ * Each character's best for a run length, as one string (a snapshot that stays the same
+ * while nothing changes): "ms@date" per character, in CHARACTERS order, "" for none.
+ */
+const characterBestsOf = (length: RunLength) =>
+  (Object.keys(CHARACTERS) as CharacterId[])
+    .map((id) => {
+      const best = readCharacterBest(length, id);
+      return best ? `${best.ms}@${best.date}` : '';
+    })
+    .join('|');
+
 function subscribeBest(onChange: () => void) {
   window.addEventListener('storage', onChange);
   return () => window.removeEventListener('storage', onChange);
@@ -295,6 +310,11 @@ export default function ArenaGame({
     () => readBest(length),
     () => null
   );
+  const characterBests = useSyncExternalStore(
+    subscribeBest,
+    () => characterBestsOf(length),
+    () => ''
+  );
   // Aiming with a crosshair: a computer's choice (a touch screen has no pointer).
   const storedAim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
   const aimMode: AimMode = touch ? 'auto' : storedAim;
@@ -347,6 +367,10 @@ export default function ArenaGame({
       if (!arena) return;
       const time = Math.min(arena.state().time, arena.config.timeGoalMs);
       writeBest(bestOf(readBest(lengthRef.current), time), lengthRef.current);
+      // And the best of each character who went out (both, in co-op).
+      for (const id of new Set([characterRef.current, secondRef.current ?? characterRef.current])) {
+        recordCharacterRun(lengthRef.current, id, time);
+      }
       const { sentHome, level } = arena.state();
       const after = applyRun(readProgress(), {
         timeMs: time,
@@ -1444,6 +1468,25 @@ export default function ArenaGame({
           Longest survived ({lengthName(length)}): {best === null ? 'none yet' : clockText(best)}
         </p>
       </div>
+      <h3 id="survival-character-bests" className="mt-3 text-sm font-semibold text-cream">
+        Each character’s best ({lengthName(length)})
+      </h3>
+      <ul
+        aria-labelledby="survival-character-bests"
+        data-testid="survival-character-bests"
+        className="mt-1 space-y-0.5 text-sm text-aura"
+      >
+        {(Object.keys(CHARACTERS) as CharacterId[]).map((id, i) => {
+          if (!hasCharacter(progress, id)) return null;
+          const [ms, date] = (characterBests.split('|')[i] ?? '').split('@');
+          return (
+            <li key={id} data-character={id} data-best={ms ?? ''}>
+              {CHARACTERS[id].name}:{' '}
+              {ms ? `${clockText(Number(ms))}, set ${dayText(date)}` : 'none yet'}
+            </li>
+          );
+        })}
+      </ul>
 
       {!running && <ProgressionPanel />}
 

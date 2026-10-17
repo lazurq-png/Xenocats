@@ -665,6 +665,33 @@ test.describe('on a computer', () => {
     expect(given).toBeGreaterThan(0);
   });
 
+  test('a finished run shows its time as the character’s best for its length, with the day', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&speed=3');
+    const keeper = page
+      .getByRole('list', { name: 'Each character’s best (5 minutes)' })
+      .locator('li[data-character="keeper"]');
+    await expect(keeper).toHaveText('The Keeper: none yet');
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-time'), { timeout: 15_000 }).toBeGreaterThan(3000);
+    await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
+    const time = await page.getByTestId('survival-result-time').textContent();
+    expect(time).toMatch(/^\d:\d\d$/);
+    await expect(keeper).toHaveText(
+      new RegExp(`^The Keeper: ${time}, set \\d{1,2} [A-Z][a-z]{2} \\d{4}$`)
+    );
+    // Kept: the lobby shows it again after a reload, and another length has none.
+    await page.reload();
+    await expect(keeper).toContainText(`The Keeper: ${time}, set `);
+    await page.getByTestId('survival-length-10').check();
+    await expect(
+      page
+        .getByRole('list', { name: 'Each character’s best (10 minutes)' })
+        .locator('li[data-character="keeper"]')
+    ).toHaveText('The Keeper: none yet');
+  });
+
   test('WASD walks the hero', async ({ page }) => {
     await openArena(page);
     await startRun(page);

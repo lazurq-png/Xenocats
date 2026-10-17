@@ -59,6 +59,96 @@ export function writeBest(ms: number, length: RunLength = 5) {
   }
 }
 
+/**
+ * A character's best for one run length: the longest survived, ms (an endless run's
+ * too), and the day it was set (YYYY-MM-DD, the player's own calendar). Kept beside
+ * the overall bests above, which stay as they were.
+ */
+export type CharacterBest = { ms: number; date: string };
+
+/** Where a character's best for a run length is kept. */
+export const characterBestKey = (length: RunLength, character: string) =>
+  `xenocats:survival:v1:character-best:${length === ENDLESS ? 'endless' : length}:${character}`;
+
+/** A stored character best, or null for none (missing, corrupt, or not a sane time or day). */
+export function parseCharacterBest(raw: string | null): CharacterBest | null {
+  if (raw === null) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null) return null;
+    const { ms, date } = value as { ms?: unknown; date?: unknown };
+    const best = typeof ms === 'number' ? parseBest(String(ms)) : null;
+    if (best === null || typeof date !== 'string' || !isDay(date)) return null;
+    return { ms: best, date };
+  } catch {
+    return null;
+  }
+}
+
+/** Whether `date` is a day that exists, as YYYY-MM-DD. */
+function isDay(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const [year, month, day] = date.split('-').map(Number);
+  const at = new Date(year, month - 1, day);
+  return at.getFullYear() === year && at.getMonth() === month - 1 && at.getDate() === day;
+}
+
+/** The day `at` falls on, here: YYYY-MM-DD. */
+export const dayOf = (at: Date) =>
+  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+
+/** A day as the lobby says it: "17 Oct 2026". */
+export const dayText = (date: string) => {
+  const [year, month, day] = date.split('-').map(Number);
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return `${day} ${months[month - 1]} ${year}`;
+};
+
+export function readCharacterBest(length: RunLength, character: string): CharacterBest | null {
+  try {
+    return parseCharacterBest(window.localStorage.getItem(characterBestKey(length, character)));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A finished run of `ms` for `character`: kept as its best for the length if it is
+ * longer than the one kept (a tie keeps the older day). The best now.
+ */
+export function recordCharacterRun(
+  length: RunLength,
+  character: string,
+  ms: number,
+  at: Date = new Date()
+): CharacterBest | null {
+  const kept = readCharacterBest(length, character);
+  // In whole milliseconds, down, as the results screen counts it (clockText floors).
+  const time = Math.floor(ms);
+  if (parseBest(String(time)) === null || (kept && kept.ms >= time)) return kept;
+  const best = { ms: time, date: dayOf(at) };
+  try {
+    window.localStorage.setItem(characterBestKey(length, character), JSON.stringify(best));
+  } catch {
+    // Storage blocked or full: the best just isn't kept.
+    return kept;
+  }
+  return best;
+}
+
 export const SURVIVAL_LENGTH_KEY = 'xenocats:survival:v1:length';
 
 /** A stored run length in minutes; anything else (missing, corrupt) is five. */
