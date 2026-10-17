@@ -1965,18 +1965,18 @@ describe('fusion: two evolved weapons made one at a chest', () => {
 });
 
 describe('the colour of how far an item has come', () => {
-  const tiers: Tier[] = [1, 2, 3, 4, 5, 6, 7];
+  const tiers: Tier[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-  it('a weapon climbs with its level: 1–2, 3–4, 5–6, 7, 8; evolved and fused have colours of their own', () => {
+  it('a weapon’s level is its tier, 1 to 8; evolved and fused have colours of their own', () => {
     const byLevel = [1, 2, 3, 4, 5, 6, 7, 8].map((level) =>
       tierOf({ kind: 'weapon', id: 'laser-pointer', level })
     );
-    expect(byLevel).toEqual([1, 1, 2, 2, 3, 3, 4, 5]);
+    expect(byLevel).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     for (const { to } of EVOLUTIONS)
-      expect(tierOf({ kind: 'weapon', id: to, level: 8 }), to).toBe(6);
-    for (const { to } of FUSIONS) expect(tierOf({ kind: 'weapon', id: to, level: 8 }), to).toBe(7);
+      expect(tierOf({ kind: 'weapon', id: to, level: 8 }), to).toBe(9);
+    for (const { to } of FUSIONS) expect(tierOf({ kind: 'weapon', id: to, level: 8 }), to).toBe(10);
     // Whatever level an evolved weapon is held at, it stays beyond the highest level's.
-    expect(tierOf({ kind: 'weapon', id: 'infinite-laser', level: 1 })).toBe(6);
+    expect(tierOf({ kind: 'weapon', id: 'infinite-laser', level: 1 })).toBe(9);
   });
 
   it('a passive climbs a tier a level, 1 to 5, the same scale', () => {
@@ -1989,16 +1989,18 @@ describe('the colour of how far an item has come', () => {
   });
 
   it('every tier has its own name and its own colour class, and they are the theme’s tokens', () => {
-    expect(new Set(tiers.map((t) => TIER_NAMES[t])).size).toBe(7);
-    expect(new Set(tiers.map((t) => TIER_CLASS[t])).size).toBe(7);
+    expect(new Set(tiers.map((t) => TIER_NAMES[t])).size).toBe(10);
+    expect(new Set(tiers.map((t) => TIER_CLASS[t])).size).toBe(10);
     const colours = Object.entries(themeColours).filter(([name]) => name.startsWith('tier-'));
     for (const t of tiers) expect(TIER_CLASS[t]).toBe(`text-tier-${t}`);
-    expect(colours.map(([name]) => Number(name.slice('tier-'.length))).sort()).toEqual(tiers);
-    expect(new Set(colours.map(([, value]) => value)).size).toBe(7);
+    expect(
+      colours.map(([name]) => Number(name.slice('tier-'.length))).sort((x, y) => x - y)
+    ).toEqual(tiers);
+    expect(new Set(colours.map(([, value]) => value)).size).toBe(10);
     expect(tierStyle({ kind: 'weapon', id: 'cat-treats', level: 8 })).toEqual({
-      tier: 5,
-      name: TIER_NAMES[5],
-      className: 'text-tier-5',
+      tier: 8,
+      name: TIER_NAMES[8],
+      className: 'text-tier-8',
     });
   });
 

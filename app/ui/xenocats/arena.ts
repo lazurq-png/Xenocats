@@ -128,6 +128,8 @@ export type ArenaConfig = {
     eliteValue: number;
     /** Beyond this many gems lying about, a new one adds to an old one. */
     cap: number;
+    /** A gem dropped this near another joins it: one bigger gem, px. */
+    merge: number;
   };
   matriarch: {
     /** px/s: faster than the hero. */
@@ -197,6 +199,22 @@ export type ArenaConfig = {
   };
   /** Chests lying on the Keepers' start (a test's way to reach a chest at once). */
   startingChests: number;
+  /** Golden chests lying on the Keepers' start (the same, for a boss's chest). */
+  startingGoldenChests: number;
+  /**
+   * A boss sent home: the mothership takes it, and a ring of light spreads from where it
+   * stood, sending home every cat it reaches but another boss; it scatters `loot` gems,
+   * each `lootValue` times a plain cat's, round the spot, and leaves a golden chest. The chest holds 1, 3 or 5
+   * rewards (each an evolution, a fusion, or a level-up), by `weights`.
+   */
+  bossHome: {
+    ringMs: number;
+    ringRadius: number;
+    loot: number;
+    lootValue: number;
+    rewards: readonly number[];
+    weights: readonly number[];
+  };
   /** Which cats come when (varieties.ts). */
   schedule: Schedule;
   laserCat: {
@@ -314,7 +332,7 @@ export const ARENA_CONFIG: ArenaConfig = {
   firstShotMs: 550,
   startingLevel: 1,
   startingPassives: [],
-  gems: { pickup: 100, speed: 520, value: 1, eliteValue: 6, cap: 1500 },
+  gems: { pickup: 100, speed: 520, value: 1, eliteValue: 6, cap: 1500, merge: 32 },
   matriarch: { speed: 330, reach: 70 },
   eliteAttack: {
     range: 300,
@@ -347,6 +365,15 @@ export const ARENA_CONFIG: ArenaConfig = {
     bellMs: 2000,
   },
   startingChests: 0,
+  startingGoldenChests: 0,
+  bossHome: {
+    ringMs: 900,
+    ringRadius: 560,
+    loot: 12,
+    lootValue: 3,
+    rewards: [1, 3, 5],
+    weights: [0.5, 0.35, 0.15],
+  },
   schedule: SCHEDULE,
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
@@ -680,6 +707,21 @@ export const YARN_APOCALYPSE_CAP = 96;
 export const GULP_BURST_RADIUS = 170;
 
 export type Gem = { x: number; y: number; value: number };
+/** A chest lying about; a boss's is golden. */
+export type Chest = { x: number; y: number; golden: boolean };
+/** A ring of light spreading from where a boss was sent home, from `start`. */
+export type Ring = { x: number; y: number; start: number };
+
+/**
+ * How big a gem is, by the experience it holds: gems that joined grow a size and change
+ * colour (arena-view draws each size its own colour). 0 is a single cat's gem.
+ */
+export function gemSize(value: number): 0 | 1 | 2 | 3 {
+  if (value >= 30) return 3;
+  if (value >= 10) return 2;
+  if (value >= 3) return 1;
+  return 0;
+}
 
 /** What a cat sent home may leave besides its gem. */
 export type PickupKind = 'fish' | 'magnet' | 'bell';
@@ -781,7 +823,9 @@ export type ArenaEvent =
   | { kind: 'pickup-left'; pickup: PickupKind; x: number; y: number }
   | { kind: 'pickup-taken'; pickup: PickupKind; player: number }
   | { kind: 'boss-summon'; x: number; y: number; kittens: number }
-  | { kind: 'chest'; x: number; y: number }
+  | { kind: 'chest'; x: number; y: number; golden: boolean; rewards: number }
+  /** A boss was sent home: the mothership came for it. */
+  | { kind: 'boss-home'; x: number; y: number; type: number }
   | { kind: 'laser'; from: Vec; to: Vec }
   | { kind: 'level-up'; level: number }
   | { kind: 'evolution'; from: WeaponId; to: WeaponId }
@@ -966,7 +1010,12 @@ export function createArena(options: {
   let nextXenocat = config.schedule.xenocats?.from ?? Infinity;
   const swarms = new Map<number, number>();
   let bossesCome = 0;
-  const chests: Vec[] = Array.from({ length: config.startingChests }, () => ({ x: 0, y: 0 }));
+  const chests: Chest[] = [
+    ...Array.from({ length: config.startingChests }, () => ({ x: 0, y: 0, golden: false })),
+    ...Array.from({ length: config.startingGoldenChests }, () => ({ x: 0, y: 0, golden: true })),
+  ];
+  // The rings of light a boss sent home leaves, spreading.
+  const rings: Ring[] = [];
   // The Laser Cats' shots.
   type Shot = { x: number; y: number; vx: number; vy: number; until: number; drain: number };
   const shots: Shot[] = [];
@@ -1301,16 +1350,55 @@ export function createArena(options: {
           chest = true;
         } else swarms.set(cat.swarm, left);
       }
-      if (chest) chests.push({ x: cat.x, y: cat.y });
+      const boss = cat.variety === 'mega';
+      if (chest) chests.push({ x: cat.x, y: cat.y, golden: boss });
+      if (boss) {
+        events.push({ kind: 'boss-home', x: cat.x, y: cat.y, type: cat.type });
+        rings.push({ x: cat.x, y: cat.y, start: time });
+        for (let k = 0; k < config.bossHome.loot; k++) {
+          const angle = random.next() * 2 * Math.PI;
+          const far = 50 + random.next() * 70;
+          dropGem(
+            cat.x + Math.cos(angle) * far,
+            cat.y + Math.sin(angle) * far,
+            config.bossHome.lootValue * config.gems.value
+          );
+        }
+      }
       cats[i] = cats[cats.length - 1];
       cats.pop();
       spare.push(cat);
     }
   }
 
+  /** Each boss's ring of light spreads; every cat it reaches (but a boss) goes home. */
+  function spreadRings() {
+    const { ringMs, ringRadius } = config.bossHome;
+    for (let r = rings.length - 1; r >= 0; r--) {
+      const ring = rings[r];
+      const radius = (Math.min(time - ring.start, ringMs) / ringMs) * ringRadius;
+      for (const i of within(ring, radius)) {
+        const cat = cats[i];
+        if (cat.variety !== 'mega') cat.homesickness = Math.max(cat.homesickness, cat.limit);
+      }
+      if (time - ring.start >= ringMs) rings.splice(r, 1);
+    }
+  }
+
   function dropGem(x: number, y: number, value: number) {
+    // Near another gem, it joins it (the nearest): one bigger gem.
+    let join: Gem | null = null;
+    let best = config.gems.merge ** 2;
+    for (const gem of gems) {
+      const d = (gem.x - x) ** 2 + (gem.y - y) ** 2;
+      if (d <= best) {
+        best = d;
+        join = gem;
+      }
+    }
+    if (join) join.value += value;
     // Too many lying about: it adds to one already there.
-    if (gems.length >= config.gems.cap) gems[random.int(0, gems.length - 1)].value += value;
+    else if (gems.length >= config.gems.cap) gems[random.int(0, gems.length - 1)].value += value;
     else gems.push({ x, y, value });
   }
 
@@ -2804,29 +2892,49 @@ export function createArena(options: {
       // Whoever opens it: his weapon may evolve.
       hero = opener;
       chests.splice(i, 1);
-      events.push({ kind: 'chest', x: chest.x, y: chest.y });
-      // Two evolved weapons that fuse do, in their place; else a weapon ready to
-      // evolve does; otherwise a level-up.
-      const carried = new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const));
-      const fusion = fusionFor(carried);
-      const evolution = fusion ? null : evolutionFor(carried, hero.passives);
-      if (fusion) {
-        const parts = new Map(
-          fusion.from.map((id) => [id, { level: MAX_WEAPON_LEVEL, readyAt: time }] as const)
-        );
-        for (const id of fusion.from) hero.weapons.delete(id);
-        hero.weapons.set(fusion.to, { level: MAX_WEAPON_LEVEL, readyAt: time, parts });
-        everHeld.add(fusion.to);
-        events.push({ kind: 'fusion', from: fusion.from, to: fusion.to });
-      } else if (evolution) {
-        hero.weapons.delete(evolution.from);
-        hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
-        everHeld.add(evolution.to);
-        events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
-      } else pending++;
+      // A golden chest holds 1, 3 or 5 rewards; a plain one, one.
+      let rewards = 1;
+      if (chest.golden) {
+        const { rewards: counts, weights } = config.bossHome;
+        let roll = random.next() * weights.reduce((sum, w) => sum + w, 0);
+        rewards = counts[counts.length - 1];
+        for (let k = 0; k < counts.length; k++) {
+          roll -= weights[k];
+          if (roll < 0) {
+            rewards = counts[k];
+            break;
+          }
+        }
+      }
+      events.push({ kind: 'chest', x: chest.x, y: chest.y, golden: chest.golden, rewards });
+      for (let k = 0; k < rewards; k++) reward();
     }
     hero = keepers[0];
     if (pending > 0 && !choosing) offer();
+  }
+
+  /**
+   * One reward from a chest, for `hero`: two evolved weapons that fuse do, in their
+   * place; else a weapon ready to evolve does; otherwise a level-up.
+   */
+  function reward() {
+    const carried = new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const));
+    const fusion = fusionFor(carried);
+    const evolution = fusion ? null : evolutionFor(carried, hero.passives);
+    if (fusion) {
+      const parts = new Map(
+        fusion.from.map((id) => [id, { level: MAX_WEAPON_LEVEL, readyAt: time }] as const)
+      );
+      for (const id of fusion.from) hero.weapons.delete(id);
+      hero.weapons.set(fusion.to, { level: MAX_WEAPON_LEVEL, readyAt: time, parts });
+      everHeld.add(fusion.to);
+      events.push({ kind: 'fusion', from: fusion.from, to: fusion.to });
+    } else if (evolution) {
+      hero.weapons.delete(evolution.from);
+      hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
+      everHeld.add(evolution.to);
+      events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
+    } else pending++;
   }
 
   /** After a Keeper's choice or skip: the next player chooses for the same level, then the next level. */
@@ -3024,6 +3132,7 @@ export function createArena(options: {
       deal(null);
       updateSocks();
       deal(null);
+      spreadRings();
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
       for (const b of beams) {
@@ -3334,7 +3443,9 @@ export function createArena(options: {
     /** The Static Socks clinging to cats, where those cats stand. */
     socks: (): readonly Sock[] => socks,
     matriarch: (): Vec | null => matriarch,
-    chests: (): readonly Vec[] => chests,
+    chests: (): readonly Chest[] => chests,
+    /** The rings of light spreading from where bosses were sent home. */
+    rings: (): readonly Ring[] => rings,
     shots: (): readonly { x: number; y: number }[] => shots,
 
     state() {

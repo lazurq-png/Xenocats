@@ -328,7 +328,7 @@ test.describe('on a computer', () => {
     const paused = await pauseRun(page);
     const fused = paused.locator('li[data-weapon="thunderstorm"]');
     const fresh = paused.locator(`li[data-weapon="${taken}"]`);
-    await expect(fused).toHaveAttribute('data-tier', '7');
+    await expect(fused).toHaveAttribute('data-tier', '10');
     await expect(fresh).toHaveAttribute('data-tier', '1');
     await expect(fused.getByTestId('survival-pause-tier')).toHaveText('(Fused)');
     await expect(fresh.getByTestId('survival-pause-tier')).toHaveText('(Basic)');

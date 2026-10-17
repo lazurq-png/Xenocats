@@ -2,9 +2,10 @@
 // item (and its level) to its tier, and every place the game names one (the level-up
 // cards, the pause menu, the results) colours it from here, so they cannot disagree.
 //
-// Weapons climb by level: 1–2, 3–4, 5–6, 7, 8 (the highest) are tiers 1 to 5; an
-// evolved weapon is tier 6 and a fused one tier 7, each a colour of its own beyond the
-// highest level's. A passive's levels 1 to 5 are tiers 1 to 5, the same scale.
+// A weapon's level is its tier, 1 to 8, the classic ladder of rarity (grey, white,
+// green, blue, purple, magenta, orange, gold); an evolved weapon is tier 9 and a fused
+// one tier 10, each a colour of its own beyond the highest level's. A passive's levels
+// 1 to 5 are tiers 1 to 5, the same scale.
 //
 // Colour is never the only signal: the tier's name is written beside the name, with the
 // level. The colours are the theme's `tier` tokens (app/ui/global.css); each keeps the
@@ -21,7 +22,7 @@ import {
   type WeaponId,
 } from './arsenal';
 
-export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 /** What each tier is called, in words (the colour is not the only signal). */
 export const TIER_NAMES: Readonly<Record<Tier, string>> = {
@@ -29,9 +30,12 @@ export const TIER_NAMES: Readonly<Record<Tier, string>> = {
   2: 'Fine',
   3: 'Good',
   4: 'Great',
-  5: 'Finest',
-  6: 'Evolved',
-  7: 'Fused',
+  5: 'Epic',
+  6: 'Mythic',
+  7: 'Legendary',
+  8: 'Perfect',
+  9: 'Evolved',
+  10: 'Fused',
 };
 
 /** The text colour class of each tier: the theme's `tier` tokens, spelt out for Tailwind. */
@@ -43,6 +47,9 @@ export const TIER_CLASS: Readonly<Record<Tier, string>> = {
   5: 'text-tier-5',
   6: 'text-tier-6',
   7: 'text-tier-7',
+  8: 'text-tier-8',
+  9: 'text-tier-9',
+  10: 'text-tier-10',
 };
 
 export type TieredItem =
@@ -57,13 +64,9 @@ export function tierOf(item: TieredItem): Tier {
   if (item.kind === 'passive') {
     return Math.min(Math.max(Math.round(item.level), 1), MAX_PASSIVE_LEVEL) as Tier;
   }
-  if (isFused(item.id)) return 7;
-  if (isEvolved(item.id)) return 6;
-  const level = Math.min(Math.max(Math.round(item.level), 1), MAX_WEAPON_LEVEL);
-  if (level <= 2) return 1;
-  if (level <= 4) return 2;
-  if (level <= 6) return 3;
-  return level === 7 ? 4 : 5;
+  if (isFused(item.id)) return 10;
+  if (isEvolved(item.id)) return 9;
+  return Math.min(Math.max(Math.round(item.level), 1), MAX_WEAPON_LEVEL) as Tier;
 }
 
 /** The tier, its name and its colour class, for an item. */

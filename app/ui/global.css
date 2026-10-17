@@ -26,12 +26,15 @@
   /* How far a Survival weapon or passive has come (app/ui/xenocats/item-tier.ts): each
      keeps 4.5 : 1 against the dark panels it is drawn on. */
   --color-tier-1: #9ca3af;
-  --color-tier-2: #7dd3fc;
-  --color-tier-3: #9d86ff;
-  --color-tier-4: #c1e838;
-  --color-tier-5: #fbbf24;
-  --color-tier-6: #fb923c;
-  --color-tier-7: #f472b6;
+  --color-tier-2: #e5e7eb;
+  --color-tier-3: #4ade80;
+  --color-tier-4: #38bdf8;
+  --color-tier-5: #a78bfa;
+  --color-tier-6: #e879f9;
+  --color-tier-7: #fb923c;
+  --color-tier-8: #fbbf24;
+  --color-tier-9: #f87171;
+  --color-tier-10: #22d3ee;
 
   /* next/font's families (app/ui/fonts.tsx). */
   --font-display: var(--font-orbitron), sans-serif;

@@ -412,6 +412,88 @@ describe('the Mega Cat', () => {
     a.choose(0);
     expect(a.state().level).toBe(level);
   }, 60_000);
+
+  it('sent home, the mothership comes: a ring sends the cats near home, gems scatter, the chest is golden', () => {
+    const boss: Schedule = {
+      arrivals: [{ from: 0, who: 'basic', weight: 1 }],
+      swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+      bosses: [5000],
+    };
+    const a = arena({
+      schedule: boss,
+      escalation: [[0, 30]],
+      startingWeapons: ['thunderous-vacuum', 'can-opener', 'cat-treats'],
+      startingLevel: 8,
+      hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
+      // He picks nothing up, so the boss's gems stay where they fell.
+      gems: { ...ARENA_CONFIG.gems, pickup: 0 },
+    });
+    const { ringMs, ringRadius, loot, lootValue } = ARENA_CONFIG.bossHome;
+    let home: { x: number; y: number } | null = null;
+    let near: number[] = [];
+    let gemsBefore = 0;
+    stepWhile(
+      a,
+      () => !home && a.state().time < 300_000,
+      () => {
+        gemsBefore = a.gems().reduce((sum, g) => sum + g.value, 0);
+        a.step(still);
+        const event = a.drainEvents().find((e) => e.kind === 'boss-home');
+        if (event?.kind !== 'boss-home') return;
+        home = { x: event.x, y: event.y };
+        near = a
+          .cats()
+          .filter(
+            (c) =>
+              c.variety !== 'mega' && Math.hypot(c.x - event.x, c.y - event.y) < ringRadius - 60
+          )
+          .map((c) => c.id);
+      }
+    );
+    expect(home).not.toBeNull();
+    // Its gem, and the loot round it.
+    const gemsAfter = a.gems().reduce((sum, g) => sum + g.value, 0);
+    expect(gemsAfter - gemsBefore).toBeGreaterThanOrEqual(
+      loot * lootValue * ARENA_CONFIG.gems.value
+    );
+    expect(a.chests()).toContainEqual({ ...home!, golden: true });
+    expect(a.rings()).toHaveLength(1);
+    expect(near.length).toBeGreaterThan(0);
+    // The ring spreads: every cat that stood near is sent home, and then it is gone.
+    stepTo(a, a.state().time + ringMs + 100);
+    const left = new Set(a.cats().map((c) => c.id));
+    expect(near.filter((id) => left.has(id))).toEqual([]);
+    expect(a.rings()).toHaveLength(0);
+  }, 60_000);
+
+  it('a golden chest holds 1, 3 or 5 rewards, by its weights', () => {
+    const counts = new Map<number, number>();
+    for (let seed = 1; seed <= 60; seed++) {
+      const a = arena(
+        {
+          startingGoldenChests: 1,
+          chestReach: ARENA_CONFIG.chestReach,
+          escalation: [[0, 0]],
+          startingWeapons: [],
+        },
+        seed
+      );
+      a.step(still);
+      const opened = a.drainEvents().find((e) => e.kind === 'chest');
+      if (opened?.kind !== 'chest') throw new Error('the chest was not opened');
+      expect(opened.golden).toBe(true);
+      counts.set(opened.rewards, (counts.get(opened.rewards) ?? 0) + 1);
+      // Nothing to evolve: each reward is a level-up, chosen one after another.
+      let chosen = 0;
+      while (a.choices()) {
+        a.choose(0);
+        chosen++;
+      }
+      expect(chosen).toBe(opened.rewards);
+    }
+    expect([...counts.keys()].sort()).toEqual([1, 3, 5]);
+    expect(counts.get(1)!).toBeGreaterThan(counts.get(5)!);
+  });
 });
 
 describe('the drawings', () => {
