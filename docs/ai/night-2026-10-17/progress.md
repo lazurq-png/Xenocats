@@ -180,3 +180,23 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **What it brings.** Nobody can deface the public leaderboard with a name that draws over the other rows, while names in Burmese, Devanagari, Thai and the other scripts checked still go on it. Decisions: D38.
 - **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (128 passed / 35 skipped), build exit 0, 26 e2e specs (154 passed / 2 skipped). The tower test fails under the old rule (it passes 19 marks). The board's look with a long accented name is not seen.
 - **Reviewer.** Request changes: one Medium (four-mark Burmese names were refused; now only Mn and Me are counted) and one Low (the stray-mark message); both fixed. Re-review: approve, one Low (enclosing marks), fixed.
+
+## E9 — started 06:16: gems and shots drawn as one path and one fill per colour (kind: speed on a weak machine)
+
+## E9 — Gems and shots drawn as one path and one fill per colour (abandoned: slower, reverted)
+
+- Branch `2026-10-17-e9-batched-fills`, base 5647901, no commit. Started 06:15, ended 06:20.
+- Before it, the turn's "bugs" work found nothing to change: two shuffled-order unit runs (`--sequence.shuffle`, seeds 8581 and 6954) passed in full, and a reading of the elite attacks found nothing.
+- Tried (the plan's candidate "one path and fill per colour for gems and shots"): each colour's gems and plain shots gathered into one `Path2D` and filled once. Measured interleaved, two pairs (×4 CPU, full graphics): 500 cats 45.5 / 45.6 fps before against 39.5 / 38.7 after (−14%), and frames over 50 ms 31 / 30 against 47 / 58; 2000 cats 22.4 / 22.6 against 19.9 / 19.6. Slower, so it was reverted. One fill of a path with hundreds of subpaths costs this canvas more than hundreds of small fills. That is worth knowing before anyone tries the same with other layers.
+- With this, every speed candidate the plan named has been tried (E2, E5, E7, E9). None moved the render benchmark, one made it worse. The benchmark's cost lies elsewhere, most likely in the cats' `drawImage`s themselves and the glow passes; measuring where (a profile of one frame) is proposed in Q9 rather than guessed at.
+
+## E10 — started 06:30: the HUD updated four times a second, not seven (kind: speed on a weak machine)
+
+## E10 — The HUD updated four times a second, not seven (completed)
+
+- Branch `2026-10-17-e10-hud-rate`, base 5647901. Started 06:20, completed 06:34.
+- **What the code does.** `arena-view.tsx`: during a run the HUD's React state is updated every 250 ms (`HUD_EVERY_MS`) instead of every 150, at once still at a run's end or a waiting level-up. `survival.spec.ts`: `settled()` reads twice 600 ms apart, so a HUD update always falls between. Before the change, temporary timing of one crowded frame's draw passes and steps (reverted, not committed) found that the draw is a tenth of the frame, and that React's re-render at each HUD update is a large part of the rest (Q9).
+- **What it brings.** Survival runs about 9% faster in frames a second on a slow machine (the ×4-CPU benchmark at 500 and 2000 cats), with fewer stalled frames, at the cost of a clock and Resolve bar that change four times a second, not seven. It also shows where the next, bigger gain is (Q9). Decisions: D39.
+- **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (no unit test reaches the view; exit 0), build exit 0, 13 e2e specs (122 passed / 2 skipped); after the `settled()` fix, `survival.spec.ts` 37 passed. Speed measured interleaved, two pairs (D39). The HUD's look at four updates a second is not seen.
+- **Reviewer.** Approve, one Low (`settled()`), fixed.
+- **CI of E8** (5647901): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39001766508.

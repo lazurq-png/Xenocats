@@ -80,7 +80,11 @@ async function pauseRun(page: Page) {
   return paused;
 }
 
-/** A data- number once it has stopped changing (the HUD trails the run a little). */
+/**
+ * A data- number once it has stopped changing (the HUD trails the run a little). Two
+ * reads apart by well over the HUD's interval (HUD_EVERY_MS, 250 ms, plus a slow frame),
+ * so one HUD update always falls between them.
+ */
 async function settled(page: Page, name: string) {
   let last = NaN;
   await expect
@@ -91,7 +95,7 @@ async function settled(page: Page, name: string) {
         last = now;
         return same;
       },
-      { intervals: [300] }
+      { intervals: [600] }
     )
     .toBe(true);
   return last;

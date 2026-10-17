@@ -139,6 +139,13 @@ const ZONE_COLOR: Record<string, string> = {
 /** How long an evolution's announcement stays, ms. */
 const NOTICE_MS = 5000;
 
+/**
+ * How often the HUD (React state) is updated during a run, ms: each update renders
+ * this whole component again, which on a slow machine costs more than drawing the
+ * frame (night run 2026-10-17, E10: from 150 ms to 250, +9% frames a second).
+ */
+const HUD_EVERY_MS = 250;
+
 /** Cats drawn this size, px. */
 const CAT_SIZE = 44;
 const HERO_SIZE = 56;
@@ -1246,7 +1253,7 @@ export default function ArenaGame({
       dirty = false;
 
       const state = arena.state();
-      if (over || now - lastHud > 150) {
+      if (over || now - lastHud > HUD_EVERY_MS) {
         lastHud = now;
         setHud({
           time: state.time,
