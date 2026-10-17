@@ -327,6 +327,29 @@ describe('every weapon, at level 1 and at its top level', () => {
     expect(most).toBe(weaponStats('laser-pointer', 8, none).count);
   });
 
+  it('a Laser Pointer beam stays on him while he walks', () => {
+    const a = arena({ ...steady, escalation: [[0, 20]] });
+    const right = { x: 1, y: 0 };
+    let checked = 0;
+    stepTo(a, 15_000, () => {
+      const fired = a.beams().length > 0;
+      a.step(fired ? right : still);
+      a.drainEvents();
+      const { x, y } = a.state().hero;
+      for (const b of a.beams()) {
+        expect(b.from.x).toBeCloseTo(x, 6);
+        expect(b.from.y).toBeCloseTo(y, 6);
+        // Still its whole length.
+        expect(Math.hypot(b.to.x - b.from.x, b.to.y - b.from.y)).toBeCloseTo(
+          weaponStats('laser-pointer', 1, none).area,
+          6
+        );
+        if (fired) checked++;
+      }
+    });
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it('Cat Treats fly in a spread of their count', () => {
     const a = arena({ ...steady, startingWeapons: ['cat-treats'], escalation: [[0, 20]] });
     stepWhile(a, () => a.state().projectiles === 0 && a.state().time < 20_000);

@@ -207,6 +207,11 @@ test.describe('on a computer', () => {
     await paused.getByRole('button', { name: 'Give up' }).click();
     await expect(page.getByTestId('survival-results')).toHaveAttribute('data-outcome', 'gave-up');
     await expect(page.getByTestId('survival-result-length')).toHaveText('10:00');
+    // The results are a window over the lobby; its X closes it, and focus goes to Play again.
+    await page.getByTestId('survival-results').getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByTestId('survival-results')).toBeHidden();
+    await expect(page.getByTestId('survival-start')).toBeFocused();
+    await expect(page.getByTestId('survival-start')).toHaveText('Play again');
     // The five-minute best is a different one.
     await page.getByTestId('survival-length-5').check();
     await expect(page.getByTestId('survival-best')).toHaveText(
@@ -233,6 +238,9 @@ test.describe('on a computer', () => {
     await paused.getByRole('button', { name: 'Give up' }).click();
     await expect(page.getByTestId('survival-results')).toHaveAttribute('data-outcome', 'gave-up');
     await expect(page.getByTestId('survival-result-length')).toHaveText('Endless');
+    // Esc closes the results window too.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('survival-results')).toBeHidden();
   });
 
   test('an elite near the Keeper winds up an attack the HUD data shows', async ({ page }) => {
@@ -627,8 +635,9 @@ test.describe('on a computer', () => {
     const again = await pauseRun(page);
     await expect(again.getByRole('checkbox', { name: 'Sound' })).not.toBeChecked();
     await again.getByRole('button', { name: 'Give up' }).click();
-    // The lobby shows the same setting, and switches it back.
+    // The lobby shows the same setting, and switches it back once the results are closed.
     await expect(lobby).not.toBeChecked();
+    await page.getByTestId('survival-results').getByRole('button', { name: 'Close' }).click();
     await lobby.check();
     expect(await page.evaluate((key) => localStorage.getItem(key), SOUND_KEY)).toBe('on');
     await page.reload();

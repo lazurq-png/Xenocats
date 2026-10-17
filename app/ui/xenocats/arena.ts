@@ -975,7 +975,8 @@ export function createArena(options: {
   // What the weapons fired.
   const projectiles: Projectile[] = [];
   const spareProjectiles: Projectile[] = [];
-  const beams: { from: Vec; to: Vec; until: number }[] = [];
+  // A beam fired from a Keeper (`follows`) moves with him while it shows.
+  const beams: { from: Vec; to: Vec; until: number; follows?: Vec }[] = [];
   const patches: Patch[] = [];
   // This step's toys among the patches, gathered before the cats walk (lureOf): every
   // cat looks at these, not at every puddle and box (night run 2026-10-17, E12).
@@ -1734,8 +1735,8 @@ export function createArena(options: {
     kind: WeaponKind = 'beam'
   ) {
     const to = { x: from.x + ux * length, y: from.y + uy * length };
-    beams.push({ from: { ...from }, to, until: time + 180 });
-    events.push({ kind: 'laser', from: { ...from }, to });
+    beams.push({ from: { ...from }, to, until: time + 180, follows: from });
+    events.push({ kind: 'laser', from: { ...from }, to: { ...to } });
     gather(from.x + (ux * length) / 2, from.y + (uy * length) / 2, length / 2 + width);
     for (const i of near) {
       const cat = cats[i];
@@ -3025,6 +3026,15 @@ export function createArena(options: {
       deal(null);
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
+      for (const b of beams) {
+        if (!b.follows) continue;
+        const dx = b.follows.x - b.from.x;
+        const dy = b.follows.y - b.from.y;
+        b.from.x += dx;
+        b.from.y += dy;
+        b.to.x += dx;
+        b.to.y += dy;
+      }
       gatherGems(dt);
       gatherPickups(dt);
 

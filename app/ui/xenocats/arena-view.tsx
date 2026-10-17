@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { XMarkIcon } from '@heroicons/react/20/solid';
 import { Button } from '@/app/ui/button';
 import {
   type Arena,
@@ -217,6 +219,26 @@ const characterBestsOf = (length: RunLength) =>
     })
     .join('|');
 
+/** Keeps Tab and Shift+Tab inside a modal <dialog>, as the start screen's windows do. */
+function trapTab(event: ReactKeyboardEvent<HTMLDialogElement>) {
+  if (event.key !== 'Tab') return;
+  const focusable = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled])'
+    )
+  );
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function subscribeBest(onChange: () => void) {
   window.addEventListener('storage', onChange);
   return () => window.removeEventListener('storage', onChange);
@@ -314,7 +336,8 @@ export default function ArenaGame({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const pauseRef = useRef<HTMLDivElement>(null);
-  const resultsRef = useRef<HTMLElement>(null);
+  const resultsRef = useRef<HTMLDialogElement>(null);
+  const lobbyActionsRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<Vec>({ x: 0, y: 0 });
   const speedRef = useRef(1);
   // `?crowd=` and `?elite=`: the cats come whatever the frame rate (the frame guard is off), so a
@@ -538,7 +561,7 @@ export default function ArenaGame({
 
   // Focus: into the play area when a run starts (and back after a choice), onto the
   // first choice at a level-up, onto Resume when paused, and when over onto the
-  // leaderboard's name, or Play again.
+  // leaderboard's name, or Play again, in the results window.
   useEffect(() => {
     if (screen === 'playing') areaRef.current?.focus();
     if (screen === 'choosing') choiceRef.current?.querySelector('button')?.focus();
@@ -546,6 +569,7 @@ export default function ArenaGame({
     if (screen === 'results') {
       // The name for the leaderboard, when the run can go on it; otherwise Play again.
       const results = resultsRef.current;
+      if (results && !results.open) results.showModal();
       (
         results?.querySelector<HTMLElement>('#leaderboard-name') ??
         results?.querySelector<HTMLElement>('[data-play-again]')
@@ -679,6 +703,9 @@ export default function ArenaGame({
     const flashes: Flash[] = [];
     const met = new Set<number>();
     const sounds: number[] = [];
+    // One purr at a time: the cats sent home together would otherwise purr over each
+    // other, louder with every one. Until then, the next is not started.
+    let purringUntil = 0;
     let carry = 0;
     let runMs = 0;
     let windowMs = 0;
@@ -1178,7 +1205,13 @@ export default function ArenaGame({
       for (const event of arena.drainEvents()) {
         if (event.kind === 'sent-home') {
           flashes.push({ x: event.x, y: event.y, until: now + 300 });
-          if (player) sound(() => player.play(soundsFor(typeOf(event.type)).purr));
+          if (player && now >= purringUntil) {
+            const purr = soundsFor(typeOf(event.type)).purr;
+            sound(() => {
+              if (!player.play(purr)) return;
+              purringUntil = now + Math.max(...purr.map((t) => t.at + t.duration)) * 1000;
+            });
+          }
         } else if (event.kind === 'hero-hit') {
           if (event.type >= 0) hits.push(event.type);
           if (player) sound(() => player.play(soundsFor(typeOf(event.type)).attack));
@@ -1458,7 +1491,7 @@ export default function ArenaGame({
         </div>
       </fieldset>
       <GameSettings where="lobby" touch={touch} />
-      <div className="mt-4 flex flex-wrap items-center gap-4">
+      <div ref={lobbyActionsRef} className="mt-4 flex flex-wrap items-center gap-4">
         <Button data-testid="survival-start" onClick={start} disabled={running}>
           {screen === 'results' ? 'Play again' : 'Start Survival'}
         </Button>
@@ -1487,21 +1520,37 @@ export default function ArenaGame({
       </ul>
 
       {screen === 'results' && result && outcome && (
-        <section
+        // A native modal <dialog>, opened when the run ends: the page behind it is inert,
+        // and Esc or the X closes it, leaving the lobby with its own Play again.
+        <dialog
           ref={resultsRef}
           aria-labelledby="results-heading"
           data-testid="survival-results"
           data-outcome={outcome}
-          className="mt-6 max-w-xl rounded-2xl border border-line bg-panel p-6"
+          onKeyDown={trapTab}
+          onClose={() => lobbyActionsRef.current?.querySelector('button')?.focus()}
+          className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-xl overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-left text-white backdrop:bg-void/75 sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)]"
         >
-          <h2 id="results-heading" className="font-display text-2xl font-semibold text-cream">
-            The run is over
-          </h2>
-          <p role="status" className="mt-2 text-sm text-plasma">
-            {outcome === 'goal' && runLength !== ENDLESS
-              ? `${LENGTH_WORDS[runLength]} minutes, and the night is survived. The cats remain.`
-              : OUTCOME_TEXT[outcome]}
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="results-heading" className="font-display text-2xl font-semibold text-cream">
+                The run is over
+              </h2>
+              <p role="status" className="mt-2 text-sm text-plasma">
+                {outcome === 'goal' && runLength !== ENDLESS
+                  ? `${LENGTH_WORDS[runLength]} minutes, and the night is survived. The cats remain.`
+                  : OUTCOME_TEXT[outcome]}
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => resultsRef.current?.close()}
+              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-line bg-panel-raised text-cream hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
+            >
+              <XMarkIcon aria-hidden="true" className="size-5" />
+            </button>
+          </div>
           <dl className="mt-4 grid grid-cols-2 gap-2 text-sm text-white">
             <dt className="text-aura">Time survived</dt>
             <dd data-testid="survival-result-time">{clockText(result.time)}</dd>
@@ -1583,7 +1632,7 @@ export default function ArenaGame({
           <Button className="mt-4" onClick={start} data-play-again>
             Play again
           </Button>
-        </section>
+        </dialog>
       )}
 
       {running && (
