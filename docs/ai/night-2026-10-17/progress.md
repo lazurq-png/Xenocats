@@ -98,3 +98,28 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Full suites.** prettier, lint (0 warnings), tsc clean; `npm test` 1020 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped.
 - **What it brings.** The first six tasks are checked as a whole: tested, reviewed for security, not slower beyond the plan's line. The gaps that remain are written down.
 - **CI of T6** (0838c39): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38988415991. T5's dev-server failure (Q8) did not repeat there.
+
+## E1 — started 05:05: the touch spec's flaky second summon (Q1) (kind: bugs)
+
+## E1 — The touch spec's flaky second summon (Q1) (abandoned: not reproduced)
+
+- Branch `2026-10-17-e1-touch-flake`, base 8a9348e, no commit. Started 05:06, ended 05:12.
+- The baseline's one failure (`touch.spec.ts:48`, the second Summon's tap not registering during the knockback) did not come back: 15 of 15 runs at 4 workers, and 40 of 40 at 10 workers, a heavier load than the full suite's. A likely cause is that the tap lands while the 250 ms fling (`KNOCKBACK_FLIGHT_MS`) is still moving the card's buttons, since the test taps as soon as the first button has moved 20 px. But that is a guess the runs could not confirm, and §2.1 says to find the cause before fixing a flake. Left as it was; Q1 stays open, with the traces of a failing run (`trace.zip`) as what would settle it.
+
+## E2 — started 05:07: all beams in one path, one stroke and one glow a frame (kind: speed on a weak machine)
+
+## E2 — All beams in one path, one stroke and one glow a frame (abandoned: moved no number, reverted)
+
+- Branch `2026-10-17-e2-beam-path`, base 8a9348e, no commit. Started 05:13, ended 05:16.
+- Tried: the beams drawn as one path with a single `stroke()` (so one `shadowBlur` pass) instead of one path and stroke each. Render benchmark (×4 CPU, full graphics, two runs): 500 cats 44.5 / 44.4 fps (before, at the checkpoint: 44.5 / 43.9), 2000 cats 22.4 / 21.6 (before 21.1 / 22.2). That is within the run-to-run spread, so it was reverted, as the plan says: there are too few beams on screen at once for their glow to be the cost. The candidate list's other items (cat bitmaps at drawn size, one path per colour for gems and shots, the HUD's React updates) remain for the next speed turn.
+
+## E3 — started 05:10: a cap on the customers and invoices one account can create (kind: security and quality)
+
+## E3 — A cap on the customers and invoices one account can create (completed)
+
+- Branch `2026-10-17-e3-account-caps`, base 8a9348e. Started 05:16, completed 05:19 (the gate's reruns included).
+- **What the code does.** `actions.ts`: `createCustomer` inserts only while the account holds fewer than 1,000 customers, and `createInvoice` only while it holds fewer than 10,000 invoices, each checked inside the `INSERT`. When an invoice insert matches nothing, a second query says whether the account is full (a message naming the cap) or the customer is not the user's (as before). `schemas.ts`: the two caps (`MAX_CUSTOMERS_PER_ACCOUNT`, `MAX_INVOICES_PER_ACCOUNT`). `create-form.tsx`: a live region for a message that blames no field, so the cap, or a database error, is shown at last. Tests: `actions.test.ts` (both refusals, and the parameters the insert gets; two existing tests updated for the new statement), `forms.test.tsx` (the form at the cap shows the message in a live region).
+- **What it brings.** One signed-in account can no longer fill the database through the dashboard's Server Actions, and the account's own pages stay usable: the invoice form's customer list and the "export all" stay within what they can show. Decisions: D33, D34.
+- **Verification.** prettier (5 files) ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (125 passed / 35 skipped), build exit 0, 26 e2e specs (154 passed / 2 skipped; the customer and invoice creating specs run the new SQL). Acceptance (D33): both caps and their messages checked by command (unit, jsdom); the SQL against a real database only through the browser tests' creates under the cap. The cap itself is never reached against a database.
+- **Reviewer.** Request changes, one Low: the form never showed the message. Fixed (D34). Re-review: approve.
+- **CI of checkpoint 1** (8a9348e): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38997431684.

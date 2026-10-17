@@ -16,6 +16,8 @@ import {
   CustomerForm,
   CustomerId,
   InvoiceId,
+  MAX_CUSTOMERS_PER_ACCOUNT,
+  MAX_INVOICES_PER_ACCOUNT,
   RunMinutes,
   SignUpForm,
   SurvivalRun,
@@ -98,8 +100,26 @@ export async function createInvoice(prevState: State, formData: FormData) {
       SELECT id, ${amountInCents}::int, ${status}, ${date}::date, ${dueDate}::date
       FROM customers
       WHERE id = ${customerId} AND owner_id = ${owner}
+        AND (
+          SELECT count(*) FROM invoices
+          JOIN customers AS theirs ON invoices.customer_id = theirs.id
+          WHERE theirs.owner_id = ${owner}
+        ) < ${MAX_INVOICES_PER_ACCOUNT}
     `;
-    if (inserted.count === 0) return noCustomer;
+    if (inserted.count === 0) {
+      // Not one of the user's customers, or the account is full: which, only now.
+      const [held] = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM invoices
+        JOIN customers ON invoices.customer_id = customers.id
+        WHERE customers.owner_id = ${owner}
+      `;
+      if ((held?.n ?? 0) >= MAX_INVOICES_PER_ACCOUNT) {
+        return {
+          message: `An account holds at most ${MAX_INVOICES_PER_ACCOUNT.toLocaleString('en-US')} invoices. Delete some to create more.`,
+        };
+      }
+      return noCustomer;
+    }
   } catch (error) {
     if (isDueDateRefused(error)) {
       return {
@@ -276,10 +296,16 @@ export async function createCustomer(prevState: CustomerState, formData: FormDat
 
   const { name, email } = validatedFields.data;
   try {
-    await sql`
+    const inserted = await sql`
       INSERT INTO customers (name, email, image_url, owner_id)
-      VALUES (${name}, ${email}, ${CUSTOMER_IMAGE}, ${owner})
+      SELECT ${name}, ${email}, ${CUSTOMER_IMAGE}, ${owner}
+      WHERE (SELECT count(*) FROM customers WHERE owner_id = ${owner}) < ${MAX_CUSTOMERS_PER_ACCOUNT}
     `;
+    if (inserted.count === 0) {
+      return {
+        message: `An account holds at most ${MAX_CUSTOMERS_PER_ACCOUNT.toLocaleString('en-US')} customers. Delete some to create more.`,
+      };
+    }
   } catch (error) {
     console.error('Database Error:', error);
     return { message: 'Database Error: Failed to create the customer.' };

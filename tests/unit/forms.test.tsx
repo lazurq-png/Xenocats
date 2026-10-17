@@ -71,6 +71,29 @@ describe('the invoice create form', () => {
   });
 });
 
+describe('the invoice create form, for an account full of invoices', () => {
+  it('says why nothing was created, in a region read out when it changes', async () => {
+    // The insert's own cap held it back, and the account holds the most it may.
+    sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    sql.mockResolvedValueOnce([{ n: 10_000 }]);
+    render(<CreateInvoiceForm customers={customers} dueDate="2026-11-08" />);
+    fireEvent.change(screen.getByLabelText('Choose customer'), {
+      target: { value: customers[0].id },
+    });
+    fireEvent.change(screen.getByLabelText('Choose an amount'), { target: { value: '12.50' } });
+    fireEvent.click(screen.getByLabelText('Paid'));
+    submit('Create Invoice');
+    const message = await screen.findByText(
+      'An account holds at most 10,000 invoices. Delete some to create more.'
+    );
+    expect(message.closest('[aria-live="polite"]')).not.toBeNull();
+    // No field is blamed for it.
+    for (const id of ['customer-error', 'amount-error', 'due-date-error', 'status-error']) {
+      expect(document.getElementById(id)!.textContent, id).toBe('');
+    }
+  });
+});
+
 describe('the invoice edit form', () => {
   it('refuses a negative amount beside the field, and writes nothing', async () => {
     const invoice = {

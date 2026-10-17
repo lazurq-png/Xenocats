@@ -168,6 +168,12 @@ export default function Form({
               ))}
           </div>
         </fieldset>
+        {/* What is wrong with no one field (an account full of invoices, a database error). */}
+        <div aria-live="polite" aria-atomic="true">
+          {state.message && !state.errors && (
+            <p className="mt-4 text-sm text-red-400">{state.message}</p>
+          )}
+        </div>
       </div>
       <div className="mt-6 flex justify-end gap-4">
         <Link

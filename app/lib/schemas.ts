@@ -238,3 +238,12 @@ export const containsPattern = (query: unknown) =>
   `%${String(query ?? '')
     .slice(0, SEARCH_MAX_LENGTH)
     .replace(/[\\%_]/g, '\\$&')}%`;
+
+/**
+ * The most invoices and customers one account can make. Far past any real use, they
+ * stop one signed-in caller filling the database: an action is a public endpoint.
+ * 10,000 invoices is also the most one export holds (EXPORT_LIMIT), so exporting all
+ * of them always works; a thousand customers is a dropdown the invoice form can show.
+ */
+export const MAX_INVOICES_PER_ACCOUNT = 10_000;
+export const MAX_CUSTOMERS_PER_ACCOUNT = 1_000;
