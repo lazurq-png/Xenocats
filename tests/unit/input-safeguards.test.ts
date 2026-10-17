@@ -38,6 +38,47 @@ describe('LeaderboardName', () => {
     expect(LeaderboardName.parse('Zoë_2.0')).toBe('Zoë_2.0');
     expect(LeaderboardName.parse("O'Neil-Kat")).toBe("O'Neil-Kat");
     expect(LeaderboardName.parse('王小明')).toBe('王小明');
+    // Accents a real name has: composed by NFC, or a few marks on one letter.
+    // (Code points, so the marks can be read: mark(0x301) is a combining acute.)
+    const mark = (...codes: number[]) => String.fromCodePoint(...codes);
+    // Nguyễn typed as e with a circumflex and a tilde: NFC makes it one letter.
+    expect(LeaderboardName.parse('Nguye' + mark(0x302, 0x303) + 'n')).toBe(
+      'Nguy' + mark(0x1ec5) + 'n'
+    );
+    expect(LeaderboardName.parse('Zoe' + mark(0x308))).toBe('Zo' + mark(0xeb));
+    // NFC puts the dot below before the dot above.
+    expect(LeaderboardName.parse('q' + mark(0x307, 0x323))).toBe('q' + mark(0x323, 0x307));
+    expect(LeaderboardName.parse('हिन्दी')).toBe('हिन्दी');
+    // Burmese puts four or five marks on a letter, most of them spacing (Mc), which do
+    // not pile up: 'nine', Kyaw, Myo, and Myo the city.
+    for (const name of [
+      mark(0x1000, 0x102d, 0x102f, 0x1038),
+      mark(0x1000, 0x103b, 0x1031, 0x102c, 0x103a),
+      mark(0x1019, 0x103b, 0x102d, 0x102f, 0x1038),
+      mark(0x1019, 0x103c, 0x102d, 0x102f, 0x1037),
+    ]) {
+      expect(LeaderboardName.parse(name)).toBe(name);
+    }
+  });
+
+  it('refuses accents stacked into a tower, or with no letter to carry them', () => {
+    const mark = (...codes: number[]) => String.fromCodePoint(...codes);
+    const refused = (name: string) => {
+      const result = LeaderboardName.safeParse(name);
+      expect(result.success, JSON.stringify(name)).toBe(false);
+      return result.error?.issues[0].message;
+    };
+    for (const name of [
+      'a' + mark(0x301).repeat(19),
+      'Comet' + mark(0x301, 0x302, 0x303, 0x304),
+      // Enclosing marks (the Cyrillic millions sign) count too.
+      'a' + mark(0x489).repeat(19),
+    ]) {
+      expect(refused(name)).toBe('A letter can carry at most three accents.');
+    }
+    for (const name of [mark(0x301) + 'Comet', 'Comet ' + mark(0x301)]) {
+      expect(refused(name)).toBe('An accent must be on a letter.');
+    }
   });
 
   it('refuses markup, hidden characters, empty and over-long names', () => {

@@ -57,7 +57,6 @@ async function expectInSummary(
   await expect(summary.getByTestId('survival-pause-passive-slots')).toHaveText(
     `Passives ${await passives.count()} of 6`
   );
-  if (taken.kind === 'restore') return;
   const row = summary.locator(
     taken.kind === 'weapon' ? `li[data-weapon="${taken.id}"]` : `li[data-passive="${taken.id}"]`
   );
@@ -80,7 +79,11 @@ async function pauseRun(page: Page) {
   return paused;
 }
 
-/** A data- number once it has stopped changing (the HUD trails the run a little). */
+/**
+ * A data- number once it has stopped changing (the HUD trails the run a little). Two
+ * reads apart by well over the HUD's interval (HUD_EVERY_MS, 150 ms, plus a slow frame),
+ * so one HUD update always falls between them.
+ */
 async function settled(page: Page, name: string) {
   let last = NaN;
   await expect
@@ -91,7 +94,7 @@ async function settled(page: Page, name: string) {
         last = now;
         return same;
       },
-      { intervals: [300] }
+      { intervals: [600] }
     )
     .toBe(true);
   return last;
@@ -255,12 +258,15 @@ test.describe('on a computer', () => {
     // Take a weapon at the first level-up that offers one (a new weapon is tier 1).
     // The seed fixes the random source, but the run's frames (and so its draws) follow
     // the machine's speed: a run may end before a level-up offers a weapon. Then the
-    // next seed's run is played, until one is taken.
+    // next seed's run is played, until one is taken. At speed 12 each 350 ms walk below
+    // takes him far enough to gather the gems his weapons leave: the first level-up
+    // comes about 30 s into the run (3–4 s of the test), where at speed 4 it came after
+    // 2½–3 minutes and the test often took a minute or more.
     const deadline = Date.now() + 120_000;
     let taken = '';
     const walk = ['d', 's', 'a', 'w'];
     for (let seed = 7; !taken && Date.now() < deadline; seed++) {
-      await openArena(page, `?seed=${seed}&speed=4&fusion=1`);
+      await openArena(page, `?seed=${seed}&speed=12&fusion=1`);
       await startRun(page);
       let rerolled = false;
       for (let turn = 0; !taken && Date.now() < deadline; turn++) {
@@ -281,7 +287,10 @@ test.describe('on a computer', () => {
           } else if (!rerolled) {
             // His one reroll, for another look at the choices (read on the next turn).
             rerolled = true;
+            // R rerolls (the only test that presses it: the reroll and skip test uses
+            // the button), and the use is spent.
             await page.keyboard.press('r');
+            await expect(dialog.getByTestId('survival-reroll')).toHaveText('Reroll (0 left)');
             continue;
           } else await page.keyboard.press('1');
         }
@@ -432,20 +441,15 @@ test.describe('on a computer', () => {
     test.setTimeout(90_000);
     await openArena(page, '?seed=7&speed=3&pickups=1');
     await startRun(page);
-    await page.waitForFunction(
-      () =>
-        Number(
-          document
-            .querySelector('[data-testid="survival-area"]')
-            ?.getAttribute('data-pickups-taken')
-        ) > 0,
-      undefined,
-      { timeout: 60_000 }
-    );
+    // (num takes a level-up's first choice: one waiting would stop the run, and no pickup
+    // would ever be taken.)
+    await expect
+      .poll(() => num(page, 'data-pickups-taken'), { timeout: 60_000 })
+      .toBeGreaterThan(0);
     await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
   });
 
-  test('a level-up can be rerolled once (new choices, a use spent) and skipped once (no choice, the run goes on)', async ({
+  test('a level-up can be rerolled once (new choices, the use spent), a number past the choices picks nothing, and X skips once', async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -461,18 +465,22 @@ test.describe('on a computer', () => {
     await expect(reroll).toHaveText('Reroll (1 left)');
     await expect(skip).toHaveText('Skip, for some experience (1 left)');
 
-    // Reroll: new choices, and the use is spent.
+    // Reroll (its button; R works the same key branch as X, below): new choices, and the use is spent.
     const before = await ids();
     await reroll.click();
     await expect.poll(ids).not.toEqual(before);
     await expect(reroll).toHaveText('Reroll (0 left)');
     await expect(reroll).toBeDisabled();
     await expect(dialog).toBeVisible();
+
+    // Past the last choice, a number picks nothing (the buttons after the list are not choices).
+    await page.keyboard.press(String((await choices.count()) + 1));
+    await expect(dialog).toBeVisible();
     const level = Number(await area(page).getAttribute('data-level'));
     await expect(skip).toBeEnabled();
 
-    // Skip: no choice taken; the run goes on (or the next level-up waits, and has no skip left).
-    await skip.click();
+    // X skips: no choice taken; the run goes on (or the next level-up waits, and has no skip left).
+    await page.keyboard.press('x');
     await expect
       .poll(async () => {
         if ((await dialog.count()) === 0) return 'playing';
@@ -480,30 +488,6 @@ test.describe('on a computer', () => {
       })
       .not.toBe('waiting');
     expect(Number(await area(page).getAttribute('data-level'))).toBeGreaterThanOrEqual(level);
-  });
-
-  test('R rerolls and X skips at a level-up; a number picks only from the choices', async ({
-    page,
-  }) => {
-    test.setTimeout(60_000);
-    await openArena(page, '?seed=7&speed=6');
-    await startRun(page);
-    const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
-    const reroll = dialog.getByTestId('survival-reroll');
-    await page.keyboard.press('r');
-    await expect(reroll).toHaveText('Reroll (0 left)');
-    // Past the last choice, a number picks nothing (the buttons after the list are not choices).
-    const count = await dialog.locator('button[data-choice]').count();
-    await page.keyboard.press(String(count + 1));
-    await expect(dialog).toBeVisible();
-    await page.keyboard.press('x');
-    await expect
-      .poll(
-        async () =>
-          (await dialog.count()) === 0 || (await dialog.getByTestId('survival-skip').isDisabled())
-      )
-      .toBe(true);
   });
 
   test('on a computer the camera is unzoomed', async ({ page }) => {
@@ -652,6 +636,51 @@ test.describe('on a computer', () => {
     );
   });
 
+  test('the results say what each weapon did, the starting Laser Pointer among them', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&speed=3');
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-sent-home'), { timeout: 30_000 }).toBeGreaterThan(0);
+    await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
+    const list = page.getByRole('list', { name: 'What each weapon did' });
+    await expect(list).toBeVisible();
+    const laser = list.locator('li[data-weapon="laser-pointer"]');
+    await expect(laser).toHaveText(/^Laser Pointer: [\d,]+ homesickness, [\d,]+ cats? sent home$/);
+    // It did something: its homesickness is not 0.
+    const given = Number(
+      (await laser.textContent())!.match(/: ([\d,]+) homesickness/)![1].replace(/,/g, '')
+    );
+    expect(given).toBeGreaterThan(0);
+  });
+
+  test('a finished run shows its time as the character’s best for its length, with the day', async ({
+    page,
+  }) => {
+    await openArena(page, '?seed=7&speed=3');
+    const keeper = page
+      .getByRole('list', { name: 'Each character’s best (5 minutes)' })
+      .locator('li[data-character="keeper"]');
+    await expect(keeper).toHaveText('The Keeper: none yet');
+    await startRun(page);
+    await expect.poll(() => num(page, 'data-time'), { timeout: 15_000 }).toBeGreaterThan(3000);
+    await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
+    const time = await page.getByTestId('survival-result-time').textContent();
+    expect(time).toMatch(/^\d:\d\d$/);
+    await expect(keeper).toHaveText(
+      new RegExp(`^The Keeper: ${time}, set \\d{1,2} [A-Z][a-z]{2} \\d{4}$`)
+    );
+    // Kept: the lobby shows it again after a reload, and another length has none.
+    await page.reload();
+    await expect(keeper).toContainText(`The Keeper: ${time}, set `);
+    await page.getByTestId('survival-length-10').check();
+    await expect(
+      page
+        .getByRole('list', { name: 'Each character’s best (10 minutes)' })
+        .locator('li[data-character="keeper"]')
+    ).toHaveText('The Keeper: none yet');
+  });
+
   test('WASD walks the hero', async ({ page }) => {
     await openArena(page);
     await startRun(page);
@@ -692,7 +721,7 @@ test.describe('on a computer', () => {
       const change = button.getByTestId('choice-change');
       if (kind === 'passive' || (kind === 'weapon' && level > 1)) {
         await expect(change).toHaveText(
-          /^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes|Holds|What his weapons|Untouchable|Elite effects)/
+          /^(\+\d|Fires \d|Weapons ready \d|Lasts \d|Passes|Holds|What his weapons|Untouchable|Elite effects|Cats drain|Cats leave)/
         );
         named++;
       } else {

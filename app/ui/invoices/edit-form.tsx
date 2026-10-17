@@ -38,6 +38,7 @@ export default function EditInvoiceForm({
               name="customerId"
               className="peer block w-full cursor-pointer rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white focus:border-aura focus:ring-aura"
               defaultValue={invoice.customer_id}
+              aria-describedby="customer-error"
             >
               <option value="" disabled>
                 Select a customer
@@ -49,6 +50,14 @@ export default function EditInvoiceForm({
               ))}
             </select>
             <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-aura" />
+          </div>
+          <div id="customer-error" aria-live="polite" aria-atomic="true">
+            {state.errors?.customerId &&
+              state.errors.customerId.map((error: string) => (
+                <p className="mt-2 text-sm text-red-400" key={error}>
+                  {error}
+                </p>
+              ))}
           </div>
         </div>
 
@@ -153,6 +162,12 @@ export default function EditInvoiceForm({
             </div>
           </div>
         </fieldset>
+        {/* What is wrong with no one field (the invoice gone meanwhile, a database error). */}
+        <div aria-live="polite" aria-atomic="true">
+          {state.message && !state.errors && (
+            <p className="mt-4 text-sm text-red-400">{state.message}</p>
+          )}
+        </div>
       </div>
       <div className="mt-6 flex justify-end gap-4">
         <Link

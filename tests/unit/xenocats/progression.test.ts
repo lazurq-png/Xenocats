@@ -28,6 +28,7 @@ import {
   writeProgress,
 } from '@/app/ui/xenocats/progression';
 import { createRandom } from '@/app/ui/xenocats/random';
+import { stepTo, stepWhile } from './step-arena';
 
 const run = (over: Partial<RunResult> = {}): RunResult => ({
   timeMs: 0,
@@ -164,14 +165,14 @@ describe('milestones', () => {
     let offers = 0;
     // Three minutes: the larger pool of weapons changes the seeded run, which now has 3 level-ups
     // in two minutes, where the check wants more than 3.
-    while (a.state().time < 180_000) {
+    stepTo(a, 180_000, () => {
       const offer = a.choices();
       if (offer) {
         offers++;
         for (const c of offer) expect(c.kind === 'weapon' && locked.includes(c.id)).toBe(false);
         a.choose(0);
       } else a.step({ x: 1, y: 0 });
-    }
+    });
     expect(offers).toBeGreaterThan(3);
   }, 30_000);
 });
@@ -347,13 +348,19 @@ describe('the codex and the secrets', () => {
       },
     });
     let evolved = false;
-    while (!evolved && a.state().time < 120_000) {
-      const { x, y } = a.state().hero;
-      const chest = a.chests()[0];
-      const d = chest ? Math.hypot(chest.x - x, chest.y - y) || 1 : 1;
-      a.step(chest ? { x: (chest.x - x) / d, y: (chest.y - y) / d } : { x: 0, y: 0 });
-      evolved = a.drainEvents().some((e) => e.kind === 'evolution' && e.to === 'bottomless-saucer');
-    }
+    stepWhile(
+      a,
+      () => !evolved && a.state().time < 120_000,
+      () => {
+        const { x, y } = a.state().hero;
+        const chest = a.chests()[0];
+        const d = chest ? Math.hypot(chest.x - x, chest.y - y) || 1 : 1;
+        a.step(chest ? { x: (chest.x - x) / d, y: (chest.y - y) / d } : { x: 0, y: 0 });
+        evolved = a
+          .drainEvents()
+          .some((e) => e.kind === 'evolution' && e.to === 'bottomless-saucer');
+      }
+    );
     expect(evolved).toBe(true);
     expect(a.state().weapons.map((w) => w.id)).toEqual(['bottomless-saucer']);
     // Its blades, more of them than the Can Opener ever had.
@@ -380,13 +387,13 @@ describe('the codex and the secrets', () => {
     const a = quiet();
     let came: number[] = [];
     let present = 0;
-    while (a.state().time < 120_000) {
+    stepTo(a, 120_000, () => {
       a.step({ x: 0, y: 0 });
       if (a.drainEvents().some((e) => e.kind === 'secret')) {
         came.push(a.state().time);
         present = a.cats().filter((c) => c.variety === SECRET_CAT).length;
       }
-    }
+    });
     // (A step is a sixtieth of a second: the first step at or past each mark.)
     expect(came).toHaveLength(1);
     expect(came[0]).toBeGreaterThanOrEqual(60_000);
@@ -399,18 +406,22 @@ describe('the codex and the secrets', () => {
     // Walking, he never meets it.
     const b = quiet();
     came = [];
-    while (b.state().time < 120_000) {
+    stepTo(b, 120_000, () => {
       const t = b.state().time / 3000;
       b.step({ x: Math.cos(t), y: Math.sin(t) });
       if (b.drainEvents().some((e) => e.kind === 'secret')) came.push(b.state().time);
-    }
+    });
     expect(came).toEqual([]);
   });
 
   it('walking onto it costs him nothing: it does not touch him', () => {
     // Only the secret cat: no other cat comes.
     const a = quiet({ escalation: [[0, 0]], hero: { ...ARENA_CONFIG.hero, resolve: 100 } });
-    while (!a.drainEvents().some((e) => e.kind === 'secret')) a.step({ x: 0, y: 0 });
+    stepWhile(
+      a,
+      () => !a.drainEvents().some((e) => e.kind === 'secret'),
+      () => a.step({ x: 0, y: 0 })
+    );
     const neighbour = a.cats().find((c) => c.variety === SECRET_CAT)!;
     const hits: string[] = [];
     for (let i = 0; i < 200; i++) {
@@ -433,12 +444,12 @@ describe('the codex and the secrets', () => {
       a.step(input);
       if (a.drainEvents().some((e) => e.kind === 'secret')) secrets.push(a.state().time);
     };
-    while (a.state().time < 60_000) step({ x: 1, y: 0 });
-    while (a.state().time < 79_000) step({ x: 0, y: 0 });
+    stepTo(a, 60_000, () => step({ x: 1, y: 0 }));
+    stepTo(a, 79_000, () => step({ x: 0, y: 0 }));
     step({ x: 1, y: 0 });
     expect(secrets).toEqual([]);
     const from = a.state().time;
-    while (a.state().time < from + 20_000) step({ x: 0, y: 0 });
+    stepTo(a, from + 20_000, () => step({ x: 0, y: 0 }));
     expect(secrets).toHaveLength(1);
     expect(secrets[0]).toBeCloseTo(from + 20_000, -1);
   });
@@ -457,11 +468,15 @@ describe('Second Wind', () => {
       },
     });
     const kinds: string[] = [];
-    while (a.state().status !== 'over' && a.state().time < 300_000) {
-      a.step({ x: 0, y: 0 });
-      for (const e of a.drainEvents())
-        if (e.kind === 'revived' || e.kind === 'over') kinds.push(e.kind);
-    }
+    stepWhile(
+      a,
+      () => a.state().status !== 'over' && a.state().time < 300_000,
+      () => {
+        a.step({ x: 0, y: 0 });
+        for (const e of a.drainEvents())
+          if (e.kind === 'revived' || e.kind === 'over') kinds.push(e.kind);
+      }
+    );
     expect(kinds).toEqual(['revived', 'over']);
   });
 });

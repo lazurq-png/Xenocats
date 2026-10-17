@@ -3,6 +3,7 @@ import { ARENA_CONFIG, type ArenaConfig, createArena } from '@/app/ui/xenocats/a
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import { PLAYER_KEYS, walkDirection } from '@/app/ui/xenocats/walking';
+import { stepTo, stepWhile } from './step-arena';
 
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
@@ -36,7 +37,7 @@ function coop(config: Partial<ArenaConfig> = {}, seed = 1) {
 
 const run = (a: ReturnType<typeof coop>, ms: number, input = still, input2 = still) => {
   const until = a.state().time + ms;
-  while (a.state().time < until) a.step(input, true, input2);
+  stepTo(a, until, () => a.step(input, true, input2));
 };
 
 describe('two players at one keyboard', () => {
@@ -139,7 +140,11 @@ describe('shared experience, own choices', () => {
 
   it('at a level-up player 1 chooses, then player 2; each choice is his own', () => {
     const a = levelling();
-    while (!a.choices() && a.state().time < 60_000) a.step(still, true, still);
+    stepWhile(
+      a,
+      () => !a.choices() && a.state().time < 60_000,
+      () => a.step(still, true, still)
+    );
     expect(a.choices()).not.toBeNull();
     const level = a.choiceLevel();
     expect(a.chooser()).toBe(0);
@@ -151,7 +156,7 @@ describe('shared experience, own choices', () => {
     // Player 1 chooses: his arsenal changes, player 2's does not.
     const one = arsenal(0);
     const two = arsenal(1);
-    a.choose(a.choices()!.findIndex((c) => c.kind !== 'restore'));
+    a.choose(0);
     expect(arsenal(0)).not.toBe(one);
     expect(arsenal(1)).toBe(two);
     // The run still waits: now player 2, for the same level.
@@ -159,7 +164,7 @@ describe('shared experience, own choices', () => {
     expect(a.chooser()).toBe(1);
     expect(a.choiceLevel()).toBe(level);
     const oneAfter = arsenal(0);
-    a.choose(a.choices()!.findIndex((c) => c.kind !== 'restore'));
+    a.choose(0);
     expect(arsenal(1)).not.toBe(two);
     expect(arsenal(0)).toBe(oneAfter);
     expect(a.chooser()).toBe(0);
@@ -175,9 +180,13 @@ describe('shared experience, own choices', () => {
     });
     run(a, 10_000, left, still);
     const sentBefore = a.state().sentHome;
-    while (a.state().time < 60_000 && a.state().level === 1 && !a.choices()) {
-      a.step(still, true, still);
-    }
+    stepWhile(
+      a,
+      () => a.state().time < 60_000 && a.state().level === 1 && !a.choices(),
+      () => {
+        a.step(still, true, still);
+      }
+    );
     expect(a.state().sentHome).toBeGreaterThan(sentBefore);
     expect(a.state().level).toBeGreaterThan(1);
     // Player 1, far off, gathered none of it himself.
@@ -201,25 +210,29 @@ describe('shared experience, own choices', () => {
       gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
     });
     let evolved: { from: string; to: string } | null = null;
-    while (!evolved && a.state().time < 120_000) {
-      if (a.choices()) {
-        // Player 1 opened one: a level-up, not an evolution. Take it and go on.
-        a.choose(0);
-        continue;
+    stepWhile(
+      a,
+      () => !evolved && a.state().time < 120_000,
+      () => {
+        if (a.choices()) {
+          // Player 1 opened one: a level-up, not an evolution. Take it and go on.
+          a.choose(0);
+          return;
+        }
+        // Player 2 walks to the nearest chest; player 1 stands.
+        const me = a.state().heroes[1];
+        const [chest] = [...a.chests()].sort(
+          (u, v) => Math.hypot(u.x - me.x, u.y - me.y) - Math.hypot(v.x - me.x, v.y - me.y)
+        );
+        let input2 = still;
+        if (chest) {
+          const d = Math.hypot(chest.x - me.x, chest.y - me.y) || 1;
+          input2 = { x: (chest.x - me.x) / d, y: (chest.y - me.y) / d };
+        }
+        a.step(still, true, input2);
+        for (const e of a.drainEvents()) if (e.kind === 'evolution') evolved = e;
       }
-      // Player 2 walks to the nearest chest; player 1 stands.
-      const me = a.state().heroes[1];
-      const [chest] = [...a.chests()].sort(
-        (u, v) => Math.hypot(u.x - me.x, u.y - me.y) - Math.hypot(v.x - me.x, v.y - me.y)
-      );
-      let input2 = still;
-      if (chest) {
-        const d = Math.hypot(chest.x - me.x, chest.y - me.y) || 1;
-        input2 = { x: (chest.x - me.x) / d, y: (chest.y - me.y) / d };
-      }
-      a.step(still, true, input2);
-      for (const e of a.drainEvents()) if (e.kind === 'evolution') evolved = e;
-    }
+    );
     expect(evolved).toEqual({ kind: 'evolution', from: 'laser-pointer', to: 'infinite-laser' });
     const [h1, h2] = a.state().heroes;
     expect(h2.weapons.map((w) => w.id)).toContain('infinite-laser');
@@ -242,17 +255,22 @@ describe('downed and revived', () => {
   it('a Keeper whose Resolve is spent is down; if the other lasts 30 s, he stands again', () => {
     const a = frailTwo();
     const events: { kind: string; player?: number; at: number }[] = [];
-    while (a.state().time < 90_000 && !events.some((e) => e.kind === 'revived')) {
-      a.step(still, true, still);
-      for (const e of a.drainEvents()) {
-        if (e.kind === 'downed' || e.kind === 'revived') events.push({ ...e, at: a.state().time });
+    stepWhile(
+      a,
+      () => a.state().time < 90_000 && !events.some((e) => e.kind === 'revived'),
+      () => {
+        a.step(still, true, still);
+        for (const e of a.drainEvents()) {
+          if (e.kind === 'downed' || e.kind === 'revived')
+            events.push({ ...e, at: a.state().time });
+        }
+        if (events.length === 1) {
+          // While he is down: he does not move, and the run goes on.
+          expect(a.state().heroes[1].down).toBe(true);
+          expect(a.state().status).toBe('playing');
+        }
       }
-      if (events.length === 1) {
-        // While he is down: he does not move, and the run goes on.
-        expect(a.state().heroes[1].down).toBe(true);
-        expect(a.state().status).toBe('playing');
-      }
-    }
+    );
     expect(events.map((e) => [e.kind, e.player])).toEqual([
       ['downed', 1],
       ['revived', 1],
@@ -274,7 +292,11 @@ describe('downed and revived', () => {
     });
     // Player 1 walks off a way, so the two are well apart.
     run(a, 3000, left, still);
-    while (!a.state().heroes[1].down && a.state().time < 60_000) a.step(still, true, still);
+    stepWhile(
+      a,
+      () => !a.state().heroes[1].down && a.state().time < 60_000,
+      () => a.step(still, true, still)
+    );
     expect(a.state().heroes[1].down).toBe(true);
     a.drainEvents();
     const at = a.state().heroes[1].x;
@@ -332,14 +354,14 @@ describe('downed and revived', () => {
     const span = viewport.width * ARENA_CONFIG.coop.maxZoomOut - 2 * ARENA_CONFIG.coop.margin;
     const spanY = viewport.height * ARENA_CONFIG.coop.maxZoomOut - 2 * ARENA_CONFIG.coop.margin;
     let jumps = 0;
-    while (a.state().time < 60_000) {
+    stepTo(a, 60_000, () => {
       // They keep trying to part, as far as they may.
       a.step(left, true, right);
       for (const e of a.drainEvents()) if (e.kind === 'hero-hit' && e.elite) jumps++;
       const [p, q] = a.state().heroes;
       expect(Math.abs(q.x - p.x)).toBeLessThanOrEqual(span + 1e-6);
       expect(Math.abs(q.y - p.y)).toBeLessThanOrEqual(spanY + 1e-6);
-    }
+    });
     expect(jumps).toBeGreaterThan(3);
   });
 
@@ -356,7 +378,11 @@ describe('downed and revived', () => {
         bosses: [],
       },
     });
-    while (!a.state().heroes[1].down && a.state().time < 60_000) a.step(still, true, still);
+    stepWhile(
+      a,
+      () => !a.state().heroes[1].down && a.state().time < 60_000,
+      () => a.step(still, true, still)
+    );
     expect(a.state().heroes[1].down).toBe(true);
     a.drainEvents();
     const reach = ARENA_CONFIG.hero.reach / 2 + ARENA_CONFIG.laserCat.shotRadius;
@@ -381,11 +407,15 @@ describe('downed and revived', () => {
       secondPlayer: { startingWeapons: [], speed: 210, resolve: 5 },
     });
     const kinds: string[] = [];
-    while (a.state().status !== 'over' && a.state().time < 120_000) {
-      a.step(still, true, still);
-      for (const e of a.drainEvents())
-        if (e.kind === 'downed' || e.kind === 'over') kinds.push(e.kind);
-    }
+    stepWhile(
+      a,
+      () => a.state().status !== 'over' && a.state().time < 120_000,
+      () => {
+        a.step(still, true, still);
+        for (const e of a.drainEvents())
+          if (e.kind === 'downed' || e.kind === 'over') kinds.push(e.kind);
+      }
+    );
     expect(a.state().status).toBe('over');
     expect(a.state().outcome).toBe('spent');
     // One went down first (or both at once); the run ended with both down.

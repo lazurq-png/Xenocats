@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '@/app/ui/button';
 import {
   type Arena,
@@ -10,7 +17,14 @@ import {
   createArena,
   runLengthConfig,
 } from './arena';
-import { HERO_BODY_SVGS, HERO_TOOL_SVGS, PATCH_SVG, PICKUP_SVG, VARIETY_SVG } from './arena-art';
+import {
+  HERO_BODY_SVGS,
+  HERO_TOOL_SVGS,
+  KIT_SVG,
+  PATCH_SVG,
+  PICKUP_SVG,
+  VARIETY_SVG,
+} from './arena-art';
 import { DRAWN_DIRECTIONS, directionOfAngle, facesAway, spriteOf } from './hero-direction';
 import {
   type Choice,
@@ -28,9 +42,12 @@ import {
   type RunLength,
   bestOf,
   clockText,
+  dayText,
   lengthName,
   readAim,
   readBest,
+  readCharacterBest,
+  recordCharacterRun,
   readGraphics,
   readGraphicsAuto,
   readLength,
@@ -63,9 +80,16 @@ import { ProgressionPanel, useProgress } from './progression-view';
 import { LeaderboardEntry } from './leaderboard-entry';
 import { startSurvivalRun } from '@/app/lib/actions';
 import { createRandom, freshSeed } from './random';
-import { CROWD_ARSENAL, FUSION_START, PICKUPS_HOOK_CHANCE, parseTestHooks } from './test-hooks';
+import {
+  CROWD_ARSENAL,
+  FUSION_START,
+  PICKUPS_HOOK_CHANCE,
+  activeTestHooks,
+  parseTestHooks,
+} from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
+import { BossBar, HudBar, createHudStore, hudData } from './survival-hud';
 import {
   AUTO_JUDGE_FROM_MS,
   AUTO_JUDGE_UNTIL_MS,
@@ -123,6 +147,13 @@ const ZONE_COLOR: Record<string, string> = {
 /** How long an evolution's announcement stays, ms. */
 const NOTICE_MS = 5000;
 
+/**
+ * How often the HUD is updated during a run, ms. Once this rendered the whole view, and
+ * E10 slowed it to 250 ms for speed; since E11 it renders the HUD alone (survival-hud.tsx),
+ * and 150 ms costs a slow machine only 2–3% against 250 (night run 2026-10-17).
+ */
+const HUD_EVERY_MS = 150;
+
 /** Cats drawn this size, px. */
 const CAT_SIZE = 44;
 const HERO_SIZE = 56;
@@ -137,48 +168,6 @@ const SOUND_WINDOW_MS = 300;
 const FRAME_GUARD = { floorFps: 40, resumeFps: 50, smoothing: 0.1 };
 
 type Flash = { x: number; y: number; until: number };
-
-type Hud = {
-  time: number;
-  resolve: number;
-  maxResolve: number;
-  sentHome: number;
-  cats: number;
-  heroX: number;
-  heroY: number;
-  effect: string | null;
-  /** The Mega Cat on the field, if one is: how homesick, of how much. */
-  boss: { homesickness: number; limit: number } | null;
-  level: number;
-  xp: number;
-  xpToNext: number;
-  weapons: string;
-  /** The frame time, ms (smoothed), for `?fps=1`. */
-  frameMs: number;
-  /** How many elites are winding up an attack, and how many have begun in the run. */
-  windUps: number;
-  windUpsBegun: number;
-  bossWindUp: string;
-  bossWindUpsBegun: number;
-  pickups: number;
-  pickupsTaken: number;
-  lastPickup: string;
-  /** Where the crosshair is on the screen ("x,y"), or "" without one. */
-  crosshair: string;
-  /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
-  zoom: number;
-  /** Each Keeper's Resolve, and whether he is down (co-op: two). */
-  heroes: {
-    /** Which of the eight directions he faces. */
-    facing: string;
-    resolve: number;
-    maxResolve: number;
-    down: boolean;
-    backIn: number;
-    x: number;
-    y: number;
-  }[];
-};
 
 /** A run that reached its goal, by its length (an endless run has none to reach). */
 const LENGTH_WORDS: Record<Exclude<RunLength, typeof ENDLESS>, string> = {
@@ -216,6 +205,18 @@ function bitmapOf(src: string, size: number, onReady: () => void): () => HTMLCan
   return () => ready;
 }
 
+/**
+ * Each character's best for a run length, as one string (a snapshot that stays the same
+ * while nothing changes): "ms@date" per character, in CHARACTERS order, "" for none.
+ */
+const characterBestsOf = (length: RunLength) =>
+  (Object.keys(CHARACTERS) as CharacterId[])
+    .map((id) => {
+      const best = readCharacterBest(length, id);
+      return best ? `${best.ms}@${best.date}` : '';
+    })
+    .join('|');
+
 function subscribeBest(onChange: () => void) {
   window.addEventListener('storage', onChange);
   return () => window.removeEventListener('storage', onChange);
@@ -230,14 +231,17 @@ export default function ArenaGame({
   signedIn?: boolean;
 }) {
   const [screen, setScreen] = useState<Screen>('start');
-  // Whether the run in progress (or just over) can go on the leaderboard.
-  const [ranked, setRanked] = useState(true);
+  // The test hooks in effect for the run in progress (or just over): any keeps it
+  // off the leaderboard.
+  const [testHooks, setTestHooks] = useState<string[]>([]);
   // Counts the runs, so each one's results ask for its name afresh.
   const [runCount, setRunCount] = useState(0);
   // The server's id for the run (startSurvivalRun), once it has given one; null for
   // a run that is not on the leaderboard.
   const [runId, setRunId] = useState<Promise<string | null>>(() => Promise.resolve(null));
-  const [hud, setHud] = useState<Hud | null>(null);
+  // The HUD's numbers: a store of their own, which the HUD's components and the play
+  // area's data- attributes follow, so an update does not render this whole view.
+  const [hudStore] = useState(createHudStore);
   const [showFps, setShowFps] = useState(false);
   const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
   // The finished run's numbers, kept for the results screen.
@@ -246,6 +250,8 @@ export default function ArenaGame({
     sentHome: number;
     earned: number;
     reached: MilestoneId[];
+    /** What each weapon held did, most homesickness first (arena.weaponReport). */
+    weapons: { id: WeaponId; name: string; homesickness: number; sentHome: number }[];
     /** In co-op: each Keeper, who he went out as, what he carried, how he ended. */
     keepers: {
       name: string;
@@ -278,6 +284,11 @@ export default function ArenaGame({
     subscribeBest,
     () => readBest(length),
     () => null
+  );
+  const characterBests = useSyncExternalStore(
+    subscribeBest,
+    () => characterBestsOf(length),
+    () => ''
   );
   // Aiming with a crosshair: a computer's choice (a touch screen has no pointer).
   const storedAim = useSyncExternalStore(subscribeAim, readAim, (): AimMode => 'auto');
@@ -331,6 +342,10 @@ export default function ArenaGame({
       if (!arena) return;
       const time = Math.min(arena.state().time, arena.config.timeGoalMs);
       writeBest(bestOf(readBest(lengthRef.current), time), lengthRef.current);
+      // And the best of each character who went out (both, in co-op).
+      for (const id of new Set([characterRef.current, secondRef.current ?? characterRef.current])) {
+        recordCharacterRun(lengthRef.current, id, time);
+      }
       const { sentHome, level } = arena.state();
       const after = applyRun(readProgress(), {
         timeMs: time,
@@ -345,6 +360,7 @@ export default function ArenaGame({
         sentHome,
         earned: after.earned,
         reached: after.reached,
+        weapons: arena.weaponReport().map((w) => ({ ...w, name: WEAPONS[w.id].name })),
         keepers: arena.state().heroes.map((h, i) => ({
           name: CHARACTERS[characters[i]].name,
           weapons: h.weapons.map((w) => ({ id: w.id, name: WEAPONS[w.id].name, level: w.level })),
@@ -369,11 +385,11 @@ export default function ArenaGame({
     const lengthed = runLengthConfig(chosen);
     speedRef.current = speed;
     crowdRef.current = crowd !== null || elite;
-    // A hook that changes the game, or its clock, keeps the run off the leaderboard
-    // (a seed and the frame counter do not).
-    const rankable =
-      speed === 1 && boss === null && crowd === null && !elite && !fusion && !pickups;
-    setRanked(rankable);
+    // Any test hook keeps the run off the leaderboard: they are live for everyone,
+    // and a seed alone lets a run be practised until it is known by heart.
+    const hooksInEffect = activeTestHooks(window.location.search);
+    const rankable = hooksInEffect.length === 0;
+    setTestHooks(hooksInEffect);
     // A run that can go on the leaderboard is started on the server now: its length
     // and its start are the server's, and its time cannot outrun the real one.
     setRunId(
@@ -437,7 +453,7 @@ export default function ArenaGame({
     setNotice(null);
     setChooser(0);
     setRunPlayers(secondRef.current ? 2 : 1);
-    setHud(null);
+    hudStore.set(null);
     show('playing');
   };
 
@@ -497,6 +513,21 @@ export default function ArenaGame({
   }, [refresh]);
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
+
+  // The play area's data- attributes (what the browser tests read): now, and at each
+  // HUD update.
+  useLayoutEffect(() => {
+    if (!running) return;
+    const write = () => {
+      const area = areaRef.current;
+      if (!area) return;
+      for (const [name, value] of Object.entries(hudData(hudStore.get()))) {
+        area.setAttribute(name, value);
+      }
+    };
+    write();
+    return hudStore.subscribe(write);
+  }, [running, hudStore]);
 
   // Focus: into the play area when a run starts (and back after a choice), onto the
   // first choice at a level-up, onto Resume when paused, and when over onto the
@@ -626,6 +657,16 @@ export default function ArenaGame({
         redraw
       ),
     };
+    const kitSprites = Object.fromEntries(
+      (Object.keys(KIT_SVG) as (keyof typeof KIT_SVG)[]).map((kind) => [
+        kind,
+        bitmapOf(
+          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(KIT_SVG[kind])}`,
+          64,
+          redraw
+        ),
+      ])
+    ) as Record<keyof typeof KIT_SVG, () => HTMLCanvasElement | null>;
     const guard = createFrameGuard(FRAME_GUARD);
     const held = new Set<string>();
     const flashes: Flash[] = [];
@@ -797,6 +838,18 @@ export default function ArenaGame({
         context.fill();
         context.stroke();
       }
+      // The Frying Pan, swung at the cat it swats, fading.
+      const pan = kitSprites['frying-pan']();
+      if (pan) {
+        for (const swat of arena.swats()) {
+          context.save();
+          context.globalAlpha = Math.min(Math.max(swat.until - state.time, 0) / 240, 1);
+          context.translate(swat.x - camX, swat.y - camY);
+          context.rotate(swat.angle);
+          context.drawImage(pan, 14, -20, 40, 40);
+          context.restore();
+        }
+      }
 
       // An elite's attack winding up: where it will land, filling as the moment nears.
       for (const warning of arena.telegraphs()) {
@@ -889,6 +942,21 @@ export default function ArenaGame({
             4
           );
         }
+        // Startled by a Cucumber: it shows, as it runs.
+        if (cat.fleeUntil > state.time) {
+          const startle = kitSprites.startle();
+          if (startle) context.drawImage(startle, x - 9, y - half - 24, 18, 18);
+        }
+      }
+      // The Static Socks, clinging to their cats.
+      const sock = kitSprites['static-sock']();
+      if (sock) {
+        for (const s of arena.socks()) {
+          const x = s.x - camX;
+          const y = s.y - camY;
+          if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+          context.drawImage(sock, x - 2, y - 14, 22, 22);
+        }
       }
 
       // The Laser Cats' shots.
@@ -904,6 +972,20 @@ export default function ArenaGame({
         const x = shot.x - camX;
         const y = shot.y - camY;
         if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+        // A tennis ball, and a whole cucumber (its slices are plain), spin as they fly.
+        const kit =
+          shot.weapon === 'tennis-ball' || (shot.weapon === 'cucumber' && !shot.bit)
+            ? kitSprites[shot.weapon]()
+            : null;
+        if (kit) {
+          const r = Math.max(shot.radius, 8);
+          context.save();
+          context.translate(x, y);
+          context.rotate(time / 80);
+          context.drawImage(kit, -r, -r, r * 2, r * 2);
+          context.restore();
+          continue;
+        }
         context.fillStyle = SHOT_COLOR[shot.weapon] ?? '#e0e0b3';
         context.beginPath();
         context.arc(x, y, Math.max(shot.radius * 0.6, 3), 0, 2 * Math.PI);
@@ -1154,9 +1236,9 @@ export default function ArenaGame({
       dirty = false;
 
       const state = arena.state();
-      if (over || now - lastHud > 150) {
+      if (over || now - lastHud > HUD_EVERY_MS) {
         lastHud = now;
-        setHud({
+        hudStore.set({
           time: state.time,
           resolve: state.hero.resolve,
           maxResolve: state.hero.maxResolve,
@@ -1198,7 +1280,7 @@ export default function ArenaGame({
       else if (arena.choices()) {
         // The run waits for a choice; the HUD shows the level it is for.
         carry = 0;
-        setHud((before) =>
+        hudStore.set((before) =>
           before
             ? {
                 ...before,
@@ -1285,7 +1367,7 @@ export default function ArenaGame({
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onHidden);
     };
-  }, [running, finish, pause, show, choose, reroll, skip]);
+  }, [running, finish, pause, show, choose, reroll, skip, hudStore]);
 
   return (
     <div>
@@ -1376,6 +1458,25 @@ export default function ArenaGame({
           Longest survived ({lengthName(length)}): {best === null ? 'none yet' : clockText(best)}
         </p>
       </div>
+      <h3 id="survival-character-bests" className="mt-3 text-sm font-semibold text-cream">
+        Each character’s best ({lengthName(length)})
+      </h3>
+      <ul
+        aria-labelledby="survival-character-bests"
+        data-testid="survival-character-bests"
+        className="mt-1 space-y-0.5 text-sm text-aura"
+      >
+        {(Object.keys(CHARACTERS) as CharacterId[]).map((id, i) => {
+          if (!hasCharacter(progress, id)) return null;
+          const [ms, date] = (characterBests.split('|')[i] ?? '').split('@');
+          return (
+            <li key={id} data-character={id} data-best={ms ?? ''}>
+              {CHARACTERS[id].name}:{' '}
+              {ms ? `${clockText(Number(ms))}, set ${dayText(date)}` : 'none yet'}
+            </li>
+          );
+        })}
+      </ul>
 
       {!running && <ProgressionPanel />}
 
@@ -1407,6 +1508,27 @@ export default function ArenaGame({
             <dt className="text-aura">Tufts of fur gathered</dt>
             <dd data-testid="survival-result-tufts">{result.earned}</dd>
           </dl>
+          {result.weapons.length > 0 && (
+            <>
+              <h3 id="survival-result-weapons" className="mt-4 text-sm font-semibold text-cream">
+                What each weapon did
+              </h3>
+              <ol
+                aria-labelledby="survival-result-weapons"
+                data-testid="survival-result-weapons"
+                className="mt-1 space-y-1 text-sm text-white"
+              >
+                {result.weapons.map((w) => (
+                  <li key={w.id} data-weapon={w.id}>
+                    <span className="font-semibold text-cream">{w.name}</span>:{' '}
+                    {Math.round(w.homesickness).toLocaleString('en-GB')} homesickness,{' '}
+                    {w.sentHome === 1 ? '1 cat' : `${w.sentHome.toLocaleString('en-GB')} cats`} sent
+                    home
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
           <LeaderboardEntry
             key={runCount}
             runId={runId}
@@ -1414,7 +1536,7 @@ export default function ArenaGame({
             timeMs={result.time}
             sentHome={result.sentHome}
             signedIn={signedIn}
-            ranked={ranked}
+            testHooks={testHooks}
           />
           {result.keepers.length > 1 && (
             <ul data-testid="survival-result-keepers" className="mt-3 space-y-1 text-sm text-white">
@@ -1466,63 +1588,16 @@ export default function ArenaGame({
           data-testid="survival-area"
           data-xenocat-ignore
           data-screen={screen}
-          data-time={hud?.time ?? 0}
-          data-resolve={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
-          data-cats={hud?.cats ?? 0}
-          data-windups={hud?.windUps ?? 0}
-          data-windups-begun={hud?.windUpsBegun ?? 0}
-          data-boss-windup={hud?.bossWindUp ?? ''}
-          data-boss-windups-begun={hud?.bossWindUpsBegun ?? 0}
-          data-pickups={hud?.pickups ?? 0}
-          data-pickups-taken={hud?.pickupsTaken ?? 0}
-          data-last-pickup={hud?.lastPickup ?? ''}
-          data-sent-home={hud?.sentHome ?? 0}
-          data-hero-facing={hud?.heroes[0]?.facing ?? ''}
-          data-hero2-facing={hud?.heroes[1]?.facing ?? ''}
-          data-hero-x={hud?.heroX ?? 0}
-          data-hero-y={hud?.heroY ?? 0}
-          data-effect={hud?.effect ?? ''}
-          data-level={hud?.level ?? 1}
-          data-boss={hud?.boss ? Math.round(hud.boss.homesickness) : ''}
-          data-weapons={hud?.weapons ?? 'laser-pointer:1'}
           data-players={runPlayers}
           data-chooser={chooser}
-          data-hero2-x={hud?.heroes[1]?.x ?? ''}
-          data-hero2-y={hud?.heroes[1]?.y ?? ''}
-          data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
           data-aim={aimMode}
           data-graphics={graphics}
-          data-crosshair={hud?.crosshair ?? ''}
-          data-zoom={hud?.zoom ?? ''}
           className={`fixed inset-0 z-9998 select-none overflow-hidden bg-void outline-none${
             aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
           }`}
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
-          {hud?.boss && (
-            <div
-              data-testid="survival-boss"
-              className="pointer-events-none absolute inset-x-0 top-24 mx-auto flex w-full max-w-md flex-col items-center gap-1 px-4 text-sm font-semibold text-cream"
-            >
-              <span id="boss-label">{VARIETIES.mega.name}</span>
-              <div
-                role="meter"
-                aria-labelledby="boss-label"
-                aria-valuemin={0}
-                aria-valuemax={Math.round(hud.boss.limit)}
-                aria-valuenow={Math.round(hud.boss.homesickness)}
-                aria-valuetext={`Homesickness ${Math.round((100 * hud.boss.homesickness) / hud.boss.limit)}%`}
-                className="h-3 w-full overflow-hidden rounded-full border border-line bg-panel"
-              >
-                <div
-                  className="h-full bg-aura"
-                  style={{
-                    width: `${(100 * Math.min(hud.boss.homesickness, hud.boss.limit)) / hud.boss.limit}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
+          <BossBar store={hudStore} />
           <p
             role="status"
             data-testid="survival-notice"
@@ -1530,87 +1605,14 @@ export default function ArenaGame({
           >
             {notice}
           </p>
-          <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
-            {showFps && (
-              <p data-testid="survival-fps" data-frame-ms={hud?.frameMs ?? ''}>
-                {hud?.frameMs ?? 0} ms · {hud?.cats ?? 0} cats
-              </p>
-            )}
-            <p data-testid="survival-time">
-              Time {clockText(hud?.time ?? 0)}
-              {runLength === ENDLESS ? ' (endless)' : ` / ${clockText(runLength * 60_000)}`}
-            </p>
-            <div className="flex items-center gap-2">
-              <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>
-              <div
-                role="meter"
-                aria-labelledby="resolve-label"
-                aria-valuemin={0}
-                aria-valuemax={hud?.maxResolve ?? ARENA_CONFIG.hero.resolve}
-                aria-valuenow={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
-                className="h-2 w-32 overflow-hidden rounded-full bg-panel"
-              >
-                <div
-                  className="h-full bg-plasma"
-                  style={{
-                    width: `${(100 * (hud?.resolve ?? 1)) / (hud?.maxResolve ?? 1)}%`,
-                  }}
-                />
-              </div>
-              <span data-testid="survival-resolve">
-                {hud?.heroes[0]?.down
-                  ? `Down, back in ${Math.ceil(hud.heroes[0].backIn / 1000)} s`
-                  : Math.ceil(hud?.resolve ?? 100)}
-              </span>
-            </div>
-            {hud && hud.heroes.length > 1 && (
-              <div className="flex items-center gap-2">
-                <span id="resolve2-label">Player 2 Resolve</span>
-                <div
-                  role="meter"
-                  aria-labelledby="resolve2-label"
-                  aria-valuemin={0}
-                  aria-valuemax={hud.heroes[1].maxResolve}
-                  aria-valuenow={hud.heroes[1].resolve}
-                  className="h-2 w-32 overflow-hidden rounded-full bg-panel"
-                >
-                  <div
-                    className="h-full bg-aura"
-                    style={{
-                      width: `${(100 * hud.heroes[1].resolve) / hud.heroes[1].maxResolve}%`,
-                    }}
-                  />
-                </div>
-                <span data-testid="survival-resolve2">
-                  {hud.heroes[1].down
-                    ? `Down, back in ${Math.ceil(hud.heroes[1].backIn / 1000)} s`
-                    : Math.ceil(hud.heroes[1].resolve)}
-                </span>
-              </div>
-            )}
-            <p data-testid="survival-sent-home">Cats sent home: {hud?.sentHome ?? 0}</p>
-            <div className="flex items-center gap-2">
-              <span data-testid="survival-level">Level {hud?.level ?? 1}</span>
-              <div
-                role="progressbar"
-                aria-label="Experience"
-                aria-valuemin={0}
-                aria-valuemax={hud?.xpToNext ?? 5}
-                aria-valuenow={hud?.xp ?? 0}
-                className="h-2 w-24 overflow-hidden rounded-full bg-panel"
-              >
-                <div
-                  className="h-full bg-aura"
-                  style={{ width: `${(100 * (hud?.xp ?? 0)) / (hud?.xpToNext ?? 5)}%` }}
-                />
-              </div>
-            </div>
-            {screen === 'playing' && (
-              <Button className="ml-auto" onClick={pause}>
-                Pause
-              </Button>
-            )}
-          </div>
+          <HudBar
+            store={hudStore}
+            showFps={showFps}
+            runLength={runLength}
+            runPlayers={runPlayers}
+            playing={screen === 'playing'}
+            onPause={pause}
+          />
 
           {screen === 'choosing' && choices && (
             <div
@@ -1636,38 +1638,28 @@ export default function ArenaGame({
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
                     const { name, description, change } = describeChoice(choice);
-                    const kind =
-                      choice.kind === 'weapon'
-                        ? 'Weapon'
-                        : choice.kind === 'passive'
-                          ? 'Passive'
-                          : 'Rest';
-                    const tier = choice.kind === 'restore' ? null : tierStyle(choice);
+                    const kind = choice.kind === 'weapon' ? 'Weapon' : 'Passive';
+                    const tier = tierStyle(choice);
                     return (
                       <li key={i}>
                         <button
                           type="button"
-                          data-choice={choice.kind === 'restore' ? 'restore' : choice.id}
+                          data-choice={choice.id}
                           data-kind={choice.kind}
-                          data-level={choice.kind === 'restore' ? '' : choice.level}
-                          data-tier={tier?.tier ?? ''}
+                          data-level={choice.level}
+                          data-tier={tier.tier}
                           onClick={() => choose(i)}
                           className="w-full rounded-xl border border-line bg-void/70 p-3 text-left text-sm text-white hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
                         >
                           <span className="font-semibold text-plasma">{i + 1}.</span>{' '}
-                          <span className={`font-semibold ${tier?.className ?? ''}`}>{name}</span>{' '}
-                          <span className="text-aura">({kind})</span>
-                          {tier && (
-                            <>
-                              {' '}
-                              <span
-                                data-testid="choice-tier"
-                                className={`text-xs font-semibold ${tier.className}`}
-                              >
-                                {tier.name}
-                              </span>
-                            </>
-                          )}
+                          <span className={`font-semibold ${tier.className}`}>{name}</span>{' '}
+                          <span className="text-aura">({kind})</span>{' '}
+                          <span
+                            data-testid="choice-tier"
+                            className={`text-xs font-semibold ${tier.className}`}
+                          >
+                            {tier.name}
+                          </span>
                           <span className="mt-1 block text-aura">{description}</span>
                           {change && (
                             <span

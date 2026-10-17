@@ -1,9 +1,25 @@
 import CatState from '@/app/ui/cat-state';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import { DeleteCustomer, UpdateCustomer } from '@/app/ui/customers/buttons';
+import SortButton from '@/app/ui/customers/sort-button';
 import { FormattedCustomersTable } from '@/app/lib/definitions';
+import type { CustomerSort, SortDirection } from '@/app/lib/schemas';
 
-export default function CustomersTable({ customers }: { customers: FormattedCustomersTable[] }) {
+export default function CustomersTable({
+  customers,
+  sort = 'name',
+  dir = 'asc',
+}: {
+  customers: FormattedCustomersTable[];
+  sort?: CustomerSort;
+  dir?: SortDirection;
+}) {
+  /** A header's aria-sort: how the list is sorted by it, or not at all. */
+  const sorted = (column: CustomerSort) =>
+    sort !== column ? 'none' : dir === 'asc' ? 'ascending' : 'descending';
+  const header = (column: CustomerSort, label: string) => (
+    <SortButton column={column} label={label} sort={sort} dir={dir} />
+  );
   return (
     <div className="mt-6 flow-root">
       <div className="overflow-x-auto">
@@ -47,20 +63,36 @@ export default function CustomersTable({ customers }: { customers: FormattedCust
             <table className="hidden min-w-full rounded-md text-white md:table">
               <thead className="rounded-md text-left text-sm font-normal text-aura">
                 <tr>
-                  <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
-                    Name
+                  <th
+                    scope="col"
+                    aria-sort={sorted('name')}
+                    className="px-4 py-5 font-medium sm:pl-6"
+                  >
+                    {header('name', 'Name')}
                   </th>
                   <th scope="col" className="px-3 py-5 font-medium">
                     Email
                   </th>
-                  <th scope="col" className="px-3 py-5 font-medium">
-                    Total Invoices
+                  <th
+                    scope="col"
+                    aria-sort={sorted('total_invoices')}
+                    className="px-3 py-5 font-medium"
+                  >
+                    {header('total_invoices', 'Total Invoices')}
                   </th>
-                  <th scope="col" className="px-3 py-5 font-medium">
-                    Total Pending
+                  <th
+                    scope="col"
+                    aria-sort={sorted('total_pending')}
+                    className="px-3 py-5 font-medium"
+                  >
+                    {header('total_pending', 'Total Pending')}
                   </th>
-                  <th scope="col" className="px-3 py-5 font-medium">
-                    Total Paid
+                  <th
+                    scope="col"
+                    aria-sort={sorted('total_paid')}
+                    className="px-3 py-5 font-medium"
+                  >
+                    {header('total_paid', 'Total Paid')}
                   </th>
                   <th scope="col" className="relative py-3 pl-6 pr-3">
                     <span className="sr-only">Edit or delete</span>

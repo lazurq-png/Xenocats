@@ -26,7 +26,8 @@ vi.mock('next/headers', () => ({
   headers: async () => new Headers({ 'x-real-ip': '203.0.113.7' }),
 }));
 
-const { addDays, MAX_RUN_MS } = await import('@/app/lib/schemas');
+const { addDays, MAX_CUSTOMERS_PER_ACCOUNT, MAX_INVOICES_PER_ACCOUNT, MAX_RUN_MS } =
+  await import('@/app/lib/schemas');
 
 const {
   createInvoice,
@@ -115,8 +116,18 @@ describe('with a session', () => {
     const due = addDays(today(), 45);
     await createInvoice({}, invoiceForm({ dueDate: due }));
     expect(sql).toHaveBeenCalledTimes(1);
-    // For the customer only if it is the session's user's own.
-    expect(sql.mock.calls[0].slice(1)).toEqual([1250, 'paid', today(), due, customerId, 'u1']);
+    // For the customer only if it is the session's user's own, and while the account
+    // holds fewer than the most invoices it may.
+    expect(sql.mock.calls[0].slice(1)).toEqual([
+      1250,
+      'paid',
+      today(),
+      due,
+      customerId,
+      'u1',
+      'u1',
+      MAX_INVOICES_PER_ACCOUNT,
+    ]);
     expect(revalidatePath).toHaveBeenCalledWith('/dashboard/invoices');
     expect(redirect).toHaveBeenCalledWith('/dashboard/invoices');
   });
@@ -163,8 +174,9 @@ describe('with a session', () => {
   });
 
   it("createInvoice refuses a customer that is not the user's own, as one that does not exist", async () => {
-    // The insert matched no customer of the user's.
+    // The insert matched no customer of the user's (and the account is not full).
     sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    sql.mockResolvedValueOnce([{ n: 3 }]);
     const refused = {
       errors: { customerId: ['That customer does not exist.'] },
       message: 'Failed to Create Invoice.',
@@ -172,7 +184,20 @@ describe('with a session', () => {
     expect(await createInvoice({}, invoiceForm())).toEqual(refused);
     // Anything but a UUID names no customer, and never reaches the database.
     expect(await createInvoice({}, invoiceForm({ customerId: "' OR 1=1 --" }))).toEqual(refused);
-    expect(sql).toHaveBeenCalledTimes(1);
+    // The insert, and the look at why it matched nothing.
+    expect(sql).toHaveBeenCalledTimes(2);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('createInvoice refuses an account that holds the most invoices it may, and says so', async () => {
+    sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    sql.mockResolvedValueOnce([{ n: MAX_INVOICES_PER_ACCOUNT }]);
+    expect(await createInvoice({}, invoiceForm())).toEqual({
+      message: 'An account holds at most 10,000 invoices. Delete some to create more.',
+    });
+    // The check is in the insert itself, for this owner.
+    expect(sql.mock.calls[0].slice(-2)).toEqual(['u1', MAX_INVOICES_PER_ACCOUNT]);
+    expect(revalidatePath).not.toHaveBeenCalled();
     expect(redirect).not.toHaveBeenCalled();
   });
 
@@ -307,6 +332,18 @@ describe('customer actions', () => {
         expect(revalidatePath).toHaveBeenCalledWith(path);
       }
       expect(redirect).toHaveBeenCalledWith('/dashboard/customers');
+    });
+
+    it('createCustomer refuses an account that holds the most customers it may, and says so', async () => {
+      // The insert's own check held it back.
+      sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+      expect(await createCustomer({}, customerForm())).toEqual({
+        message: 'An account holds at most 1,000 customers. Delete some to create more.',
+      });
+      expect(sql).toHaveBeenCalledTimes(1);
+      expect(sql.mock.calls[0].slice(-2)).toEqual(['u1', MAX_CUSTOMERS_PER_ACCOUNT]);
+      expect(revalidatePath).not.toHaveBeenCalled();
+      expect(redirect).not.toHaveBeenCalled();
     });
 
     it('createCustomer validates and writes nothing on bad input', async () => {

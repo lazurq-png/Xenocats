@@ -20,6 +20,7 @@ import {
   type VarietyId,
   arrivalsAt,
 } from '@/app/ui/xenocats/varieties';
+import { stepTo, stepWhile } from './step-arena';
 
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
@@ -51,13 +52,13 @@ function arena(config: Partial<ArenaConfig> = {}, seed = 1) {
 }
 
 function runTo(a: ReturnType<typeof arena>, ms: number, input = still) {
-  while (a.state().time < ms) a.step(input);
+  stepTo(a, ms, () => a.step(input));
 }
 
 /** How far a cat went in `ms`, and the cats of a variety as they stand. */
 function trackOne(who: VarietyId, ms: number) {
   const a = arena({ schedule: only(who), escalation: [[0, 1]] });
-  while (a.cats().length === 0) a.step(still);
+  stepWhile(a, () => a.cats().length === 0);
   const cat = a.cats()[0];
   const id = cat.id;
   const from = { x: cat.x, y: cat.y };
@@ -95,19 +96,27 @@ describe('the varieties', () => {
 
   it('a Zoomies Cat darts about, changing its way, and gets nowhere straight', () => {
     const a = arena({ schedule: only('zoomies'), escalation: [[0, 1]] });
-    while (a.cats().length === 0) a.step(still);
+    stepWhile(a, () => a.cats().length === 0);
     const id = a.cats()[0].id;
     const headings = new Set<number>();
     let travelled = 0;
     let last = { ...a.cats()[0] };
-    while (a.state().time < 5000) {
-      a.step(still);
-      const cat = a.cats().find((c) => c.id === id);
-      if (!cat) break;
-      headings.add(Math.round(cat.heading * 100));
-      travelled += Math.hypot(cat.x - last.x, cat.y - last.y);
-      last = { ...cat };
-    }
+    let gone = false;
+    stepWhile(
+      a,
+      () => !gone && a.state().time < 5000,
+      () => {
+        a.step(still);
+        const cat = a.cats().find((c) => c.id === id);
+        if (!cat) {
+          gone = true;
+          return;
+        }
+        headings.add(Math.round(cat.heading * 100));
+        travelled += Math.hypot(cat.x - last.x, cat.y - last.y);
+        last = { ...cat };
+      }
+    );
     expect(headings.size).toBeGreaterThan(4);
     expect(travelled).toBeGreaterThan(VARIETIES.zoomies.speed * 4);
   });
@@ -117,17 +126,17 @@ describe('the varieties', () => {
     let far = 0;
     let near = 0;
     let last: ArenaCat | null = null;
-    while (a.state().time < 20_000) {
+    stepTo(a, 20_000, () => {
       a.step(still);
       const cat = a.cats()[0];
-      if (!cat) continue;
+      if (!cat) return;
       if (last && last.id === cat.id) {
         const step = Math.hypot(cat.x - last.x, cat.y - last.y);
         if (Math.hypot(cat.x, cat.y) > 300) far = Math.max(far, step);
         else if (Math.hypot(cat.x, cat.y) > 60) near = Math.max(near, step);
       }
       last = { ...cat };
-    }
+    });
     expect(near).toBeGreaterThan(far * 1.5);
   });
 
@@ -145,11 +154,15 @@ describe('the varieties', () => {
     });
     let shotsSeen = 0;
     let hits = 0;
-    while (a.state().time < 30_000 && a.state().status === 'playing') {
-      a.step(still);
-      shotsSeen = Math.max(shotsSeen, a.shots().length);
-      for (const e of a.drainEvents()) if (e.kind === 'hero-hit' && e.variety === 'laser') hits++;
-    }
+    stepWhile(
+      a,
+      () => a.state().time < 30_000 && a.state().status === 'playing',
+      () => {
+        a.step(still);
+        shotsSeen = Math.max(shotsSeen, a.shots().length);
+        for (const e of a.drainEvents()) if (e.kind === 'hero-hit' && e.variety === 'laser') hits++;
+      }
+    );
     expect(shotsSeen).toBeGreaterThan(0);
     expect(hits).toBeGreaterThan(0);
     expect(a.state().hero.resolve).toBeLessThan(100);
@@ -230,7 +243,7 @@ describe('keeping the horde where he is', () => {
     runTo(a, 8000);
     expect(a.cats().length).toBeGreaterThan(3);
     // The screen shows the phone's size times the camera's zoom of the arena (a phone
-    // zooms out to see more, task 7).
+    // zooms out to see more).
     const { zoom } = a.camera();
     expect(zoom).toBeGreaterThan(1);
     for (const cat of a.cats()) {
@@ -241,11 +254,11 @@ describe('keeping the horde where he is', () => {
 
   it('late in a run, Box Cats stay a small share, and no cat is left far behind', () => {
     const a = arena({ stepMs: 50, startingWeapons: ['laser-pointer', 'cat-treats'] }, 5);
-    while (a.state().time < 270_000) {
+    stepTo(a, 270_000, () => {
       // He walks a wide circle, leaving whatever sits behind him.
       const t = a.state().time / 6000;
       a.step({ x: -Math.sin(t), y: Math.cos(t) });
-    }
+    });
     const cats = a.cats();
     const boxes = cats.filter((c) => c.variety === 'box').length;
     expect(cats.length).toBeGreaterThan(500);
@@ -309,13 +322,13 @@ describe('the schedule', () => {
   it('in a seeded run, each variety first appears in its window, and not before', () => {
     const a = arena({ stepMs: 50 }, 3);
     const first = new Map<string, number>();
-    while (a.state().time < 260_000) {
+    stepTo(a, 260_000, () => {
       a.step(still);
       for (const cat of a.cats()) {
         const who = cat.variety ?? 'xenocat';
         if (!first.has(who)) first.set(who, a.state().time);
       }
-    }
+    });
     for (const arrival of SCHEDULE.arrivals) {
       const seen = first.get(arrival.who);
       expect(seen, arrival.who).toBeDefined();
@@ -348,15 +361,19 @@ describe('the Mega Cat', () => {
       hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
     });
     let arrived = false;
-    while (a.state().time < 4900) a.step(still);
+    stepTo(a, 4900);
     expect(a.state().boss).toBeNull();
-    while (!arrived && a.state().time < 6000) {
-      a.step(still);
-      arrived = a.drainEvents().some((e) => e.kind === 'boss');
-    }
+    stepWhile(
+      a,
+      () => !arrived && a.state().time < 6000,
+      () => {
+        a.step(still);
+        arrived = a.drainEvents().some((e) => e.kind === 'boss');
+      }
+    );
     expect(arrived).toBe(true);
     expect(a.state().boss).toMatchObject({ limit: VARIETIES.mega.homesickness });
-    while (a.state().boss && a.state().time < 300_000) a.step(still);
+    stepWhile(a, () => a.state().boss && a.state().time < 300_000);
     expect(a.state().boss).toBeNull();
     expect(a.state().chests).toBe(1);
   }, 60_000);
@@ -444,10 +461,10 @@ describe('the Purring Cat', () => {
     // Seen: a cat in two Purring Cats' reach; a Purring Cat in another's.
     let doubly = 0;
     let purringInReach = 0;
-    while (a.state().time < 40_000) {
+    stepTo(a, 40_000, () => {
       const before = new Map(a.cats().map((c) => [c.id, c.homesickness]));
       a.step(still);
-      if (a.drainEvents().some((e) => e.kind === 'fired')) continue;
+      if (a.drainEvents().some((e) => e.kind === 'fired')) return;
       const purrers = a.cats().filter((c) => c.variety === 'comforter');
       for (const cat of a.cats()) {
         const was = before.get(cat.id);
@@ -475,7 +492,7 @@ describe('the Purring Cat', () => {
           if (was > 0) kept++;
         }
       }
-    }
+    });
     expect(soothed).toBeGreaterThan(20);
     expect(kept).toBeGreaterThan(20);
     expect(doubly).toBeGreaterThan(0);
@@ -504,10 +521,10 @@ describe('the xenocats are special, not the horde', () => {
       4
     );
     let visits = 0;
-    while (a.state().time < 30_000) {
+    stepTo(a, 30_000, () => {
       a.step(still);
       for (const e of a.drainEvents()) if (e.kind === 'xenocat') visits++;
-    }
+    });
     // Nobody opens them here (chestReach -1): they lie where the cats went home.
     const chests = a.chests().length;
     expect(visits).toBeGreaterThan(10);
@@ -530,21 +547,25 @@ describe('the xenocats are special, not the horde', () => {
     );
     const seen = new Map<number, Pick<ArenaCat, 'type' | 'variety' | 'swarm' | 'elite'>>();
     const events: { kind: string; type?: number; elite?: boolean }[] = [];
-    while (a.state().time < 300_000 && a.state().status !== 'over') {
-      a.step(still);
-      for (const cat of a.cats()) {
-        if (!seen.has(cat.id)) {
-          seen.set(cat.id, {
-            type: cat.type,
-            variety: cat.variety,
-            swarm: cat.swarm,
-            elite: cat.elite,
-          });
+    stepWhile(
+      a,
+      () => a.state().time < 300_000 && a.state().status !== 'over',
+      () => {
+        a.step(still);
+        for (const cat of a.cats()) {
+          if (!seen.has(cat.id)) {
+            seen.set(cat.id, {
+              type: cat.type,
+              variety: cat.variety,
+              swarm: cat.swarm,
+              elite: cat.elite,
+            });
+          }
         }
+        for (const e of a.drainEvents())
+          if (e.kind === 'xenocat' || e.kind === 'boss') events.push(e);
       }
-      for (const e of a.drainEvents())
-        if (e.kind === 'xenocat' || e.kind === 'boss') events.push(e);
-    }
+    );
     return { cats: [...seen.values()], events };
   }
 

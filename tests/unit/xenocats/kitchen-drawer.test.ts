@@ -3,7 +3,12 @@
 // already hold every evolution and fusion, these among them, to its rules.)
 
 import { describe, expect, it } from 'vitest';
-import { ARENA_CONFIG, type ArenaConfig, createArena } from '@/app/ui/xenocats/arena';
+import {
+  ARENA_CONFIG,
+  type ArenaCat,
+  type ArenaConfig,
+  createArena,
+} from '@/app/ui/xenocats/arena';
 import {
   BASE_WEAPONS,
   EVOLUTIONS,
@@ -24,6 +29,7 @@ import {
 } from '@/app/ui/xenocats/arsenal';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
+import { stepTo, stepWhile } from './step-arena';
 
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
@@ -129,7 +135,7 @@ describe('the kitchen drawer: six weapons and six passives more', () => {
       ...config,
       cats: { ...ARENA_CONFIG.cats, ...config.cats, homesickness: [1e9, 1e9] },
     });
-    while (a.state().time < ms) a.step(still);
+    stepTo(a, ms);
     return a.cats().reduce((sum, cat) => sum + cat.homesickness, 0);
   }
 
@@ -150,7 +156,7 @@ describe('the kitchen drawer: six weapons and six passives more', () => {
         escalation: [[0, 20]],
       });
       const full = a.state().hero.resolve;
-      while (a.state().hero.resolve === full && a.state().time < 30_000) a.step(still);
+      stepWhile(a, () => a.state().hero.resolve === full && a.state().time < 30_000);
       return full - a.state().hero.resolve;
     };
     const bare = firstDrain([]);
@@ -170,10 +176,10 @@ describe('the kitchen drawer: six weapons and six passives more', () => {
         pickups: { ...ARENA_CONFIG.pickups, chance: 0.05 },
       });
       let n = 0;
-      while (a.state().time < 30_000) {
+      stepTo(a, 30_000, () => {
         a.step(still);
         n += a.drainEvents().filter((e) => e.kind === 'pickup-left').length;
-      }
+      });
       return n;
     };
     expect(left(['cookie-jar'])).toBeGreaterThan(left([]));
@@ -189,10 +195,15 @@ describe('the kitchen drawer: six weapons and six passives more', () => {
         cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
         gems: { ...ARENA_CONFIG.gems, value: 1, eliteValue: 6 },
       });
-      while (a.state().time < 60_000) {
-        a.step(still);
-        if (a.drainEvents().some((e) => e.kind === 'level-up')) break;
-      }
+      let up = false;
+      stepWhile(
+        a,
+        () => !up && a.state().time < 60_000,
+        () => {
+          a.step(still);
+          up = a.drainEvents().some((e) => e.kind === 'level-up');
+        }
+      );
       return a.state().hero;
     };
     const without = atFirstLevel([]);
@@ -240,23 +251,23 @@ describe('the kitchen drawer: six weapons and six passives more', () => {
   it('the Kitchen Sink sends pickles all round him; the Clockwork Gale stops the cats', () => {
     const sink = fused(['cast-iron-skillet', 'pickle-jar']);
     let pickles = 0;
-    while (sink.state().time < 9_000) {
+    stepTo(sink, 9_000, () => {
       sink.step(still);
       pickles = Math.max(
         pickles,
         sink.projectiles().filter((p) => p.bit && p.weapon === 'pickle-jar').length
       );
-    }
+    });
     expect(sink.state().weapons.map((w) => w.id)).toEqual(['kitchen-sink']);
     expect(pickles).toBeGreaterThanOrEqual(WEAPONS['kitchen-sink'].levels[0].count);
 
     const gale = fused(['heatwave-fan', 'grandfather-clock']);
     let stopped = 0;
-    while (gale.state().time < 25_000) {
+    stepTo(gale, 25_000, () => {
       gale.step(still);
       const now = gale.state().time;
       stopped = Math.max(stopped, gale.cats().filter((c) => c.stunUntil > now).length);
-    }
+    });
     expect(gale.state().weapons.map((w) => w.id)).toEqual(['clockwork-gale']);
     expect(stopped).toBeGreaterThan(5);
   });
@@ -264,10 +275,14 @@ describe('the kitchen drawer: six weapons and six passives more', () => {
   it('the Heatwave Fan scorches what its blades touch; each zone weapon draws its own zone', () => {
     const fan = fused(['heatwave-fan'], 0);
     let scorched = false;
-    while (fan.state().time < 25_000 && !scorched) {
-      fan.step(still);
-      scorched = fan.cats().some((c) => c.vulnUntil > fan.state().time);
-    }
+    stepWhile(
+      fan,
+      () => fan.state().time < 25_000 && !scorched,
+      () => {
+        fan.step(still);
+        scorched = fan.cats().some((c) => c.vulnUntil > fan.state().time);
+      }
+    );
     expect(scorched).toBe(true);
     const zones = arena({ ...steady, startingWeapons: ['alarm-clock', 'thunderous-vacuum'] });
     expect(zones.zones().map((z) => z.weapon)).toEqual(['alarm-clock', 'thunderous-vacuum']);
@@ -308,5 +323,265 @@ describe('slots: more in a longer run, no limit in an endless one', () => {
     const endless = loadout(weapons, [], { weapons: Infinity, passives: Infinity });
     expect(endless.freeWeaponSlots).toBe(Infinity);
     expect(endless.freePassiveSlots).toBe(Infinity);
+  });
+});
+
+describe('the kitchen drawer: four ways of working no other weapon has', () => {
+  /** One weapon at `level`, cats nothing sends home all round him. */
+  function lab(id: WeaponId, level = 1, crowd = 60) {
+    return arena({
+      ...steady,
+      startingWeapons: [id],
+      startingLevel: level,
+      escalation: [[0, crowd]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+    });
+  }
+  /** Steps until `id` fires (true), or 20 s pass. */
+  function untilFired(a: ReturnType<typeof arena>, id: WeaponId) {
+    let fired = false;
+    stepWhile(
+      a,
+      () => !fired && a.state().time < 20_000,
+      () => {
+        a.step(still);
+        fired = a.drainEvents().some((e) => e.kind === 'fired' && e.weapon === id);
+      }
+    );
+    return fired;
+  }
+  /** Steps until the crowd has come round him (so what is thrown has cats to land among). */
+  function gathered(a: ReturnType<typeof arena>, cats = 30) {
+    const near = () => a.cats().filter((c) => distance(a, c) < 300).length;
+    stepWhile(a, () => near() < cats && a.state().time < 30_000);
+    expect(near()).toBeGreaterThanOrEqual(cats);
+    // What fired while they came is past.
+    a.drainEvents();
+    return a;
+  }
+  const distance = (a: ReturnType<typeof arena>, at: { x: number; y: number }) =>
+    Math.hypot(at.x - a.state().hero.x, at.y - a.state().hero.y);
+
+  it('each has a kind of its own, and none of the other weapons has it', () => {
+    const own = {
+      'tennis-ball': 'boomerang',
+      'frying-pan': 'swat',
+      'static-sock': 'cling',
+      cucumber: 'scare',
+    } as const;
+    for (const [id, kind] of Object.entries(own)) {
+      expect(WEAPONS[id as WeaponId].kind, id).toBe(kind);
+      const others = (Object.keys(WEAPONS) as WeaponId[]).filter((other) => other !== id);
+      expect(
+        others.filter((other) => WEAPONS[other].kind === kind),
+        id
+      ).toEqual([]);
+    }
+  });
+
+  it('Tennis Ball: served out, it turns halfway and comes back to his hand', () => {
+    const a = lab('tennis-ball');
+    expect(untilFired(a, 'tennis-ball')).toBe(true);
+    const ball = a.projectiles().find((p) => p.weapon === 'tennis-ball')!;
+    const served = a.state().time;
+    const { durationMs } = weaponStats('tennis-ball', 1, none);
+    let furthest = 0;
+    let last = 0;
+    let lastSeen = served;
+    stepWhile(
+      a,
+      () => a.projectiles().includes(ball) && a.state().time < served + durationMs * 3,
+      () => {
+        last = distance(a, ball);
+        furthest = Math.max(furthest, last);
+        lastSeen = a.state().time;
+        a.step(still);
+      }
+    );
+    // Out a long way, then back to him, after its half time was spent going out.
+    expect(furthest).toBeGreaterThan(200);
+    expect(last).toBeLessThan(40);
+    expect(lastSeen - served).toBeGreaterThan(durationMs / 2);
+    // Gone once home, long before its time would have ended it.
+    expect(a.projectiles().includes(ball)).toBe(false);
+  });
+
+  it('Tennis Ball: a ball spent on cats going out still comes back, and may touch them again', () => {
+    const a = gathered(lab('tennis-ball', 1, 120));
+    expect(untilFired(a, 'tennis-ball')).toBe(true);
+    // The one just served (launched last).
+    const ball = a.projectiles().findLast((p) => p.weapon === 'tennis-ball')!;
+    expect(ball.splits).toBe(1);
+    let touchedOut = 0;
+    let touchedBack = 0;
+    let back = false;
+    stepWhile(
+      a,
+      () => a.projectiles().includes(ball) && a.state().time < 20_000,
+      () => {
+        if (ball.splits === 0) back = true;
+        if (back) touchedBack = Math.max(touchedBack, ball.touched.length);
+        else touchedOut = Math.max(touchedOut, ball.touched.length);
+        a.step(still);
+      }
+    );
+    expect(back).toBe(true);
+    expect(touchedOut).toBeGreaterThan(0);
+    expect(touchedBack).toBeGreaterThan(0);
+  });
+
+  it('Frying Pan: the cat it swats flies away from him, and hurts the cats it lands among', () => {
+    const a = lab('frying-pan', 1, 120);
+    expect(untilFired(a, 'frying-pan')).toBe(true);
+    const now = a.state().time;
+    const flying = a.cats().filter((c) => c.flungUntil > now);
+    expect(flying).toHaveLength(weaponStats('frying-pan', 1, none).count);
+    expect(a.swats()).toHaveLength(1);
+    const cat = flying[0];
+    const id = cat.id;
+    const from = distance(a, cat);
+    // Only the pan hurts: every other homesick cat was bowled over by the one it swatted.
+    stepTo(a, now + 400);
+    const flown = a.cats().find((c) => c.id === id)!;
+    expect(distance(a, flown) - from).toBeGreaterThan(100);
+    const bowled = a.cats().filter((c) => c.id !== id && c.homesickness > 0);
+    expect(bowled.length).toBeGreaterThan(0);
+    expect(bowled.length).toBeLessThanOrEqual(4);
+    for (const c of bowled) {
+      expect(c.homesickness).toBeCloseTo(weaponStats('frying-pan', 1, none).damage * 0.5, 6);
+    }
+  });
+
+  it('Static Sock: it clings to a cat, walks with it, sparks at a friend, and falls off when spent', () => {
+    const a = lab('static-sock');
+    expect(untilFired(a, 'static-sock')).toBe(true);
+    expect(a.socks()).toHaveLength(1);
+    const sock = a.socks()[0];
+    const host = a.cats().find((c) => c.id === sock.host)!;
+    const sparks = weaponStats('static-sock', 1, none).count;
+    let beams = 0;
+    let sparked = 0;
+    let last = host.homesickness;
+    // Its own: the first sock, until it falls off (the next is thrown later).
+    stepWhile(
+      a,
+      () => a.socks().includes(sock),
+      () => {
+        a.step(still);
+        if (!a.socks().includes(sock)) return;
+        // Where its cat goes, it goes.
+        const now = a.cats().find((c) => c.id === sock.host)!;
+        expect({ x: sock.x, y: sock.y }).toEqual({ x: now.x, y: now.y });
+        if (sock.host === host.id && host.homesickness > last) {
+          sparked++;
+          last = host.homesickness;
+        }
+        beams = Math.max(beams, a.beams().length);
+      }
+    );
+    // Its cat took a spark each time (until the next sock came), a friend with each.
+    expect(sparked).toBeGreaterThanOrEqual(sparks - 1);
+    expect(beams).toBeGreaterThan(0);
+  });
+
+  it('Static Sock: when its cat goes home it leaves it for a live cat, never the one going', () => {
+    const a = lab('static-sock');
+    expect(untilFired(a, 'static-sock')).toBe(true);
+    const sock = a.socks()[0];
+    const going = a.cats().find((c) => c.id === sock.host)!;
+    // Its cat is sent home (by something else) before the sock's turn.
+    going.homesickness = going.limit;
+    a.step(still);
+    expect(sock.host).not.toBe(going.id);
+    expect(a.cats().some((c) => c.id === sock.host && c.homesickness < c.limit)).toBe(true);
+    expect(a.cats().some((c) => c.id === going.id)).toBe(false);
+  });
+
+  it('Static Sock: the Possessed Cat, whom lasers pass through, takes nothing from its sparks', () => {
+    const a = arena({
+      ...steady,
+      schedule: {
+        arrivals: [{ from: 0, who: 'possessed', weight: 1 }],
+        swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+        bosses: [],
+      },
+      startingWeapons: ['static-sock'],
+      startingLevel: MAX_WEAPON_LEVEL,
+      escalation: [[0, 40]],
+    });
+    let socks = 0;
+    let sparks = 0;
+    stepTo(a, 15_000, () => {
+      a.step(still);
+      socks = Math.max(socks, a.socks().length);
+      sparks = Math.max(sparks, a.beams().length);
+    });
+    // It clung and sparked, among Possessed Cats only, and none grew homesick.
+    expect(socks).toBeGreaterThan(0);
+    expect(sparks).toBeGreaterThan(0);
+    expect(a.cats().length).toBeGreaterThan(5);
+    for (const cat of a.cats()) expect(cat.variety).toBe('possessed');
+    expect(a.cats().reduce((sum, c) => sum + c.homesickness, 0)).toBe(0);
+    // (A cat it could hurt would be sent home and leave the field: none did.)
+    expect(a.state().sentHome).toBe(0);
+    expect(a.weaponReport()).toEqual([{ id: 'static-sock', homesickness: 0, sentHome: 0 }]);
+  });
+
+  it('the four together fill the screen: a fixed build of the kitchen drawer at its best', () => {
+    const a = arena({
+      ...steady,
+      startingWeapons: ['tennis-ball', 'frying-pan', 'static-sock', 'cucumber'],
+      startingLevel: MAX_WEAPON_LEVEL,
+      escalation: [[0, 120]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
+    });
+    let most = 0;
+    stepTo(a, 60_000, () => {
+      a.step(still);
+      most = Math.max(
+        most,
+        a.state().projectiles + a.beams().length + a.swats().length + a.socks().length
+      );
+    });
+    // As busy as the four were as spread, sweep, chain and burst (29 then, 26 now).
+    expect(most).toBeGreaterThan(20);
+  });
+
+  it('Cucumber: where it lands the small cats run from it, and it still bursts into slices', () => {
+    const a = gathered(lab('cucumber', 1, 120));
+    const { durationMs, count } = weaponStats('cucumber', 1, none);
+    // It may land the step it is thrown (on a cat close by): step until cats are
+    // startled this very step (they run for its whole time from now).
+    let running: ArenaCat[] = [];
+    stepWhile(
+      a,
+      () => running.length === 0 && a.state().time < 20_000,
+      () => {
+        a.step(still);
+        running = a.cats().filter((c) => c.fleeUntil === a.state().time + durationMs);
+      }
+    );
+    expect(running.length).toBeGreaterThan(0);
+    // The step it landed: its slices are all in flight (in a crowd they are spent by the next).
+    expect(
+      a.projectiles().filter((p) => p.weapon === 'cucumber' && p.bit).length
+    ).toBeGreaterThanOrEqual(count);
+    // They run away from where it landed.
+    const before = running.map((c) => ({ id: c.id, d: Math.hypot(c.x - c.fleeX, c.y - c.fleeY) }));
+    for (let i = 0; i < 5; i++) a.step(still);
+    let checked = 0;
+    for (const { id, d } of before) {
+      const cat = a.cats().find((c) => c.id === id);
+      if (cat && cat.fleeUntil > a.state().time && cat.flungUntil <= a.state().time) {
+        expect(Math.hypot(cat.x - cat.fleeX, cat.y - cat.fleeY)).toBeGreaterThan(d);
+        checked++;
+      }
+    }
+    // (Some were still running to be checked.)
+    expect(checked).toBeGreaterThan(0);
+    // Other weapons startle nobody.
+    const laser = lab('laser-pointer', MAX_WEAPON_LEVEL, 120);
+    stepTo(laser, 10_000);
+    expect(laser.cats().some((c) => c.fleeUntil > 0)).toBe(false);
   });
 });

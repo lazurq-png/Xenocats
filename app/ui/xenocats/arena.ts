@@ -62,6 +62,13 @@ export type ArenaConfig = {
     homesicknessPerMin: number;
     speedPerMin: number;
     maxSpeedFactor: number;
+    /**
+     * An endless run never stops growing, so no Keeper outlasts it for ever. From
+     * `fromMs`, each minute compounds what a touch (or a shot) takes from his Resolve
+     * by `drainPerMin`, whenever the cat arrived; and the speed has no cap, cats that
+     * arrive later gaining `speedPerMin` a minute instead, until they outrun him.
+     */
+    endless: { fromMs: number; drainPerMin: number; speedPerMin: number };
   };
   hero: {
     /** px/s. */
@@ -214,7 +221,7 @@ export type ArenaConfig = {
    */
   levelUp: { rerolls: number; skips: number; skipXpShare: number };
   /**
-   * The secret cat (decisions.md): once a run, from `afterMs` into it, when he has
+   * The secret cat, named nowhere until it is found: once a run, from `afterMs` into it, when he has
    * stood still for `stillMs`, it comes and sits by him.
    */
   secretCat: { afterMs: number; stillMs: number };
@@ -254,6 +261,9 @@ export const ARENA_CONFIG: ArenaConfig = {
     homesicknessPerMin: 0.15,
     speedPerMin: 0.02,
     maxSpeedFactor: 1.3,
+    // Cats ×1.2 quick at 15:00 reach ×2.2 by 40:00, where the quickest outrun his 210 px/s;
+    // a touch takes twice as much by about 22:00, seventeen times as much by 45:00.
+    endless: { fromMs: 15 * 60_000, drainPerMin: 0.1, speedPerMin: 0.04 },
   },
   hero: { speed: 210, resolve: 100, untouchableMs: 700, reach: 30 },
   cats: {
@@ -328,7 +338,7 @@ export const ARENA_CONFIG: ArenaConfig = {
   coop: { startGap: 80, maxZoomOut: 1.6, margin: 80, reviveMs: 30_000 },
   // The view is the browser window, not the screen: a 1366 × 768 laptop's window is
   // about 650 px tall. So a phone sees about as much as the smallest common laptop
-  // window, and every desktop window from there up is unzoomed (decisions D41): a
+  // window, and every desktop window from there up is unzoomed: a
   // 390 px phone zooms out 1.64, a 360 px one 1.78; nothing beyond 1.8.
   view: { minView: 640, maxZoom: 1.8 },
   cellSize: 64,
@@ -484,6 +494,23 @@ export type ArenaCat = {
   stunUntil: number;
   slowUntil: number;
   vulnUntil: number;
+  /** Startled by a Cucumber: it runs from (fleeX, fleeY) until then. */
+  fleeUntil: number;
+  fleeX: number;
+  fleeY: number;
+  /**
+   * Swatted by a Frying Pan: it flies this way (px/s) until then, and each cat it
+   * lands among (by id, `flungHits`, itself first) takes `flungDamage`, once.
+   */
+  flungUntil: number;
+  flungVx: number;
+  flungVy: number;
+  flungDamage: number;
+  flungHits: number[];
+  /** The weapon that swatted it. */
+  flungBy: WeaponId | null;
+  /** The weapon whose homesickness reached it last (credited if it goes home), or null. */
+  lastHitBy: WeaponId | null;
 };
 
 /** Something a weapon set down that stays a while: a toy, a box, a puddle. */
@@ -518,6 +545,44 @@ export type Sweep = {
 
 /** A Hair Dryer's jet this step. */
 export type Jet = { x: number; y: number; angle: number; reach: number; half: number };
+
+/** A Frying Pan's swing, from him at a cat, fading until `until`. */
+export type Swat = { x: number; y: number; angle: number; until: number };
+
+/** A Static Sock clinging to a cat (`host`, by id), where that cat stands. */
+export type Sock = {
+  weapon: WeaponId;
+  host: number;
+  x: number;
+  y: number;
+  /** Sparks it has left to give, the next at `nextAt`. */
+  sparksLeft: number;
+  nextAt: number;
+  damage: number;
+  /** How far a spark leaps, px, and how long it shows, ms. */
+  area: number;
+  showMs: number;
+  owner: number;
+};
+
+/** Each evolved weapon a fusion takes in, and the fused weapon it becomes part of. */
+const FUSED_FROM = new Map<WeaponId, WeaponId>(
+  FUSIONS.flatMap((f) => f.from.map((id) => [id, f.to] as const))
+);
+
+/** A Static Sock sparks this often, ms. */
+export const SOCK_SPARK_MS = 350;
+/** Most socks clinging at once; the oldest falls off. */
+export const SOCK_CAP = 24;
+/** How far a Static Sock looks for a cat to cling to, px. */
+export const SOCK_THROW_RANGE = 400;
+/** A swatted cat gives this share of the swat to each cat it lands among, at most so many. */
+export const SWAT_BOWL_SHARE = 0.5;
+export const SWAT_BOWL_MAX = 4;
+/** A Cucumber startles the cats this many times its size from where it lands. */
+export const SCARE_REACH = 8;
+/** A startled cat runs at this much its own speed. */
+export const FLEE_FACTOR = 1.4;
 
 /** A scorched cat takes this much more from every weapon. */
 export const SCORCH_FACTOR = 1.5;
@@ -562,7 +627,10 @@ export type Projectile = {
    * Monsoon droplet, 1 if it leaves a puddle where it ends.
    */
   splits: number;
-  /** A Banquet crumb looks for the nearest cat again at this time. */
+  /**
+   * A Banquet crumb looks for the nearest cat again at this time; a boomerang (its
+   * `splits` 1 while it goes out) turns home at this time.
+   */
   retargetAt: number;
   /** Whose weapon fired it (the Keeper's index). */
   owner: number;
@@ -645,8 +713,9 @@ type Keeper = {
   downedAt: number | null;
   /** The Forbidden Catnip Vacuum's burst, when it comes (after its pull). */
   gulpAt: number;
-  /** What the burst after the Forbidden Catnip Vacuum's pull does. */
+  /** What the burst after the Forbidden Catnip Vacuum's pull does, and whose it is. */
   gulpDamage: number;
+  gulpBy: WeaponId | null;
 };
 
 export type ArenaEvent =
@@ -759,6 +828,7 @@ export function createArena(options: {
       downedAt: null,
       gulpAt: Infinity,
       gulpDamage: 0,
+      gulpBy: null,
     };
   }
 
@@ -781,6 +851,32 @@ export function createArena(options: {
     : [newKeeper(0, { x: 0, y: 0 }, first, config.startingPassives)];
   /** The Keeper being dealt with now: whose walk, weapons and touch. */
   let hero = keepers[0];
+  /**
+   * The weapon whose work is being done now (each place a weapon hurts sets it), and
+   * what each weapon held in the run has done: homesickness given, cats sent home
+   * (each cat to the weapon that reached it last). Counted here, so every view reads
+   * the same numbers.
+   */
+  type Tally = { homesickness: number; sentHome: number };
+  const tally = new Map<WeaponId, Tally>();
+  /** The weapon credited now (the one dealing, or the fused one it is part of), and its counts. */
+  let dealtBy: WeaponId | null = null;
+  let dealtTo: Tally | null = null;
+  /** Names the weapon whose work is done next (null: none, nothing is counted). */
+  function deal(id: WeaponId | null) {
+    if (id === null) {
+      dealtBy = null;
+      dealtTo = null;
+      return;
+    }
+    dealtBy = creditOf(id);
+    dealtTo = tally.get(dealtBy) ?? null;
+    if (!dealtTo) {
+      dealtTo = { homesickness: 0, sentHome: 0 };
+      tally.set(dealtBy, dealtTo);
+    }
+  }
+  const everHeld = new Set<WeaponId>(keepers.flatMap((k) => [...k.weapons.keys()]));
   let sentHome = 0;
   let windUpsBegun = 0;
   /** How many elites are winding up an attack now (kept, not counted: state() is read every frame). */
@@ -829,8 +925,17 @@ export function createArena(options: {
   const spareProjectiles: Projectile[] = [];
   const beams: { from: Vec; to: Vec; until: number }[] = [];
   const patches: Patch[] = [];
+  // This step's toys among the patches, gathered before the cats walk (lureOf): every
+  // cat looks at these, not at every puddle and box (night run 2026-10-17, E12).
+  const toys: Patch[] = [];
   const sweeps: Sweep[] = [];
   const jets: Jet[] = [];
+  const swats: Swat[] = [];
+  const socks: Sock[] = [];
+  // Each sock's cat, as last found (the same index as in `socks`).
+  const sockHosts: ArenaCat[] = [];
+  // The swatted cats in flight this step (indices), for the cats they land among.
+  const flying: number[] = [];
   // Experience.
   const gems: Gem[] = [];
   let xp = 0;
@@ -945,6 +1050,17 @@ export function createArena(options: {
     cat.stunUntil = 0;
     cat.slowUntil = 0;
     cat.vulnUntil = 0;
+    cat.fleeUntil = 0;
+    cat.fleeX = 0;
+    cat.fleeY = 0;
+    cat.flungUntil = 0;
+    cat.flungVx = 0;
+    cat.flungVy = 0;
+    cat.flungDamage = 0;
+    cat.flungHits ??= [];
+    cat.flungHits.length = 0;
+    cat.lastHitBy = null;
+    cat.flungBy = null;
     cats.push(cat);
     return cat;
   }
@@ -957,7 +1073,20 @@ export function createArena(options: {
     const minutes = Math.max(time - t.fromMs, 0) / 60_000;
     if (minutes === 0) return;
     cat.limit *= 1 + minutes * t.homesicknessPerMin;
-    cat.speed *= Math.min(1 + minutes * t.speedPerMin, t.maxSpeedFactor);
+    if (Number.isFinite(config.timeGoalMs)) {
+      cat.speed *= Math.min(1 + minutes * t.speedPerMin, t.maxSpeedFactor);
+      return;
+    }
+    const before = (Math.min(time, t.endless.fromMs) - t.fromMs) / 60_000;
+    const after = Math.max(time - t.endless.fromMs, 0) / 60_000;
+    cat.speed *= 1 + Math.max(before, 0) * t.speedPerMin + after * t.endless.speedPerMin;
+  }
+
+  /** What a touch worth `drain` takes from a Keeper now: an endless run's grows (config.toughness). */
+  function drainNow(drain: number, k: Keeper) {
+    const e = config.toughness.endless;
+    const minutes = Number.isFinite(config.timeGoalMs) ? 0 : Math.max(time - e.fromMs, 0) / 60_000;
+    return drain * k.mods.drain * (1 + e.drainPerMin) ** minutes;
   }
 
   function spawnXenocat(at: Vec) {
@@ -1095,6 +1224,10 @@ export function createArena(options: {
         variety: cat.variety,
       });
       sentHome++;
+      if (cat.lastHitBy) {
+        const counts = tally.get(cat.lastHitBy);
+        if (counts) counts.sentHome++;
+      }
       if (cat.windUntil > 0) stopWinding(cat);
       dropGem(cat.x, cat.y, cat.elite ? config.gems.eliteValue : config.gems.value);
       // The best Cookie Jar among the Keepers standing makes pickups likelier.
@@ -1183,7 +1316,7 @@ export function createArena(options: {
       for (const k of keepers) {
         if (!standing(k) || time < k.untouchableUntil) continue;
         if (Math.hypot(k.x - cat.aimX, k.y - cat.aimY) > a.radius + config.hero.reach / 2) continue;
-        k.resolve = Math.max(k.resolve - cat.drain * k.mods.drain, 0);
+        k.resolve = Math.max(k.resolve - drainNow(cat.drain, k), 0);
         k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
         events.push({
           kind: 'hero-hit',
@@ -1306,11 +1439,10 @@ export function createArena(options: {
 
   /** The toy that calls this cat, if one is near enough: where it goes instead. */
   function lureOf(cat: ArenaCat): Patch | null {
-    if (patches.length === 0 || cat.variety === 'mega') return null;
+    if (toys.length === 0 || cat.variety === 'mega') return null;
     let best: Patch | null = null;
     let bestD = Infinity;
-    for (const p of patches) {
-      if (p.kind !== 'toy') continue;
+    for (const p of toys) {
       const d = (p.x - cat.x) ** 2 + (p.y - cat.y) ** 2;
       if (d <= p.reach * p.reach && d < bestD) {
         best = p;
@@ -1322,20 +1454,44 @@ export function createArena(options: {
 
   /** A cat's step: held still, slowed or called away by what his weapons set down, or its own way. */
   function moveCat(cat: ArenaCat, dt: number) {
+    if (time < cat.flungUntil) {
+      // Swatted, it flies, whatever else holds it, and loses its wind-up.
+      cat.x += cat.flungVx * dt;
+      cat.y += cat.flungVy * dt;
+      loseWindUp(cat);
+      return;
+    }
     if (time < cat.stunUntil) {
       // Held still, an elite loses its wind-up: it must begin again.
-      if (cat.windUntil > 0) {
-        cat.windUntil = 0;
-        stopWinding(cat);
-        cat.nextAttackAt = time + config.eliteAttack.cooldownMs;
-      }
+      loseWindUp(cat);
       return;
     }
     const slowed = time < cat.slowUntil;
     const speed = cat.speed;
     if (slowed) cat.speed = speed * SLOW_FACTOR;
-    walkCat(cat, dt);
+    if (time < cat.fleeUntil) {
+      // Startled, it runs from where the Cucumber landed, and forgets its attack.
+      loseWindUp(cat);
+      const dx = cat.x - cat.fleeX;
+      const dy = cat.y - cat.fleeY;
+      const d = Math.hypot(dx, dy) || 1;
+      cat.x += (dx / d) * cat.speed * FLEE_FACTOR * dt;
+      cat.y += (dy / d) * cat.speed * FLEE_FACTOR * dt;
+    } else walkCat(cat, dt);
     cat.speed = speed;
+  }
+
+  /** An elite (or a Mega Cat) winding up an attack loses it: it must begin again, after its own rest. */
+  function loseWindUp(cat: ArenaCat) {
+    if (cat.windUntil > 0) {
+      cat.windUntil = 0;
+      stopWinding(cat);
+      cat.nextAttackAt =
+        time +
+        (cat.variety === 'mega'
+          ? config.bossAttack.pounce.cooldownMs
+          : config.eliteAttack.cooldownMs);
+    }
   }
 
   /** A cat's step, its own way. */
@@ -1433,7 +1589,7 @@ export function createArena(options: {
         }
         hit = true;
         if (time >= k.untouchableUntil) {
-          k.resolve = Math.max(k.resolve - shot.drain * k.mods.drain, 0);
+          k.resolve = Math.max(k.resolve - drainNow(shot.drain, k), 0);
           k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
@@ -1463,7 +1619,17 @@ export function createArena(options: {
   function hurt(cat: ArenaCat, amount: number, kind: WeaponKind) {
     if (cat.variety && VARIETIES[cat.variety].immuneTo?.includes(kind)) return;
     if ((cat.elite && cat.swarm === 0) || cat.variety === 'mega') amount *= hero.mods.elite;
-    cat.homesickness += time < cat.vulnUntil ? amount * SCORCH_FACTOR : amount;
+    const given = time < cat.vulnUntil ? amount * SCORCH_FACTOR : amount;
+    cat.homesickness += given;
+    if (dealtTo === null) return;
+    dealtTo.homesickness += given;
+    cat.lastHitBy = dealtBy;
+  }
+
+  /** A weapon that is now part of a fused one he holds counts for the fused one. */
+  function creditOf(id: WeaponId): WeaponId {
+    const fused = FUSED_FROM.get(id);
+    return fused !== undefined && hero.weapons.has(fused) ? fused : id;
   }
 
   /** Indices of this step's cats bigger than the cats' size (not in the grid). */
@@ -1646,6 +1812,7 @@ export function createArena(options: {
       }
       hero.gulpAt = time + s.durationMs;
       hero.gulpDamage = s.damage;
+      hero.gulpBy = id;
       return true;
     }
     if (kind === 'pull') {
@@ -1759,8 +1926,54 @@ export function createArena(options: {
       }
       return true;
     }
+    if (kind === 'swat') {
+      const targets = aimed ? nearestAimed(aimed, s.area, s.count) : nearest(hero, s.area, s.count);
+      if (targets.length === 0) return false;
+      for (const i of targets) {
+        const cat = cats[i];
+        const way = aim(cat);
+        swats.push({ x: hero.x, y: hero.y, angle: Math.atan2(way.y, way.x), until: time + 240 });
+        hurt(cat, s.damage, 'swat');
+        // Sent flying, but not the big ones: `speed` px over `durationMs`.
+        if (cat.radius > config.cats.radius * 1.5) continue;
+        const flight = Math.max(s.durationMs, 1) / 1000;
+        cat.flungUntil = time + s.durationMs;
+        cat.flungVx = (way.x * s.speed) / flight;
+        cat.flungVy = (way.y * s.speed) / flight;
+        cat.flungDamage = s.damage * SWAT_BOWL_SHARE;
+        cat.flungBy = id;
+        cat.flungHits.length = 0;
+        cat.flungHits.push(cat.id);
+      }
+      return true;
+    }
+    if (kind === 'cling') {
+      const [i] = aimed
+        ? nearestAimed(aimed, SOCK_THROW_RANGE, 1)
+        : nearest(hero, SOCK_THROW_RANGE, 1);
+      if (i === undefined) return false;
+      if (socks.length >= SOCK_CAP) {
+        socks.shift();
+        sockHosts.shift();
+      }
+      const host = cats[i];
+      socks.push({
+        weapon: id,
+        host: host.id,
+        x: host.x,
+        y: host.y,
+        sparksLeft: s.count,
+        nextAt: time + SOCK_SPARK_MS,
+        damage: s.damage,
+        area: s.area,
+        showMs: s.durationMs,
+        owner: hero.index,
+      });
+      sockHosts.push(host);
+      return true;
+    }
     const base = { weapon: id, bit: false, x: hero.x, y: hero.y, radius: s.area, damage: s.damage };
-    if (kind === 'spread' || kind === 'burst') {
+    if (kind === 'spread' || kind === 'burst' || kind === 'boomerang' || kind === 'scare') {
       let way: Vec;
       if (aimed) way = towards(aimed);
       else {
@@ -1769,7 +1982,7 @@ export function createArena(options: {
         way = aim(cats[i]);
       }
       const angle = Math.atan2(way.y, way.x);
-      const shots = kind === 'burst' ? 1 : s.count;
+      const shots = kind === 'burst' || kind === 'scare' ? 1 : s.count;
       for (let k = 0; k < shots; k++) {
         const turn = angle + (k - (shots - 1) / 2) * FAN;
         launch({
@@ -1777,8 +1990,12 @@ export function createArena(options: {
           vx: Math.cos(turn) * s.speed,
           vy: Math.sin(turn) * s.speed,
           pierce: s.pierce,
-          until: time + s.durationMs,
+          // A boomerang turns home halfway, and may take as long again to come back.
+          until: time + (kind === 'boomerang' ? s.durationMs * 2 : s.durationMs),
+          splits: kind === 'boomerang' ? 1 : 0,
         });
+        if (kind === 'boomerang')
+          projectiles[projectiles.length - 1].retargetAt = time + s.durationMs / 2;
       }
       return true;
     }
@@ -1888,10 +2105,99 @@ export function createArena(options: {
     }
   }
 
+  /** Each swatted cat in flight hurts the cats it lands among, each once. */
+  function bowl() {
+    for (const i of flying) {
+      const cat = cats[i];
+      for (const j of within(cat, cat.radius)) {
+        const other = cats[j];
+        // (Itself first in the list, then those it has bowled over.)
+        if (cat.flungHits.length > SWAT_BOWL_MAX) break;
+        if (cat.flungHits.includes(other.id)) continue;
+        cat.flungHits.push(other.id);
+        deal(cat.flungBy);
+        hurt(other, cat.flungDamage, 'swat');
+      }
+    }
+  }
+
+  /** Whether `cat` is still the live cat with this id (sent home, its object waits for reuse). */
+  const isLive = (cat: ArenaCat | undefined, id: number) =>
+    cat !== undefined && cat.id === id && cat.homesickness < cat.limit;
+
+  /**
+   * The nearest cat within `range` of a point, other than `not`, that is not already going
+   * home (homesick enough, it stays in the list until this step's sweepHome).
+   */
+  function nearestLive(at: Vec, range: number, not: ArenaCat | undefined): ArenaCat | null {
+    for (const i of nearest(at, range, 8)) {
+      const cat = cats[i];
+      if (cat !== not && cat.homesickness < cat.limit) return cat;
+    }
+    return null;
+  }
+
+  /**
+   * Each Static Sock goes where its cat goes and sparks when it is time: its cat, and
+   * the nearest other cat within its reach. A sock whose cat was sent home leaps to
+   * the nearest cat; with none near, or its sparks spent, it falls off.
+   */
+  function updateSocks() {
+    for (let n = socks.length - 1; n >= 0; n--) {
+      const sock = socks[n];
+      let host = sockHosts[n];
+      if (!isLive(host, sock.host)) {
+        const next = nearestLive(sock, sock.area, host);
+        if (!next) {
+          socks.splice(n, 1);
+          sockHosts.splice(n, 1);
+          continue;
+        }
+        host = next;
+        sockHosts[n] = host;
+        sock.host = host.id;
+      }
+      sock.x = host.x;
+      sock.y = host.y;
+      if (time < sock.nextAt) continue;
+      sock.nextAt = time + SOCK_SPARK_MS;
+      hero = keepers[sock.owner] ?? keepers[0];
+      deal(sock.weapon);
+      hurt(host, sock.damage, 'cling');
+      const friend = nearestLive(sock, sock.area, host);
+      if (friend) {
+        hurt(friend, sock.damage, 'cling');
+        const from = { x: host.x, y: host.y };
+        const to = { x: friend.x, y: friend.y };
+        beams.push({ from, to, until: time + sock.showMs });
+        events.push({ kind: 'laser', from, to });
+      }
+      if (--sock.sparksLeft <= 0) {
+        socks.splice(n, 1);
+        sockHosts.splice(n, 1);
+      }
+    }
+    hero = keepers[0];
+  }
+
+  /** A Cucumber seen where it lands: the small cats round it run (its slices do the hurting). */
+  function startle(p: Projectile) {
+    const owner = keepers[p.owner];
+    const s = weaponStats(p.weapon, owner.weapons.get(p.weapon)?.level ?? 1, owner.mods);
+    for (const i of within(p, s.area * SCARE_REACH)) {
+      const cat = cats[i];
+      if (cat.radius > config.cats.radius * 1.5) continue;
+      cat.fleeUntil = Math.max(cat.fleeUntil, time + s.durationMs);
+      cat.fleeX = p.x;
+      cat.fleeY = p.y;
+    }
+  }
+
   /** What his weapons set down works, and gives out. */
   function updatePatches(dt: number) {
     for (let n = patches.length - 1; n >= 0; n--) {
       const p = patches[n];
+      deal(p.weapon);
       if (time >= p.until) {
         if (p.finale > 0) {
           for (const i of within(p, p.radius * 1.6)) hurt(cats[i], p.finale, 'lure');
@@ -1927,6 +2233,9 @@ export function createArena(options: {
     for (let n = sweeps.length - 1; n >= 0; n--) {
       if (time >= sweeps[n].until) sweeps.splice(n, 1);
     }
+    for (let n = swats.length - 1; n >= 0; n--) {
+      if (time >= swats[n].until) swats.splice(n, 1);
+    }
   }
 
   /** How far the weapons that go for the nearest cat look for it, px, by kind (null: they do not aim). */
@@ -1936,10 +2245,15 @@ export function createArena(options: {
       case 'chain':
       case 'web':
       case 'sweep':
+      case 'swat':
         return s.area;
       case 'spread':
       case 'burst':
+      case 'boomerang':
+      case 'scare':
         return 650;
+      case 'cling':
+        return SOCK_THROW_RANGE;
       case 'lure':
         return 450;
       case 'trap':
@@ -1975,6 +2289,7 @@ export function createArena(options: {
 
   /** One weapon, this step: blades and zones all the time, the rest when they are ready. */
   function runWeapon(id: WeaponId, held: { level: number; readyAt: number }, dt: number) {
+    deal(id);
     const s = weaponStats(id, held.level, hero.mods);
     const kind = WEAPONS[id].kind;
     if (kind === 'orbit') {
@@ -2024,6 +2339,7 @@ export function createArena(options: {
   /** What a fused weapon adds to what its two parents go on doing. */
   function fusedExtra(id: WeaponId, held: Held) {
     if (time < held.readyAt) return;
+    deal(id);
     const s = weaponStats(id, held.level, hero.mods);
     if (id === 'thunderstorm') {
       // Lightning: the wet (slowed) cats first, then the nearest.
@@ -2136,8 +2452,10 @@ export function createArena(options: {
 
   function swingWeapons(dt: number) {
     updateAim();
+    deal(null);
     if (time >= hero.gulpAt) {
       hero.gulpAt = Infinity;
+      deal(hero.gulpBy);
       for (const i of within(hero, GULP_BURST_RADIUS * hero.mods.area)) {
         hurt(cats[i], hero.gulpDamage, 'gulp');
       }
@@ -2223,8 +2541,33 @@ export function createArena(options: {
           });
         }
       }
-      // Its Keeper's passives count where it lands (hurt).
+      // Its Keeper's passives count where it lands (hurt), and its weapon is credited.
       hero = keepers[p.owner] ?? keepers[0];
+      deal(p.weapon);
+      const kind = WEAPONS[p.weapon].kind;
+      if (kind === 'boomerang') {
+        // Halfway, it turns for his hand, and may touch every cat again on the way back.
+        if (p.splits > 0 && time >= p.retargetAt) {
+          p.splits = 0;
+          p.touched.length = 0;
+          p.pierce = weaponStats(
+            p.weapon,
+            hero.weapons.get(p.weapon)?.level ?? 1,
+            hero.mods
+          ).pierce;
+        }
+        if (p.splits === 0) {
+          const dx = hero.x - p.x;
+          const dy = hero.y - p.y;
+          const d = Math.hypot(dx, dy);
+          if (d < 24) p.until = time;
+          else {
+            const v = Math.hypot(p.vx, p.vy);
+            p.vx = (dx / d) * v;
+            p.vy = (dy / d) * v;
+          }
+        }
+      }
       for (const i of within(p, p.radius)) {
         const cat = cats[i];
         if (p.pierce <= 0 || p.touched.includes(cat.id)) continue;
@@ -2235,9 +2578,12 @@ export function createArena(options: {
           cat.slowUntil = Math.max(cat.slowUntil, time + TANGLE_MS);
         p.pierce--;
       }
-      if (p.pierce <= 0 || time >= p.until) {
+      // A boomerang spent on cats still comes back: only its time ends it.
+      if ((p.pierce <= 0 && kind !== 'boomerang') || time >= p.until) {
+        // A Cucumber is seen where it ends, and bursts into slices as a hairball does.
+        if (kind === 'scare' && !p.bit) startle(p);
         // A hairball (or a tub) bursts into smaller ones where it ends.
-        if (WEAPONS[p.weapon].kind === 'burst' && !p.bit) {
+        if ((kind === 'burst' || kind === 'scare') && !p.bit) {
           const owner = keepers[p.owner];
           const s = weaponStats(p.weapon, owner.weapons.get(p.weapon)?.level ?? 1, owner.mods);
           if (p.weapon === 'jacuzzi') {
@@ -2417,10 +2763,12 @@ export function createArena(options: {
         );
         for (const id of fusion.from) hero.weapons.delete(id);
         hero.weapons.set(fusion.to, { level: MAX_WEAPON_LEVEL, readyAt: time, parts });
+        everHeld.add(fusion.to);
         events.push({ kind: 'fusion', from: fusion.from, to: fusion.to });
       } else if (evolution) {
         hero.weapons.delete(evolution.from);
         hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
+        everHeld.add(evolution.to);
         events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
       } else pending++;
     }
@@ -2430,17 +2778,19 @@ export function createArena(options: {
 
   /** After a Keeper's choice or skip: the next player chooses for the same level, then the next level. */
   function nextChooser() {
-    if (chooser + 1 < keepers.length) {
-      chooser++;
-      offer();
-    } else {
+    if (chooser + 1 < keepers.length) chooser++;
+    else {
       chooser = 0;
       pending--;
-      if (pending > 0) offer();
     }
+    if (pending > 0) offer();
   }
 
-  /** The waiting level-up's choices, for the Keeper whose turn it is. */
+  /**
+   * The waiting level-up's choices, for the Keeper whose turn it is. One with
+   * nothing left to learn is not asked (the run does not stop for him): a sip of
+   * Resolve, and the turn passes.
+   */
   function offer() {
     const k = keepers[chooser];
     const held = new Map([...k.weapons].map(([id, w]) => [id, w.level] as const));
@@ -2452,6 +2802,10 @@ export function createArena(options: {
       config.availableWeapons,
       config.slots
     );
+    if (choosing.length > 0) return;
+    choosing = null;
+    k.resolve = Math.min(k.resolve + 30, maxResolveOf(k));
+    nextChooser();
   }
 
   return {
@@ -2520,6 +2874,8 @@ export function createArena(options: {
       }
 
       // The cats walk at the nearest Keeper; the grid is rebuilt from where they stand.
+      toys.length = 0;
+      for (const p of patches) if (p.kind === 'toy') toys.push(p);
       grid.clear();
       // The few big cats (bigger than the cats' size) are kept apart, so every
       // search looks a cat's size further, not the biggest one's.
@@ -2529,15 +2885,20 @@ export function createArena(options: {
       const far =
         ((Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin) *
         2;
+      flying.length = 0;
       for (let i = 0; i < cats.length; i++) {
         const cat = cats[i];
         moveCat(cat, dt);
+        if (time < cat.flungUntil) flying.push(i);
         bringBack(cat, cam, far);
         if (cat.radius > config.cats.radius) bigCats.push(i);
         else grid.insert(i, cat.x, cat.y);
       }
       moveShots(dt);
       soothe(dt);
+      deal(null);
+      bowl();
+      deal(null);
 
       // Reached: one drain per moment for each Keeper, an elite's effect on top.
       for (const k of keepers) {
@@ -2549,7 +2910,7 @@ export function createArena(options: {
           // (The Neighbour's Cat drains nothing: it only sits there.)
           if (cat.drain === 0) continue;
           if ((cat.x - k.x) ** 2 + (cat.y - k.y) ** 2 > reachOf(cat) ** 2) continue;
-          k.resolve = Math.max(k.resolve - cat.drain * k.mods.drain, 0);
+          k.resolve = Math.max(k.resolve - drainNow(cat.drain, k), 0);
           k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
           events.push({
             kind: 'hero-hit',
@@ -2601,8 +2962,14 @@ export function createArena(options: {
         swingWeapons(dt);
       }
       hero = keepers[0];
+      // Each of these names the weapon of what it works (deal), or nothing is counted.
+      deal(null);
       updatePatches(dt);
+      deal(null);
       moveProjectiles(dt);
+      deal(null);
+      updateSocks();
+      deal(null);
       sweepHome();
       for (let i = beams.length - 1; i >= 0; i--) if (beams[i].until <= time) beams.splice(i, 1);
       gatherGems(dt);
@@ -2686,8 +3053,11 @@ export function createArena(options: {
       if (choice.kind === 'weapon') {
         const held = hero.weapons.get(choice.id);
         if (held) held.level = choice.level;
-        else hero.weapons.set(choice.id, { level: 1, readyAt: time + 200 });
-      } else if (choice.kind === 'passive') {
+        else {
+          hero.weapons.set(choice.id, { level: 1, readyAt: time + 200 });
+          everHeld.add(choice.id);
+        }
+      } else {
         const before = maxResolve();
         const rerollsBefore = hero.mods.rerolls;
         hero.passives.set(choice.id, choice.level);
@@ -2695,8 +3065,6 @@ export function createArena(options: {
         // More Resolve to hold: he gains what was added; and the Loaded Dice's rerolls.
         hero.resolve += maxResolve() - before;
         hero.rerollsLeft += hero.mods.rerolls - rerollsBefore;
-      } else {
-        hero.resolve = Math.min(hero.resolve + 30, maxResolve());
       }
       hero = keepers[0];
       choosing = null;
@@ -2711,10 +3079,10 @@ export function createArena(options: {
       const k = keepers[chooser];
       if (!choosing || k.rerollsLeft <= 0) return false;
       k.rerollsLeft--;
-      const before = choosing.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+      const before = choosing.map((c) => c.kind + c.id).join();
       for (let tries = 0; tries < 6; tries++) {
         offer();
-        const now = choosing!.map((c) => (c.kind === 'restore' ? 'restore' : c.kind + c.id)).join();
+        const now = choosing!.map((c) => c.kind + c.id).join();
         if (now !== before) break;
       }
       return true;
@@ -2856,6 +3224,22 @@ export function createArena(options: {
     patches: (): readonly Patch[] => patches,
     sweeps: (): readonly Sweep[] => sweeps,
     jets: (): readonly Jet[] => jets,
+    /** The Frying Pan's swings, fading. */
+    swats: (): readonly Swat[] => swats,
+    /**
+     * What each weapon held in the run did (evolved and fused ones included, every
+     * Keeper's together): homesickness given and cats sent home, most homesickness
+     * first. A weapon after it fused counts for the fused one.
+     */
+    weaponReport: (): { id: WeaponId; homesickness: number; sentHome: number }[] =>
+      [...new Set([...everHeld, ...tally.keys()])]
+        .map((id) => ({ id, homesickness: 0, sentHome: 0, ...tally.get(id) }))
+        .sort(
+          (a, b) =>
+            b.homesickness - a.homesickness || b.sentHome - a.sentHome || a.id.localeCompare(b.id)
+        ),
+    /** The Static Socks clinging to cats, where those cats stand. */
+    socks: (): readonly Sock[] => socks,
     matriarch: (): Vec | null => matriarch,
     chests: (): readonly Vec[] => chests,
     shots: (): readonly { x: number; y: number }[] => shots,

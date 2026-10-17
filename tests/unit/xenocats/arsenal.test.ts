@@ -7,6 +7,7 @@ import {
   GULP_BURST_RADIUS,
   YARN_APOCALYPSE_CAP,
   createArena,
+  runLengthConfig,
 } from '@/app/ui/xenocats/arena';
 import {
   BASE_WEAPONS,
@@ -36,6 +37,7 @@ import {
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import { TIER_CLASS, TIER_NAMES, type Tier, tierOf, tierStyle } from '@/app/ui/xenocats/item-tier';
+import { stepTo, stepWhile } from './step-arena';
 
 // The theme's colour tokens, as the @theme block in app/ui/global.css defines them.
 const themeColours: Record<string, string> = Object.fromEntries(
@@ -139,16 +141,14 @@ describe('the level-up offer', () => {
     }
   });
 
-  it('with everything at its highest, a moment of rest instead', () => {
+  it('with everything at its highest, nothing', () => {
     const weapons = new Map<WeaponId, number>(
       ALL_WEAPONS.slice(0, WEAPON_SLOTS).map((id) => [id, MAX_WEAPON_LEVEL])
     );
     const passives = new Map<PassiveId, number>(
       ALL_PASSIVES.slice(0, PASSIVE_SLOTS).map((id) => [id, PASSIVES[id].maxLevel])
     );
-    const offer = offerChoices(weapons, passives, 3, random());
-    expect(offer).toEqual([{ kind: 'restore' }]);
-    expect(describeChoice(offer[0]).name).toBe('A Moment of Rest');
+    expect(offerChoices(weapons, passives, 3, random())).toEqual([]);
   });
 
   it('every choice has a name and a line in the game’s voice', () => {
@@ -224,9 +224,8 @@ describe('every upgrade says what it does, and does it', () => {
     expect(describeChoice({ kind: 'weapon', id: 'laser-pointer', level: 1 }).change).toBeNull();
     // Scissors names what it adds to: the vacuums pull and hum as one, whatever it says.
     expect(describeChoice({ kind: 'passive', id: 'scissors', level: 1 }).change).toBe(
-      '+1 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble or slice for each weapon that fires them.'
+      '+1 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble, spark or slice for each weapon that fires them.'
     );
-    expect(describeChoice({ kind: 'restore' }).change).toBeNull();
   });
 
   it('every pick of a passive adds the same, the first included', () => {
@@ -299,7 +298,7 @@ describe('every weapon, at level 1 and at its top level', () => {
       escalation: [[0, 60]],
       cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
     });
-    while (a.state().time < ms) a.step(still);
+    stepTo(a, ms);
     return { sent: a.state().sentHome, a };
   }
 
@@ -321,16 +320,16 @@ describe('every weapon, at level 1 and at its top level', () => {
   it('the Laser Pointer at its top level aims several beams at once', () => {
     const a = arena({ ...steady, startingLevel: 8, escalation: [[0, 60]] });
     let most = 0;
-    while (a.state().time < 15_000) {
+    stepTo(a, 15_000, () => {
       a.step(still);
       most = Math.max(most, a.drainEvents().filter((e) => e.kind === 'laser').length);
-    }
+    });
     expect(most).toBe(weaponStats('laser-pointer', 8, none).count);
   });
 
   it('Cat Treats fly in a spread of their count', () => {
     const a = arena({ ...steady, startingWeapons: ['cat-treats'], escalation: [[0, 20]] });
-    while (a.state().projectiles === 0 && a.state().time < 20_000) a.step(still);
+    stepWhile(a, () => a.state().projectiles === 0 && a.state().time < 20_000);
     expect(a.state().projectiles).toBe(weaponStats('cat-treats', 1, none).count);
   });
 
@@ -348,7 +347,7 @@ describe('every weapon, at level 1 and at its top level', () => {
     });
     const radius = weaponStats('thunderous-vacuum', 1, none).area;
     // Long enough for the slowest cats to walk in from off screen.
-    while (zone.state().time < 20_000) zone.step(still);
+    stepTo(zone, 20_000);
     for (const cat of zone.cats()) {
       if (Math.hypot(cat.x, cat.y) > radius + 30) expect(cat.homesickness).toBe(0);
     }
@@ -363,24 +362,24 @@ describe('every weapon, at level 1 and at its top level', () => {
       cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9] },
     });
     let most = 0;
-    while (a.state().time < 15_000) {
+    stepTo(a, 15_000, () => {
       a.step(still);
       most = Math.max(most, a.projectiles().filter((p) => p.bit).length);
-    }
+    });
     expect(most).toBeGreaterThanOrEqual(weaponStats('hairball', 1, none).count);
   });
 
   it('a Yarn Ball stays on the screen, bouncing off its edges', () => {
     const a = arena({ ...steady, startingWeapons: ['yarn-ball'], escalation: [[0, 0]] });
     let seen = 0;
-    while (a.state().time < 3000) {
+    stepTo(a, 3000, () => {
       a.step(still);
       for (const p of a.projectiles()) {
         seen++;
         expect(Math.abs(p.x)).toBeLessThanOrEqual(viewport.width / 2 + 20);
         expect(Math.abs(p.y)).toBeLessThanOrEqual(viewport.height / 2 + 20);
       }
-    }
+    });
     expect(seen).toBeGreaterThan(0);
   });
 
@@ -393,11 +392,11 @@ describe('every weapon, at level 1 and at its top level', () => {
     });
     // Cats that do not walk: only the vacuum moves them. All thirty first, then he
     // walks among them; any cat that moves was drawn in, from within its reach.
-    while (a.state().cats < 30) a.step(still);
+    stepWhile(a, () => a.state().cats < 30);
     const area = weaponStats('vacuum-cleaner', 1, none).area;
     const where = new Map(a.cats().map((c) => [c.id, { x: c.x, y: c.y }]));
     let pulled = 0;
-    while (a.state().time < 30_000) {
+    stepTo(a, 30_000, () => {
       const hero = { ...a.state().hero };
       // Towards the nearest cat.
       const target = a
@@ -422,7 +421,7 @@ describe('every weapon, at level 1 and at its top level', () => {
         );
         where.set(cat.id, { x: cat.x, y: cat.y });
       }
-    }
+    });
     expect(pulled).toBeGreaterThan(0);
   });
 });
@@ -451,28 +450,28 @@ describe('what each weapon does, at level 1 and at level 8', () => {
       ] as WeaponId[]) {
         const a = only(id, level);
         let most = 0;
-        while (a.state().time < 20_000) {
+        stepTo(a, 20_000, () => {
           const before = a.state().projectiles;
           a.step(still);
           const events = a.drainEvents();
-          if (!events.some((e) => e.kind === 'fired')) continue;
+          if (!events.some((e) => e.kind === 'fired')) return;
           const lasers = events.filter((e) => e.kind === 'laser').length;
           const launched = a.state().projectiles - before;
           most = Math.max(
             most,
             WEAPONS[id].kind === 'beam' || WEAPONS[id].kind === 'chain' ? lasers : launched
           );
-        }
+        });
         counts[id] = most;
         expect(most, id).toBe(weaponStats(id, level, none).count);
       }
       // A hairball, ended, bursts into its count of bits.
       const h = only('hairball', level, 30);
       let bits = 0;
-      while (h.state().time < 20_000) {
+      stepTo(h, 20_000, () => {
         h.step(still);
         bits = Math.max(bits, h.projectiles().filter((p) => p.bit).length);
-      }
+      });
       expect(bits).toBeGreaterThanOrEqual(weaponStats('hairball', level, none).count);
     });
 
@@ -482,10 +481,10 @@ describe('what each weapon does, at level 1 and at level 8', () => {
         if (s.cooldownMs === 0) continue;
         const a = only(id, level);
         const times: number[] = [];
-        while (a.state().time < 25_000) {
+        stepTo(a, 25_000, () => {
           a.step(still);
           for (const e of a.drainEvents()) if (e.kind === 'fired') times.push(a.state().time);
-        }
+        });
         expect(times.length, id).toBeGreaterThan(2);
         for (let i = 1; i < times.length; i++) {
           expect(times[i] - times[i - 1], id).toBeGreaterThanOrEqual(s.cooldownMs - 1);
@@ -502,7 +501,7 @@ describe('what each weapon does, at level 1 and at level 8', () => {
         const pierce = weaponStats(id, level, none).pierce;
         const a = only(id, level, 200);
         let spentSeen = false;
-        while (a.state().time < 20_000) {
+        stepTo(a, 20_000, () => {
           a.step(still);
           for (const p of a.projectiles()) {
             if (p.bit) continue;
@@ -511,7 +510,7 @@ describe('what each weapon does, at level 1 and at level 8', () => {
             expect(p.pierce, id).toBeGreaterThanOrEqual(1);
             if (p.touched.length === pierce - 1) spentSeen = true;
           }
-        }
+        });
         expect(spentSeen, id).toBe(true);
       }
     });
@@ -524,7 +523,7 @@ describe('levels in a run', () => {
       hero: { ...ARENA_CONFIG.hero, resolve: 1e12 },
       escalation: [[0, 40]],
     });
-    while (!a.choices() && a.state().time < 60_000) a.step(still);
+    stepWhile(a, () => !a.choices() && a.state().time < 60_000);
     const offer = a.choices();
     expect(offer).not.toBeNull();
     expect(a.state().level).toBe(2);
@@ -546,46 +545,74 @@ describe('levels in a run', () => {
     expect(a.state().time).toBeGreaterThan(time);
   });
 
-  it('a seeded five-minute run, choices made for it, ends with the screen full of attacks', () => {
-    // (Seed 3: the arsenal grew, so seed 11's draws now give a build that throws little.)
-    const a = arena({ hero: { ...ARENA_CONFIG.hero, resolve: 1e12 }, stepMs: 50 }, 3);
-    let most = 0;
-    while (a.state().time < 300_000) {
-      const offer = a.choices();
-      if (offer) {
-        // As a player bent on attacks would: weapons first, the one that throws the
-        // most at its best (the build, not luck, decides how full the screen gets).
-        const throws = (c: (typeof offer)[number]) =>
-          c.kind === 'weapon' ? WEAPONS[c.id].levels[MAX_WEAPON_LEVEL - 1].count : -1;
-        const best = offer.reduce((b, c, i) => (throws(c) > throws(offer[b]) ? i : b), 0);
-        a.choose(best);
-        continue;
+  it('a seeded run, choices made for it, fills his six weapon slots and passes level 20', () => {
+    const a = arena({ hero: { ...ARENA_CONFIG.hero, resolve: 1e12 }, stepMs: 50 }, 4);
+    stepWhile(
+      a,
+      () => (a.state().weapons.length < 6 || a.state().level <= 20) && a.state().time < 300_000,
+      () => {
+        const offer = a.choices();
+        if (offer) {
+          // Weapons first, as a player filling his slots would.
+          const pick = offer.findIndex((c) => c.kind === 'weapon');
+          a.choose(Math.max(pick, 0));
+          return;
+        }
+        // He walks a wide circle, gathering what falls.
+        const t = a.state().time / 1500;
+        a.step({ x: -Math.sin(t), y: Math.cos(t) });
       }
-      // He walks a wide circle, gathering what falls.
-      const t = a.state().time / 1500;
-      a.step({ x: -Math.sin(t), y: Math.cos(t) });
-      // The last two minutes (it was the last one: the bosses now stand still to attack, which moves
-      // the seeded run's busiest moment about).
-      if (a.state().time > 180_000) {
-        // Things in flight, beams, blades, and what the household weapons make: jets,
-        // swings, toys, boxes and puddles.
-        most = Math.max(
-          most,
-          a.state().projectiles +
-            a.beams().length +
-            a.blades().length +
-            a.jets().length +
-            a.sweeps().length +
-            a.patches().length
-        );
-      }
-    }
+    );
     expect(a.state().weapons.length).toBe(6);
     expect(a.state().level).toBeGreaterThan(20);
-    // Many attacks alive at once: things in flight, beams, blades.
-    expect(most).toBeGreaterThan(30);
-    // A whole five-minute run: about 40 s alone, more beside other test files.
   }, 120_000);
+});
+
+describe('the busiest screen', () => {
+  it('every weapon at its top level, in an endless run, against all the cats it allows, fills the screen with attacks', () => {
+    // The heaviest a run gets: no slot limit, every weapon held at its best, and the
+    // cats wanted up to the hard cap from the first moment (coming as fast as the
+    // arena lets them). A fixed build, not one drawn level by level, so the count
+    // moves only when a weapon does: over seeds 1–10 the peak was 554–594 and the
+    // median 466–484 (2026-10-17). About a second.
+    const a = arena(
+      {
+        ...runLengthConfig(0),
+        escalation: [[0, ARENA_CONFIG.cats.hardCap]],
+        startingWeapons: ALL_WEAPONS,
+        startingLevel: MAX_WEAPON_LEVEL,
+        hero: { ...ARENA_CONFIG.hero, resolve: 1e12 },
+        // No level-up may stop the run: gems worth nothing, chests out of reach.
+        gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+        chestReach: -1,
+        stepMs: 50,
+      },
+      4
+    );
+    const counts: number[] = [];
+    stepTo(a, 20_000, () => {
+      // He walks a wide circle, so the cats keep closing on him.
+      const t = a.state().time / 1500;
+      a.step({ x: -Math.sin(t), y: Math.cos(t) });
+      // Things in flight, beams, blades, and what the household weapons make: jets,
+      // swings, toys, boxes and puddles, the Frying Pan's swats and the socks.
+      counts.push(
+        a.state().projectiles +
+          a.beams().length +
+          a.blades().length +
+          a.jets().length +
+          a.sweeps().length +
+          a.patches().length +
+          a.swats().length +
+          a.socks().length
+      );
+    });
+    expect(a.state().weapons.length).toBe(ALL_WEAPONS.length);
+    counts.sort((x, y) => x - y);
+    // Hundreds at once at the peak, and the screen stays full, not one busy moment.
+    expect(counts[counts.length - 1]).toBeGreaterThan(400);
+    expect(counts[counts.length >> 1]).toBeGreaterThan(300);
+  });
 });
 
 describe('evolution', () => {
@@ -606,20 +633,26 @@ describe('evolution', () => {
 
   /** He walks to the nearest chest until he opens one; the events of that step. */
   function openChest(a: Run): ArenaEvent[] {
-    while (a.state().time < 120_000) {
-      const { x, y } = a.state().hero;
-      const [chest] = [...a.chests()].sort(
-        (p, q) => Math.hypot(p.x - x, p.y - y) - Math.hypot(q.x - x, q.y - y)
-      );
-      let input = still;
-      if (chest) {
-        const d = Math.hypot(chest.x - x, chest.y - y) || 1;
-        input = { x: (chest.x - x) / d, y: (chest.y - y) / d };
+    let opened = null as ArenaEvent[] | null;
+    stepWhile(
+      a,
+      () => !opened && a.state().time < 120_000,
+      () => {
+        const { x, y } = a.state().hero;
+        const [chest] = [...a.chests()].sort(
+          (p, q) => Math.hypot(p.x - x, p.y - y) - Math.hypot(q.x - x, q.y - y)
+        );
+        let input = still;
+        if (chest) {
+          const d = Math.hypot(chest.x - x, chest.y - y) || 1;
+          input = { x: (chest.x - x) / d, y: (chest.y - y) / d };
+        }
+        a.step(input);
+        const events = a.drainEvents();
+        if (events.some((e) => e.kind === 'chest')) opened = events;
       }
-      a.step(input);
-      const events = a.drainEvents();
-      if (events.some((e) => e.kind === 'chest')) return events;
-    }
+    );
+    if (opened) return opened;
     throw new Error('no chest opened');
   }
 
@@ -655,7 +688,7 @@ describe('evolution', () => {
 
       it('without a chest, nothing evolves', () => {
         const a = ready(from, MAX_WEAPON_LEVEL, [passive], -1);
-        while (a.state().time < 30_000) a.step(still);
+        stepTo(a, 30_000);
         expect(a.drainEvents().some((e) => e.kind === 'evolution')).toBe(false);
         expect(held(a).get(from)).toBe(MAX_WEAPON_LEVEL);
       });
@@ -727,16 +760,16 @@ describe('evolution', () => {
     let most = 0;
     let webbed = false;
     const firings: number[] = [];
-    while (a.state().time < 20_000) {
+    stepTo(a, 20_000, () => {
       a.step(still);
       const events = a.drainEvents();
-      if (!events.some((e) => e.kind === 'fired')) continue;
+      if (!events.some((e) => e.kind === 'fired')) return;
       firings.push(a.state().time);
       most = Math.max(most, events.filter((e) => e.kind === 'laser').length);
       const { x, y } = a.state().hero;
       // Some beams run cat to cat, not from him.
       if (a.beams().some((b) => Math.hypot(b.from.x - x, b.from.y - y) > 1)) webbed = true;
-    }
+    });
     expect(most).toBe(s.count);
     expect(webbed).toBe(true);
     // Fired again and again: never more than a moment apart once cats are near.
@@ -753,7 +786,7 @@ describe('evolution', () => {
     const s = weaponStats('forbidden-catnip-vacuum', MAX_WEAPON_LEVEL, none);
     let pulledFar = false;
     let mostAtOnce = 0;
-    while (a.state().time < 30_000) {
+    stepTo(a, 30_000, () => {
       const before = new Map(a.cats().map((c) => [c.id, Math.hypot(c.x, c.y)]));
       const sentBefore = a.state().sentHome;
       a.step(still);
@@ -766,7 +799,7 @@ describe('evolution', () => {
         }
       }
       mostAtOnce = Math.max(mostAtOnce, a.state().sentHome - sentBefore);
-    }
+    });
     expect(pulledFar).toBe(true);
     expect(mostAtOnce).toBeGreaterThanOrEqual(10);
   });
@@ -783,14 +816,14 @@ describe('evolution', () => {
       escalation: [[0, 120]],
       cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [150, 150] },
     });
-    while (a.state().time < 30_000) a.step(still);
+    stepTo(a, 30_000);
     return a.state().sentHome;
   }
 
   /** The widest gap between the ways one throw's shots fly, radians (a ring has none wide). */
   function widestGap(id: WeaponId) {
     const a = evolved(id);
-    while (a.state().projectiles === 0 && a.state().time < 20_000) a.step(still);
+    stepWhile(a, () => a.state().projectiles === 0 && a.state().time < 20_000);
     expect(a.state().projectiles).toBe(weaponStats(id, MAX_WEAPON_LEVEL, none).count);
     const ways = a
       .projectiles()
@@ -816,12 +849,12 @@ describe('evolution', () => {
     const a = evolved('yarn-apocalypse');
     const s = weaponStats('yarn-apocalypse', MAX_WEAPON_LEVEL, none);
     let most = 0;
-    while (a.state().time < 30_000) {
+    stepTo(a, 30_000, () => {
       a.step(still);
       const balls = a.projectiles().filter((p) => p.weapon === 'yarn-apocalypse').length;
       most = Math.max(most, balls);
       expect(balls).toBeLessThanOrEqual(YARN_APOCALYPSE_CAP + s.count);
-    }
+    });
     expect(most).toBeGreaterThan(s.count * 4);
   });
 
@@ -829,7 +862,7 @@ describe('evolution', () => {
     const a = evolved('yarn-apocalypse');
     const { width, height } = viewport;
     let outside = 0;
-    while (a.state().time < 20_000) {
+    stepTo(a, 20_000, () => {
       a.step(still);
       for (const p of a.projectiles()) {
         if (p.weapon !== 'yarn-apocalypse') continue;
@@ -843,7 +876,7 @@ describe('evolution', () => {
           expect(Math.sign(p.vy)).toBe(-Math.sign(p.y));
         }
       }
-    }
+    });
     expect(outside).toBeGreaterThan(0);
   });
 });
@@ -1040,7 +1073,7 @@ describe('the pause menu: what he carries', () => {
         'Scissors',
         2,
         MAX_PASSIVE_LEVEL,
-        '+2 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble or slice for each weapon that fires them.',
+        '+2 beam, treat, droplet, ball, blade, piece, jump, swing, toy, carton, jet, bubble, spark or slice for each weapon that fires them.',
       ],
       ['Rubber Chicken', 3, MAX_PASSIVE_LEVEL, '+30% walking speed.'],
       ['Lucky Bell', 1, 1, '+1 choice at every level.'],
@@ -1201,11 +1234,16 @@ describe('the household arsenal: five weapons and five passives, each its own wa
 
   /** Steps until the weapon has fired; whether it did within `ms`. */
   function untilFired(a: Run, id: WeaponId, ms = 60_000) {
-    while (a.state().time < ms) {
-      a.step(still);
-      if (a.drainEvents().some((e) => e.kind === 'fired' && e.weapon === id)) return true;
-    }
-    return false;
+    let fired = false;
+    stepWhile(
+      a,
+      () => !fired && a.state().time < ms,
+      () => {
+        a.step(still);
+        fired = a.drainEvents().some((e) => e.kind === 'fired' && e.weapon === id);
+      }
+    );
+    return fired;
   }
   const stats = (id: WeaponId) => weaponStats(id, MAX_WEAPON_LEVEL, none);
 
@@ -1292,19 +1330,23 @@ describe('the household arsenal: five weapons and five passives, each its own wa
     });
     const before = new Map<number, number>();
     let moved = 0;
-    while (a.state().time < 40_000 && moved === 0) {
-      for (const c of a.cats())
-        before.set(c.id, Math.hypot(c.x - a.state().hero.x, c.y - a.state().hero.y));
-      a.step(still);
-      if (a.sweeps().length > 0) {
-        for (const c of a.cats()) {
-          const was = before.get(c.id);
-          const d = Math.hypot(c.x - a.state().hero.x, c.y - a.state().hero.y);
-          // A cat walks in at most ~2 px a step; a knock-back is far more.
-          if (was !== undefined && d - was > stats('feather-wand').speed * 0.5) moved++;
+    stepWhile(
+      a,
+      () => a.state().time < 40_000 && moved === 0,
+      () => {
+        for (const c of a.cats())
+          before.set(c.id, Math.hypot(c.x - a.state().hero.x, c.y - a.state().hero.y));
+        a.step(still);
+        if (a.sweeps().length > 0) {
+          for (const c of a.cats()) {
+            const was = before.get(c.id);
+            const d = Math.hypot(c.x - a.state().hero.x, c.y - a.state().hero.y);
+            // A cat walks in at most ~2 px a step; a knock-back is far more.
+            if (was !== undefined && d - was > stats('feather-wand').speed * 0.5) moved++;
+          }
         }
       }
-    }
+    );
     expect(moved).toBeGreaterThan(0);
   });
 
@@ -1489,19 +1531,27 @@ describe('the household arsenal: five weapons and five passives, each its own wa
     const tub = lab('bath-tub');
     expect(untilFired(tub, 'bath-tub')).toBe(true);
     let bits = 0;
-    while (tub.state().time < 60_000 && bits === 0) {
-      tub.step(still);
-      bits = tub.projectiles().filter((p) => p.bit).length;
-    }
+    stepWhile(
+      tub,
+      () => tub.state().time < 60_000 && bits === 0,
+      () => {
+        tub.step(still);
+        bits = tub.projectiles().filter((p) => p.bit).length;
+      }
+    );
     expect(bits).toBeGreaterThan(0);
     expect(tub.patches().some((p) => p.kind === 'puddle')).toBe(false);
 
     const jac = lab('jacuzzi', MAX_WEAPON_LEVEL, tough);
     let puddle = false;
-    while (jac.state().time < 60_000 && !puddle) {
-      jac.step(still);
-      puddle = jac.patches().some((p) => p.kind === 'puddle');
-    }
+    stepWhile(
+      jac,
+      () => jac.state().time < 60_000 && !puddle,
+      () => {
+        jac.step(still);
+        puddle = jac.patches().some((p) => p.kind === 'puddle');
+      }
+    );
     expect(puddle).toBe(true);
     for (let i = 0; i < 60; i++) jac.step(still);
     expect(jac.cats().some((c) => c.slowUntil > jac.state().time)).toBe(true);
@@ -1545,7 +1595,7 @@ describe('the household arsenal: five weapons and five passives, each its own wa
         },
         5
       );
-      while (!a.choices() && a.state().time < 120_000) a.step(still);
+      stepWhile(a, () => !a.choices() && a.state().time < 120_000);
       return a.state().time;
     };
     expect(levelUpTime(['fish-bowl'])).toBeLessThan(levelUpTime([]));
@@ -1558,10 +1608,14 @@ describe('the household arsenal: five weapons and five passives, each its own wa
         3
       );
       const hits: number[] = [];
-      while (a.state().time < 30_000 && hits.length < 8) {
-        a.step(still);
-        if (a.drainEvents().some((e) => e.kind === 'hero-hit')) hits.push(a.state().time);
-      }
+      stepWhile(
+        a,
+        () => a.state().time < 30_000 && hits.length < 8,
+        () => {
+          a.step(still);
+          if (a.drainEvents().some((e) => e.kind === 'hero-hit')) hits.push(a.state().time);
+        }
+      );
       return Math.min(...hits.slice(1).map((t, i) => t - hits[i]));
     };
     expect(grace(['cushion']) - grace([])).toBeGreaterThanOrEqual(100);
@@ -1578,7 +1632,7 @@ describe('every evolved weapon has an effect of its own, and outdeals its base',
       escalation: [[0, 60]],
       cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
     });
-    while (a.state().time < ms) a.step(still);
+    stepTo(a, ms);
     return a;
   }
   /** Homesickness dealt in all, a second, to a crowd nothing sends home. */
@@ -1619,7 +1673,7 @@ describe('every evolved weapon has an effect of its own, and outdeals its base',
       let most = 0;
       let steered = false;
       let inherits = false;
-      while (a.state().time < 15_000) {
+      stepTo(a, 15_000, () => {
         a.step(still);
         const bits = a.projectiles().filter((p) => p.bit && p.weapon === id);
         most = Math.max(most, bits.length);
@@ -1627,7 +1681,7 @@ describe('every evolved weapon has an effect of its own, and outdeals its base',
         if (bits.some((p) => p.vx === 0 && p.vy === 0 && p.touched.length > 0)) inherits = true;
         // A crumb that has found a cat flies at its own pace, not at a standstill.
         if (bits.some((p) => Math.hypot(p.vx, p.vy) > 300)) steered = true;
-      }
+      });
       return { most, steered, inherits };
     };
     const banquet = crumbs('banquet');
@@ -1660,7 +1714,7 @@ describe('every evolved weapon has an effect of its own, and outdeals its base',
       });
       let most = 0;
       let outward = true;
-      while (a.state().time < 4_000) {
+      stepTo(a, 4_000, () => {
         a.step(still);
         const milk = a.projectiles().filter((p) => p.weapon === id);
         most = Math.max(most, milk.length);
@@ -1668,7 +1722,7 @@ describe('every evolved weapon has an effect of its own, and outdeals its base',
           const h = a.state().hero;
           if ((p.x - h.x) * p.vx + (p.y - h.y) * p.vy < 0) outward = false;
         }
-      }
+      });
       return { most, outward };
     };
     // ...and a wave sends cats home: with cats round him, some wave has touched one.
@@ -1685,14 +1739,14 @@ describe('every evolved weapon has an effect of its own, and outdeals its base',
       },
     });
     let touched = false;
-    while (crowd.state().time < 12_000) {
+    stepTo(crowd, 12_000, () => {
       crowd.step(still);
       if (
         crowd.projectiles().some((p) => p.weapon === 'bottomless-saucer' && p.touched.length > 0)
       ) {
         touched = true;
       }
-    }
+    });
     expect(touched).toBe(true);
     const saucer = waves('bottomless-saucer');
     expect(saucer.most).toBe(stats8('bottomless-saucer').count);
@@ -1794,7 +1848,7 @@ describe('fusion: two evolved weapons made one at a chest', () => {
       it('both parents go on doing what they did, and the fused weapon deals more than either alone', () => {
         const dealt = (weapons: WeaponId[], chests: number) => {
           const a = start(weapons, chests);
-          while (a.state().time < 20_000) a.step(still);
+          stepTo(a, 20_000);
           return a.cats().reduce((sum, cat) => sum + cat.homesickness, 0) / (a.state().time / 1000);
         };
         const fused = dealt([...fusion.from], 1);
@@ -1825,38 +1879,38 @@ describe('fusion: two evolved weapons made one at a chest', () => {
   it('the Thunderstorm draws lightning from him to the cats', () => {
     const a = start(['infinite-laser', 'monsoon'], 1);
     let struck = 0;
-    while (a.state().time < 12_000) {
+    stepTo(a, 12_000, () => {
       a.step(still);
       struck += a.beams().length;
-    }
+    });
     expect(struck).toBeGreaterThan(0);
   });
 
   it('the Scorching Maw scorches the cats it draws in; the Milk Symphony spills milk from the toys; the Yarn Feast sends a ring of crumbs', () => {
     const maw = start(['forbidden-catnip-vacuum', 'scorch-dryer'], 1);
-    while (maw.state().time < 9_000) maw.step(still);
+    stepTo(maw, 9_000);
     expect(maw.cats().some((c) => c.vulnUntil > maw.state().time)).toBe(true);
 
     const feast = start(['yarn-apocalypse', 'banquet'], 1);
     let crumbs = 0;
-    while (feast.state().time < 9_000) {
+    stepTo(feast, 9_000, () => {
       feast.step(still);
       crumbs = Math.max(
         crumbs,
         feast.projectiles().filter((p) => p.bit && p.weapon === 'banquet').length
       );
-    }
+    });
     expect(crumbs).toBeGreaterThanOrEqual(WEAPONS['yarn-feast'].levels[0].count);
 
     const milk = start(['bottomless-saucer', 'squeak-symphony'], 1);
     let waves = 0;
-    while (milk.state().time < 12_000) {
+    stepTo(milk, 12_000, () => {
       milk.step(still);
       const out = milk
         .projectiles()
         .filter((p) => p.bit && p.weapon === 'bottomless-saucer').length;
       waves = Math.max(waves, out);
-    }
+    });
     // More than the saucers' own waves alone (one per saucer).
     expect(waves).toBeGreaterThan(weaponStats('bottomless-saucer', MAX_WEAPON_LEVEL, none).count);
   });

@@ -9,7 +9,8 @@ test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 test.use({ storageState: DEMO_USER });
 
 // After a submit or a link, allow for the next page still compiling under a busy
-// next dev, which builds each route on its first visit (questions.md Q7).
+// next dev, which builds each route on its first visit (a first visit has run out
+// of a shorter wait under the full suite).
 const NAVIGATION = 15_000;
 
 /** A customer name no other test (or run) uses. */
@@ -90,4 +91,53 @@ test('editing a customer that does not exist shows not found', async ({ page }) 
   await expect(page.getByText('Could not find the requested customer.')).toBeVisible();
   await page.goto('/dashboard/customers/not-a-uuid/edit');
   await expect(page.getByText('Could not find the requested customer.')).toBeVisible();
+});
+
+test('the list sorts by Total Paid, then the other way round, and the sort survives a reload', async ({
+  page,
+}) => {
+  await page.goto('/dashboard/customers');
+  const header = page.getByRole('columnheader', { name: 'Total Paid' });
+  const button = header.getByRole('button', { name: 'Total Paid' });
+  await expect(header).toHaveAttribute('aria-sort', 'none');
+  await expect(page.getByRole('columnheader', { name: 'Name' })).toHaveAttribute(
+    'aria-sort',
+    'ascending'
+  );
+  /** Each row's Total Paid, in cents, top to bottom (the desktop table). */
+  const paid = () =>
+    page
+      .locator('table tbody tr')
+      .evaluateAll((rows) =>
+        rows.map((row) =>
+          Math.round(Number(row.children[4].textContent!.replace(/[$,]/g, '')) * 100)
+        )
+      );
+
+  // Other tests add customers meanwhile (the schema is shared): each read is checked on
+  // its own, sorted its way, and the way turned round.
+  const ascending = (cents: number[]) => cents.every((c, i) => i === 0 || cents[i - 1] <= c);
+  const descending = (cents: number[]) => cents.every((c, i) => i === 0 || cents[i - 1] >= c);
+
+  await button.click();
+  await expect(page).toHaveURL(/[?&]sort=total_paid&dir=asc$/);
+  await expect(header).toHaveAttribute('aria-sort', 'ascending');
+  const up = await paid();
+  expect(up.length).toBeGreaterThan(1);
+  expect(ascending(up)).toBe(true);
+  // The seed's totals differ, so the order is the column's.
+  expect(up[0]).toBeLessThan(up[up.length - 1]);
+
+  await button.click();
+  await expect(page).toHaveURL(/[?&]sort=total_paid&dir=desc$/);
+  await expect(header).toHaveAttribute('aria-sort', 'descending');
+  await expect.poll(async () => descending(await paid())).toBe(true);
+  const down = await paid();
+  expect(down[0]).toBeGreaterThan(down[down.length - 1]);
+
+  await page.reload();
+  await expect(header).toHaveAttribute('aria-sort', 'descending');
+  const reloaded = await paid();
+  expect(descending(reloaded)).toBe(true);
+  expect(reloaded[0]).toBeGreaterThan(reloaded[reloaded.length - 1]);
 });

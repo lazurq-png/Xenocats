@@ -1,12 +1,14 @@
-// Survival's test hooks, read from the page's URL (decisions.md, D30 and D46):
+// Survival's test hooks, read from the page's URL (a Keeper standing still in a
+// browser test is worn down long before the times they reach):
 // `?seed=` fixes the run's random source, `?speed=` (up to 50) makes time pass
 // that much faster, `?boss=` (seconds) brings a Mega Cat that early, besides the
 // schedule's. Two more serve the speed benchmarks (tests/e2e/benchmark.spec.ts):
 // `?fps=1` shows the frame time and cat count in the arena, and `?crowd=N` (up to
 // 6000) wants N cats from the first second and gives the Keeper a late-game arsenal
 // and Resolve that outlasts them; `?elite=1` makes every xenocat an elite, and `?fusion=1`
-// starts him with two weapons that fuse and a chest to fuse them at. Anyone can set them; nothing is at stake in a
-// single-player game, so each is only bounded: anything unusable reads as no hook at all.
+// starts him with two weapons that fuse and a chest to fuse them at. Anyone can set them, so each is
+// bounded (anything unusable reads as no hook at all), and a run with any of them in effect is
+// never ranked on the leaderboard (activeTestHooks).
 
 import type { WeaponId } from './arsenal';
 
@@ -59,4 +61,24 @@ export function parseTestHooks(search: string, freshSeed: () => number): TestHoo
     pickups: params.get('pickups') === '1',
     crowd: Number.isInteger(crowd) && crowd >= 1 ? Math.min(crowd, MAX_CROWD) : null,
   };
+}
+
+/**
+ * The names of the hooks a URL's query string puts in effect, in a fixed order;
+ * none when it sets none that are usable. A run with any is not ranked.
+ */
+export function activeTestHooks(search: string): string[] {
+  // A seed from the URL is never 0 (parseTestHooks), so 0 marks "none set".
+  const hooks = parseTestHooks(search, () => 0);
+  const inEffect: [string, boolean][] = [
+    ['seed', hooks.seed !== 0],
+    ['speed', hooks.speed !== 1],
+    ['boss', hooks.boss !== null],
+    ['fps', hooks.fps],
+    ['crowd', hooks.crowd !== null],
+    ['elite', hooks.elite],
+    ['fusion', hooks.fusion],
+    ['pickups', hooks.pickups],
+  ];
+  return inEffect.filter(([, on]) => on).map(([name]) => name);
 }

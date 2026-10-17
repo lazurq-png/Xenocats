@@ -107,6 +107,20 @@ export type InvoiceStatusFilter = z.infer<typeof InvoiceStatusFilter>;
 export const parseStatusFilter = (value: string | undefined): InvoiceStatusFilter | null =>
   InvoiceStatusFilter.safeParse(value).data ?? null;
 
+/**
+ * The customer list's sort, from the URL (`?sort=`, `?dir=`): one of a fixed list of
+ * columns, ascending or descending. Anything else sorts by name, ascending.
+ */
+export const CustomerSort = z.enum(['name', 'total_invoices', 'total_pending', 'total_paid']);
+export type CustomerSort = z.infer<typeof CustomerSort>;
+export const SortDirection = z.enum(['asc', 'desc']);
+export type SortDirection = z.infer<typeof SortDirection>;
+
+export const parseCustomerSort = (value: unknown): CustomerSort =>
+  CustomerSort.safeParse(value).data ?? 'name';
+export const parseSortDirection = (value: unknown): SortDirection =>
+  SortDirection.safeParse(value).data ?? 'asc';
+
 const BCRYPT_MAX_BYTES = 72;
 
 /**
@@ -197,6 +211,16 @@ export const LeaderboardName = z
       .regex(/^[\p{L}\p{M}\p{N} _.'-]+$/u, {
         message: "A name is letters, digits, spaces and _ . ' - only.",
       })
+      // Marks (accents, vowel signs) belong on a letter or digit.
+      .refine((name) => !/(^|[^\p{L}\p{N}\p{M}])\p{M}/u.test(name), {
+        message: 'An accent must be on a letter.',
+      })
+      // And at most three that sit on one spot (non-spacing Mn, or enclosing Me) in a row:
+      // more stack into a tower over the leaderboard's other rows. Spacing marks (Mc) move
+      // the text along, so they are not counted: Burmese ကျော် (Kyaw) has four marks, one Mn.
+      .refine((name) => !/[\p{Mn}\p{Me}]{4}/u.test(name), {
+        message: 'A letter can carry at most three accents.',
+      })
   );
 
 /**
@@ -224,3 +248,12 @@ export const containsPattern = (query: unknown) =>
   `%${String(query ?? '')
     .slice(0, SEARCH_MAX_LENGTH)
     .replace(/[\\%_]/g, '\\$&')}%`;
+
+/**
+ * The most invoices and customers one account can make. Far past any real use, they
+ * stop one signed-in caller filling the database: an action is a public endpoint.
+ * 10,000 invoices is also the most one export holds (EXPORT_LIMIT), so exporting all
+ * of them always works; a thousand customers is a dropdown the invoice form can show.
+ */
+export const MAX_INVOICES_PER_ACCOUNT = 10_000;
+export const MAX_CUSTOMERS_PER_ACCOUNT = 1_000;
