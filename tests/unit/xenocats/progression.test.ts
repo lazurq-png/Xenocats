@@ -76,7 +76,7 @@ describe('tufts', () => {
       viewport: { width: 1280, height: 800 },
       config: { ...runConfig(bought, ARENA_CONFIG) },
     });
-    expect(run.levelUpUses()).toEqual({ rerolls: 2, skips: 2 });
+    expect(run.levelUpUses()).toEqual({ rerolls: 2, skips: 2, banishes: 0 });
     // A fresh store buys none.
     expect(runConfig(freshProgress(), ARENA_CONFIG).boost).toMatchObject({ rerolls: 0, skips: 0 });
   });
@@ -216,12 +216,54 @@ describe('the Tailor', () => {
     expect(config.hero!.resolve).toBe(ARENA_CONFIG.hero.resolve + 20);
     expect(config.hero!.speed).toBeCloseTo(ARENA_CONFIG.hero.speed * 1.2);
     expect(config.boost).toEqual({
+      ...ARENA_CONFIG.boost,
       might: 1.15,
       pickup: 1.1,
       revivals: 1,
-      rerolls: 0,
-      skips: 0,
     });
+  });
+
+  it('the newer wares go out with him too', () => {
+    const progress: Progress = {
+      ...freshProgress(),
+      upgrades: {
+        'thick-coat': 5,
+        'steady-hands': 5,
+        'wide-brim': 2,
+        'old-habits': 1,
+        'kindly-manner': 3,
+        'deep-pockets': 3,
+        patience: 2,
+        'firm-no': 3,
+        'lucky-coat-button': 1,
+        'spare-pocket': 2,
+      },
+    };
+    const boost = runConfig(progress, ARENA_CONFIG).boost!;
+    expect(boost.drain).toBeCloseTo(0.8);
+    expect(boost.cooldown).toBeCloseTo(1 / 1.2);
+    expect(boost.area).toBeCloseTo(1.1);
+    expect(boost.duration).toBeCloseTo(1.06);
+    expect(boost.xp).toBeCloseTo(1.15);
+    expect(boost.luck).toBeCloseTo(1.3);
+    // 1 Resolve every 5 s a level.
+    expect(boost.recovery).toBeCloseTo(0.4);
+    expect(boost).toMatchObject({ banishes: 3, choices: 1, passiveSlots: 2 });
+    // Nothing bought: nothing changes.
+    expect(runConfig(freshProgress(), ARENA_CONFIG).boost).toEqual(ARENA_CONFIG.boost);
+  });
+
+  it('the Lint Roller gathers a tenth more tufts a level, rounded down', () => {
+    const plain = applyRun(freshProgress(), run({ timeMs: 300_000, sentHome: 200 }));
+    expect(plain.earned).toBe(70);
+    const rolled = { ...freshProgress(), upgrades: { 'lint-roller': 3 } };
+    expect(applyRun(rolled, run({ timeMs: 300_000, sentHome: 200 })).earned).toBe(91);
+    expect(applyRun(rolled, run({ timeMs: 5000 })).earned).toBe(1);
+  });
+
+  it('Second Wind is the last of his wares', () => {
+    expect(Object.keys(UPGRADES).at(-1)).toBe('second-wind');
+    expect(Object.keys(UPGRADES)).toHaveLength(18);
   });
 });
 
@@ -312,13 +354,21 @@ describe('characters', () => {
 describe('the codex and the secrets', () => {
   it('shows ??? until an entry is found, then its name', () => {
     const fresh = codexEntries(freshProgress());
-    expect(fresh.every((e) => e.name === '???' && !e.found)).toBe(true);
+    expect(fresh.every((e) => e.name === '???' && e.recipe === null && !e.found)).toBe(true);
     const found = applyRun(freshProgress(), run({ found: ['bottomless-saucer', 'nonsense'] }));
     const entries = codexEntries(found.progress);
     expect(entries.find((e) => e.id === 'bottomless-saucer')).toEqual({
       id: 'bottomless-saucer',
       name: 'Bottomless Saucer',
+      kind: 'secret-evolution',
+      recipe: 'Can Opener + Warm Milk',
       found: true,
+    });
+    // Not found: what it is, but not what makes it.
+    expect(entries.find((e) => e.id === 'thunderstorm')).toMatchObject({
+      name: '???',
+      kind: 'fusion',
+      recipe: null,
     });
     expect(found.progress.found).toEqual(['bottomless-saucer']);
   });
@@ -455,6 +505,30 @@ describe('the codex and the secrets', () => {
   });
 });
 
+describe('the Tailor’s multipliers in a run', () => {
+  it('less Resolve lost to cats: the same cats, the same touches, half the loss', () => {
+    const lost = (drain: number) => {
+      const a = createArena({
+        random: createRandom(4),
+        types: CAT_TYPES,
+        viewport: { width: 1280, height: 800 },
+        config: {
+          startingWeapons: [],
+          escalation: [[0, 40]],
+          boost: { ...ARENA_CONFIG.boost, drain },
+        },
+      });
+      // The first cats reach him after about 15 s; by 30 s a few have touched him.
+      stepTo(a, 30_000, () => a.step({ x: 0, y: 0 }));
+      return a.state().hero.maxResolve - a.state().hero.resolve;
+    };
+    const full = lost(1);
+    expect(full).toBeGreaterThan(0);
+    expect(full).toBeLessThan(ARENA_CONFIG.hero.resolve);
+    expect(lost(0.5)).toBeCloseTo(full / 2, 5);
+  });
+});
+
 describe('Second Wind', () => {
   it('once a run, spent Resolve comes back by half; the second time the run ends', () => {
     const a = createArena({
@@ -464,7 +538,7 @@ describe('Second Wind', () => {
       config: {
         startingWeapons: [],
         escalation: [[0, 60]],
-        boost: { might: 1, pickup: 1, revivals: 1, rerolls: 0, skips: 0 },
+        boost: { ...ARENA_CONFIG.boost, revivals: 1 },
       },
     });
     const kinds: string[] = [];
