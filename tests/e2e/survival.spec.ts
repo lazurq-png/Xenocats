@@ -82,7 +82,7 @@ async function pauseRun(page: Page) {
 
 /**
  * A data- number once it has stopped changing (the HUD trails the run a little). Two
- * reads apart by well over the HUD's interval (HUD_EVERY_MS, 250 ms, plus a slow frame),
+ * reads apart by well over the HUD's interval (HUD_EVERY_MS, 150 ms, plus a slow frame),
  * so one HUD update always falls between them.
  */
 async function settled(page: Page, name: string) {

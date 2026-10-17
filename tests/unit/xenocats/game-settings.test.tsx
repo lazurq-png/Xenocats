@@ -18,6 +18,8 @@ import {
   writeBest,
 } from '@/app/ui/xenocats/arena-storage';
 import { GameSettings } from '@/app/ui/xenocats/game-settings';
+import { type Hud, HudBar, createHudStore, hudData } from '@/app/ui/xenocats/survival-hud';
+import { act } from 'react';
 import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
 
 afterEach(() => {
@@ -189,5 +191,123 @@ describe('each character’s best', () => {
     expect(dayOf(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
     expect(dayText('2026-10-17')).toBe('17 Oct 2026');
     expect(dayText('2026-01-05')).toBe('5 Jan 2026');
+  });
+});
+
+// Survival's HUD, apart from the arena view: its store, the play area's data-
+// attributes, and the bar that follows the store on its own (survival-hud.tsx).
+describe('the Survival HUD', () => {
+  const hud = (fields: Partial<Hud> = {}): Hud => ({
+    time: 61_000,
+    resolve: 40,
+    maxResolve: 100,
+    sentHome: 12,
+    cats: 30,
+    heroX: 5,
+    heroY: -7,
+    effect: null,
+    boss: null,
+    level: 3,
+    xp: 2,
+    xpToNext: 14,
+    weapons: 'laser-pointer:2',
+    frameMs: 16.7,
+    windUps: 0,
+    windUpsBegun: 1,
+    bossWindUp: '',
+    bossWindUpsBegun: 0,
+    pickups: 0,
+    pickupsTaken: 0,
+    lastPickup: '',
+    crosshair: '',
+    zoom: 1,
+    heroes: [{ facing: 'e', resolve: 40, maxResolve: 100, down: false, backIn: 0, x: 5, y: -7 }],
+    ...fields,
+  });
+
+  it('the store gives what was set, a value or an update of the last, and tells its listeners', () => {
+    const store = createHudStore();
+    expect(store.get()).toBeNull();
+    const heard = vi.fn();
+    const stop = store.subscribe(heard);
+    store.set(hud());
+    store.set((before) => (before ? { ...before, level: 4 } : before));
+    expect(store.get()?.level).toBe(4);
+    expect(heard).toHaveBeenCalledTimes(2);
+    stop();
+    store.set(null);
+    expect(heard).toHaveBeenCalledTimes(2);
+  });
+
+  it('the play area’s data- attributes: the defaults before a run, then the run’s own', () => {
+    // Every name the browser tests read, no more, no fewer.
+    expect(Object.keys(hudData(null)).sort()).toEqual(
+      [
+        'data-boss',
+        'data-boss-windup',
+        'data-boss-windups-begun',
+        'data-cats',
+        'data-crosshair',
+        'data-down',
+        'data-effect',
+        'data-hero-facing',
+        'data-hero-x',
+        'data-hero-y',
+        'data-hero2-facing',
+        'data-hero2-x',
+        'data-hero2-y',
+        'data-last-pickup',
+        'data-level',
+        'data-pickups',
+        'data-pickups-taken',
+        'data-resolve',
+        'data-sent-home',
+        'data-time',
+        'data-weapons',
+        'data-windups',
+        'data-windups-begun',
+        'data-zoom',
+      ].sort()
+    );
+    expect(hudData(null)).toMatchObject({
+      'data-time': '0',
+      'data-resolve': '100',
+      'data-level': '1',
+      'data-weapons': 'laser-pointer:1',
+      'data-boss': '',
+    });
+    expect(hudData(hud({ boss: { homesickness: 12.6, limit: 900 } }))).toMatchObject({
+      'data-time': '61000',
+      'data-sent-home': '12',
+      'data-level': '3',
+      'data-hero-facing': 'e',
+      'data-down': '0',
+      'data-boss': '13',
+    });
+  });
+
+  it('the bar follows the store by itself: no parent renders it again', () => {
+    const store = createHudStore();
+    let parentRenders = 0;
+    function Parent() {
+      parentRenders++;
+      return (
+        <HudBar
+          store={store}
+          showFps={false}
+          runLength={5}
+          runPlayers={1}
+          playing
+          onPause={() => {}}
+        />
+      );
+    }
+    render(<Parent />);
+    expect(screen.getByTestId('survival-time').textContent).toBe('Time 0:00 / 5:00');
+    act(() => store.set(hud()));
+    expect(screen.getByTestId('survival-time').textContent).toBe('Time 1:01 / 5:00');
+    expect(screen.getByTestId('survival-sent-home').textContent).toBe('Cats sent home: 12');
+    expect(screen.getByTestId('survival-level').textContent).toBe('Level 3');
+    expect(parentRenders).toBe(1);
   });
 });

@@ -210,3 +210,14 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Full suites.** prettier, lint (0 warnings), tsc clean; `npm test` 1026 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped.
 - **What it brings.** E8 and E10 are checked together, and the one test that proved nothing now does.
 - **CI of E10** (4d96904): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39003051008.
+
+## E11 — started 06:43: the HUD rendered on its own, not by the whole arena view (kind: speed on a weak machine)
+
+## E11 — The HUD rendered on its own, not by the whole arena view (completed)
+
+- Branch `2026-10-17-e11-hud-alone`, base d098a91. Started 06:44, completed 07:07.
+- **What the code does.** `survival-hud.tsx` (new): the HUD's type, a small store (`createHudStore`), the play area's `data-` attributes (`hudData`, the same 24 names and defaults), and the Mega Cat's bar and the top bar (`BossBar`, `HudBar`, the same markup, ARIA and Pause button) following the store with `useSyncExternalStore`. `arena-view.tsx`: the frame loop writes the store where it set React state; a layout effect writes the `data-` attributes onto the play area at once and at each update; the HUD is updated every 150 ms again (`HUD_EVERY_MS`). `survival.spec.ts`: `settled()`'s comment. `game-settings.test.tsx`: three tests (the store, the attribute list and defaults, and the bar following the store while its parent renders once).
+- **What it brings.** A HUD update no longer re-renders the whole arena view. Survival runs about 7–8% faster on a slow machine than after E10, and 17–20% faster than at the evening's start, with the clock and bars as smooth as before. Decisions: D41.
+- **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (16 passed; 16 again after the reviewer's list check), build exit 0, 13 e2e specs (122 passed / 2 skipped). Before them, `survival.spec.ts` with `leaderboard.spec.ts` 41 passed. Speed measured interleaved, two rounds of three (D41). The HUD's look is not seen.
+- **Reviewer.** Approve, two Low: the tests' file (by D21) and the attribute list (now checked in full).
+- **CI of checkpoint 3** (d098a91): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39003584874.

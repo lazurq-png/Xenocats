@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '@/app/ui/button';
 import {
   type Arena,
@@ -82,6 +89,7 @@ import {
 } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
+import { BossBar, HudBar, createHudStore, hudData } from './survival-hud';
 import {
   AUTO_JUDGE_FROM_MS,
   AUTO_JUDGE_UNTIL_MS,
@@ -140,11 +148,11 @@ const ZONE_COLOR: Record<string, string> = {
 const NOTICE_MS = 5000;
 
 /**
- * How often the HUD (React state) is updated during a run, ms: each update renders
- * this whole component again, which on a slow machine costs more than drawing the
- * frame (night run 2026-10-17, E10: from 150 ms to 250, +9% frames a second).
+ * How often the HUD is updated during a run, ms. Once this rendered the whole view, and
+ * E10 slowed it to 250 ms for speed; since E11 it renders the HUD alone (survival-hud.tsx),
+ * and 150 ms costs a slow machine only 2–3% against 250 (night run 2026-10-17).
  */
-const HUD_EVERY_MS = 250;
+const HUD_EVERY_MS = 150;
 
 /** Cats drawn this size, px. */
 const CAT_SIZE = 44;
@@ -160,48 +168,6 @@ const SOUND_WINDOW_MS = 300;
 const FRAME_GUARD = { floorFps: 40, resumeFps: 50, smoothing: 0.1 };
 
 type Flash = { x: number; y: number; until: number };
-
-type Hud = {
-  time: number;
-  resolve: number;
-  maxResolve: number;
-  sentHome: number;
-  cats: number;
-  heroX: number;
-  heroY: number;
-  effect: string | null;
-  /** The Mega Cat on the field, if one is: how homesick, of how much. */
-  boss: { homesickness: number; limit: number } | null;
-  level: number;
-  xp: number;
-  xpToNext: number;
-  weapons: string;
-  /** The frame time, ms (smoothed), for `?fps=1`. */
-  frameMs: number;
-  /** How many elites are winding up an attack, and how many have begun in the run. */
-  windUps: number;
-  windUpsBegun: number;
-  bossWindUp: string;
-  bossWindUpsBegun: number;
-  pickups: number;
-  pickupsTaken: number;
-  lastPickup: string;
-  /** Where the crosshair is on the screen ("x,y"), or "" without one. */
-  crosshair: string;
-  /** The camera's zoom: arena px to a screen px (1 on a desktop, more on a phone). */
-  zoom: number;
-  /** Each Keeper's Resolve, and whether he is down (co-op: two). */
-  heroes: {
-    /** Which of the eight directions he faces. */
-    facing: string;
-    resolve: number;
-    maxResolve: number;
-    down: boolean;
-    backIn: number;
-    x: number;
-    y: number;
-  }[];
-};
 
 /** A run that reached its goal, by its length (an endless run has none to reach). */
 const LENGTH_WORDS: Record<Exclude<RunLength, typeof ENDLESS>, string> = {
@@ -273,7 +239,9 @@ export default function ArenaGame({
   // The server's id for the run (startSurvivalRun), once it has given one; null for
   // a run that is not on the leaderboard.
   const [runId, setRunId] = useState<Promise<string | null>>(() => Promise.resolve(null));
-  const [hud, setHud] = useState<Hud | null>(null);
+  // The HUD's numbers: a store of their own, which the HUD's components and the play
+  // area's data- attributes follow, so an update does not render this whole view.
+  const [hudStore] = useState(createHudStore);
   const [showFps, setShowFps] = useState(false);
   const [outcome, setOutcome] = useState<ArenaOutcome | null>(null);
   // The finished run's numbers, kept for the results screen.
@@ -485,7 +453,7 @@ export default function ArenaGame({
     setNotice(null);
     setChooser(0);
     setRunPlayers(secondRef.current ? 2 : 1);
-    setHud(null);
+    hudStore.set(null);
     show('playing');
   };
 
@@ -545,6 +513,21 @@ export default function ArenaGame({
   }, [refresh]);
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
+
+  // The play area's data- attributes (what the browser tests read): now, and at each
+  // HUD update.
+  useLayoutEffect(() => {
+    if (!running) return;
+    const write = () => {
+      const area = areaRef.current;
+      if (!area) return;
+      for (const [name, value] of Object.entries(hudData(hudStore.get()))) {
+        area.setAttribute(name, value);
+      }
+    };
+    write();
+    return hudStore.subscribe(write);
+  }, [running, hudStore]);
 
   // Focus: into the play area when a run starts (and back after a choice), onto the
   // first choice at a level-up, onto Resume when paused, and when over onto the
@@ -1255,7 +1238,7 @@ export default function ArenaGame({
       const state = arena.state();
       if (over || now - lastHud > HUD_EVERY_MS) {
         lastHud = now;
-        setHud({
+        hudStore.set({
           time: state.time,
           resolve: state.hero.resolve,
           maxResolve: state.hero.maxResolve,
@@ -1297,7 +1280,7 @@ export default function ArenaGame({
       else if (arena.choices()) {
         // The run waits for a choice; the HUD shows the level it is for.
         carry = 0;
-        setHud((before) =>
+        hudStore.set((before) =>
           before
             ? {
                 ...before,
@@ -1384,7 +1367,7 @@ export default function ArenaGame({
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onHidden);
     };
-  }, [running, finish, pause, show, choose, reroll, skip]);
+  }, [running, finish, pause, show, choose, reroll, skip, hudStore]);
 
   return (
     <div>
@@ -1605,63 +1588,16 @@ export default function ArenaGame({
           data-testid="survival-area"
           data-xenocat-ignore
           data-screen={screen}
-          data-time={hud?.time ?? 0}
-          data-resolve={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
-          data-cats={hud?.cats ?? 0}
-          data-windups={hud?.windUps ?? 0}
-          data-windups-begun={hud?.windUpsBegun ?? 0}
-          data-boss-windup={hud?.bossWindUp ?? ''}
-          data-boss-windups-begun={hud?.bossWindUpsBegun ?? 0}
-          data-pickups={hud?.pickups ?? 0}
-          data-pickups-taken={hud?.pickupsTaken ?? 0}
-          data-last-pickup={hud?.lastPickup ?? ''}
-          data-sent-home={hud?.sentHome ?? 0}
-          data-hero-facing={hud?.heroes[0]?.facing ?? ''}
-          data-hero2-facing={hud?.heroes[1]?.facing ?? ''}
-          data-hero-x={hud?.heroX ?? 0}
-          data-hero-y={hud?.heroY ?? 0}
-          data-effect={hud?.effect ?? ''}
-          data-level={hud?.level ?? 1}
-          data-boss={hud?.boss ? Math.round(hud.boss.homesickness) : ''}
-          data-weapons={hud?.weapons ?? 'laser-pointer:1'}
           data-players={runPlayers}
           data-chooser={chooser}
-          data-hero2-x={hud?.heroes[1]?.x ?? ''}
-          data-hero2-y={hud?.heroes[1]?.y ?? ''}
-          data-down={hud?.heroes.map((h) => (h.down ? 1 : 0)).join(' ') ?? ''}
           data-aim={aimMode}
           data-graphics={graphics}
-          data-crosshair={hud?.crosshair ?? ''}
-          data-zoom={hud?.zoom ?? ''}
           className={`fixed inset-0 z-9998 select-none overflow-hidden bg-void outline-none${
             aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
           }`}
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
-          {hud?.boss && (
-            <div
-              data-testid="survival-boss"
-              className="pointer-events-none absolute inset-x-0 top-24 mx-auto flex w-full max-w-md flex-col items-center gap-1 px-4 text-sm font-semibold text-cream"
-            >
-              <span id="boss-label">{VARIETIES.mega.name}</span>
-              <div
-                role="meter"
-                aria-labelledby="boss-label"
-                aria-valuemin={0}
-                aria-valuemax={Math.round(hud.boss.limit)}
-                aria-valuenow={Math.round(hud.boss.homesickness)}
-                aria-valuetext={`Homesickness ${Math.round((100 * hud.boss.homesickness) / hud.boss.limit)}%`}
-                className="h-3 w-full overflow-hidden rounded-full border border-line bg-panel"
-              >
-                <div
-                  className="h-full bg-aura"
-                  style={{
-                    width: `${(100 * Math.min(hud.boss.homesickness, hud.boss.limit)) / hud.boss.limit}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
+          <BossBar store={hudStore} />
           <p
             role="status"
             data-testid="survival-notice"
@@ -1669,87 +1605,14 @@ export default function ArenaGame({
           >
             {notice}
           </p>
-          <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
-            {showFps && (
-              <p data-testid="survival-fps" data-frame-ms={hud?.frameMs ?? ''}>
-                {hud?.frameMs ?? 0} ms · {hud?.cats ?? 0} cats
-              </p>
-            )}
-            <p data-testid="survival-time">
-              Time {clockText(hud?.time ?? 0)}
-              {runLength === ENDLESS ? ' (endless)' : ` / ${clockText(runLength * 60_000)}`}
-            </p>
-            <div className="flex items-center gap-2">
-              <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>
-              <div
-                role="meter"
-                aria-labelledby="resolve-label"
-                aria-valuemin={0}
-                aria-valuemax={hud?.maxResolve ?? ARENA_CONFIG.hero.resolve}
-                aria-valuenow={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
-                className="h-2 w-32 overflow-hidden rounded-full bg-panel"
-              >
-                <div
-                  className="h-full bg-plasma"
-                  style={{
-                    width: `${(100 * (hud?.resolve ?? 1)) / (hud?.maxResolve ?? 1)}%`,
-                  }}
-                />
-              </div>
-              <span data-testid="survival-resolve">
-                {hud?.heroes[0]?.down
-                  ? `Down, back in ${Math.ceil(hud.heroes[0].backIn / 1000)} s`
-                  : Math.ceil(hud?.resolve ?? 100)}
-              </span>
-            </div>
-            {hud && hud.heroes.length > 1 && (
-              <div className="flex items-center gap-2">
-                <span id="resolve2-label">Player 2 Resolve</span>
-                <div
-                  role="meter"
-                  aria-labelledby="resolve2-label"
-                  aria-valuemin={0}
-                  aria-valuemax={hud.heroes[1].maxResolve}
-                  aria-valuenow={hud.heroes[1].resolve}
-                  className="h-2 w-32 overflow-hidden rounded-full bg-panel"
-                >
-                  <div
-                    className="h-full bg-aura"
-                    style={{
-                      width: `${(100 * hud.heroes[1].resolve) / hud.heroes[1].maxResolve}%`,
-                    }}
-                  />
-                </div>
-                <span data-testid="survival-resolve2">
-                  {hud.heroes[1].down
-                    ? `Down, back in ${Math.ceil(hud.heroes[1].backIn / 1000)} s`
-                    : Math.ceil(hud.heroes[1].resolve)}
-                </span>
-              </div>
-            )}
-            <p data-testid="survival-sent-home">Cats sent home: {hud?.sentHome ?? 0}</p>
-            <div className="flex items-center gap-2">
-              <span data-testid="survival-level">Level {hud?.level ?? 1}</span>
-              <div
-                role="progressbar"
-                aria-label="Experience"
-                aria-valuemin={0}
-                aria-valuemax={hud?.xpToNext ?? 5}
-                aria-valuenow={hud?.xp ?? 0}
-                className="h-2 w-24 overflow-hidden rounded-full bg-panel"
-              >
-                <div
-                  className="h-full bg-aura"
-                  style={{ width: `${(100 * (hud?.xp ?? 0)) / (hud?.xpToNext ?? 5)}%` }}
-                />
-              </div>
-            </div>
-            {screen === 'playing' && (
-              <Button className="ml-auto" onClick={pause}>
-                Pause
-              </Button>
-            )}
-          </div>
+          <HudBar
+            store={hudStore}
+            showFps={showFps}
+            runLength={runLength}
+            runPlayers={runPlayers}
+            playing={screen === 'playing'}
+            onPause={pause}
+          />
 
           {screen === 'choosing' && choices && (
             <div
