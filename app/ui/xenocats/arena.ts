@@ -1456,12 +1456,16 @@ export function createArena(options: {
     cat.speed = speed;
   }
 
-  /** An elite winding up an attack loses it: it must begin again. */
+  /** An elite (or a Mega Cat) winding up an attack loses it: it must begin again, after its own rest. */
   function loseWindUp(cat: ArenaCat) {
     if (cat.windUntil > 0) {
       cat.windUntil = 0;
       stopWinding(cat);
-      cat.nextAttackAt = time + config.eliteAttack.cooldownMs;
+      cat.nextAttackAt =
+        time +
+        (cat.variety === 'mega'
+          ? config.bossAttack.pounce.cooldownMs
+          : config.eliteAttack.cooldownMs);
     }
   }
 

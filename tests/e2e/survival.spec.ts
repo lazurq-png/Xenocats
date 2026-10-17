@@ -440,7 +440,7 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
   });
 
-  test('a level-up can be rerolled once (new choices, a use spent) and skipped once (no choice, the run goes on)', async ({
+  test('a level-up can be rerolled once (new choices, the use spent), a number past the choices picks nothing, and X skips once', async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -456,18 +456,22 @@ test.describe('on a computer', () => {
     await expect(reroll).toHaveText('Reroll (1 left)');
     await expect(skip).toHaveText('Skip, for some experience (1 left)');
 
-    // Reroll: new choices, and the use is spent.
+    // Reroll (its button; R works the same key branch as X, below): new choices, and the use is spent.
     const before = await ids();
     await reroll.click();
     await expect.poll(ids).not.toEqual(before);
     await expect(reroll).toHaveText('Reroll (0 left)');
     await expect(reroll).toBeDisabled();
     await expect(dialog).toBeVisible();
+
+    // Past the last choice, a number picks nothing (the buttons after the list are not choices).
+    await page.keyboard.press(String((await choices.count()) + 1));
+    await expect(dialog).toBeVisible();
     const level = Number(await area(page).getAttribute('data-level'));
     await expect(skip).toBeEnabled();
 
-    // Skip: no choice taken; the run goes on (or the next level-up waits, and has no skip left).
-    await skip.click();
+    // X skips: no choice taken; the run goes on (or the next level-up waits, and has no skip left).
+    await page.keyboard.press('x');
     await expect
       .poll(async () => {
         if ((await dialog.count()) === 0) return 'playing';
@@ -475,30 +479,6 @@ test.describe('on a computer', () => {
       })
       .not.toBe('waiting');
     expect(Number(await area(page).getAttribute('data-level'))).toBeGreaterThanOrEqual(level);
-  });
-
-  test('R rerolls and X skips at a level-up; a number picks only from the choices', async ({
-    page,
-  }) => {
-    test.setTimeout(60_000);
-    await openArena(page, '?seed=7&speed=6');
-    await startRun(page);
-    const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
-    const reroll = dialog.getByTestId('survival-reroll');
-    await page.keyboard.press('r');
-    await expect(reroll).toHaveText('Reroll (0 left)');
-    // Past the last choice, a number picks nothing (the buttons after the list are not choices).
-    const count = await dialog.locator('button[data-choice]').count();
-    await page.keyboard.press(String(count + 1));
-    await expect(dialog).toBeVisible();
-    await page.keyboard.press('x');
-    await expect
-      .poll(
-        async () =>
-          (await dialog.count()) === 0 || (await dialog.getByTestId('survival-skip').isDisabled())
-      )
-      .toBe(true);
   });
 
   test('on a computer the camera is unzoomed', async ({ page }) => {

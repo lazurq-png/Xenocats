@@ -1418,6 +1418,24 @@ describe('the bosses attack', () => {
     expect(a.telegraphs()).toEqual([]);
   });
 
+  it('held still mid-wind-up, it loses the pounce and rests its own time, not an elite’s', () => {
+    const a = mega();
+    until(a, 'wind-up');
+    expect(a.state().bossWindUp).toBe('pounce');
+    // Held still (a box, a bell): the pounce is lost.
+    const big = bigOne(a);
+    big.stunUntil = a.state().time + 200;
+    a.step(still);
+    expect(a.state().bossWindUp).toBeNull();
+    const held = a.state().time;
+    const { cooldownMs } = ARENA_CONFIG.bossAttack.pounce;
+    expect(cooldownMs).not.toBe(ARENA_CONFIG.eliteAttack.cooldownMs);
+    expect(big.nextAttackAt).toBe(held + cooldownMs);
+    // And it winds up again only after its own rest.
+    until(a, 'wind-up');
+    expect(a.state().time - held).toBeGreaterThanOrEqual(cooldownMs);
+  });
+
   it('it rests between pounces', () => {
     const a = mega();
     until(a, 'wind-up');
@@ -1501,23 +1519,31 @@ describe('the bosses attack', () => {
     expect(a.state().time - first).toBeGreaterThanOrEqual(
       ARENA_CONFIG.bossAttack.summon.everyMs - 100
     );
-    // She calls only from afar: with a minimum distance beyond any she has, she never does.
-    const near = arena({
-      ...noCats,
-      stepMs: 50,
-      escalation: [[0, 0]],
-      timeGoalMs: 1_000,
-      matriarch: { ...ARENA_CONFIG.matriarch, speed: 300 },
-      bossAttack: {
-        ...ARENA_CONFIG.bossAttack,
-        summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: 0, minDistance: 5000 },
-      },
-    });
-    while (near.state().status === 'playing' && near.state().time < 10_000) {
-      near.step(still);
-      for (const e of near.drainEvents()) expect(e.kind).not.toBe('boss-summon');
-    }
-    expect(near.state().outcome).toBe('goal');
+    // She calls only from afar: with a minimum distance beyond any she has, she never
+    // begins to, all the way in; the same run with her own minimum does begin.
+    const approach = (minDistance: number) => {
+      const near = arena({
+        ...noCats,
+        stepMs: 50,
+        escalation: [[0, 0]],
+        timeGoalMs: 1_000,
+        matriarch: { ...ARENA_CONFIG.matriarch, speed: 300 },
+        bossAttack: {
+          ...ARENA_CONFIG.bossAttack,
+          summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: 0, minDistance },
+        },
+      });
+      let calls = 0;
+      while (near.state().status === 'playing' && near.state().time < 10_000) {
+        near.step(still);
+        for (const e of near.drainEvents()) {
+          if ((e.kind === 'wind-up' && e.type === -1) || e.kind === 'boss-summon') calls++;
+        }
+      }
+      return { calls, outcome: near.state().outcome };
+    };
+    expect(approach(ARENA_CONFIG.bossAttack.summon.minDistance).calls).toBeGreaterThan(0);
+    expect(approach(5000)).toEqual({ calls: 0, outcome: 'goal' });
   });
 });
 

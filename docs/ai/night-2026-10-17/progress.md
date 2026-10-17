@@ -66,3 +66,12 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Verification.** prettier (4 files) ok; lint exit 0, 0 warnings; typegen + tsc exit 0; CI's group check locally exit 0. Selector: `vitest related` over 4 files (153 passed), build exit 0, 13 e2e specs (123 passed / 2 skipped). The first gate (before the reviewer's fixes, and before the repair) had 103 / build / 123 passed. Acceptance: (a), (b), (d), (e) checked by command; (c) checked by command (the overall-best keys and reading unchanged, in a unit test); co-op credit of both characters by reading only; the lobby was not seen.
 - **Reviewer.** Approve; two Low findings, both fixed (D23): the floored time, and the real-day check. No re-review: both are a line each, under unit tests.
 - **CI of T3**: failed at e87e678 (repair cycle 1, above); after the repair, CI passed at 6731373, https://github.com/lazurq-png/Xenocats/actions/runs/38986741978. (d96d760, the deletion alone, was pushed too; its run was not polled.)
+
+## T5 — The 2026-10-09 checkpoint 3 review's leftovers (completed)
+
+- Branch `2026-10-17-t5-leftovers`, base 67cfa59. Started 02:36, completed 02:42.
+- **What the code does.** `arena.ts`: a Mega Cat that loses its pounce's wind-up (held still, or any of T2's new ways) now rests the pounce's 6 s before the next, not an elite's 3.5 s. `arena.test.ts`: a test holds a winding Mega Cat still and checks its rest (it failed before the fix: 17,900 against 20,400); the Matriarch test now counts her wind-ups as well as calls, with a control run that does call, so it fails when the distance rule is removed (checked: 2 calls against 0). `survival.spec.ts`: the two reroll/skip tests are one (button reroll, a number past the choices, X to skip), with every assertion of both.
+- **What it brings.** A Mega Cat stunned mid-pounce no longer comes back sooner than one that pounced. Two tests now guard what they claim to, and the suite plays one fewer seeded run to a level-up. Decisions: D24–D26.
+- **Verification.** prettier (3 files) ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (453 passed), build exit 0, 13 e2e specs (122 passed / 2 skipped). The merged e2e test 3 of 3 alone. Acceptance: all three checked by command (the mutation checks above for the two unit tests).
+- **Reviewer.** Approve; one Low: D26 understated what the merge leaves untested (the R key, and the Skip button click). Corrected.
+- **CI of T4** (67cfa59): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/38987151281.
