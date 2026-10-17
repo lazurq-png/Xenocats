@@ -14,7 +14,12 @@
 //         itself. The whole suite when Vitest's own configuration changed.
 //   e2e   the browser specs that visit a route the change reaches. A changed
 //         file is followed through the imports to the App Router files that
-//         use it (page, layout, route, error, ...), each route is reduced to its
+//         use it (page, layout, route, error, ...): only through the importers
+//         that import a top-level name the change touched (its declarations'
+//         code, comments and types aside, as at the merge base), and within each
+//         importer only through the declarations that use one. A new file, a
+//         changed side effect or directive, or an import of it the top level
+//         does not show (`import()`) counts as all of it. Each route is reduced to its
 //         area (`/cats`, `/cats/survival`, `/login`, `/dashboard/invoices`, ...),
 //         and a spec covers every area whose path appears in it. What reaches
 //         the dashboard only through its cats (cat-layer.tsx) selects only the
@@ -26,8 +31,9 @@
 //
 // It errs towards running more: a file it cannot place (configuration, auth,
 // the root layout, seed data, the schema, a deleted page or config file,
-// anything outside the known folders) selects the whole e2e suite, and says
-// why. CI still runs everything on every push.
+// anything outside the known folders), or a change that reaches what the login
+// or every request runs (auth.ts, proxy.ts), selects the whole e2e suite, and
+// says why. CI still runs everything on every push.
 //
 // --run  runs the selection: unit tests, the database tests, then browser tests
 //        (against `next dev`), stopping at the first failure; exits with that
@@ -38,6 +44,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -183,6 +190,243 @@ function importersOf(file, importers, stop) {
   return seen;
 }
 
+// A file's top level, as the trace below reads it: what each declaration declares,
+// exports and says, what it imports from where, and the statements that are neither.
+// Types are left out: they change nothing at run time. `null` when it does not parse.
+export function topLevel(text, file) {
+  const kind = file.endsWith('.tsx')
+    ? ts.ScriptKind.TSX
+    : file.endsWith('.ts')
+      ? ts.ScriptKind.TS
+      : ts.ScriptKind.JSX;
+  const source = ts.createSourceFile(
+    file,
+    text.replaceAll('\r\n', '\n'),
+    ts.ScriptTarget.Latest,
+    false,
+    kind
+  );
+  if (source.parseDiagnostics?.length) return null;
+  // What a statement does, comments left out: what the diff compares.
+  const printer = ts.createPrinter({ removeComments: true });
+  const codeOf = (node) => () => printer.printNode(ts.EmitHint.Unspecified, node, source);
+  /** @type {ts.Statement[]} */
+  const others = [];
+  const top = {
+    /** @type {{ names: string[], exported: string[], text: string, code: () => string }[]} */
+    declarations: [],
+    /** @type {{ local: string, name: string, from: string }[]} name: 'default', '*' or the export's */
+    imports: [],
+    /** @type {{ from: string, name: string, as: string }[]} name '*' for all, as '*' for `export *` */
+    reexports: [],
+    /** @type {{ local: string, as: string }[]} `export { a as b }` */
+    exportList: [],
+    /** @type {string[]} modules imported for their side effects */
+    bare: [],
+    /** @type {string[]} 'use client', 'use server' */
+    directives: [],
+    /** @type {string[]} every other statement: run as the module loads */
+    other: [],
+    otherCode: () => others.map((node) => codeOf(node)()),
+  };
+  for (const statement of source.statements) {
+    const text = statement.getText(source);
+    const modifiers = (ts.canHaveModifiers(statement) && ts.getModifiers(statement)) || [];
+    const has = (kind) => modifiers.some((m) => m.kind === kind);
+    if (ts.isImportDeclaration(statement)) {
+      const from = statement.moduleSpecifier.text;
+      const clause = statement.importClause;
+      if (!clause) top.bare.push(from);
+      else if (!clause.isTypeOnly) {
+        if (clause.name) top.imports.push({ local: clause.name.text, name: 'default', from });
+        const bindings = clause.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings))
+          top.imports.push({ local: bindings.name.text, name: '*', from });
+        else
+          for (const e of bindings?.elements ?? [])
+            if (!e.isTypeOnly)
+              top.imports.push({ local: e.name.text, name: (e.propertyName ?? e.name).text, from });
+      }
+    } else if (ts.isExportDeclaration(statement)) {
+      if (statement.isTypeOnly) continue;
+      const from = statement.moduleSpecifier?.text;
+      const clause = statement.exportClause;
+      if (!clause || ts.isNamespaceExport(clause))
+        top.reexports.push({ from, name: '*', as: clause ? clause.name.text : '*' });
+      else
+        for (const e of clause.elements) {
+          if (e.isTypeOnly) continue;
+          const name = (e.propertyName ?? e.name).text;
+          if (from) top.reexports.push({ from, name, as: e.name.text });
+          else top.exportList.push({ local: name, as: e.name.text });
+        }
+    } else if (ts.isExportAssignment(statement)) {
+      // `export default <expression>`: no local name, so nothing else can refer to it.
+      top.declarations.push({
+        names: ['default'],
+        exported: ['default'],
+        text: statement.expression.getText(source),
+        code: codeOf(statement),
+      });
+    } else if (
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement) ||
+      ts.isModuleDeclaration(statement) ||
+      has(ts.SyntaxKind.DeclareKeyword)
+    ) {
+      continue;
+    } else if (ts.isVariableStatement(statement)) {
+      const names = statement.declarationList.declarations.flatMap((d) => bindingNames(d.name));
+      top.declarations.push({
+        names,
+        exported: has(ts.SyntaxKind.ExportKeyword) ? names : [],
+        text,
+        code: codeOf(statement),
+      });
+    } else if (
+      ts.isFunctionDeclaration(statement) ||
+      ts.isClassDeclaration(statement) ||
+      ts.isEnumDeclaration(statement)
+    ) {
+      const names = statement.name ? [statement.name.text] : [];
+      const exported = !has(ts.SyntaxKind.ExportKeyword)
+        ? []
+        : has(ts.SyntaxKind.DefaultKeyword)
+          ? ['default']
+          : names;
+      top.declarations.push({
+        names: names.length ? names : ['default'],
+        exported,
+        text,
+        code: codeOf(statement),
+      });
+    } else if (ts.isExpressionStatement(statement) && ts.isStringLiteral(statement.expression)) {
+      top.directives.push(text);
+    } else {
+      top.other.push(text);
+      others.push(statement);
+    }
+  }
+  return top;
+}
+
+function bindingNames(name) {
+  if (ts.isIdentifier(name)) return [name.text];
+  return name.elements.flatMap((e) => (ts.isOmittedExpression(e) ? [] : bindingNames(e.name)));
+}
+
+// The top-level names whose run-time meaning differs between two versions of a file:
+// a declaration's code (its comments aside), or where an import binding comes from.
+// `null` (all of it) when anything else changed: a directive, a side effect, an
+// export list.
+export function changedNames(before, after) {
+  if (!before || !after) return null;
+  const same = (key) => JSON.stringify(before[key]) === JSON.stringify(after[key]);
+  if (!['directives', 'bare', 'reexports', 'exportList'].every(same)) return null;
+  if (JSON.stringify(before.otherCode()) !== JSON.stringify(after.otherCode())) return null;
+  const texts = (top) => {
+    const byName = new Map();
+    for (const d of top.declarations)
+      for (const n of d.names) byName.set(n, `${byName.get(n) ?? ''}\n${d.code()}`);
+    for (const i of top.imports) byName.set(i.local, `import ${i.name} from ${i.from}`);
+    return byName;
+  };
+  const [old, now] = [texts(before), texts(after)];
+  return new Set(
+    [...new Set([...old.keys(), ...now.keys()])].filter((n) => old.get(n) !== now.get(n))
+  );
+}
+
+// A test for any of `names` used as an identifier. It errs towards a match: a
+// property or a word in a string counts too.
+function usesOf(names) {
+  const ids = [...names].filter((n) => n !== 'default').map(escapeRegExp);
+  return ids.length ? new RegExp(`(?<![\\w$])(?:${ids.join('|')})(?![\\w$])`) : null;
+}
+
+// Within one file, the declarations that change with `names`, transitively, and the
+// names it exports that change with them. `null` when a statement run as the
+// module loads uses one: then all of the file counts as changed.
+function spread(top, names) {
+  const locals = new Set(names);
+  const changed = new Set();
+  for (let grew = true; grew;) {
+    grew = false;
+    const uses = usesOf(locals);
+    for (const d of top.declarations) {
+      if (changed.has(d) || !(d.names.some((n) => locals.has(n)) || uses?.test(d.text))) continue;
+      changed.add(d);
+      d.names.forEach((n) => locals.add(n));
+      grew = true;
+    }
+  }
+  const uses = usesOf(locals);
+  if (uses && top.other.some((t) => uses.test(t))) return null;
+  const exports = new Set([...changed].flatMap((d) => d.exported));
+  for (const e of top.exportList) if (locals.has(e.local)) exports.add(e.as);
+  return { changed: changed.size > 0, exports };
+}
+
+// The files a change to `file` reaches: like importersOf, but following only the
+// importers that import what changed, and within each only the declarations that use
+// it. `names` are the file's changed top-level names, `null` for all of it. An
+// importer counts as wholly changed when it imports the file for its side effects
+// or in a way the top level does not show (`import()`), or does not parse.
+function trace(file, names, graph, stop) {
+  const { files, importers, text } = graph;
+  const tops = new Map();
+  const topOf = (f) => {
+    if (!tops.has(f)) tops.set(f, /\.(tsx?|mjs|js)$/.test(f) ? topLevel(text.get(f), f) : null);
+    return tops.get(f);
+  };
+  const ALL = null;
+  const first = names && topOf(file) ? spread(topOf(file), names) : null;
+  const exportsOf = new Map([[file, first ? first.exports : ALL]]);
+  const state = new Map(); // importer → the names that changed under it
+  const reached = new Set([file]);
+  const queue = [file];
+  while (queue.length) {
+    const current = queue.shift();
+    if (current === stop && current !== file) continue;
+    const out = exportsOf.get(current);
+    if (out && !out.size) continue;
+    for (const importer of importers.get(current) ?? []) {
+      if (reached.has(importer) && exportsOf.get(importer) === ALL) continue;
+      const top = topOf(importer);
+      if (!state.has(importer)) state.set(importer, { locals: new Set(), reexports: new Set() });
+      const { locals, reexports } = state.get(importer);
+      let all = !top;
+      if (top) {
+        const here = (spec) => resolveImport(importer, spec, files) === current;
+        const changes = (name) => out === ALL || out.has(name);
+        let found = false;
+        for (const i of top.imports.filter((i) => here(i.from))) {
+          found = true;
+          if (i.name === '*' || changes(i.name)) locals.add(i.local);
+        }
+        if (top.bare.some(here)) found = all = true;
+        for (const r of top.reexports.filter((r) => r.from && here(r.from))) {
+          found = true;
+          if (r.as === '*') {
+            if (out === ALL) all = true;
+            else out.forEach((n) => n !== 'default' && reexports.add(n));
+          } else if (r.name === '*' || changes(r.name)) reexports.add(r.as);
+        }
+        if (!found) all = true;
+      }
+      const spreadHere = all ? null : spread(top, locals);
+      const next = spreadHere ? new Set([...spreadHere.exports, ...reexports]) : ALL;
+      if (next !== ALL && !spreadHere.changed && !next.size) continue; // imports, never uses
+      const previous = exportsOf.get(importer);
+      const grew = !reached.has(importer) || next === ALL || next.size > (previous?.size ?? -1);
+      reached.add(importer);
+      exportsOf.set(importer, next);
+      if (grew) queue.push(importer);
+    }
+  }
+  return reached;
+}
+
 // The specs in playwright.config.ts's cat-attacks group, the only ones that run
 // with the cats unpaused.
 function catAttackSpecs(root) {
@@ -218,8 +462,10 @@ export function specAreas(specText, allAreas) {
   });
 }
 
-// The selection for a list of changed paths (relative, `/`-separated).
-export function select(changed, root = ROOT) {
+// The selection for a list of changed paths (relative, `/`-separated). `before(file)`
+// gives a file's text before the change (`null` when it is new); with it, a changed
+// code file is followed only through what changed in it. Without it, all of it.
+export function select(changed, root = ROOT, { before } = {}) {
   const { files, importers, text } = importersGraph(root);
   const routeFiles = [...files].filter(isRouteFile);
   const allAreas = [
@@ -281,7 +527,9 @@ export function select(changed, root = ROOT) {
           users.map(([f]) => f)
         );
     } else if (file.startsWith('app/') && files.has(file)) {
-      placeByRoutes(file, [file]);
+      const names = namesChanged(file);
+      if (names && !names.size) reasons.push({ file, e2e: 'none (no run-time change)' });
+      else placeByRoutes(file, [file], names);
     } else if (file.startsWith('app/') && !exists && !isRouteFile(file)) {
       // What imported it changed with it (or the type check fails), and is placed itself.
       reasons.push({ file, e2e: 'none (deleted; its importers are placed)' });
@@ -296,12 +544,25 @@ export function select(changed, root = ROOT) {
     }
   }
 
-  function placeByRoutes(file, starts) {
+  // The top-level names a code file's change touches, from its text before the
+  // change; `null` for all of it (a new file, no earlier text, or one that does not
+  // parse).
+  function namesChanged(file) {
+    const old = before?.(file);
+    if (old == null || !/\.(tsx?|mjs|js)$/.test(file)) return null;
+    return changedNames(topLevel(old, file), topLevel(text.get(file), file));
+  }
+
+  // `names`: the start's changed top-level names, `null` for the whole file.
+  function placeByRoutes(file, starts, names = null) {
     const areas = new Set();
     const catAreas = new Set();
+    const graph = { files, importers, text };
     for (const start of starts) {
-      const reached = importersOf(start, importers);
-      const direct = importersOf(start, importers, CAT_GATE);
+      const reached = trace(start, names, graph);
+      const direct = trace(start, names, graph, CAT_GATE);
+      const root = [...reached].find((f) => f !== start && E2E_FULL.has(f));
+      if (root) return full(file, `reaches ${root}: ${E2E_FULL.get(root)}`);
       for (const routeFile of [...reached].filter(isRouteFile)) {
         const affected = areasOfRouteFile(routeFile, allAreas);
         if (affected === null)
@@ -310,12 +571,18 @@ export function select(changed, root = ROOT) {
       }
     }
     areas.forEach((a) => catAreas.delete(a));
-    if (!areas.size && !catAreas.size) return full(file, 'reaches no route');
-    pick(file, areas, catAreas);
+    const what = names && `${[...names].sort().join(', ')} → `;
+    if (!areas.size && !catAreas.size) {
+      // What changed is used by nothing a page imports, though the file is.
+      if (names && [...importersOf(file, importers)].some(isRouteFile))
+        return reasons.push({ file, e2e: `none (${what}no route)` });
+      return full(file, 'reaches no route');
+    }
+    pick(file, areas, catAreas, what ?? '');
   }
 
   // The specs visiting `areas`, and the cat-attacks specs visiting `catAreas`.
-  function pick(file, areas, catAreas) {
+  function pick(file, areas, catAreas, what = '') {
     const picked = specs
       .filter(
         (s) =>
@@ -329,7 +596,7 @@ export function select(changed, root = ROOT) {
     ].join(', ');
     if (!picked.length) return full(file, `no spec visits ${where}`);
     picked.forEach((s) => e2eSpecs.add(s));
-    reasons.push({ file, e2e: `${where} → ${picked.length} spec(s)` });
+    reasons.push({ file, e2e: `${what}${where} → ${picked.length} spec(s)` });
   }
 
   return {
@@ -390,7 +657,15 @@ function main(argv) {
       ...git('ls-files', '--others', '--exclude-standard'),
     ]),
   ].sort();
-  const selection = select(changed);
+  const before = (file) => {
+    try {
+      const options = { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+      return execFileSync('git', ['show', `${mergeBase}:${file}`], options);
+    } catch {
+      return null; // new since the merge base
+    }
+  };
+  const selection = select(changed, ROOT, { before });
   const cmds = commands(selection);
 
   if (argv.includes('--json')) {
