@@ -114,9 +114,9 @@ type Look =
   'plain' | 'hidden' | 'frost' | 'smoke' | 'shrinks' | 'grows' | 'pulses' | 'faint' | 'mirrored';
 
 /**
- * What every attack does to a page element, as decisions.md's table says (D4): it
+ * What every attack does to a page element: it
  * moves only if the attack moves a pointer held still, and looks as the cursor does;
- * but Reverse mirrors it and Axis lock shoots lasers that knock it aside (Q3).
+ * but Reverse mirrors it and Axis lock shoots lasers that knock it aside.
  */
 const TABLE: Record<string, { moves: Motion; looks: Look }> = {
   vanish: { moves: 'still', looks: 'hidden' },
@@ -363,7 +363,7 @@ describe('every attack does to a page element what it does to the pointer', () =
   });
 });
 
-describe('the attacks that do what a still pointer cannot show (Q3)', () => {
+describe('the attacks that do what a still pointer cannot show', () => {
   const effect = (id: string) => EFFECTS.find((e) => e.id === id)!;
   const stage = () => document.querySelector<HTMLElement>(`[${STAGE_ATTRIBUTE}]`);
 

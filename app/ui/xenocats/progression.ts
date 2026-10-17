@@ -200,7 +200,7 @@ export const CHARACTERS: Readonly<Record<CharacterId, Character>> = {
 
 // ------------------------------------------------------------------- the codex
 
-/** The secret cat: comes only to a Keeper who stands still (decisions.md, D60). */
+/** The secret cat: comes only to a Keeper who stands still; nothing names it before then. */
 export const SECRET_CAT = 'neighbour';
 
 /** The codex's entries, in order: every evolution (one of them hidden), every fusion and the secret cat. */

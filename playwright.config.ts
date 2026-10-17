@@ -77,8 +77,9 @@ const GROUPS: Record<string, string[]> = {
   survival: ['survival', 'benchmark', 'leaderboard'],
 };
 
-// The groups with a spec that uses DEMO_USER (cat-attacks: cats-link).
-const LOGGED_IN = ['cat-attacks', 'smoke', 'customers', 'invoices'];
+// The groups with a spec that uses DEMO_USER (cat-attacks: cats-link; survival:
+// leaderboard).
+const LOGGED_IN = ['cat-attacks', 'smoke', 'customers', 'invoices', 'survival'];
 
 export default defineConfig<{ catsPaused: boolean }>({
   testDir: 'tests/e2e',

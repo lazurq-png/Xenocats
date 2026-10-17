@@ -347,3 +347,42 @@ export const PICKUP_SVG = {
   <circle cx="32" cy="55" r="4" fill="${LINE}"/>
 </svg>`,
 } as const;
+
+/**
+ * The kitchen drawer's own things, drawn where they work: a tennis ball (flying out
+ * and back), a frying pan (its swing, pointing at the cat it swats), a static sock
+ * (clinging to its cat), a cucumber (thrown), and the start a cucumber gives a cat
+ * (over every cat running from one). Each faces right; the view turns it.
+ */
+export const KIT_SVG = {
+  'tennis-ball': `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="26" fill="#d9f99d" stroke="${LINE}" stroke-width="2.5"/>
+  <path d="M12 16 Q30 32 12 48" stroke="${CREAM}" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M52 16 Q34 32 52 48" stroke="${CREAM}" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <circle cx="24" cy="22" r="4" fill="#ffffff" opacity="0.5"/>
+</svg>`,
+  'frying-pan': `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect x="2" y="28" width="26" height="8" rx="4" fill="#5b4636" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="44" cy="32" r="18" fill="#3a3d52" stroke="${LINE}" stroke-width="2.5"/>
+  <circle cx="44" cy="32" r="13" fill="#23263a"/>
+  <path d="M36 24 Q42 20 50 23" stroke="${CREAM}" stroke-width="2" fill="none" opacity="0.6" stroke-linecap="round"/>
+</svg>`,
+  'static-sock': `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <path d="M18 6 H38 V34 Q38 44 46 46 L52 48 Q58 52 54 58 Q50 62 42 60 L26 54 Q16 50 18 38 Z" fill="${AURA}" stroke="${LINE}" stroke-width="2.5"/>
+  <rect x="18" y="6" width="20" height="8" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <path d="M44 20 L50 26 L46 28 L54 36" stroke="${PLASMA}" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 26 L14 30 L10 32 L15 38" stroke="${PLASMA}" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`,
+  cucumber: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <path d="M8 38 Q10 22 32 20 Q54 18 58 28 Q58 40 34 44 Q12 48 8 38 Z" fill="#4ade80" stroke="${LINE}" stroke-width="2.5"/>
+  <path d="M16 34 Q32 28 50 28" stroke="#bbf7d0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <circle cx="24" cy="38" r="1.6" fill="#166534"/>
+  <circle cx="36" cy="36" r="1.6" fill="#166534"/>
+  <circle cx="46" cy="33" r="1.6" fill="#166534"/>
+</svg>`,
+  startle: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <path d="M32 4 L40 12 L52 8 L50 20 L60 28 L50 34 L54 46 L42 44 L36 56 L30 46 L18 52 L18 40 L6 34 L16 26 L10 14 L22 14 Z" fill="${CREAM}" stroke="${LINE}" stroke-width="2"/>
+  <rect x="29" y="16" width="6" height="18" rx="3" fill="#ef4444"/>
+  <circle cx="32" cy="41" r="3.5" fill="#ef4444"/>
+</svg>`,
+} as const;

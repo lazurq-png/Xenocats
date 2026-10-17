@@ -62,7 +62,8 @@ export async function checkCredentials(
   // like a wrong password.
   if (!(await claimAttempt(sql, key, limits))) return LOCKED;
   const user = await getUser(sql, login);
-  // Compared even for an unknown name, so the time tells nothing (D80).
+  // Compared even for an unknown name, so the time tells nothing: answering
+  // without bcrypt's ~0.1 s would show from outside which names have accounts.
   const passwordsMatch = await passwordMatches(password, user?.password);
   if (user && passwordsMatch) {
     await clearFailures(sql, key);

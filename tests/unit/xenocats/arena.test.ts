@@ -10,7 +10,7 @@ import {
   runLengthConfig,
 } from '@/app/ui/xenocats/arena';
 import { createArenaGrid } from '@/app/ui/xenocats/arena-grid';
-import { WEAPONS, type WeaponId } from '@/app/ui/xenocats/arsenal';
+import { FUSIONS, MAX_WEAPON_LEVEL, WEAPONS, type WeaponId } from '@/app/ui/xenocats/arsenal';
 import {
   SURVIVAL_BEST_KEY,
   bestKey,
@@ -51,6 +51,7 @@ import {
 import { CAT_TYPES, catTypeById } from '@/app/ui/xenocats/cat-types';
 import { createFrameGuard } from '@/app/ui/xenocats/frame-guard';
 import { createRandom } from '@/app/ui/xenocats/random';
+import { stepTo, stepWhile } from './step-arena';
 
 const viewport = { width: 1280, height: 800 };
 const still = { x: 0, y: 0 };
@@ -82,7 +83,11 @@ function arena(config: Partial<ArenaConfig> = {}, seed = 1, types = CAT_TYPES) {
 
 /** Steps until `ms` of game time, the hero walking `input`. */
 function runTo(a: ReturnType<typeof arena>, ms: number, input = still, spawn = true) {
-  while (a.state().time < ms && a.state().status === 'playing') a.step(input, spawn);
+  stepWhile(
+    a,
+    () => a.state().time < ms && a.state().status === 'playing',
+    () => a.step(input, spawn)
+  );
 }
 
 /** A hero nothing can wear down, for watching the arena itself. */
@@ -129,9 +134,13 @@ describe('the hero', () => {
         1,
         [type]
       );
-      while (a.state().time < 60_000 && !a.drainEvents().some((e) => e.kind === 'hero-hit')) {
-        a.step(still);
-      }
+      stepWhile(
+        a,
+        () => a.state().time < 60_000 && !a.drainEvents().some((e) => e.kind === 'hero-hit'),
+        () => {
+          a.step(still);
+        }
+      );
       drained.add(ARENA_CONFIG.hero.resolve - a.state().hero.resolve);
     }
     expect(drained.size).toBeGreaterThan(1);
@@ -313,13 +322,13 @@ describe('the Laser Pointer', () => {
     let lasers = 0;
     let home = 0;
     runTo(a, 1);
-    while (a.state().time < 40_000) {
+    stepTo(a, 40_000, () => {
       a.step(still);
       for (const e of a.drainEvents()) {
         if (e.kind === 'laser') lasers++;
         if (e.kind === 'sent-home') home++;
       }
-    }
+    });
     expect(lasers).toBeGreaterThan(5);
     expect(home).toBeGreaterThan(0);
     expect(a.state().sentHome).toBe(home);
@@ -332,10 +341,10 @@ describe('the Laser Pointer', () => {
     expect(a.drainEvents().filter((e) => e.kind === 'laser')).toEqual([]);
     const b = arena({ ...unbreakable, escalation: [[0, 30]] });
     const times: number[] = [];
-    while (b.state().time < 20_000) {
+    stepTo(b, 20_000, () => {
       b.step(still);
       for (const e of b.drainEvents()) if (e.kind === 'laser') times.push(b.state().time);
-    }
+    });
     for (let i = 1; i < times.length; i++) {
       expect(times[i] - times[i - 1]).toBeGreaterThanOrEqual(
         WEAPONS['laser-pointer'].levels[0].cooldownMs - 1
@@ -354,10 +363,14 @@ describe('the laser, with a cat right on the Keeper', () => {
       firstShotMs: 20_000,
     });
     let beam: { from: { x: number; y: number }; to: { x: number; y: number } } | null = null;
-    while (!beam && a.state().time < 30_000) {
-      a.step(still);
-      for (const e of a.drainEvents()) if (e.kind === 'laser') beam = e;
-    }
+    stepWhile(
+      a,
+      () => !beam && a.state().time < 30_000,
+      () => {
+        a.step(still);
+        for (const e of a.drainEvents()) if (e.kind === 'laser') beam = e;
+      }
+    );
     expect(beam).not.toBeNull();
     const cats = a.cats();
     expect(cats.some((c) => Math.hypot(c.x, c.y) < 0.5)).toBe(true);
@@ -379,10 +392,14 @@ describe('the time goal', () => {
   it('at five minutes the Matriarch comes, and ends the run when she reaches him', () => {
     const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 0]] });
     const seen: string[] = [];
-    while (a.state().status === 'playing' && a.state().time < 320_000) {
-      a.step(still);
-      for (const e of a.drainEvents()) seen.push(e.kind);
-    }
+    stepWhile(
+      a,
+      () => a.state().status === 'playing' && a.state().time < 320_000,
+      () => {
+        a.step(still);
+        for (const e of a.drainEvents()) seen.push(e.kind);
+      }
+    );
     expect(a.state().time).toBeGreaterThanOrEqual(ARENA_CONFIG.timeGoalMs);
     expect(seen).toContain('matriarch');
     expect(a.state().outcome).toBe('goal');
@@ -502,15 +519,19 @@ describe('balance: positioning is the skill', () => {
       viewport,
       config: { stepMs: 50, secretCat: { afterMs: Infinity, stillMs: Infinity } },
     });
-    while (a.state().status !== 'over' && a.state().time < 300_000) {
-      // The same policy for both: the first of each level-up's offer.
-      if (a.choices()) {
-        a.choose(0);
-        continue;
+    stepWhile(
+      a,
+      () => a.state().status !== 'over' && a.state().time < 300_000,
+      () => {
+        // The same policy for both: the first of each level-up's offer.
+        if (a.choices()) {
+          a.choose(0);
+          return;
+        }
+        const t = a.state().time / 4000;
+        a.step(walking ? { x: Math.cos(t), y: Math.sin(t) } : { x: 0, y: 0 });
       }
-      const t = a.state().time / 4000;
-      a.step(walking ? { x: Math.cos(t), y: Math.sin(t) } : { x: 0, y: 0 });
-    }
+    );
     return a.state().time;
   }
 
@@ -760,6 +781,79 @@ describe('the run length', () => {
     expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeCloseTo(speed * 1.3, 6);
   });
 
+  it('in an endless run the cats grow quicker past the cap, and keep growing', () => {
+    // (The endless growth brought forward to 6:00 and steepened, so the test is short.)
+    const toughness = {
+      ...ARENA_CONFIG.toughness,
+      endless: { ...ARENA_CONFIG.toughness.endless, fromMs: 360_000, speedPerMin: 1 },
+    };
+    const a = arena({ ...runLengthConfig(0), ...plain, timeGoalMs: Infinity, toughness });
+    runTo(a, 300_000);
+    const [speed] = new Set(a.cats().map((cat) => cat.speed));
+    runTo(a, 420_000);
+    // A cat arriving at 7:00: a minute at 2%, then a minute at 100%.
+    const at7 = Math.max(...a.cats().map((cat) => cat.speed));
+    expect(at7).toBeGreaterThan(speed * toughness.maxSpeedFactor);
+    expect(at7).toBeLessThanOrEqual(speed * 2.02 + 1e-9);
+    runTo(a, 480_000);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeGreaterThan(at7);
+  });
+
+  /** What each touch took from his Resolve, by when it landed: one Basic Cat (drain 2), no weapons. */
+  function touches(config: Partial<ArenaConfig>, until: number) {
+    const a = arena({
+      ...plain,
+      hero: { ...ARENA_CONFIG.hero, resolve: 1e6 },
+      escalation: [[0, 1]],
+      ...config,
+      // Not the Mega Cats a run length brings: one Basic Cat, alone.
+      schedule: plain.schedule,
+    });
+    const taken: { time: number; loss: number }[] = [];
+    stepWhile(
+      a,
+      () => a.state().time < until,
+      () => {
+        const before = a.state().hero.resolve;
+        a.step(still);
+        if (a.drainEvents().some((e) => e.kind === 'hero-hit')) {
+          taken.push({ time: a.state().time, loss: before - a.state().hero.resolve });
+        }
+      }
+    );
+    return taken;
+  }
+
+  it('in an endless run a touch takes more each minute past the endless mark, from cats of any age', () => {
+    // (The mark brought forward to 1:00, and each minute doubling, so the test is short.)
+    const endless = { ...ARENA_CONFIG.toughness.endless, fromMs: 60_000, drainPerMin: 1 };
+    const taken = touches(
+      {
+        ...runLengthConfig(0),
+        timeGoalMs: Infinity,
+        toughness: { ...ARENA_CONFIG.toughness, endless },
+      },
+      180_000
+    );
+    // The one cat came in the first second and never went home: it still hurts more.
+    expect(taken.filter((t) => t.time < 60_000).length).toBeGreaterThan(0);
+    expect(taken.filter((t) => t.time > 150_000).length).toBeGreaterThan(0);
+    for (const { time, loss } of taken) {
+      const expected = 2 * 2 ** (Math.max(time - 60_000, 0) / 60_000);
+      expect(loss, `at ${time} ms`).toBeCloseTo(expected, 6);
+    }
+  });
+
+  it('a run with a length never grows its touches', () => {
+    const endless = { ...ARENA_CONFIG.toughness.endless, fromMs: 60_000, drainPerMin: 1 };
+    const taken = touches(
+      { ...runLengthConfig(15), toughness: { ...ARENA_CONFIG.toughness, endless } },
+      180_000
+    );
+    expect(taken.filter((t) => t.time > 150_000).length).toBeGreaterThan(0);
+    for (const { loss } of taken) expect(loss).toBe(2);
+  });
+
   it('the crowd stays at its peak past five minutes', () => {
     expect(catsWanted(300_000)).toBe(catsWanted(900_000));
     expect(catsWanted(600_000)).toBe(ARENA_CONFIG.cats.hardCap);
@@ -847,14 +941,14 @@ describe('elites', () => {
     const a = arena({ ...unbreakable, stepMs: 50, escalation: [[0, 150]] }, 11);
     let xenocats = 0;
     let elites = 0;
-    while (a.state().time < 180_000) {
+    stepTo(a, 180_000, () => {
       a.step(still);
       for (const e of a.drainEvents()) {
         if (e.kind !== 'xenocat') continue;
         xenocats++;
         if (e.elite) elites++;
       }
-    }
+    });
     expect(xenocats).toBeGreaterThan(300);
     expect(elites / xenocats).toBeGreaterThan(0.09);
     expect(elites / xenocats).toBeLessThan(0.17);
@@ -1418,6 +1512,24 @@ describe('the bosses attack', () => {
     expect(a.telegraphs()).toEqual([]);
   });
 
+  it('held still mid-wind-up, it loses the pounce and rests its own time, not an elite’s', () => {
+    const a = mega();
+    until(a, 'wind-up');
+    expect(a.state().bossWindUp).toBe('pounce');
+    // Held still (a box, a bell): the pounce is lost.
+    const big = bigOne(a);
+    big.stunUntil = a.state().time + 200;
+    a.step(still);
+    expect(a.state().bossWindUp).toBeNull();
+    const held = a.state().time;
+    const { cooldownMs } = ARENA_CONFIG.bossAttack.pounce;
+    expect(cooldownMs).not.toBe(ARENA_CONFIG.eliteAttack.cooldownMs);
+    expect(big.nextAttackAt).toBe(held + cooldownMs);
+    // And it winds up again only after its own rest.
+    until(a, 'wind-up');
+    expect(a.state().time - held).toBeGreaterThanOrEqual(cooldownMs);
+  });
+
   it('it rests between pounces', () => {
     const a = mega();
     until(a, 'wind-up');
@@ -1501,23 +1613,35 @@ describe('the bosses attack', () => {
     expect(a.state().time - first).toBeGreaterThanOrEqual(
       ARENA_CONFIG.bossAttack.summon.everyMs - 100
     );
-    // She calls only from afar: with a minimum distance beyond any she has, she never does.
-    const near = arena({
-      ...noCats,
-      stepMs: 50,
-      escalation: [[0, 0]],
-      timeGoalMs: 1_000,
-      matriarch: { ...ARENA_CONFIG.matriarch, speed: 300 },
-      bossAttack: {
-        ...ARENA_CONFIG.bossAttack,
-        summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: 0, minDistance: 5000 },
-      },
-    });
-    while (near.state().status === 'playing' && near.state().time < 10_000) {
-      near.step(still);
-      for (const e of near.drainEvents()) expect(e.kind).not.toBe('boss-summon');
-    }
-    expect(near.state().outcome).toBe('goal');
+    // She calls only from afar: with a minimum distance beyond any she has, she never
+    // begins to, all the way in; the same run with her own minimum does begin.
+    const approach = (minDistance: number) => {
+      const near = arena({
+        ...noCats,
+        stepMs: 50,
+        escalation: [[0, 0]],
+        timeGoalMs: 1_000,
+        matriarch: { ...ARENA_CONFIG.matriarch, speed: 300 },
+        bossAttack: {
+          ...ARENA_CONFIG.bossAttack,
+          summon: { ...ARENA_CONFIG.bossAttack.summon, firstMs: 0, minDistance },
+        },
+      });
+      let calls = 0;
+      stepWhile(
+        near,
+        () => near.state().status === 'playing' && near.state().time < 10_000,
+        () => {
+          near.step(still);
+          for (const e of near.drainEvents()) {
+            if ((e.kind === 'wind-up' && e.type === -1) || e.kind === 'boss-summon') calls++;
+          }
+        }
+      );
+      return { calls, outcome: near.state().outcome };
+    };
+    expect(approach(ARENA_CONFIG.bossAttack.summon.minDistance).calls).toBeGreaterThan(0);
+    expect(approach(5000)).toEqual({ calls: 0, outcome: 'goal' });
   });
 });
 
@@ -1578,11 +1702,11 @@ describe('pickups', () => {
     });
     let left = 0;
     let most = 0;
-    while (a.state().time < 30_000) {
+    stepTo(a, 30_000, () => {
       a.step(still);
       for (const e of a.drainEvents()) if (e.kind === 'pickup-left') left++;
       most = Math.max(most, a.pickups().length);
-    }
+    });
     expect(left).toBeGreaterThan(0);
     expect(most).toBeLessThanOrEqual(3);
     // One laid far from him lies out its time and is gone.
@@ -1616,10 +1740,14 @@ describe('pickups', () => {
       ...quiet,
     });
     let worn = 100;
-    while (a.state().hero.resolve > 80 && a.state().time < 60_000) {
-      a.step(still);
-      worn = a.state().hero.resolve;
-    }
+    stepWhile(
+      a,
+      () => a.state().hero.resolve > 80 && a.state().time < 60_000,
+      () => {
+        a.step(still);
+        worn = a.state().hero.resolve;
+      }
+    );
     expect(worn).toBeLessThanOrEqual(80);
     const max = a.state().hero.maxResolve;
     a.layPickup('fish', { x: a.state().hero.x, y: a.state().hero.y });
@@ -1643,10 +1771,14 @@ describe('pickups', () => {
       a.gems().filter((g) => Math.hypot(g.x - a.state().hero.x, g.y - a.state().hero.y) > 160)
         .length;
     // Gems lie where the laser sent cats home, beyond the pull of his pickup reach.
-    while (far() < 3 && a.state().time < 120_000) {
-      if (a.choices()) a.choose(0);
-      else a.step(still);
-    }
+    stepWhile(
+      a,
+      () => far() < 3 && a.state().time < 120_000,
+      () => {
+        if (a.choices()) a.choose(0);
+        else a.step(still);
+      }
+    );
     expect(far()).toBeGreaterThanOrEqual(3);
     a.layPickup('magnet', { x: a.state().hero.x, y: a.state().hero.y });
     for (let i = 0; i < 24; i++) {
@@ -1706,7 +1838,7 @@ describe('reroll and skip at a level-up', () => {
   const ids = (a: Run) =>
     a
       .choices()!
-      .map((c) => (c.kind === 'restore' ? 'restore' : `${c.kind}:${c.id}`))
+      .map((c) => `${c.kind}:${c.id}`)
       .join(' ');
 
   it('each Keeper has one reroll and one skip a run, and the Tailor’s upgrades add to them', () => {
@@ -1732,6 +1864,24 @@ describe('reroll and skip at a level-up', () => {
     expect(a.state().level).toBe(level);
     a.choose(0);
     expect(a.state().level).toBe(level);
+  });
+
+  it('with nothing left to learn, a level-up asks nothing and the run goes on', () => {
+    // One weapon and no passives: only the laser's levels to choose.
+    const a = levelling({
+      availableWeapons: ['laser-pointer'],
+      slots: { weapons: 1, passives: 0 },
+    });
+    let asked = 0;
+    for (let i = 0; i < 8000 && a.state().level < MAX_WEAPON_LEVEL + 3; i++) {
+      if (a.choices()) {
+        asked++;
+        a.choose(0);
+      } else a.step(still);
+    }
+    expect(a.state().level).toBeGreaterThanOrEqual(MAX_WEAPON_LEVEL + 3);
+    expect(a.state().weapons).toEqual([{ id: 'laser-pointer', level: MAX_WEAPON_LEVEL }]);
+    expect(asked).toBe(MAX_WEAPON_LEVEL - 1);
   });
 
   it('a reroll is not offered when nothing waits', () => {
@@ -1807,5 +1957,131 @@ describe('reroll and skip at a level-up', () => {
       a.reroll();
       expect(ids(a), `seed ${seed}`).not.toBe(before);
     }
+  });
+});
+
+// What each weapon did in a run (arena.weaponReport): counted in the simulation, as
+// the results screen shows it.
+/** Xenocats only, a hero nothing wears down, no level-ups or chests unless asked. */
+function reportArena(weapons: WeaponId[], config: Partial<ArenaConfig> = {}) {
+  return createArena({
+    random: createRandom(5),
+    types: CAT_TYPES,
+    viewport,
+    config: {
+      schedule: {
+        arrivals: [{ from: 0, who: 'xenocat', weight: 1 }],
+        swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+        bosses: [],
+      },
+      chestReach: -1,
+      hero: { ...ARENA_CONFIG.hero, resolve: 1e12 },
+      gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+      startingWeapons: weapons,
+      escalation: [[0, 40]],
+      ...config,
+    },
+  });
+}
+const runFor = (a: ReturnType<typeof reportArena>, ms: number) => {
+  stepTo(a, ms);
+  return a;
+};
+/** Cats nothing sends home: all the homesickness given is still on them. */
+const toughCats = {
+  cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] as [number, number] },
+};
+
+describe('what each weapon did', () => {
+  it('a weapon held but not yet fired is listed with nothing done', () => {
+    const a = reportArena(['laser-pointer']);
+    expect(a.weaponReport()).toEqual([{ id: 'laser-pointer', homesickness: 0, sentHome: 0 }]);
+  });
+
+  it('every bit of homesickness given is counted, to the weapon that gave it', () => {
+    const a = runFor(reportArena(['laser-pointer', 'can-opener'], toughCats), 15_000);
+    const report = a.weaponReport();
+    expect(report.map((w) => w.id).sort()).toEqual(['can-opener', 'laser-pointer']);
+    for (const w of report) expect(w.homesickness, w.id).toBeGreaterThan(0);
+    const onCats = a.cats().reduce((sum, c) => sum + c.homesickness, 0);
+    const counted = report.reduce((sum, w) => sum + w.homesickness, 0);
+    expect(counted).toBeCloseTo(onCats, 3);
+    // Highest first.
+    expect(report[0].homesickness).toBeGreaterThanOrEqual(report[1].homesickness);
+  });
+
+  // Every place a weapon hurts names it: nothing given goes uncounted, for any weapon
+  // (a fused one is held as its two parents, fused at a chest at his feet).
+  for (const id of Object.keys(WEAPONS) as WeaponId[]) {
+    it(`${WEAPONS[id].name}: all it gives is counted for it`, () => {
+      const fusion = FUSIONS.find((f) => f.to === id);
+      const a = runFor(
+        reportArena(fusion ? [...fusion.from] : [id], {
+          ...toughCats,
+          startingLevel: MAX_WEAPON_LEVEL,
+          escalation: [[0, 60]],
+          ...(fusion ? { startingChests: 1, chestReach: ARENA_CONFIG.chestReach } : {}),
+        }),
+        8_000
+      );
+      const report = a.weaponReport();
+      const onCats = a.cats().reduce((sum, c) => sum + c.homesickness, 0);
+      expect(onCats, id).toBeGreaterThan(0);
+      expect(report.reduce((sum, w) => sum + w.homesickness, 0)).toBeCloseTo(onCats, 3);
+      if (fusion) expect(report.find((w) => w.id === id)?.homesickness, id).toBeGreaterThan(0);
+    });
+  }
+
+  it('each cat sent home is counted once, for the weapon that reached it last', () => {
+    const a = runFor(reportArena(['laser-pointer', 'spray-bottle']), 30_000);
+    const report = a.weaponReport();
+    expect(a.state().sentHome).toBeGreaterThan(10);
+    expect(report.reduce((sum, w) => sum + w.sentHome, 0)).toBe(a.state().sentHome);
+    for (const w of report) expect(w.sentHome, w.id).toBeGreaterThan(0);
+  });
+
+  it('one weapon alone is credited with every cat sent home', () => {
+    const a = runFor(reportArena(['cat-treats']), 30_000);
+    expect(a.weaponReport()).toEqual([
+      expect.objectContaining({ id: 'cat-treats', sentHome: a.state().sentHome }),
+    ]);
+    expect(a.state().sentHome).toBeGreaterThan(0);
+  });
+
+  it('two evolved weapons that fuse: both listed for what they did, the fused one for the rest', () => {
+    const a = reportArena(['infinite-laser', 'monsoon'], {
+      ...toughCats,
+      startingLevel: MAX_WEAPON_LEVEL,
+      startingChests: 1,
+      chestReach: ARENA_CONFIG.chestReach,
+      escalation: [[0, 60]],
+    });
+    let atFusion: Record<string, number> | null = null;
+    stepTo(a, 20_000, () => {
+      a.step(still);
+      if (!atFusion && a.drainEvents().some((e) => e.kind === 'fusion')) {
+        atFusion = Object.fromEntries(a.weaponReport().map((w) => [w.id, w.homesickness]));
+      }
+    });
+    expect(atFusion).not.toBeNull();
+    const after = Object.fromEntries(a.weaponReport().map((w) => [w.id, w.homesickness]));
+    expect(Object.keys(after).sort()).toEqual(['infinite-laser', 'monsoon', 'thunderstorm']);
+    // The parents' work since goes to the Thunderstorm they are part of.
+    expect(after['infinite-laser']).toBe(atFusion!['infinite-laser']);
+    expect(after.monsoon).toBe(atFusion!.monsoon);
+    expect(after.thunderstorm).toBeGreaterThan(0);
+  });
+
+  it('a weapon chosen at a level-up joins the list', () => {
+    const a = reportArena(['laser-pointer'], {
+      gems: { ...ARENA_CONFIG.gems, value: 50, eliteValue: 50 },
+    });
+    stepWhile(a, () => !a.choices() && a.state().time < 60_000);
+    const offer = a.choices()!;
+    const pick = offer.findIndex((c) => c.kind === 'weapon' && c.level === 1);
+    expect(pick).toBeGreaterThanOrEqual(0);
+    const chosen = offer[pick];
+    a.choose(pick);
+    expect(a.weaponReport().map((w) => w.id)).toContain(chosen.kind === 'weapon' && chosen.id);
   });
 });

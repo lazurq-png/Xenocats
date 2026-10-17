@@ -12,7 +12,12 @@ async function openCats(page: Page) {
   await page.addInitScript(() => {
     const w = window as unknown as { tones: number; AudioContext: unknown };
     w.tones = 0;
-    const param = { setValueAtTime() {}, exponentialRampToValueAtTime() {} };
+    const param = {
+      setValueAtTime() {},
+      linearRampToValueAtTime() {},
+      exponentialRampToValueAtTime() {},
+      setValueCurveAtTime() {},
+    };
     const node = { connect() {}, start() {}, stop() {} };
     w.AudioContext = class {
       currentTime = 0;
@@ -27,7 +32,7 @@ async function openCats(page: Page) {
       }
       createOscillator() {
         w.tones++;
-        return { ...node, type: 'sine', frequency: param };
+        return { ...node, type: 'sine', frequency: param, detune: param, setPeriodicWave() {} };
       }
       createBuffer(_c: number, n: number) {
         return { getChannelData: () => new Float32Array(n) };
@@ -35,6 +40,15 @@ async function openCats(page: Page) {
       createBufferSource() {
         w.tones++;
         return { ...node, buffer: null };
+      }
+      createBiquadFilter() {
+        return { ...node, type: 'lowpass', frequency: param, Q: param };
+      }
+      createConvolver() {
+        return { ...node, buffer: null };
+      }
+      createPeriodicWave() {
+        return {};
       }
     };
   });

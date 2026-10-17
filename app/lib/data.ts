@@ -11,7 +11,12 @@ import {
   LeaderboardRow,
   MonthTotals,
 } from './definitions';
-import { type InvoiceStatusFilter, containsPattern } from './schemas';
+import {
+  type InvoiceStatusFilter,
+  containsPattern,
+  parseCustomerSort,
+  parseSortDirection,
+} from './schemas';
 import { formatCurrency } from './utils';
 import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard';
 
@@ -372,7 +377,30 @@ export async function fetchCustomerById(owner: string, id: string) {
   }
 }
 
-export async function fetchFilteredCustomers(owner: string, query: string) {
+/**
+ * The customer list's columns that sort, each the SQL it sorts by (the select's own
+ * names for the totals): chosen from this list, never written from the URL.
+ */
+const CUSTOMER_ORDER = {
+  name: () => sql`customers.name`,
+  total_invoices: () => sql`total_invoices`,
+  total_pending: () => sql`total_pending`,
+  total_paid: () => sql`total_paid`,
+};
+
+/**
+ * The owner's customers matching `query`, each with their invoice count and totals,
+ * sorted by `sort` (a column of CustomerSort; anything else is the name) in `dir`
+ * ('desc', or ascending), then by name and id, so equal totals keep one order.
+ */
+export async function fetchFilteredCustomers(
+  owner: string,
+  query: string,
+  sort: unknown = 'name',
+  dir: unknown = 'asc'
+) {
+  const by = CUSTOMER_ORDER[parseCustomerSort(sort)]();
+  const direction = parseSortDirection(dir) === 'desc' ? sql`DESC` : sql`ASC`;
   try {
     const data = await sql<CustomersTableType[]>`
 		SELECT
@@ -388,7 +416,7 @@ export async function fetchFilteredCustomers(owner: string, query: string) {
 		WHERE customers.owner_id = ${owner}
 		  AND (customers.name ILIKE ${containsPattern(query)} OR customers.email ILIKE ${containsPattern(query)})
 		GROUP BY customers.id, customers.name, customers.email, customers.image_url
-		ORDER BY customers.name ASC
+		ORDER BY ${by} ${direction}, customers.name ASC, customers.id ASC
 	  `;
 
     const customers = data.map((customer) => ({

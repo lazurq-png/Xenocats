@@ -167,6 +167,14 @@ export type WeaponKind =
   | 'trap'
   /** A jet of hot air the way he faces: cats in it are pushed back, and hurt, all the time. */
   | 'blow'
+  /** Balls served at the nearest cat that turn at the end of their flight and come back to him. */
+  | 'boomerang'
+  /** A swing at the nearest cats: each is sent flying, and bowls over the cats it lands among. */
+  | 'swat'
+  /** A sock that clings to a cat and walks with it, sparking to the cats near it as it goes. */
+  | 'cling'
+  /** Thrown at the nearest cat: where it lands, the cats round it are startled and run away. */
+  | 'scare'
   /** Two evolved weapons in one: both fire, and something of its own besides. */
   | 'fused';
 
@@ -592,10 +600,12 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   'tennis-ball': {
     name: 'Tennis Ball',
-    description: 'Served hard at the nearest cat. It goes straight through, and on to the next.',
-    kind: 'spread',
+    description:
+      'Served hard at the nearest cat, straight through it, and back again. It always comes back.',
+    kind: 'boomerang',
     unit: 'ball',
     levels: ladder(
+      // Out for half its time, then home to his hand: pierce is the cats it passes each way.
       { cooldownMs: 1700, damage: 24, area: 11, count: 1, speed: 560, durationMs: 1200, pierce: 4 },
       [
         { count: 1 },
@@ -610,11 +620,12 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   'frying-pan': {
     name: 'Frying Pan',
-    description: 'A short swing, and a ringing sound. The cats it meets go a long way back.',
-    kind: 'sweep',
+    description:
+      'A short swing, and a ringing sound. The cat it meets flies, and lands on its friends.',
+    kind: 'swat',
     unit: 'swing',
     levels: ladder(
-      // Speed is how far a cat is knocked back, px.
+      // Count is the swings, a cat each; speed is how far one flies, px, over durationMs.
       {
         cooldownMs: 1800,
         damage: 30,
@@ -637,10 +648,13 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   'static-sock': {
     name: 'Static Sock',
-    description: 'Rubbed on the carpet until it crackles. The spark leaps from cat to cat.',
-    kind: 'chain',
-    unit: 'jump',
+    description:
+      'Rubbed on the carpet until it crackles, then thrown. It clings to a cat, and sparks at its friends.',
+    kind: 'cling',
+    unit: 'spark',
     levels: ladder(
+      // Count is the sparks a sock gives before it falls off; area how far one leaps;
+      // durationMs how long a spark shows.
       { cooldownMs: 1400, damage: 14, area: 170, count: 4, speed: 0, durationMs: 160, pierce: 99 },
       [
         { count: 2 },
@@ -655,10 +669,13 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
   },
   cucumber: {
     name: 'Cucumber',
-    description: 'No cat has ever trusted one. Thrown, it bursts into slices, and they all run.',
-    kind: 'burst',
+    description:
+      'No cat has ever trusted one. Thrown among them, it bursts into slices, and every cat near it runs.',
+    kind: 'scare',
     unit: 'slice',
     levels: ladder(
+      // Count is the slices it bursts into, as a hairball; durationMs how long the cats it
+      // startles run, ms (and its flight).
       { cooldownMs: 2400, damage: 26, area: 15, count: 5, speed: 300, durationMs: 1000, pierce: 1 },
       [
         { count: 1 },
@@ -1238,7 +1255,7 @@ export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
 }
 
 /** The kinds whose speed is how fast what they throw flies (Tape Measure's). */
-const THROWN: readonly WeaponKind[] = ['spread', 'burst', 'arc', 'bounce'];
+const THROWN: readonly WeaponKind[] = ['spread', 'burst', 'arc', 'bounce', 'boomerang', 'scare'];
 
 /** A weapon's stats at `level`, with the passives' modifiers. */
 export function weaponStats(id: WeaponId, level: number, mods: Modifiers): WeaponStats {
@@ -1263,14 +1280,12 @@ export function xpToNext(level: number): number {
 
 export type Choice =
   | { kind: 'weapon'; id: WeaponId; level: number }
-  | { kind: 'passive'; id: PassiveId; level: number }
-  /** Nothing left to offer: a sip of Resolve instead. */
-  | { kind: 'restore' };
+  | { kind: 'passive'; id: PassiveId; level: number };
 
 /**
  * A level-up's choices: new weapons or passives while there are slots, or the next
  * level of one held, never one at its highest level; `count` of them, all
- * different, at random. With nothing left, a sip of Resolve.
+ * different, at random. With nothing left, none.
  */
 export function offerChoices(
   weapons: ReadonlyMap<WeaponId, number>,
@@ -1299,7 +1314,6 @@ export function offerChoices(
       if (passives.size < slots.passives) pool.push({ kind: 'passive', id, level: 1 });
     } else if (level < PASSIVES[id].maxLevel) pool.push({ kind: 'passive', id, level: level + 1 });
   }
-  if (pool.length === 0) return [{ kind: 'restore' }];
   const picked: Choice[] = [];
   while (picked.length < count && pool.length > 0) {
     picked.push(pool.splice(random.int(0, pool.length - 1), 1)[0]);
@@ -1326,6 +1340,10 @@ const AREA_WORD: Readonly<Record<WeaponKind, string>> = {
   lure: 'size',
   trap: 'size',
   blow: 'reach',
+  boomerang: 'size',
+  swat: 'reach',
+  cling: 'reach',
+  scare: 'size',
   fused: 'reach',
 };
 
@@ -1336,6 +1354,7 @@ const SPEED_WORD: Partial<Record<WeaponKind, string>> = {
   sweep: 'knockback',
   lure: 'squeak range',
   blow: 'push',
+  swat: 'knockback',
 };
 
 /**
@@ -1440,13 +1459,6 @@ export function describeChoice(choice: Choice): {
   description: string;
   change: string | null;
 } {
-  if (choice.kind === 'restore') {
-    return {
-      name: 'A Moment of Rest',
-      description: 'Nothing more to learn. Some Resolve returns.',
-      change: null,
-    };
-  }
   const info = choice.kind === 'weapon' ? WEAPONS[choice.id] : PASSIVES[choice.id];
   const changes =
     choice.kind === 'weapon'

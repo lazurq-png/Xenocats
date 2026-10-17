@@ -620,7 +620,7 @@ const hit = (page: Page) =>
   );
 
 // Each cat in turn. Every element its attack hits does what the attack does to the
-// pointer (decisions.md D4, Q3); here, five of them closely, and for all twenty: every
+// pointer (puppets.ts); here, five of them closely, and for all twenty: every
 // element is back exactly as it was when the attack ends.
 for (const type of CAT_TYPES) {
   test(`${type.name}: the page elements it hits are back exactly when its attack ends`, async ({

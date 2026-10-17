@@ -293,6 +293,41 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
       ]);
       expect(await data.fetchFilteredCustomers(owner, 'no such customer')).toEqual([]);
     });
+
+    it('fetchFilteredCustomers sorts by each column, either way; anything else sorts by name', async () => {
+      // Each seed customer's numbers, as the query counts them.
+      const numbers = customers.map((customer) => {
+        const theirs = invoices.filter((invoice) => invoice.customer_id === customer.id);
+        return {
+          name: customer.name,
+          total_invoices: theirs.length,
+          total_pending: sum(theirs.filter((r) => r.status === 'pending')),
+          total_paid: sum(theirs.filter((r) => r.status === 'paid')),
+        };
+      });
+      const byName = [...numbers].sort((a, b) => (a.name < b.name ? -1 : 1)).map((c) => c.name);
+      const names = async (sort: unknown, dir?: unknown) =>
+        (await data.fetchFilteredCustomers(owner, '', sort, dir)).map((r) => r.name);
+
+      expect(await names('name')).toEqual(byName);
+      expect(await names('name', 'desc')).toEqual([...byName].reverse());
+      for (const column of ['total_invoices', 'total_pending', 'total_paid'] as const) {
+        // Equal totals keep the name's order.
+        const expected = (dir: 1 | -1) =>
+          [...numbers]
+            .sort((a, b) => dir * (a[column] - b[column]) || (a.name < b.name ? -1 : 1))
+            .map((c) => c.name);
+        expect(await names(column, 'asc'), column).toEqual(expected(1));
+        expect(await names(column, 'desc'), column).toEqual(expected(-1));
+        // The totals really differ, so the order is the column's, not the name's.
+        expect(expected(1), column).not.toEqual(byName);
+      }
+      // Unknown: by name, ascending; nothing from the URL reaches the SQL as written.
+      for (const sort of ['email', 'name; DROP TABLE customers', '', null, 42]) {
+        expect(await names(sort), String(sort)).toEqual(byName);
+      }
+      expect(await names('total_paid', 'sideways')).toEqual(await names('total_paid', 'asc'));
+    });
   });
 
   // Last, since it adds rows: a customer of its own, with one invoice not yet due

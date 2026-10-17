@@ -18,6 +18,7 @@ vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 const { default: CreateInvoiceForm } = await import('@/app/ui/invoices/create-form');
 const { default: EditInvoiceForm } = await import('@/app/ui/invoices/edit-form');
 const { default: CustomerForm } = await import('@/app/ui/customers/customer-form');
+const { addDays } = await import('@/app/lib/schemas');
 
 const customers = [{ id: 'c0ffee00-0000-4000-8000-000000000001', name: 'Amy Burns' }];
 
@@ -71,6 +72,32 @@ describe('the invoice create form', () => {
   });
 });
 
+describe('the invoice create form, for an account full of invoices', () => {
+  it('says why nothing was created, in a region read out when it changes', async () => {
+    // The insert's own cap held it back, and the account holds the most it may.
+    sql.mockResolvedValueOnce(Object.assign([], { count: 0 }));
+    sql.mockResolvedValueOnce([{ n: 10_000 }]);
+    // Due a month from today: the action dates the invoice by the clock, so a fixed
+    // date would one day be before it, and the due-date check would answer instead.
+    const due = addDays(new Date().toISOString().slice(0, 10), 30);
+    render(<CreateInvoiceForm customers={customers} dueDate={due} />);
+    fireEvent.change(screen.getByLabelText('Choose customer'), {
+      target: { value: customers[0].id },
+    });
+    fireEvent.change(screen.getByLabelText('Choose an amount'), { target: { value: '12.50' } });
+    fireEvent.click(screen.getByLabelText('Paid'));
+    submit('Create Invoice');
+    const message = await screen.findByText(
+      'An account holds at most 10,000 invoices. Delete some to create more.'
+    );
+    expect(message.closest('[aria-live="polite"]')).not.toBeNull();
+    // No field is blamed for it.
+    for (const id of ['customer-error', 'amount-error', 'due-date-error', 'status-error']) {
+      expect(document.getElementById(id)!.textContent, id).toBe('');
+    }
+  });
+});
+
 describe('the invoice edit form', () => {
   it('refuses a negative amount beside the field, and writes nothing', async () => {
     const invoice = {
@@ -86,6 +113,40 @@ describe('the invoice edit form', () => {
     submit('Edit Invoice');
     await errorFor('Choose an amount', 'Please enter an amount greater than $0');
     expect(sql).not.toHaveBeenCalled();
+  });
+
+  it('says so when the invoice is gone, in a region read out when it changes', async () => {
+    const invoice = {
+      id: 'deadbeef-0000-4000-8000-000000000002',
+      customer_id: customers[0].id,
+      amount: 12.5,
+      status: 'pending' as const,
+      date: '2026-10-09',
+      due_date: '2026-11-08',
+    };
+    // Deleted meanwhile: the read finds no invoice of the user's.
+    sql.mockResolvedValueOnce([]);
+    render(<EditInvoiceForm invoice={invoice} customers={customers} />);
+    submit('Edit Invoice');
+    const message = await screen.findByText('No such invoice.');
+    expect(message.closest('[aria-live="polite"]')).not.toBeNull();
+    expect(document.getElementById('amount-error')!.textContent).toBe('');
+  });
+
+  it('says so beside the customer when the one chosen is no longer the user’s', async () => {
+    const invoice = {
+      id: 'deadbeef-0000-4000-8000-000000000003',
+      customer_id: customers[0].id,
+      amount: 12.5,
+      status: 'pending' as const,
+      date: '2026-10-09',
+      due_date: '2026-11-08',
+    };
+    // The invoice is the user's, but its customer (deleted in another tab) is not.
+    sql.mockResolvedValueOnce([{ date: '2026-10-09', own_customer: false }]);
+    render(<EditInvoiceForm invoice={invoice} customers={customers} />);
+    submit('Edit Invoice');
+    await errorFor('Choose customer', 'That customer does not exist.');
   });
 });
 
