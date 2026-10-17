@@ -200,3 +200,13 @@ The machine had a foreign process busy throughout: `vitest run tests/unit/xenoca
 - **Verification.** prettier ok; lint exit 0, 0 warnings; typegen + tsc exit 0. Selector: `vitest related` (no unit test reaches the view; exit 0), build exit 0, 13 e2e specs (122 passed / 2 skipped); after the `settled()` fix, `survival.spec.ts` 37 passed. Speed measured interleaved, two pairs (D39). The HUD's look at four updates a second is not seen.
 - **Reviewer.** Approve, one Low (`settled()`), fixed.
 - **CI of E8** (5647901): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39001766508.
+
+## Checkpoint 3 (after E7–E10, range 3ebff87..4d96904) (completed)
+
+- Branch `2026-10-17-c3-checkpoint`, base 4d96904. Started 06:35, completed 06:42.
+- **Tests.** Every changed behaviour in the range has a test that fails without it (the reviewer's reading, checked case by case), except E10's update rate, which no test pins: a test would only lock in a tuning number. One case could not fail (the precomposed "Nguyễn"); it is now typed decomposed. No test of removed behaviour, no duplicate.
+- **Quality and security.** The reviewer on the range, security rules in scope: approve, two Low, both handled (D40). E10's entry has the wrong start time: the item started at 06:30, after ten minutes of profiling from 06:20 that the entry counts in.
+- **Speed.** Simulation unchanged; the render gain in the range is E10's (+9%, D39).
+- **Full suites.** prettier, lint (0 warnings), tsc clean; `npm test` 1026 passed / 35 skipped; database tests 35 passed; build exit 0; `next dev` 154 passed / 2 skipped; `next start` 154 passed / 2 skipped.
+- **What it brings.** E8 and E10 are checked together, and the one test that proved nothing now does.
+- **CI of E10** (4d96904): CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/39003051008.

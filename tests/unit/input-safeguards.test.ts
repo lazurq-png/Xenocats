@@ -41,7 +41,10 @@ describe('LeaderboardName', () => {
     // Accents a real name has: composed by NFC, or a few marks on one letter.
     // (Code points, so the marks can be read: mark(0x301) is a combining acute.)
     const mark = (...codes: number[]) => String.fromCodePoint(...codes);
-    expect(LeaderboardName.parse('Nguy' + mark(0x1ec5) + 'n')).toBe('Nguy' + mark(0x1ec5) + 'n');
+    // Nguyễn typed as e with a circumflex and a tilde: NFC makes it one letter.
+    expect(LeaderboardName.parse('Nguye' + mark(0x302, 0x303) + 'n')).toBe(
+      'Nguy' + mark(0x1ec5) + 'n'
+    );
     expect(LeaderboardName.parse('Zoe' + mark(0x308))).toBe('Zo' + mark(0xeb));
     // NFC puts the dot below before the dot above.
     expect(LeaderboardName.parse('q' + mark(0x307, 0x323))).toBe('q' + mark(0x323, 0x307));
