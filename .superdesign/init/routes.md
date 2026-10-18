@@ -2,7 +2,7 @@
 
 # Xenocat Analytics: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4.3.3 (+ @tailwindcss/forms), clsx, @heroicons/react (24/solid). No component library: custom primitives in `app/ui/`. Dark-only theme; fonts via next/font/google (Orbitron display, Montserrat sans, Roboto ui).
 
-File-based routing (Next.js App Router). `proxy.ts` + `auth.config.ts` require a session for `/dashboard/**`. Layouts: `root` = app/layout.tsx; `dashboard` = app/layout.tsx > app/dashboard/layout.tsx. State files: `app/dashboard/(overview)/loading.tsx`, `app/dashboard/invoices/error.tsx`, `app/dashboard/invoices/[id]/edit/not-found.tsx`.
+File-based routing (Next.js App Router). `proxy.ts` + `auth.config.ts` require a session for `/dashboard/**`. Layouts: `root` = app/layout.tsx; `dashboard` = app/layout.tsx > app/dashboard/layout.tsx. State files: `app/dashboard/(overview)/loading.tsx`, `app/dashboard/error.tsx`, `app/dashboard/invoices/[id]/not-found.tsx`.
 
 | URL                             | File                                        | Layout    | Renders                                                                |
 | ------------------------------- | ------------------------------------------- | --------- | ---------------------------------------------------------------------- |

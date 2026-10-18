@@ -3,8 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import bcryptjs from 'bcryptjs';
-import postgres from 'postgres';
 import { auth, signIn, signOut } from '@/auth';
+import { sql } from '@/app/lib/db';
 import { AuthError, type CredentialsSignin } from 'next-auth';
 import { BCRYPT_COST } from '@/app/lib/password-check';
 import { LOCKED, claimAttempt, clearFailures, loginLimits } from '@/app/lib/login-limit';
@@ -12,20 +12,17 @@ import { claimSignUp, clientAddress, clientKey, signUpLimit } from '@/app/lib/si
 import { headers } from 'next/headers';
 import {
   ChangePasswordForm,
-  CreateInvoice,
   CustomerForm,
   CustomerId,
+  InvoiceFields,
   InvoiceId,
   MAX_CUSTOMERS_PER_ACCOUNT,
   MAX_INVOICES_PER_ACCOUNT,
   RunMinutes,
   SignUpForm,
   SurvivalRun,
-  UpdateInvoice,
   dueDateProblem,
 } from '@/app/lib/schemas';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 // Server Actions are public POST endpoints: proxy.ts only gates page navigation,
 // so every action that changes data checks the session itself, and changes only
@@ -61,7 +58,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
   }
 
   // Validate form using Zod
-  const validatedFields = CreateInvoice.safeParse({
+  const validatedFields = InvoiceFields.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
@@ -72,7 +69,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
-      message: 'Missing Fields. Failed to Create Invoice.',
+      message: 'Missing or invalid fields. Failed to create the invoice.',
     };
   }
 
@@ -85,11 +82,11 @@ export async function createInvoice(prevState: State, formData: FormData) {
   // Due when the form says (30 days after its date unless changed), never before it.
   const problem = dueDateProblem(dueDate, date);
   if (problem) {
-    return { errors: { dueDate: [problem] }, message: 'Failed to Create Invoice.' };
+    return { errors: { dueDate: [problem] }, message: 'Failed to create the invoice.' };
   }
   const noCustomer: State = {
     errors: { customerId: [NO_CUSTOMER] },
-    message: 'Failed to Create Invoice.',
+    message: 'Failed to create the invoice.',
   };
   if (!CustomerId.safeParse(customerId).success) return noCustomer;
 
@@ -124,13 +121,13 @@ export async function createInvoice(prevState: State, formData: FormData) {
     if (isDueDateRefused(error)) {
       return {
         errors: { dueDate: ['The due date cannot be before the invoice date.'] },
-        message: 'Failed to Create Invoice.',
+        message: 'Failed to create the invoice.',
       };
     }
     // Log the database error on the server; return only a generic message.
     console.error('Database Error:', error);
     return {
-      message: 'Database Error: Failed to Create Invoice.',
+      message: 'Database Error: Failed to create the invoice.',
     };
   }
 
@@ -150,7 +147,7 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
     return { message: 'No such invoice.' };
   }
 
-  const validatedFields = UpdateInvoice.safeParse({
+  const validatedFields = InvoiceFields.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
@@ -160,7 +157,7 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
-      message: 'Missing Fields. Failed to Update Invoice.',
+      message: 'Missing or invalid fields. Failed to update the invoice.',
     };
   }
 
@@ -170,7 +167,7 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
   const amountInCents = Math.round(amount * 100);
   const noCustomer: State = {
     errors: { customerId: [NO_CUSTOMER] },
-    message: 'Failed to Update Invoice.',
+    message: 'Failed to update the invoice.',
   };
   if (!CustomerId.safeParse(customerId).success) return noCustomer;
 
@@ -193,7 +190,7 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
     if (!invoice.own_customer) return noCustomer;
     const problem = dueDateProblem(dueDate, invoice.date);
     if (problem) {
-      return { errors: { dueDate: [problem] }, message: 'Failed to Update Invoice.' };
+      return { errors: { dueDate: [problem] }, message: 'Failed to update the invoice.' };
     }
     // Both conditions again, so a change between the read and the write cannot
     // slip through.
@@ -214,11 +211,11 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
     if (isDueDateRefused(error)) {
       return {
         errors: { dueDate: ['The due date cannot be before the invoice date.'] },
-        message: 'Failed to Update Invoice.',
+        message: 'Failed to update the invoice.',
       };
     }
     console.error('Database Error:', error);
-    return { message: 'Database Error: Failed to Update Invoice.' };
+    return { message: 'Database Error: Failed to update the invoice.' };
   }
 
   revalidatePath('/dashboard/invoices');

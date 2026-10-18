@@ -10,6 +10,12 @@ test('login page renders the sign-in form', async ({ page }) => {
   await expect(page.getByRole('button', { name: /log in/i })).toBeVisible();
 });
 
+test('the login page links back to the home page', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'Back to the home page' }).click();
+  await expect(page).toHaveURL(/\/$/);
+});
+
 test('the password can be shown and hidden again', async ({ page }) => {
   await page.goto('/login');
   const password = page.getByLabel('Password', { exact: true });

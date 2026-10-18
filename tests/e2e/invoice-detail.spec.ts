@@ -20,7 +20,7 @@ async function createInvoice(page: Page) {
   await page.getByLabel('Choose customer').selectOption({ label: 'Amy Burns' });
   await page.getByLabel('Choose an amount').fill((cents / 100).toFixed(2));
   await page.getByLabel('Pending').check();
-  await page.getByRole('button', { name: 'Create Invoice' }).click();
+  await page.getByRole('button', { name: 'Create invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
   return cents;
 }

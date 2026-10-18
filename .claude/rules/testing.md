@@ -113,6 +113,30 @@ fails for a spec no route reaches. CI runs the full suites on every push to
 on the merge into `main`, which only deploys, nor on a pull request from `dev` into
 `main` whose exact commit already passed on `dev`).
 
+### A new test file goes in a CI group
+
+CI runs nothing by folder. Each unit test file is named in one of the
+`Unit tests (...)` steps of `.github/workflows/ci.yml`, and each browser spec in
+one group of `GROUPS` in `playwright.config.ts`. A file in no group would never
+run in CI, so the *checks* job's step "Every test file is in a group" fails the
+run instead (`<file> is in no unit test group in ci.yml`). Locally nothing
+catches it: `npm test` runs every file whatever the groups say.
+
+So the change that adds a test file, or renames or moves one, also names it in a
+group: a unit test in the `Unit tests (...)` step for its area and environment
+(a `// @vitest-environment jsdom` file in a jsdom group), by its path without
+`.test.ts`/`.test.tsx`; a spec in exactly one group of `GROUPS`, by its name
+without `.spec.ts`. A deleted test file comes out of its group too. Before
+reporting the change, check that every unit test file is in a group (this prints
+nothing when all are):
+
+```bash
+for f in tests/unit/*.test.ts* tests/unit/xenocats/*.test.ts*; do grep -qE "(^|[[:space:]])${f%.test.ts*}([[:space:]]|$)" .github/workflows/ci.yml || echo "$f"; done
+```
+
+A test in a new folder under `tests/unit/` also needs that folder added to the
+step's `for` loop in `ci.yml`, or the step never looks at it.
+
 ---
 
 ## Flaky Tests
@@ -145,6 +169,22 @@ When a test fails:
 6. rerun
 
 Do not modify assertions simply to make the suite green.
+
+---
+
+## Tests That Cannot Pass Silently
+
+A test of something that must exist fails when it is missing. Never guard an
+assertion so that a missing file, route, table, fixture or element turns into
+a pass: no `if (!exists) return`, no conditional `test.skip`, no assertion
+wrapped in a branch that may not run. Tests skip only on the conditions above
+(no `POSTGRES_URL`, `E2E_NO_DATABASE=1`, `DATABASE_TESTS` unset).
+
+A run that exits 0 is not a pass if it ran less than it should. Read the counts
+Vitest and Playwright print (passed, skipped, failed). When you have an earlier
+run of the same command, compare them: fewer tests passed, or more skipped,
+without a test having been removed or skipped on purpose, is a failure to
+explain before the run is reported.
 
 ---
 

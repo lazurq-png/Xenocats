@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   ChangePasswordForm,
-  CreateInvoice,
   CustomerForm,
   CustomerId,
+  InvoiceFields,
   InvoiceId,
-  UpdateInvoice,
   addDays,
   dueDateProblem,
   parseCustomerSort,
@@ -16,10 +15,9 @@ import {
 // The actions pass formData.get(...) straight in, so a missing field arrives as null.
 const valid = { customerId: 'c0ffee', amount: '12.50', status: 'paid', dueDate: '2026-11-06' };
 
-describe.each([
-  ['CreateInvoice', CreateInvoice],
-  ['UpdateInvoice', UpdateInvoice],
-])('%s', (_name, schema) => {
+describe('InvoiceFields', () => {
+  const schema = InvoiceFields;
+
   it('accepts a valid invoice and coerces the amount to a number', () => {
     const result = schema.safeParse(valid);
     expect(result.success).toBe(true);

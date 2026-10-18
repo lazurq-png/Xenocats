@@ -93,6 +93,7 @@ jobs:
           npx vitest run tests/unit/xenocats/cursor-kind tests/unit/xenocats/fake-cursor
           tests/unit/xenocats/cat-layer tests/unit/xenocats/cat-art tests/unit/xenocats/cat-sprite
           tests/unit/xenocats/movement-pad-view tests/unit/xenocats/game-settings
+          tests/unit/xenocats/golden-reel
       - name: Unit tests (cats, games, page, sound)
         if: ${{ !cancelled() }}
         run: >-

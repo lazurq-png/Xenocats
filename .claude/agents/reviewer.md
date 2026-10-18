@@ -81,8 +81,13 @@ A Next.js App Router app (`CLAUDE.md` §2 maps it). Worth checking every time:
   nothing secret should be.
 - **Money.** Amounts are stored in cents (`actions.ts` multiplies by 100;
   `formatCurrency` divides). A change that mixes the two units is a finding.
-- **Dependencies.** `next`, `react` and `react-dom` are `latest`. A diff to
+- **Dependencies.** Versions are ranges, fixed by `package-lock.json`. A diff to
   `package.json` or `package-lock.json` the task did not call for is a finding.
+- **Test groups.** A test file the diff adds, renames or moves must be named in
+  a `Unit tests (...)` step of `.github/workflows/ci.yml` (unit tests) or in one
+  group of `GROUPS` in `playwright.config.ts` (browser specs), or CI's *checks*
+  job fails (`.claude/rules/testing.md`, "A new test file goes in a CI group").
+  A file in no group is a finding.
 - **Claimed verification.** If the change description asserts lint or the type
   check passed, run it. For the tests and the build you have the implementer's
   results, not your own: check that a test exercises the changed behaviour

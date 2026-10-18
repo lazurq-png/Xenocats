@@ -14,7 +14,7 @@ import { entryFor, getGuide, getServerGuide, isEmptyGuide, subscribeGuide } from
  * Every cat type with two Summon buttons: awake, to pounce as soon as it arrives,
  * or asleep, to nap and wake first as the dashboard's cats do (and show both poses'
  * artwork). Cats only come when summoned here, so the page is calm to browse and
- * predictable to test. Above them, Fight a cat: a link to the game's own page, and
+ * predictable to test. Above them, Survival Game: a link to the game's own page, and
  * below it the game's `leaderboard` (a server component, leaderboard.tsx).
  */
 export default function CatGallery({ leaderboard }: { leaderboard?: ReactNode }) {
@@ -37,14 +37,13 @@ function FightLinks() {
   return (
     <section
       aria-labelledby="fight-heading"
-      className="mb-10 rounded-2xl border border-line bg-panel p-6"
+      className="mb-10 max-w-lg rounded-2xl border border-line bg-panel p-6"
     >
       <h2 id="fight-heading" className="font-display text-2xl font-semibold text-cream">
-        Fight a cat
+        Survival Game
       </h2>
-      <p className="mt-2 max-w-2xl text-sm text-aura">
-        <span className="font-semibold text-white">Survival:</span> walk your ranger, aim, and send
-        the cats home before they get you.
+      <p className="mt-2 text-sm text-aura">
+        Walk your ranger, aim, and send the cats home before they get you.
       </p>
       <div className="mt-4 flex flex-wrap gap-4">
         <Link href="/cats/survival" className={GAME_LINK} data-testid="fight-link-survival">

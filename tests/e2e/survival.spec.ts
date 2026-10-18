@@ -143,7 +143,7 @@ async function startRun(page: Page, tap = false) {
 test('/cats has one Play link, and it opens Survival', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/cats');
-  const fight = page.getByRole('region', { name: 'Fight a cat' });
+  const fight = page.getByRole('region', { name: 'Survival Game' });
   await expect(fight.getByRole('link')).toHaveCount(1);
   await fight.getByRole('link', { name: 'Play' }).click();
   await expect(page).toHaveURL(/\/cats\/survival$/, { timeout: 15_000 });
@@ -328,7 +328,7 @@ test.describe('on a computer', () => {
     const paused = await pauseRun(page);
     const fused = paused.locator('li[data-weapon="thunderstorm"]');
     const fresh = paused.locator(`li[data-weapon="${taken}"]`);
-    await expect(fused).toHaveAttribute('data-tier', '7');
+    await expect(fused).toHaveAttribute('data-tier', '10');
     await expect(fresh).toHaveAttribute('data-tier', '1');
     await expect(fused.getByTestId('survival-pause-tier')).toHaveText('(Fused)');
     await expect(fresh.getByTestId('survival-pause-tier')).toHaveText('(Basic)');
@@ -714,6 +714,12 @@ test.describe('on a computer', () => {
       (await laser.textContent())!.match(/: ([\d,]+) homesickness/)![1].replace(/,/g, '')
     );
     expect(given).toBeGreaterThan(0);
+    // A click inside the window (its padding included) leaves it open; one outside closes it.
+    const results = page.getByTestId('survival-results');
+    await results.click({ position: { x: 8, y: 8 } });
+    await expect(results).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(results).toBeHidden();
   });
 
   test('a finished run shows its time as the character’s best for its length, with the day', async ({

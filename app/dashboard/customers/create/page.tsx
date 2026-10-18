@@ -1,9 +1,9 @@
 import { Metadata } from 'next';
 import CustomerForm from '@/app/ui/customers/customer-form';
-import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
+import Breadcrumbs from '@/app/ui/breadcrumbs';
 
 export const metadata: Metadata = {
-  title: 'Create Customer',
+  title: 'Create customer',
 };
 
 export default function Page() {
@@ -12,7 +12,7 @@ export default function Page() {
       <Breadcrumbs
         breadcrumbs={[
           { label: 'Customers', href: '/dashboard/customers' },
-          { label: 'Create Customer', href: '/dashboard/customers/create', active: true },
+          { label: 'Create customer', href: '/dashboard/customers/create', active: true },
         ]}
       />
       <CustomerForm />

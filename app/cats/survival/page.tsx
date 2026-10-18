@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import XenocatLogo from '@/app/ui/xenocat-logo';
+import BackLink from '@/app/ui/back-link';
 import FightPage from '@/app/ui/xenocats/fight-page';
 import { auth } from '@/auth';
 
@@ -20,16 +21,11 @@ export default async function Page() {
         Skip to main content
       </a>
       <main className="mx-auto max-w-[1366px] px-6 pb-12 pt-4 md:px-12">
-        <header className="mb-12 flex items-center justify-between gap-4">
+        <header className="mb-12 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <Link href="/" aria-label="Xenocat Analytics home">
             <XenocatLogo />
           </Link>
-          <Link
-            href="/cats"
-            className="border-b-2 border-aura-link/70 pb-1 text-[16.5px] font-semibold text-aura-link transition hover:border-aura hover:text-aura"
-          >
-            Back to the cats
-          </Link>
+          <BackLink href="/cats">Back to the cats</BackLink>
         </header>
         <div id="main-content" tabIndex={-1} className="focus-visible:outline-hidden">
           <FightPage signedIn={signedIn} />

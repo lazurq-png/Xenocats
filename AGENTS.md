@@ -540,6 +540,9 @@ If an agent repeatedly makes the same mistake:
 4. keep the rule concise
 5. remove rules that no longer provide value
 
+A night run proposes such changes in its morning report (night-run skill §7);
+a human decides and makes them.
+
 Do not turn this file into an encyclopedic style guide.
 
 The repository's actual tooling should enforce deterministic behavior wherever possible.

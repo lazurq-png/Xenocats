@@ -6,8 +6,8 @@ import { z } from 'zod';
 /** The largest amount an invoice can have, dollars (the database checks it too, migration 0007). */
 export const MAX_AMOUNT = 1_000_000;
 
-export const FormSchema = z.object({
-  id: z.string(),
+/** An invoice as the create and edit forms send it. */
+export const InvoiceFields = z.object({
   customerId: z.string({
     invalid_type_error: 'Please select a customer.',
   }),
@@ -25,7 +25,6 @@ export const FormSchema = z.object({
   status: z.enum(['pending', 'paid'], {
     invalid_type_error: 'Please select an invoice status.',
   }),
-  date: z.string(),
   /** When it is to be paid: a calendar date, YYYY-MM-DD (checked against its date by the action). */
   dueDate: z
     .string({ invalid_type_error: 'Please choose a due date.' })
@@ -38,10 +37,6 @@ export const FormSchema = z.object({
       }
     }),
 });
-
-export const CreateInvoice = FormSchema.omit({ id: true, date: true });
-
-export const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 
 /** The payment term an invoice is given unless another due date is chosen, days. */
 export const PAYMENT_DAYS = 30;

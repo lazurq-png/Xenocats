@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CreateInvoice,
   CustomerForm,
+  InvoiceFields,
   LeaderboardName,
   SEARCH_MAX_LENGTH,
   containsPattern,
@@ -110,7 +110,7 @@ describe('CustomerForm', () => {
 
 describe('an invoice amount', () => {
   const amount = (value: string) =>
-    CreateInvoice.safeParse({
+    InvoiceFields.safeParse({
       customerId: 'c',
       amount: value,
       status: 'paid',

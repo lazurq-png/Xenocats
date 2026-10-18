@@ -166,7 +166,7 @@ Dependencies:
       - auth.config.ts
       - app/lib/definitions.ts (see above)
     - app/lib/schemas.ts
-- app/ui/invoices/breadcrumbs.tsx
+- app/ui/breadcrumbs.tsx
 - app/lib/data.ts
   - app/lib/definitions.ts (see above)
   - app/lib/utils.ts
@@ -186,7 +186,7 @@ Dependencies:
       - auth.config.ts
       - app/lib/definitions.ts (see above)
     - app/lib/schemas.ts
-- app/ui/invoices/breadcrumbs.tsx
+- app/ui/breadcrumbs.tsx
 - app/lib/data.ts
   - app/lib/definitions.ts (see above)
   - app/lib/utils.ts

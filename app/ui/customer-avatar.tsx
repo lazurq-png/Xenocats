@@ -1,7 +1,7 @@
 import Image from 'next/image';
 
-// The mockup's planet-and-symbol avatars (public/xenocats/avatar-1..5.webp).
-const AVATARS = [1, 2, 3, 4, 5].map((n) => `/xenocats/avatar-${n}.webp`);
+// Alien cats in suits, one antenna each like the mascot (public/xenocats/avatar-cat-1..5.svg).
+const AVATARS = [1, 2, 3, 4, 5].map((n) => `/xenocats/avatar-cat-${n}.svg`);
 
 /**
  * A customer's avatar, chosen from the name so a customer always gets the same

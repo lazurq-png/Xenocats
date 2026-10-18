@@ -1,5 +1,5 @@
 import Form from '@/app/ui/invoices/create-form';
-import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
+import Breadcrumbs from '@/app/ui/breadcrumbs';
 import { fetchCustomers } from '@/app/lib/data';
 import { currentUserId } from '@/app/lib/session';
 import { PAYMENT_DAYS, addDays } from '@/app/lib/schemas';
@@ -7,7 +7,7 @@ import { Metadata } from 'next';
 import { connection } from 'next/server';
 
 export const metadata: Metadata = {
-  title: 'Create Invoice',
+  title: 'Create invoice',
 };
 
 export default async function Page() {
@@ -24,7 +24,7 @@ export default async function Page() {
         breadcrumbs={[
           { label: 'Invoices', href: '/dashboard/invoices' },
           {
-            label: 'Create Invoice',
+            label: 'Create invoice',
             href: '/dashboard/invoices/create',
             active: true,
           },

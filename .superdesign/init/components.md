@@ -405,7 +405,7 @@ function PaginationArrow({
 
 ## Breadcrumbs
 
-- Path: `app/ui/invoices/breadcrumbs.tsx`
+- Path: `app/ui/breadcrumbs.tsx`
 - Breadcrumb trail.
 - Props: breadcrumbs: {label, href, active?}[]
 

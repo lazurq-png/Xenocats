@@ -17,6 +17,7 @@ import {
   type ArenaOutcome,
   BLADE_RADIUS,
   createArena,
+  gemSize,
   runLengthConfig,
 } from './arena';
 import {
@@ -91,6 +92,7 @@ import {
 } from './test-hooks';
 import { GameSettings } from './game-settings';
 import { PauseSummary } from './pause-summary';
+import { GoldenReel, REEL_HOLD_MS, REEL_SPIN_MS } from './golden-reel';
 import { BossBar, HudBar, createHudStore, hudData } from './survival-hud';
 import {
   AUTO_JUDGE_FROM_MS,
@@ -219,6 +221,18 @@ const characterBestsOf = (length: RunLength) =>
     })
     .join('|');
 
+/** A boss sent home: the run slows to this share of its pace for `BOSS_SLOW_MS`. */
+const BOSS_SLOW = 0.3;
+const BOSS_SLOW_MS = 1400;
+/** The screen shakes this long, this far at first (px). */
+const BOSS_SHAKE_MS = 700;
+const BOSS_SHAKE = 9;
+/** The mothership's visit: down, the beam lifts the boss, away. */
+const MOTHERSHIP_MS = 2200;
+/** Each gem size (gemSize): its colour, and half its height, px. */
+const GEM_COLOUR = ['#9d86ff', '#7dd3fc', '#c1e838', '#fbbf24'] as const;
+const GEM_HEIGHT = [6, 7.5, 9, 11] as const;
+
 /** Keeps Tab and Shift+Tab inside a modal <dialog>, as the start screen's windows do. */
 function trapTab(event: ReactKeyboardEvent<HTMLDialogElement>) {
   if (event.key !== 'Tab') return;
@@ -296,6 +310,8 @@ export default function ArenaGame({
   const progress = useProgress();
   // An evolution's announcement, for a few seconds.
   const [notice, setNotice] = useState<string | null>(null);
+  // A golden chest's reel, while it spins and shows what it landed on.
+  const [reel, setReel] = useState<{ rewards: number; key: number } | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
   // How long a run lasts: the lobby's choice, kept in the browser. The run in progress
   // (or just over) keeps the length it started with.
@@ -701,6 +717,12 @@ export default function ArenaGame({
     const guard = createFrameGuard(FRAME_GUARD);
     const held = new Set<string>();
     const flashes: Flash[] = [];
+    // A boss sent home: the mothership's visits, the slow motion and the shake.
+    const motherships: { x: number; y: number; type: number; start: number }[] = [];
+    let slowUntil = 0;
+    let shakeUntil = 0;
+    // While a golden chest's reel shows, a waiting level-up's choices wait for it.
+    let reelUntil = 0;
     const met = new Set<number>();
     const sounds: number[] = [];
     // One purr at a time: the cats sent home together would otherwise purr over each
@@ -747,6 +769,10 @@ export default function ArenaGame({
       const camY = cam.y - height / 2;
       context.save();
       context.scale(1 / cam.zoom, 1 / cam.zoom);
+      if (time < shakeUntil) {
+        const k = ((shakeUntil - time) / BOSS_SHAKE_MS) * BOSS_SHAKE;
+        context.translate((Math.random() * 2 - 1) * k, (Math.random() * 2 - 1) * k);
+      }
       context.fillStyle = '#070b14';
       context.fillRect(0, 0, width, height);
       // The floor: faint tiles that slide as he walks.
@@ -799,12 +825,15 @@ export default function ArenaGame({
         const x = gem.x - camX;
         const y = gem.y - camY;
         if (x < -8 || y < -8 || x > width + 8 || y > height + 8) continue;
-        context.fillStyle = gem.value > 1 ? '#c1e838' : '#9d86ff';
+        // Gems that joined are bigger, and their own colour.
+        const size = gemSize(gem.value);
+        const h = GEM_HEIGHT[size];
+        context.fillStyle = GEM_COLOUR[size];
         context.beginPath();
-        context.moveTo(x, y - 6);
-        context.lineTo(x + 4, y);
-        context.lineTo(x, y + 6);
-        context.lineTo(x - 4, y);
+        context.moveTo(x, y - h);
+        context.lineTo(x + h * 0.67, y);
+        context.lineTo(x, y + h);
+        context.lineTo(x - h * 0.67, y);
         context.fill();
       }
 
@@ -931,6 +960,21 @@ export default function ArenaGame({
         const x = chest.x - camX;
         const y = chest.y - camY;
         if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+        if (chest.golden) {
+          // A boss's: bigger, gold, and shining.
+          if (!light) {
+            context.shadowColor = '#fbbf24';
+            context.shadowBlur = 18 + Math.sin(time / 180) * 6;
+          }
+          context.fillStyle = '#fbbf24';
+          context.fillRect(x - 16, y - 11, 32, 22);
+          context.shadowBlur = 0;
+          context.fillStyle = '#b45309';
+          context.fillRect(x - 16, y - 3, 32, 2);
+          context.fillStyle = '#fef3c7';
+          context.fillRect(x - 4, y - 4, 8, 8);
+          continue;
+        }
         context.fillStyle = '#b8874f';
         context.fillRect(x - 12, y - 8, 24, 16);
         context.fillStyle = '#c1e838';
@@ -1045,6 +1089,75 @@ export default function ArenaGame({
         if (light) continue;
         context.fillStyle = `rgba(193, 232, 56, ${(left / 300) * 0.55})`;
         context.fillRect(flash.x - camX - 8, flash.y - camY - 60, 16, 70);
+      }
+
+      // A boss's ring of light, spreading: the cats it reaches go home.
+      for (const ring of arena.rings()) {
+        const { ringMs, ringRadius } = arena.config.bossHome;
+        const t = Math.min((state.time - ring.start) / ringMs, 1);
+        context.strokeStyle = `rgba(193, 232, 56, ${(1 - t) * 0.8})`;
+        context.lineWidth = light ? 3 : 6 + (1 - t) * 10;
+        context.beginPath();
+        context.arc(ring.x - camX, ring.y - camY, t * ringRadius, 0, 2 * Math.PI);
+        context.stroke();
+      }
+
+      // The mothership, come for a boss: down, a beam lifts it, and away.
+      for (let i = motherships.length - 1; i >= 0; i--) {
+        const ship = motherships[i];
+        const t = (time - ship.start) / MOTHERSHIP_MS;
+        if (t >= 1) {
+          motherships.splice(i, 1);
+          continue;
+        }
+        const x = ship.x - camX;
+        const ground = ship.y - camY;
+        // Where the saucer hovers: it drops in, waits, and leaves upwards.
+        const hover = ground - 190;
+        const shipY =
+          t < 0.2
+            ? hover - (1 - t / 0.2) * 400
+            : t > 0.75
+              ? hover - ((t - 0.75) / 0.25) * 500
+              : hover;
+        // The beam, while it lifts the boss (to 0.75).
+        const beam = t > 0.15 && t < 0.75 ? Math.min((t - 0.15) / 0.08, 1, (0.75 - t) / 0.08) : 0;
+        if (beam > 0) {
+          context.fillStyle = `rgba(224, 224, 179, ${beam * (light ? 0.25 : 0.35)})`;
+          context.beginPath();
+          context.moveTo(x - 22, shipY + 10);
+          context.lineTo(x + 22, shipY + 10);
+          context.lineTo(x + 70, ground + 30);
+          context.lineTo(x - 70, ground + 30);
+          context.closePath();
+          context.fill();
+          // The boss rises in it, smaller as it goes, into the saucer.
+          const lift = Math.min(Math.max((t - 0.2) / 0.5, 0), 1);
+          const size = 120 * (1 - lift * 0.8);
+          const bitmap = bossSprite(ship.type) ?? sprites[ship.type]();
+          if (bitmap) {
+            context.globalAlpha = 1 - lift * 0.6;
+            const y = ground + (shipY - ground) * lift;
+            context.drawImage(bitmap, x - size / 2, y - size / 2, size, size);
+            context.globalAlpha = 1;
+          }
+        }
+        // The saucer: a dome, a wide hull, and lights that run round it.
+        context.fillStyle = '#c1e838';
+        context.beginPath();
+        context.ellipse(x, shipY - 8, 26, 18, 0, Math.PI, 2 * Math.PI);
+        context.fill();
+        context.fillStyle = '#9d86ff';
+        context.beginPath();
+        context.ellipse(x, shipY, 70, 16, 0, 0, 2 * Math.PI);
+        context.fill();
+        for (let k = 0; k < 6; k++) {
+          const lit = (Math.floor(time / 120) + k) % 3 === 0;
+          context.fillStyle = lit ? '#fef3c7' : '#2d2f47';
+          context.beginPath();
+          context.arc(x - 50 + k * 20, shipY + 3, 4, 0, 2 * Math.PI);
+          context.fill();
+        }
       }
 
       // The Matriarch.
@@ -1176,7 +1289,7 @@ export default function ArenaGame({
           );
         } else if (runMs > AUTO_JUDGE_UNTIL_MS) judging = false;
       }
-      carry += real * speedRef.current;
+      carry += real * speedRef.current * (now < slowUntil ? BOSS_SLOW : 1);
       // Alone, WASD and the arrow keys both walk him; in co-op, each player his own.
       const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
       const input = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
@@ -1229,6 +1342,16 @@ export default function ArenaGame({
                 : `${CAT_TYPES[event.type].name} has come.`
             );
           }
+        } else if (event.kind === 'boss-home') {
+          motherships.push({ x: event.x, y: event.y, type: event.type, start: now });
+          slowUntil = now + BOSS_SLOW_MS;
+          shakeUntil = now + BOSS_SHAKE_MS;
+          important(`The mothership has come for the giant ${CAT_TYPES[event.type].name}.`);
+          if (player) player.play(soundsFor(CAT_TYPES[event.type]).wake);
+        } else if (event.kind === 'chest' && event.golden) {
+          reelUntil = now + REEL_SPIN_MS + REEL_HOLD_MS;
+          setReel({ rewards: event.rewards, key: now });
+          if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'chest') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
         } else if (event.kind === 'evolution') {
@@ -1316,8 +1439,12 @@ export default function ArenaGame({
           })),
         });
       }
+      if (reelUntil > 0 && now >= reelUntil) {
+        reelUntil = 0;
+        setReel(null);
+      }
       if (over) finish(over);
-      else if (arena.choices()) {
+      else if (arena.choices() && reelUntil === 0) {
         // The run waits for a choice; the HUD shows the level it is for.
         carry = 0;
         hudStore.set((before) =>
@@ -1528,6 +1655,16 @@ export default function ArenaGame({
           data-testid="survival-results"
           data-outcome={outcome}
           onKeyDown={trapTab}
+          onClick={(event) => {
+            // A click on the backdrop (outside the window's box) closes it too.
+            const box = event.currentTarget.getBoundingClientRect();
+            const outside =
+              event.clientX < box.left ||
+              event.clientX > box.right ||
+              event.clientY < box.top ||
+              event.clientY > box.bottom;
+            if (event.target === event.currentTarget && outside) event.currentTarget.close();
+          }}
           onClose={() => lobbyActionsRef.current?.querySelector('button')?.focus()}
           className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-xl overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-left text-white backdrop:bg-void/75 sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)]"
         >
@@ -1629,7 +1766,7 @@ export default function ArenaGame({
               ))}
             </ul>
           )}
-          <Button className="mt-4" onClick={start} data-play-again>
+          <Button className="mt-6" onClick={start} data-play-again>
             Play again
           </Button>
         </dialog>
@@ -1660,6 +1797,7 @@ export default function ArenaGame({
           >
             {notice}
           </p>
+          {reel && <GoldenReel key={reel.key} rewards={reel.rewards} />}
           <HudBar
             store={hudStore}
             showFps={showFps}

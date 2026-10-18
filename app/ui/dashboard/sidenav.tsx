@@ -31,7 +31,9 @@ export default function SideNav() {
           </button>
         </form>
       </div>
-      {/* the rail's resident cat, watching from its console */}
+      {/* The rail's resident cat, watching from its console. In the column's flow,
+          under the links: on a short screen it is cut off at the bottom rather than
+          climbing over Sign out. The negative margins span the rail's padding. */}
       <Image
         src="/xenocats/cat-sidebar-console.webp"
         alt=""
@@ -40,7 +42,7 @@ export default function SideNav() {
         // In view on every dashboard page from the start, and often its largest image
         // (Next flags it as the LCP): load it at once rather than lazily.
         loading="eager"
-        className="pointer-events-none absolute bottom-0 left-0 hidden w-full md:block"
+        className="pointer-events-none -mx-4 -mb-4 mt-auto hidden w-[calc(100%+2rem)] max-w-none shrink-0 pt-4 md:block"
       />
     </div>
   );

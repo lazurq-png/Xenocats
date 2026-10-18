@@ -79,7 +79,7 @@ export default function CustomerForm({ customer }: { customer?: CustomerEdit }) 
         >
           Cancel
         </Link>
-        <Button type="submit">{customer ? 'Save Customer' : 'Create Customer'}</Button>
+        <Button type="submit">{customer ? 'Save customer' : 'Create customer'}</Button>
       </div>
     </form>
   );

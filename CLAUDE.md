@@ -112,6 +112,19 @@ Create a plan before substantial implementation when the task involves:
 * uncertain ownership
 * non-trivial migrations
 
+A change may skip the written plan only when all of these hold:
+
+* it touches no authentication, session or secret handling (`auth.ts`,
+  `auth.config.ts`, `proxy.ts`, `app/lib/session*.ts`, `credentials.ts`,
+  `password-check.ts`, the login and sign-up limits)
+* it changes no schema, migration or seed data
+* it changes no CI, Vercel or build configuration
+* the files it changes are known before you start, and stay that set
+* a test exercises the behaviour deterministically, existing or added by the change
+
+If any one does not hold, plan as above, however small the diff will be.
+Skipping the plan never skips exploration, verification or review.
+
 A useful plan contains:
 
 * current behavior
@@ -240,8 +253,7 @@ In this repository the checks that exist are:
 | Format     | `npx prettier --check <the files you changed>`   |
 | Browser    | `npm run dev`, then open `http://localhost:3000` |
 
-Use **npm**: the lockfile is `package-lock.json`. The `pnpm` block in
-`package.json` is a leftover and nothing reads it. Node 24 is installed
+Use **npm**: the lockfile is `package-lock.json`. Node 24 is installed
 system-wide and on `PATH`; no prefix is needed. Every check needs `node_modules`,
 installed with `npm ci`; the browser tests also need Chromium
 (`npx playwright install chromium`).
@@ -318,8 +330,9 @@ over a migrated and seeded `xenocats` schema, then every browser test against
 `next start` (`E2E_SERVER=start`), in one `playwright test`; and *e2e* — the
 specs for what differs under `next dev` (smoke, security headers, the dashboard
 login) against it. The browser specs' groups are projects in
-`playwright.config.ts` (`GROUPS`); a new spec goes in one, which the *checks*
-job verifies. The *build* and *e2e* jobs run inside the Playwright image
+`playwright.config.ts` (`GROUPS`); a new spec goes in one, and a new unit test
+file in a `Unit tests (...)` step of `ci.yml`, which the *checks* job verifies
+(`.claude/rules/testing.md`, "A new test file goes in a CI group"). The *build* and *e2e* jobs run inside the Playwright image
 (`mcr.microsoft.com/playwright`, its tag the locked `@playwright/test` version),
 so Chromium is not installed on every run. Each starts a throwaway PostgreSQL
 service container, which `scripts/ci-database.mjs` switches TLS on for and
@@ -505,7 +518,16 @@ What changed.
 
 ### Verification
 
-What was run and what passed or failed.
+What was run and what passed or failed, with the counts the test runners
+printed. Keep these apart:
+
+* **Checked by command**: the commands that ran, and their result as observed.
+* **Checked by reading only**: behaviour reasoned about but not exercised by
+  any command.
+* **Assumed**: anything relied on without checking it (the environment, a
+  running service, another session's work).
+
+Leave out a line that would be empty.
 
 ### Notes
 

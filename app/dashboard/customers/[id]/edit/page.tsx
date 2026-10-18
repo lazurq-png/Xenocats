@@ -4,10 +4,10 @@ import { fetchCustomerById } from '@/app/lib/data';
 import { currentUserId } from '@/app/lib/session';
 import { CustomerId } from '@/app/lib/schemas';
 import CustomerForm from '@/app/ui/customers/customer-form';
-import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
+import Breadcrumbs from '@/app/ui/breadcrumbs';
 
 export const metadata: Metadata = {
-  title: 'Edit Customer',
+  title: 'Edit customer',
 };
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
@@ -25,7 +25,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       <Breadcrumbs
         breadcrumbs={[
           { label: 'Customers', href: '/dashboard/customers' },
-          { label: 'Edit Customer', href: `/dashboard/customers/${id}/edit`, active: true },
+          { label: 'Edit customer', href: `/dashboard/customers/${id}/edit`, active: true },
         ]}
       />
       <CustomerForm customer={customer} />

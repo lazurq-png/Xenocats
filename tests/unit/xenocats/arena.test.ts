@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ARENA_CONFIG,
+  gemSize,
   type ArenaConfig,
   HERO_EFFECTS,
   attackShapeOf,
@@ -1763,6 +1764,33 @@ describe('pickups', () => {
     full.step(still);
     expect(full.state().hero.resolve).toBeLessThanOrEqual(full.state().hero.maxResolve);
     expect(full.state().pickupsTaken).toBe(1);
+  });
+
+  it('gems dropped near each other join into one bigger gem, a size and colour up', () => {
+    // He picks nothing up, so every gem stays where it fell.
+    const a = arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 60]],
+      gems: { ...ARENA_CONFIG.gems, pickup: 0 },
+    });
+    const { value, eliteValue } = ARENA_CONFIG.gems;
+    // Each cat's gem is 1 (an elite's 6): one worth more is gems that joined.
+    stepWhile(
+      a,
+      () => !a.gems().some((g) => g.value > eliteValue) && a.state().time < 60_000,
+      () => {
+        if (a.choices()) a.choose(0);
+        else a.step(still);
+      }
+    );
+    expect(a.gems().some((g) => g.value > eliteValue)).toBe(true);
+    // Not the cap's doing (beyond it, a new gem adds to an old one anywhere).
+    expect(a.gems().length).toBeLessThan(ARENA_CONFIG.gems.cap);
+    expect(gemSize(value)).toBe(0);
+    expect(gemSize(eliteValue)).toBe(1);
+    expect(gemSize(10)).toBe(2);
+    expect(gemSize(30)).toBe(3);
   });
 
   it('a magnet draws every gem on the arena to him', () => {

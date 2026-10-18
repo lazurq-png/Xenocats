@@ -4,14 +4,12 @@ import { authConfig } from './auth.config';
 import { checkCredentials } from '@/app/lib/credentials';
 import { LOCKED } from '@/app/lib/login-limit';
 import { revokeSession } from '@/app/lib/session-version';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 
 /** A refused login for an email that is locked out; `authenticate` says so. */
 class LoginLocked extends CredentialsSignin {
   code = LOCKED;
 }
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const { auth, signIn, signOut } = NextAuth({
   ...authConfig,
