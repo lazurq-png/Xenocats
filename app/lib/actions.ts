@@ -513,8 +513,6 @@ export type SurvivalRunResult = 'saved' | 'signed-out' | 'invalid' | 'error';
 
 /** How far a run's time may run ahead of the server's clock: the start's round trip, ms. */
 const START_ALLOWANCE_MS = 2000;
-/** More cats than this a second is no run anyone played. */
-const MAX_CATS_PER_SECOND = 100;
 /** The most runs one player can finish in an hour. */
 const MAX_RUNS_PER_HOUR = 60;
 
@@ -522,9 +520,9 @@ const MAX_RUNS_PER_HOUR = 60;
  * Finishes a run startSurvivalRun started, under the name the player typed for it:
  * on the leaderboard from now on. Only the signed-in player's own run in progress,
  * once; never with a time longer than its length (an endless run, minutes 0, has
- * none), or than the time since it started
- * (give or take the start's round trip), nor more cats than that time allows; and at
- * most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes nothing.
+ * none), or than the time since it started (give or take the start's round trip);
+ * and at most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes
+ * nothing.
  */
 export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult> {
   const owner = await signedInUser();
@@ -539,7 +537,6 @@ export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult
       WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL
         AND (run_minutes = 0 OR ${timeMs}::int <= run_minutes * 60000)
         AND ${timeMs}::int <= EXTRACT(EPOCH FROM now() - started_at) * 1000 + ${START_ALLOWANCE_MS}
-        AND ${sentHome}::int <= ${timeMs}::int / 1000.0 * ${MAX_CATS_PER_SECOND} + 10
         AND (
           SELECT count(*) FROM survival_runs AS recent
           WHERE recent.user_id = ${owner} AND recent.finished_at > now() - interval '1 hour'

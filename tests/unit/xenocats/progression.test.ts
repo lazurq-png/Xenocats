@@ -25,6 +25,7 @@ import {
   tuftsFor,
   unlockedBy,
   upgradeCost,
+  weaponUnlocks,
   writeProgress,
 } from '@/app/ui/xenocats/progression';
 import { createRandom } from '@/app/ui/xenocats/random';
@@ -76,7 +77,7 @@ describe('tufts', () => {
       viewport: { width: 1280, height: 800 },
       config: { ...runConfig(bought, ARENA_CONFIG) },
     });
-    expect(run.levelUpUses()).toEqual({ rerolls: 2, skips: 2, banishes: 0 });
+    expect(run.levelUpUses()).toEqual({ rerolls: 2, skips: 2 });
     // A fresh store buys none.
     expect(runConfig(freshProgress(), ARENA_CONFIG).boost).toMatchObject({ rerolls: 0, skips: 0 });
   });
@@ -234,7 +235,6 @@ describe('the Tailor', () => {
         'kindly-manner': 3,
         'deep-pockets': 3,
         patience: 2,
-        'firm-no': 3,
         'lucky-coat-button': 1,
         'spare-pocket': 2,
       },
@@ -248,7 +248,7 @@ describe('the Tailor', () => {
     expect(boost.luck).toBeCloseTo(1.3);
     // 1 Resolve every 5 s a level.
     expect(boost.recovery).toBeCloseTo(0.4);
-    expect(boost).toMatchObject({ banishes: 3, choices: 1, passiveSlots: 2 });
+    expect(boost).toMatchObject({ choices: 1, passiveSlots: 2 });
     // Nothing bought: nothing changes.
     expect(runConfig(freshProgress(), ARENA_CONFIG).boost).toEqual(ARENA_CONFIG.boost);
   });
@@ -263,7 +263,7 @@ describe('the Tailor', () => {
 
   it('Second Wind is the last of his wares', () => {
     expect(Object.keys(UPGRADES).at(-1)).toBe('second-wind');
-    expect(Object.keys(UPGRADES)).toHaveLength(18);
+    expect(Object.keys(UPGRADES)).toHaveLength(17);
   });
 });
 
@@ -505,6 +505,24 @@ describe('the codex and the secrets', () => {
   });
 });
 
+describe('the weapons to unlock, as the codex lists them', () => {
+  it('names each weapon a milestone keeps back, with the milestone, locked until it is reached', () => {
+    const fresh = weaponUnlocks(freshProgress());
+    expect(fresh.find((w) => w.id === 'cardboard-box')).toEqual({
+      id: 'cardboard-box',
+      name: WEAPONS['cardboard-box'].name,
+      milestone: MILESTONES['survive-15'].text,
+      unlocked: false,
+    });
+    expect(fresh.every((w) => !w.unlocked)).toBe(true);
+    // Exactly the base weapons a level-up does not offer yet.
+    const offered = availableWeapons(freshProgress());
+    expect(fresh.map((w) => w.id).every((id) => !offered.includes(id))).toBe(true);
+    const reached = weaponUnlocks({ ...freshProgress(), milestones: ['survive-15'] });
+    expect(reached.filter((w) => w.unlocked).map((w) => w.id)).toEqual(['cardboard-box']);
+  });
+});
+
 describe('the Tailor’s multipliers in a run', () => {
   it('less Resolve lost to cats: the same cats, the same touches, half the loss', () => {
     const lost = (drain: number) => {
@@ -601,6 +619,17 @@ describe('storage', () => {
     expect(parseProgress(JSON.stringify({ version: 1, character: 'housekeeper' })).character).toBe(
       'keeper'
     );
+  });
+
+  it('the Firm No is no longer sold: what was paid for it comes back as tufts', () => {
+    const progress = parseProgress(
+      JSON.stringify({ version: 1, tufts: 10, upgrades: { 'firm-no': 3, sternness: 1 } })
+    );
+    // 25 + 43 + 72, as the Tailor charged.
+    expect(progress.tufts).toBe(10 + 140);
+    expect(progress.upgrades).toEqual({ sternness: 1 });
+    // Saved again, it is gone: no second refund.
+    expect(parseProgress(serializeProgress(progress)).tufts).toBe(150);
   });
 
   it('an older or newer version starts afresh, cleanly', () => {

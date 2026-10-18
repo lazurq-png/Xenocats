@@ -473,36 +473,6 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
   });
 
-  test('with the Tailor’s Firm No, a level-up choice can be banished: only it is replaced, and the use is spent', async ({
-    page,
-  }) => {
-    test.setTimeout(60_000);
-    await openArena(page, '?seed=7&speed=6');
-    await page.evaluate(() =>
-      localStorage.setItem(
-        'xenocats:survival:v1:progress',
-        JSON.stringify({ version: 1, tufts: 0, upgrades: { 'firm-no': 1 }, milestones: [] })
-      )
-    );
-    await page.reload();
-    await startRun(page);
-    const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
-    await expect(dialog).toContainText('A banished choice never comes back this run (1 left).');
-    const choices = dialog.locator('button[data-choice]');
-    const ids = () => choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
-    const before = await ids();
-    await dialog.getByTestId('survival-banish').nth(1).click();
-    const after = await ids();
-    expect(after).toHaveLength(before.length);
-    expect(after[0]).toBe(before[0]);
-    expect(after[1]).not.toBe(before[1]);
-    // None left: the Banish buttons are gone, and a choice goes on as usual.
-    await expect(dialog.getByTestId('survival-banish')).toHaveCount(0);
-    await choices.first().click();
-    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
-  });
-
   test('a level-up can be rerolled once (new choices, the use spent), a number past the choices picks nothing, and X skips once', async ({
     page,
   }) => {
@@ -568,6 +538,11 @@ test.describe('on a computer', () => {
     await expect(paused.getByTestId('survival-pause-time')).toHaveText(/^\d+:\d\d$/);
     // Resume is still what the menu puts the focus on.
     await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
+    // A click inside the window leaves it open; one outside it resumes the run.
+    await paused.getByTestId('survival-pause-summary').click();
+    await expect(paused).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(paused).toBeHidden();
   });
 
   test('aiming with a crosshair: chosen in the lobby, drawn where the mouse is, put away in the pause menu', async ({
@@ -978,16 +953,33 @@ test.describe('on a computer', () => {
       'aria-disabled',
       'true'
     );
-    // Choosing him closes the window; the button that opened it names him.
+    // A click anywhere on his card chooses him; the window stays open.
+    await page.getByTestId('survival-card-night-porter').getByRole('heading').click();
+    await expect(porter).toHaveAttribute('aria-pressed', 'true');
+    await expect(porter).toHaveText('Going out tonight');
+    await expect(characters).toBeVisible();
+    // "Going out tonight" closes it; the button that opened it names him.
     await porter.click();
     await expect(characters).toBeHidden();
-    await expect(porter).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('survival-open-character')).toContainText('The Night Porter');
+    // So does a click outside the window.
+    await openWindow(page, 'character');
+    await page.mouse.click(2, 2);
+    await expect(characters).toBeHidden();
     const codex = (await openWindow(page, 'codex')).getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
     await expect(codex.getByText('Yarn Ball + Scissors')).toBeVisible();
     // Seventeen evolutions, seven fusions and the secret cat: one found, the rest unknown.
     await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(24);
+    // The weapons a milestone keeps back are named, with what brings each.
+    const unlocks = codex.getByTestId('survival-codex-weapons');
+    await expect(unlocks.locator('li[data-weapon="cardboard-box"]')).toHaveText(
+      /Cardboard Box\s*Locked: Survive 15:00/
+    );
+    await expect(unlocks.locator('li[data-weapon="thunderous-vacuum"]')).toHaveAttribute(
+      'data-unlocked',
+      'false'
+    );
     // Esc closes it.
     await page.keyboard.press('Escape');
     await expect(codex).toBeHidden();
@@ -1043,6 +1035,8 @@ test.describe('on a computer', () => {
     await expect(hairdresser).toBeEnabled();
     await hairdresser.click();
     await expect(hairdresser).toHaveAttribute('aria-pressed', 'true');
+    // "Going out tonight" closes the window.
+    await hairdresser.click();
     await startRun(page);
     await expect(area(page)).toHaveAttribute('data-weapons', 'hair-dryer:1');
   });

@@ -297,8 +297,8 @@ export default function ArenaGame({
   } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
-  // What the Keeper whose choice waits has left to reroll, to skip and to banish.
-  const [uses, setUses] = useState({ rerolls: 0, skips: 0, banishes: 0 });
+  // What the Keeper whose choice waits has left to reroll and to skip.
+  const [uses, setUses] = useState({ rerolls: 0, skips: 0 });
   // The level the waiting choice is for (several can wait after one gem).
   const [choiceLevel, setChoiceLevel] = useState(2);
   // One Keeper, or two at one keyboard; player 2's character; whose choice it is.
@@ -311,7 +311,7 @@ export default function ArenaGame({
   // An evolution's announcement, for a few seconds.
   const [notice, setNotice] = useState<string | null>(null);
   // A golden chest's reel, while it spins and shows what it landed on.
-  const [reel, setReel] = useState<{ rewards: number; key: number } | null>(null);
+  const [reel, setReel] = useState<{ rewards: number; picks: number; key: number } | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
   // How long a run lasts: the lobby's choice, kept in the browser. The run in progress
   // (or just over) keeps the length it started with.
@@ -550,13 +550,6 @@ export default function ArenaGame({
     if (screenRef.current !== 'choosing' || !arenaRef.current?.skip()) return;
     refresh();
   }, [refresh]);
-  const banish = useCallback(
-    (index: number) => {
-      if (screenRef.current !== 'choosing' || !arenaRef.current?.banish(index)) return;
-      refresh();
-    },
-    [refresh]
-  );
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
 
@@ -721,7 +714,7 @@ export default function ArenaGame({
     const motherships: { x: number; y: number; type: number; start: number }[] = [];
     let slowUntil = 0;
     let shakeUntil = 0;
-    // While a golden chest's reel shows, a waiting level-up's choices wait for it.
+    // While a golden chest's reel shows, the run and a waiting level-up's choices wait for it.
     let reelUntil = 0;
     const met = new Set<number>();
     const sounds: number[] = [];
@@ -1207,6 +1200,8 @@ export default function ArenaGame({
             context.save();
             context.translate(0, HERO_SIZE * 0.08);
             context.rotate(h.lookAngle);
+            // Pointing left, it is turned over too, so its top stays up.
+            if (Math.cos(h.lookAngle) < 0) context.scale(1, -1);
             const k = (HERO_SIZE * 1.1) / 64;
             context.drawImage(tool, -10 * k, -32 * k, 64 * k, 64 * k);
             context.restore();
@@ -1289,7 +1284,9 @@ export default function ArenaGame({
           );
         } else if (runMs > AUTO_JUDGE_UNTIL_MS) judging = false;
       }
-      carry += real * speedRef.current * (now < slowUntil ? BOSS_SLOW : 1);
+      // A golden chest's reel holds the run still while it spins and shows.
+      if (now < reelUntil) carry = 0;
+      else carry += real * speedRef.current * (now < slowUntil ? BOSS_SLOW : 1);
       // Alone, WASD and the arrow keys both walk him; in co-op, each player his own.
       const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
       const input = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
@@ -1350,7 +1347,7 @@ export default function ArenaGame({
           if (player) player.play(soundsFor(CAT_TYPES[event.type]).wake);
         } else if (event.kind === 'chest' && event.golden) {
           reelUntil = now + REEL_SPIN_MS + REEL_HOLD_MS;
-          setReel({ rewards: event.rewards, key: now });
+          setReel({ rewards: event.rewards, picks: event.picks, key: now });
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'chest') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
@@ -1797,7 +1794,7 @@ export default function ArenaGame({
           >
             {notice}
           </p>
-          {reel && <GoldenReel key={reel.key} rewards={reel.rewards} />}
+          {reel && <GoldenReel key={reel.key} rewards={reel.rewards} picks={reel.picks} />}
           <HudBar
             store={hudStore}
             showFps={showFps}
@@ -1827,8 +1824,6 @@ export default function ArenaGame({
                   {touch
                     ? 'Tap a choice.'
                     : `Press 1 to ${choices.length}, or use the arrow keys and Enter. R rerolls, X skips.`}
-                  {uses.banishes > 0 &&
-                    ` A banished choice never comes back this run (${uses.banishes} left).`}
                 </p>
                 <ol className="mt-4 grid gap-2">
                   {choices.map((choice, i) => {
@@ -1865,17 +1860,6 @@ export default function ArenaGame({
                             </span>
                           )}
                         </button>
-                        {uses.banishes > 0 && (
-                          <button
-                            type="button"
-                            data-testid="survival-banish"
-                            aria-label={`Banish ${name}`}
-                            onClick={() => banish(i)}
-                            className="shrink-0 rounded-xl border border-line bg-void/70 px-3 text-xs font-semibold text-cream hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
-                          >
-                            Banish
-                          </button>
-                        )}
                       </li>
                     );
                   })}
@@ -1912,9 +1896,13 @@ export default function ArenaGame({
               role="dialog"
               aria-modal="true"
               aria-labelledby="pause-heading"
+              // A click outside the window (on the dimmed run) resumes, as Resume does.
+              onClick={(event) => {
+                if (event.target === event.currentTarget) resume();
+              }}
               className="absolute inset-0 z-20 flex items-center justify-center bg-void/60 p-4"
             >
-              <div className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-center">
+              <div className="max-h-[calc(100dvh-2rem)] w-full max-w-4xl overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-center">
                 <h2 id="pause-heading" className="font-display text-xl text-cream">
                   Paused
                 </h2>

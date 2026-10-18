@@ -769,12 +769,9 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
     expect(
       await actions.recordSurvivalRun({ runId, name: 'Long', timeMs: 300_001, sentHome: 1 })
     ).toBe('invalid');
-    // More cats than a minute of play could send home.
+    // However many cats it sent home: a strong run sends home thousands a second.
     expect(
-      await actions.recordSurvivalRun({ runId, name: 'Many', timeMs: 60_000, sentHome: 100_000 })
-    ).toBe('invalid');
-    expect(
-      await actions.recordSurvivalRun({ runId, name: 'Short', timeMs: 60_000, sentHome: 10 })
+      await actions.recordSurvivalRun({ runId, name: 'Short', timeMs: 60_000, sentHome: 100_000 })
     ).toBe('saved');
     // Once.
     expect(

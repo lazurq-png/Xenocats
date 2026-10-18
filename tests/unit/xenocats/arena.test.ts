@@ -743,12 +743,12 @@ describe('the run length', () => {
     const [limit] = limits;
     const [speed] = speeds;
     runTo(a, 600_000);
-    // A cat arriving at 10:00 has 5 minutes of toughness: +75% Homesickness, +10% speed.
+    // A cat arriving at 10:00 has 5 minutes of toughness: +150% Homesickness, +15% speed.
     const late = Math.max(...a.cats().map((cat) => cat.limit));
-    expect(late).toBeGreaterThan(limit * 1.7);
-    expect(late).toBeLessThanOrEqual(limit * 1.75 + 1e-9);
-    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeGreaterThan(speed * 1.09);
-    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeLessThanOrEqual(speed * 1.1 + 1e-9);
+    expect(late).toBeGreaterThan(limit * 2.45);
+    expect(late).toBeLessThanOrEqual(limit * 2.5 + 1e-9);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeGreaterThan(speed * 1.14);
+    expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeLessThanOrEqual(speed * 1.15 + 1e-9);
   });
 
   it('a five-minute run stays as it was after 5:00, until the Matriarch reaches him', () => {
@@ -792,10 +792,10 @@ describe('the run length', () => {
     runTo(a, 300_000);
     const [speed] = new Set(a.cats().map((cat) => cat.speed));
     runTo(a, 420_000);
-    // A cat arriving at 7:00: a minute at 2%, then a minute at 100%.
+    // A cat arriving at 7:00: a minute at 3%, then a minute at 100%.
     const at7 = Math.max(...a.cats().map((cat) => cat.speed));
     expect(at7).toBeGreaterThan(speed * toughness.maxSpeedFactor);
-    expect(at7).toBeLessThanOrEqual(speed * 2.02 + 1e-9);
+    expect(at7).toBeLessThanOrEqual(speed * (2 + ARENA_CONFIG.toughness.speedPerMin) + 1e-9);
     runTo(a, 480_000);
     expect(Math.max(...a.cats().map((cat) => cat.speed))).toBeGreaterThan(at7);
   });
@@ -1871,9 +1871,9 @@ describe('reroll and skip at a level-up', () => {
 
   it('each Keeper has one reroll and one skip a run, and the Tailor’s upgrades add to them', () => {
     expect(ARENA_CONFIG.levelUp).toEqual({ rerolls: 1, skips: 1, skipXpShare: 0.3 });
-    expect(levelling().levelUpUses()).toEqual({ rerolls: 1, skips: 1, banishes: 0 });
+    expect(levelling().levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
     const more = levelling({ boost: { ...ARENA_CONFIG.boost, rerolls: 2, skips: 3 } });
-    expect(more.levelUpUses()).toEqual({ rerolls: 3, skips: 4, banishes: 0 });
+    expect(more.levelUpUses()).toEqual({ rerolls: 3, skips: 4 });
   });
 
   it('a reroll asks for new choices, spends a use, and the level-up waits for a choice as before', () => {
@@ -1883,7 +1883,7 @@ describe('reroll and skip at a level-up', () => {
     const before = ids(a);
     expect(a.reroll()).toBe(true);
     expect(ids(a)).not.toBe(before);
-    expect(a.levelUpUses()).toEqual({ rerolls: 0, skips: 1, banishes: 0 });
+    expect(a.levelUpUses()).toEqual({ rerolls: 0, skips: 1 });
     // None left: refused, and the choices stay.
     const now = ids(a);
     expect(a.reroll()).toBe(false);
@@ -1916,38 +1916,7 @@ describe('reroll and skip at a level-up', () => {
     const a = levelling();
     expect(a.reroll()).toBe(false);
     expect(a.skip()).toBe(false);
-    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1, banishes: 0 });
-  });
-
-  it('a banish (the Tailor’s Firm No) swaps one choice for another, and it never comes back', () => {
-    // None without the Tailor: refused.
-    const none = levelling();
-    untilChoosing(none);
-    expect(none.banish(0)).toBe(false);
-
-    const a = levelling({ boost: { ...ARENA_CONFIG.boost, banishes: 1 } });
-    untilChoosing(a);
-    const before = a.choices()!.map((c) => `${c.kind}:${c.id}`);
-    const gone = before[1];
-    expect(a.banish(1)).toBe(true);
-    const after = a.choices()!.map((c) => `${c.kind}:${c.id}`);
-    // Only that one changed, and its place is taken by something not already offered.
-    expect(after).toHaveLength(before.length);
-    expect(after[0]).toBe(before[0]);
-    expect(after[2]).toBe(before[2]);
-    expect(before).not.toContain(after[1]);
-    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1, banishes: 0 });
-    expect(a.banish(0)).toBe(false);
-    // Never offered again in the run, however many level-ups follow.
-    a.choose(0);
-    for (let i = 0; i < 12000 && a.state().level < 25; i++) {
-      const choices = a.choices();
-      if (choices) {
-        expect(choices.map((c) => `${c.kind}:${c.id}`)).not.toContain(gone);
-        a.choose(0);
-      } else a.step(still);
-    }
-    expect(a.state().level).toBeGreaterThanOrEqual(25);
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
   });
 
   it('the Tailor’s Lucky Coat Button offers one more choice; his Spare Pocket holds one more passive', () => {
@@ -1979,7 +1948,7 @@ describe('reroll and skip at a level-up', () => {
     ).toBe(held);
     expect(a.state().xp).toBeCloseTo(xp + xpToNext * 0.3, 6);
     expect(a.state().level).toBe(level);
-    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 0, banishes: 0 });
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 0 });
     // None left: refused, and a choice that waits stays.
     if (a.choices()) {
       const waiting = ids(a);
@@ -2012,7 +1981,7 @@ describe('reroll and skip at a level-up', () => {
     expect(a.skip()).toBe(true);
     // Player 1 has used his skip; now player 2 chooses, with his own to spend.
     expect(a.chooser()).toBe(1);
-    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1, banishes: 0 });
+    expect(a.levelUpUses()).toEqual({ rerolls: 1, skips: 1 });
     expect(a.reroll()).toBe(true);
     const [first, second] = a.state().heroes;
     expect([first.rerollsLeft, first.skipsLeft]).toEqual([1, 0]);

@@ -34,11 +34,12 @@ import {
   type WeaponKind,
   type WeaponStats,
   FUSIONS,
-  choiceKey,
   evolutionFor,
   fusionFor,
   modifiers,
   offerChoices,
+  upgradesLeft,
+  PASSIVES,
   weaponStats,
   xpToNext,
 } from './arsenal';
@@ -234,7 +235,7 @@ export type ArenaConfig = {
   /**
    * What the run brings from before (the Tailor's work, progression.ts): multipliers on
    * the passives' modifiers of the same names, Resolve a second and level-up choices
-   * added, more passive slots, revivals, and more rerolls, skips and banishes.
+   * added, more passive slots, revivals, and more rerolls and skips.
    */
   boost: {
     might: number;
@@ -251,7 +252,6 @@ export type ArenaConfig = {
     revivals: number;
     rerolls: number;
     skips: number;
-    banishes: number;
   };
   /**
    * At a level-up a Keeper may ask for new choices (a reroll) or take a little experience
@@ -297,12 +297,13 @@ export const ARENA_CONFIG: ArenaConfig = {
   timeGoalMs: 5 * 60_000,
   toughness: {
     fromMs: 5 * 60_000,
-    homesicknessPerMin: 0.15,
-    speedPerMin: 0.02,
-    maxSpeedFactor: 1.3,
-    // Cats ×1.2 quick at 15:00 reach ×2.2 by 40:00, where the quickest outrun his 210 px/s;
-    // a touch takes twice as much by about 22:00, seventeen times as much by 45:00.
-    endless: { fromMs: 15 * 60_000, drainPerMin: 0.1, speedPerMin: 0.04 },
+    homesicknessPerMin: 0.3,
+    speedPerMin: 0.03,
+    maxSpeedFactor: 1.45,
+    // An endless run is meant to be over by about 20:00, however well he is armed: cats
+    // ×1.1 quick at 8:00 reach ×2 by 16:00 and ×2.5 by 20:00, where the hissing outrun
+    // his 210 px/s; a touch takes six times as much by 16:00, fifteen times by 20:00.
+    endless: { fromMs: 8 * 60_000, drainPerMin: 0.25, speedPerMin: 0.12 },
   },
   hero: { speed: 210, resolve: 100, untouchableMs: 700, reach: 30 },
   cats: {
@@ -394,7 +395,6 @@ export const ARENA_CONFIG: ArenaConfig = {
     revivals: 0,
     rerolls: 0,
     skips: 0,
-    banishes: 0,
   },
   levelUp: { rerolls: 1, skips: 1, skipXpShare: 0.3 },
   secretCat: { afterMs: 60_000, stillMs: 20_000 },
@@ -751,12 +751,9 @@ type Held = {
 
 /** One player's hero: where he is, his Resolve, his own weapons and passives. */
 type Keeper = {
-  /** Rerolls, skips and banishes he has left this run. */
+  /** Rerolls and skips he has left this run. */
   rerollsLeft: number;
   skipsLeft: number;
-  banishesLeft: number;
-  /** What he has banished this run (choiceKey): never offered him again. */
-  banished: Set<string>;
   /**
    * Where he looks, radians (the screen's): at the crosshair, else at the cat his first
    * aiming weapon targets now (looked for five times a second), else null.
@@ -789,6 +786,8 @@ type Keeper = {
   effect: { effect: HeroEffect; until: number; from: Vec; way: Vec } | null;
   weapons: Map<WeaponId, Held>;
   passives: Map<PassiveId, number>;
+  /** The passives his weapons took in as they evolved: they count, at their highest, and hold no slot. */
+  absorbed: Map<PassiveId, number>;
   mods: Modifiers;
   revivals: number;
   /** When his Resolve ran out while the other went on (co-op); null while he stands. */
@@ -823,7 +822,11 @@ export type ArenaEvent =
   | { kind: 'pickup-left'; pickup: PickupKind; x: number; y: number }
   | { kind: 'pickup-taken'; pickup: PickupKind; player: number }
   | { kind: 'boss-summon'; x: number; y: number; kittens: number }
-  | { kind: 'chest'; x: number; y: number; golden: boolean; rewards: number }
+  /**
+   * A chest was opened: the rewards it held, and the picks those gave (an evolution, a
+   * fusion or a level-up each); fewer when he had too little left to upgrade.
+   */
+  | { kind: 'chest'; x: number; y: number; golden: boolean; rewards: number; picks: number }
   /** A boss was sent home: the mothership came for it. */
   | { kind: 'boss-home'; x: number; y: number; type: number }
   | { kind: 'laser'; from: Vec; to: Vec }
@@ -909,14 +912,13 @@ export function createArena(options: {
       effect: null,
       weapons,
       passives,
+      absorbed: new Map(),
       mods: boosted(modifiers(passives)),
       jetAngle: 0,
       jetAt: 0,
       waveAt: 0,
       rerollsLeft: config.levelUp.rerolls + config.boost.rerolls + modifiers(passives).rerolls,
       skipsLeft: config.levelUp.skips + config.boost.skips,
-      banishesLeft: config.boost.banishes,
-      banished: new Set(),
       aimAngle: null,
       lookAt: 0,
       walkAngle: 0,
@@ -2906,8 +2908,11 @@ export function createArena(options: {
           }
         }
       }
-      events.push({ kind: 'chest', x: chest.x, y: chest.y, golden: chest.golden, rewards });
-      for (let k = 0; k < rewards; k++) reward();
+      const opened = { kind: 'chest' as const, x: chest.x, y: chest.y, golden: chest.golden };
+      // Before what the rewards bring (an evolution's announcement comes after the chest).
+      const event = { ...opened, rewards, picks: 0 };
+      events.push(event);
+      for (let k = 0; k < rewards; k++) if (reward()) event.picks++;
     }
     hero = keepers[0];
     if (pending > 0 && !choosing) offer();
@@ -2915,9 +2920,10 @@ export function createArena(options: {
 
   /**
    * One reward from a chest, for `hero`: two evolved weapons that fuse do, in their
-   * place; else a weapon ready to evolve does; otherwise a level-up.
+   * place; else a weapon ready to evolve does; otherwise a level-up, while there is
+   * something left to upgrade. A reward with nothing left for it is nothing: false.
    */
-  function reward() {
+  function reward(): boolean {
     const carried = new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const));
     const fusion = fusionFor(carried);
     const evolution = fusion ? null : evolutionFor(carried, hero.passives);
@@ -2932,9 +2938,30 @@ export function createArena(options: {
     } else if (evolution) {
       hero.weapons.delete(evolution.from);
       hero.weapons.set(evolution.to, { level: MAX_WEAPON_LEVEL, readyAt: time });
+      // The passive becomes part of it, at its highest level, and frees its slot.
+      hero.passives.delete(evolution.with);
+      hero.absorbed.set(evolution.with, PASSIVES[evolution.with].maxLevel);
+      remod(hero);
       everHeld.add(evolution.to);
       events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
-    } else pending++;
+    } else if (keepers.some((k) => standing(k) && upgradesLeftOf(k) > pending)) pending++;
+    else return false;
+    return true;
+  }
+
+  /** How many level-ups a Keeper could still use (arsenal.ts, upgradesLeft). */
+  function upgradesLeftOf(k: Keeper) {
+    const held = new Map([...k.weapons].map(([id, w]) => [id, w.level] as const));
+    return upgradesLeft(held, k.passives, config.availableWeapons, slots);
+  }
+
+  /** A Keeper's passives changed: his modifiers again, the Resolve added, and the Loaded Dice's rerolls. */
+  function remod(k: Keeper) {
+    const before = maxResolveOf(k);
+    const rerollsBefore = k.mods.rerolls;
+    k.mods = boosted(modifiers(new Map([...k.passives, ...k.absorbed])));
+    k.resolve += maxResolveOf(k) - before;
+    k.rerollsLeft += k.mods.rerolls - rerollsBefore;
   }
 
   /** After a Keeper's choice or skip: the next player chooses for the same level, then the next level. */
@@ -2961,8 +2988,7 @@ export function createArena(options: {
       k.mods.choices,
       random,
       config.availableWeapons,
-      slots,
-      k.banished
+      slots
     );
     if (choosing.length > 0) return;
     choosing = null;
@@ -3230,13 +3256,8 @@ export function createArena(options: {
           everHeld.add(choice.id);
         }
       } else {
-        const before = maxResolve();
-        const rerollsBefore = hero.mods.rerolls;
         hero.passives.set(choice.id, choice.level);
-        hero.mods = boosted(modifiers(hero.passives));
-        // More Resolve to hold: he gains what was added; and the Loaded Dice's rerolls.
-        hero.resolve += maxResolve() - before;
-        hero.rerollsLeft += hero.mods.rerolls - rerollsBefore;
+        remod(hero);
       }
       hero = keepers[0];
       choosing = null;
@@ -3274,40 +3295,10 @@ export function createArena(options: {
       return true;
     },
 
-    /**
-     * Banishes choice `index`, if he has a banish left: false if not. It is never offered
-     * him again this run, and a new choice takes its place (if the pool has one); the
-     * others stay as they are.
-     */
-    banish(index: number): boolean {
-      const k = keepers[chooser];
-      if (!choosing || k.banishesLeft <= 0 || index < 0 || index >= choosing.length) return false;
-      k.banishesLeft--;
-      k.banished.add(choiceKey(choosing[index].kind, choosing[index].id));
-      const onScreen = new Set([...k.banished, ...choosing.map((c) => choiceKey(c.kind, c.id))]);
-      const held = new Map([...k.weapons].map(([id, w]) => [id, w.level] as const));
-      const [replacement] = offerChoices(
-        held,
-        k.passives,
-        1,
-        random,
-        config.availableWeapons,
-        slots,
-        onScreen
-      );
-      choosing = replacement
-        ? choosing.map((c, i) => (i === index ? replacement : c))
-        : choosing.filter((_, i) => i !== index);
-      // The last choice banished, with nothing to replace it: as if nothing were left to learn.
-      if (choosing.length === 0) offer();
-      return true;
-    },
-
     /** What the Keeper whose choice waits has left to ask for. */
-    levelUpUses: (): { rerolls: number; skips: number; banishes: number } => ({
+    levelUpUses: (): { rerolls: number; skips: number } => ({
       rerolls: keepers[chooser].rerollsLeft,
       skips: keepers[chooser].skipsLeft,
-      banishes: keepers[chooser].banishesLeft,
     }),
 
     /** Whose choice the waiting level-up is: 0 for player 1, 1 for player 2. */
@@ -3478,7 +3469,6 @@ export function createArena(options: {
           facing: k.facing,
           rerollsLeft: k.rerollsLeft,
           skipsLeft: k.skipsLeft,
-          banishesLeft: k.banishesLeft,
           /** The way he looks, radians (the screen's): his aim, else the way he walks. */
           lookAngle: k.aimAngle ?? k.walkAngle,
           untouchable: time < k.untouchableUntil,

@@ -9,30 +9,18 @@ import type { ComponentType, KeyboardEvent, ReactNode, RefObject, SVGProps } fro
 import { useId, useRef, useSyncExternalStore } from 'react';
 import clsx from 'clsx';
 import {
-  ArrowPathIcon,
-  ArrowTrendingUpIcon,
   ArrowUpCircleIcon,
   ArrowsPointingInIcon,
-  ArrowsPointingOutIcon,
-  ArrowsRightLeftIcon,
-  BoltIcon,
   BookOpenIcon,
   ClockIcon,
   EyeIcon,
   FaceFrownIcon,
-  ForwardIcon,
-  GiftIcon,
   HandRaisedIcon,
   HeartIcon,
-  LifebuoyIcon,
   LockClosedIcon,
-  MoonIcon,
-  NoSymbolIcon,
+  LockOpenIcon,
   ScissorsIcon,
   ShieldCheckIcon,
-  SparklesIcon,
-  Square2StackIcon,
-  StarIcon,
   UserIcon,
   XMarkIcon,
 } from '@heroicons/react/20/solid';
@@ -56,8 +44,23 @@ import {
   serverProgress,
   subscribeProgress,
   upgradeCost,
+  weaponUnlocks,
   writeProgress,
 } from './progression';
+import {
+  BootIcon,
+  CoatButtonIcon,
+  CoatIcon,
+  DieIcon,
+  HatIcon,
+  HourglassIcon,
+  LintRollerIcon,
+  PocketIcon,
+  ReachIcon,
+  ShrugIcon,
+  SparePocketIcon,
+  WindIcon,
+} from './upgrade-icons';
 
 export function useProgress() {
   return useSyncExternalStore(subscribeProgress, readProgress, serverProgress);
@@ -78,22 +81,21 @@ const CHARACTER_TINT: Readonly<Record<CharacterId, string>> = {
 const UPGRADE_ICON: Readonly<Record<UpgradeId, Icon>> = {
   stubbornness: ShieldCheckIcon,
   sternness: FaceFrownIcon,
-  'brisk-step': BoltIcon,
-  'long-arms': ArrowsPointingOutIcon,
-  'second-opinion': ArrowPathIcon,
-  shrug: ForwardIcon,
-  'thick-coat': LifebuoyIcon,
+  'brisk-step': BootIcon,
+  'long-arms': ReachIcon,
+  'second-opinion': DieIcon,
+  shrug: ShrugIcon,
+  'thick-coat': CoatIcon,
   'steady-hands': HandRaisedIcon,
-  'wide-brim': ArrowsRightLeftIcon,
+  'wide-brim': HatIcon,
   'old-habits': ClockIcon,
   'kindly-manner': HeartIcon,
-  'lint-roller': SparklesIcon,
-  'deep-pockets': GiftIcon,
-  patience: MoonIcon,
-  'firm-no': NoSymbolIcon,
-  'lucky-coat-button': StarIcon,
-  'spare-pocket': Square2StackIcon,
-  'second-wind': ArrowTrendingUpIcon,
+  'lint-roller': LintRollerIcon,
+  'deep-pockets': PocketIcon,
+  patience: HourglassIcon,
+  'lucky-coat-button': CoatButtonIcon,
+  'spare-pocket': SparePocketIcon,
+  'second-wind': WindIcon,
 };
 
 const CODEX_GROUPS: readonly { title: string; kinds: readonly CodexKind[]; icon: Icon }[] = [
@@ -119,6 +121,7 @@ export function ProgressionPanel() {
   const shop = useRef<HTMLDialogElement>(null);
   const codex = useRef<HTMLDialogElement>(null);
   const entries = codexEntries(progress);
+  const unlocks = weaponUnlocks(progress);
   const found = entries.filter((e) => e.found).length;
 
   return (
@@ -167,7 +170,7 @@ export function ProgressionPanel() {
         testId="survival-character-window"
         width="max-w-[65rem]"
       >
-        <CharacterList progress={progress} onChosen={() => character.current?.close()} />
+        <CharacterList progress={progress} onClose={() => character.current?.close()} />
       </Window>
 
       <Window
@@ -231,6 +234,46 @@ export function ProgressionPanel() {
               </section>
             );
           })}
+          {/* The weapons a milestone keeps back: named, and what brings each. */}
+          <section aria-labelledby="codex-weapons" className="mt-5">
+            <h3
+              id="codex-weapons"
+              className="font-display text-xs font-semibold uppercase tracking-[0.14em] text-aura"
+            >
+              Weapons to unlock · {unlocks.filter((w) => w.unlocked).length} / {unlocks.length}
+            </h3>
+            <ul
+              data-testid="survival-codex-weapons"
+              className="mt-2.5 grid grid-cols-[repeat(auto-fill,minmax(6.25rem,1fr))] gap-2"
+            >
+              {unlocks.map((weapon) => {
+                const Lock = weapon.unlocked ? LockOpenIcon : LockClosedIcon;
+                return (
+                  <li
+                    key={weapon.id}
+                    data-weapon={weapon.id}
+                    data-unlocked={weapon.unlocked}
+                    className={clsx(
+                      'flex flex-col items-center rounded-xl border bg-panel-raised px-1.5 py-2.5 text-center',
+                      weapon.unlocked ? 'border-[#3b3f63] text-cream' : 'border-line text-white/60'
+                    )}
+                  >
+                    <Lock
+                      aria-hidden="true"
+                      className={clsx(
+                        'size-9 rounded-[10px] bg-panel p-2',
+                        weapon.unlocked ? 'text-plasma' : 'text-[#3b3f63]'
+                      )}
+                    />
+                    <span className="mt-1.5 text-xs/4 font-semibold">{weapon.name}</span>
+                    <span className="mt-0.5 text-[10.5px]/[13px] text-aura">
+                      {weapon.unlocked ? 'Unlocked' : `Locked: ${weapon.milestone}`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         </div>
       </Window>
     </>
@@ -313,6 +356,18 @@ function Window({
       ref={ref}
       aria-labelledby={titleId}
       onKeyDown={onKeyDown}
+      // A click on the backdrop, outside the window, closes it (the dialog element
+      // reports those as its own).
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const box = event.currentTarget.getBoundingClientRect();
+        const inside =
+          event.clientX >= box.left &&
+          event.clientX <= box.right &&
+          event.clientY >= box.top &&
+          event.clientY <= box.bottom;
+        if (!inside) event.currentTarget.close();
+      }}
       data-testid={testId}
       className={clsx(
         'm-auto max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto rounded-2xl border border-line bg-panel p-5 text-left text-white backdrop:bg-void/75 sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:p-7',
@@ -343,7 +398,7 @@ function Window({
   );
 }
 
-function CharacterList({ progress, onChosen }: { progress: Progress; onChosen: () => void }) {
+function CharacterList({ progress, onClose }: { progress: Progress; onClose: () => void }) {
   const base = CHARACTERS.keeper;
   return (
     // Each card's parts share the row's tracks (subgrid), so the weapon, the numbers and
@@ -356,13 +411,19 @@ function CharacterList({ progress, onChosen }: { progress: Progress; onChosen: (
         const unlock = character.unlock;
         const weapon = WEAPONS[character.weapon];
         const pace = Math.round((character.speed / base.speed - 1) * 100);
+        const choose = () => writeProgress(chooseCharacter(readProgress(), id));
         return (
+          // A click anywhere on a card he has chooses it, and the window stays open (the
+          // button inside is the keyboard's way, and says which is chosen).
           <li
             key={id}
             data-testid={`survival-card-${id}`}
+            onClick={had ? choose : undefined}
             className={clsx(
               'row-span-6 grid grid-rows-subgrid gap-y-0 rounded-2xl bg-[#0d1224] p-3.5',
-              chosen ? 'border-2 border-plasma shadow-glow' : 'border border-line'
+              chosen ? 'border-2 border-plasma shadow-glow' : 'border border-line',
+              had && 'cursor-pointer',
+              had && !chosen && 'hover:border-aura'
             )}
           >
             <div
@@ -407,9 +468,11 @@ function CharacterList({ progress, onChosen }: { progress: Progress; onChosen: (
                   type="button"
                   data-testid={`survival-character-${id}`}
                   aria-pressed={chosen}
-                  onClick={() => {
-                    writeProgress(chooseCharacter(readProgress(), id));
-                    onChosen();
+                  onClick={(event) => {
+                    // Not the card's click as well: on the one chosen, it closes the window.
+                    event.stopPropagation();
+                    if (chosen) onClose();
+                    else choose();
                   }}
                   className={clsx(
                     'min-h-11 w-full rounded-xl text-sm font-semibold focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma',
