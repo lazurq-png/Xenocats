@@ -4,11 +4,8 @@ import { ExclamationCircleIcon, LockClosedIcon, UserIcon } from '@heroicons/reac
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { signUp, type SignUpState } from '@/app/lib/actions';
+import { loginCardClass, loginIconClass, loginInputClass } from '@/app/ui/login-styles';
 
-const inputClass =
-  'peer block h-[46px] w-full rounded-lg border border-[#2d3052] bg-[#070d22] pl-12 text-[13.2px] font-medium text-white placeholder:text-aura-login focus:border-aura-login focus:ring-aura-login';
-const iconClass =
-  'pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-aura-login';
 const labelClass = 'mb-2 mt-6 block text-[13.2px] font-semibold text-white';
 
 /** A field's errors, in the region its input names with aria-describedby. */
@@ -30,10 +27,7 @@ export default function SignUpForm() {
   const [state, formAction, isPending] = useActionState(signUp, initialState);
 
   return (
-    <form
-      action={formAction}
-      className="rounded-2xl border border-[#2d3052] bg-[#050e20] px-6 pb-8 pt-10 shadow-halo sm:px-[55px]"
-    >
+    <form action={formAction} className={loginCardClass}>
       <h1 className="font-display text-[30px] font-semibold leading-[0.95] text-white sm:text-[40.8px]">
         Join the <br />
         <span className="text-aura-login">stargazers</span>
@@ -45,7 +39,7 @@ export default function SignUpForm() {
       </label>
       <div className="relative">
         <input
-          className={inputClass}
+          className={loginInputClass}
           id="username"
           type="text"
           name="username"
@@ -58,7 +52,7 @@ export default function SignUpForm() {
           pattern="[A-Za-z0-9_\-]{3,20}"
           aria-describedby="username-error"
         />
-        <UserIcon className={iconClass} />
+        <UserIcon className={loginIconClass} />
       </div>
       <FieldErrors id="username-error" errors={state.errors?.username} />
 
@@ -67,7 +61,7 @@ export default function SignUpForm() {
       </label>
       <div className="relative">
         <input
-          className={inputClass}
+          className={loginInputClass}
           id="password"
           type="password"
           name="password"
@@ -77,7 +71,7 @@ export default function SignUpForm() {
           minLength={8}
           aria-describedby="password-error"
         />
-        <LockClosedIcon className={iconClass} />
+        <LockClosedIcon className={loginIconClass} />
       </div>
       <FieldErrors id="password-error" errors={state.errors?.password} />
 
@@ -86,7 +80,7 @@ export default function SignUpForm() {
       </label>
       <div className="relative">
         <input
-          className={inputClass}
+          className={loginInputClass}
           id="confirmPassword"
           type="password"
           name="confirmPassword"
@@ -95,7 +89,7 @@ export default function SignUpForm() {
           required
           aria-describedby="confirmPassword-error"
         />
-        <LockClosedIcon className={iconClass} />
+        <LockClosedIcon className={loginIconClass} />
       </div>
       <FieldErrors id="confirmPassword-error" errors={state.errors?.confirmPassword} />
 

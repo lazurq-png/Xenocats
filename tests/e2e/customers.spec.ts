@@ -1,5 +1,7 @@
+import postgres from 'postgres';
 import { type Page, expect, test } from './fixtures';
 import { DEMO_USER } from './demo-user';
+import { users } from '@/app/lib/placeholder-data';
 
 // Customer create, edit and delete, logged in as the demo user, against the test
 // schema global-setup.ts rebuilds. Each test makes its own customer and asserts
@@ -119,25 +121,52 @@ test('the list sorts by Total Paid, then the other way round, and the sort survi
   const ascending = (cents: number[]) => cents.every((c, i) => i === 0 || cents[i - 1] <= c);
   const descending = (cents: number[]) => cents.every((c, i) => i === 0 || cents[i - 1] >= c);
 
+  // A sort starts again from page 1.
   await button.click();
-  await expect(page).toHaveURL(/[?&]sort=total_paid&dir=asc$/);
+  await expect(page).toHaveURL(/[?&]sort=total_paid&dir=asc&page=1$/);
   await expect(header).toHaveAttribute('aria-sort', 'ascending');
   const up = await paid();
   expect(up.length).toBeGreaterThan(1);
   expect(ascending(up)).toBe(true);
-  // The seed's totals differ, so the order is the column's.
-  expect(up[0]).toBeLessThan(up[up.length - 1]);
 
   await button.click();
-  await expect(page).toHaveURL(/[?&]sort=total_paid&dir=desc$/);
+  await expect(page).toHaveURL(/[?&]sort=total_paid&dir=desc&page=1$/);
   await expect(header).toHaveAttribute('aria-sort', 'descending');
   await expect.poll(async () => descending(await paid())).toBe(true);
   const down = await paid();
-  expect(down[0]).toBeGreaterThan(down[down.length - 1]);
+  // The first page each way: the least paid, then the most. Customers other tests
+  // make have paid nothing, so a page can be all $0 one way, never both.
+  expect(up[0]).toBeLessThan(down[0]);
 
   await page.reload();
   await expect(header).toHaveAttribute('aria-sort', 'descending');
   const reloaded = await paid();
   expect(descending(reloaded)).toBe(true);
-  expect(reloaded[0]).toBeGreaterThan(reloaded[reloaded.length - 1]);
+  expect(reloaded[0]).toBeGreaterThan(up[0]);
+});
+
+test('the list shows six customers a page, and pages through the rest', async ({ page }) => {
+  // Seven customers of the demo user's, written straight into the schema, found by a
+  // name only they have.
+  const tag = unique('Pager');
+  const sql = postgres(process.env.E2E_POSTGRES_URL!, { ssl: 'require', max: 1 });
+  try {
+    await sql`
+      INSERT INTO customers (name, email, owner_id)
+      SELECT ${tag} || ' ' || n, 'pager' || n || '@example.com', ${users[0].id}
+      FROM generate_series(1, 7) AS n`;
+    const rows = page.locator('table tbody tr');
+
+    await page.goto(`/dashboard/customers?query=${encodeURIComponent(tag)}`);
+    await expect(rows).toHaveCount(6);
+    await expect(rows.first()).toContainText(`${tag} 1`);
+
+    await page.getByRole('link', { name: '2', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]page=2/);
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toContainText(`${tag} 7`);
+  } finally {
+    await sql`DELETE FROM customers WHERE name LIKE ${`${tag} %`}`;
+    await sql.end();
+  }
 });

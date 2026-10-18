@@ -2,18 +2,28 @@ import CatState from '@/app/ui/cat-state';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import { DeleteCustomer, UpdateCustomer } from '@/app/ui/customers/buttons';
 import SortButton from '@/app/ui/customers/sort-button';
-import { FormattedCustomersTable } from '@/app/lib/definitions';
+import { fetchFilteredCustomers } from '@/app/lib/data';
 import type { CustomerSort, SortDirection } from '@/app/lib/schemas';
+import { currentUserId } from '@/app/lib/session';
 
-export default function CustomersTable({
-  customers,
+export default async function CustomersTable({
+  query,
+  currentPage,
   sort = 'name',
   dir = 'asc',
 }: {
-  customers: FormattedCustomersTable[];
+  query: string;
+  currentPage: number;
   sort?: CustomerSort;
   dir?: SortDirection;
 }) {
+  const customers = await fetchFilteredCustomers(
+    await currentUserId(),
+    query,
+    sort,
+    dir,
+    currentPage
+  );
   /** A header's aria-sort: how the list is sorted by it, or not at all. */
   const sorted = (column: CustomerSort) =>
     sort !== column ? 'none' : dir === 'asc' ? 'ascending' : 'descending';

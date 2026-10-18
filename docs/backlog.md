@@ -46,6 +46,20 @@ Check for that user on production, and remove it or change its password.
 
 ## Proposed tasks
 
+### Drop `customers.image_url`
+
+**First, before this reaches Neon:** apply migration 0012 to the Neon database
+(`db:migrate`) before any deployment there runs the code that stops writing
+`image_url` (the commit that added 0012). That code inserts customers without an
+image, which the column's old `NOT NULL` refuses. 0012 is safe for `main` as it is.
+
+Nothing reads the column, and since migration 0012 nothing writes it: avatars are
+drawn from the name. 0012 only made it optional, because `main` (what production
+runs) still selects and inserts it, and dropping it on a database `main` uses would
+break the customer and invoice pages there. Once every deployment that shares a
+database runs code without `image_url` (production and previews on Neon), a
+migration `ALTER TABLE customers DROP COLUMN image_url` finishes it.
+
 ### Gamepad support
 
 Through the browser's Gamepad API: the left stick (or d-pad) moves the Keeper,

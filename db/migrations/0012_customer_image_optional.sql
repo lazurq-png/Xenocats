@@ -1,0 +1,12 @@
+-- Customers no longer have a stored image: avatars are drawn from the name
+-- (app/ui/customer-avatar.tsx), and the app stops writing image_url. The column
+-- becomes optional rather than dropped, so an app that still reads and writes it
+-- (main, until it has this change) keeps working on a database migrated
+-- meanwhile. Dropping the column is a later migration, once every deployment
+-- runs code that no longer names it (docs/backlog.md). Existing rows keep their
+-- values.
+--
+-- Order: apply this to a database BEFORE any deployment of the code that stops
+-- writing image_url reaches it. That code inserts customers without one, which a
+-- database still holding the NOT NULL refuses (every new customer fails).
+ALTER TABLE customers ALTER COLUMN image_url DROP NOT NULL;

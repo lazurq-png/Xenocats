@@ -190,5 +190,7 @@ describe('the sign-up limit', () => {
     expect(key).toBe(clientKey('203.0.113.7', 'secret'));
     expect(key).not.toBe(clientKey('203.0.113.7', 'another secret'));
     expect(key).not.toBe(clientKey('203.0.113.8', 'secret'));
+    // No secret, no key: never a hash anyone could make.
+    expect(() => clientKey('203.0.113.7', '')).toThrow(/AUTH_SECRET/);
   });
 });

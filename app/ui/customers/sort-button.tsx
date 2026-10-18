@@ -30,6 +30,8 @@ export default function SortButton({
     const params = new URLSearchParams(searchParams);
     params.set('sort', column);
     params.set('dir', active && dir === 'asc' ? 'desc' : 'asc');
+    // A new order starts again from its first page.
+    params.set('page', '1');
     replace(`${pathname}?${params.toString()}`);
   };
 

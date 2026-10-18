@@ -1,6 +1,6 @@
 'use client';
 
-import { CustomerField, InvoiceForm } from '@/app/lib/definitions';
+import type { CustomerField, InvoiceForm as Invoice } from '@/app/lib/definitions';
 import {
   CalendarIcon,
   CheckIcon,
@@ -10,19 +10,27 @@ import {
 } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import { Button } from '@/app/ui/button';
-import { updateInvoice, State } from '@/app/lib/actions';
+import { createInvoice, updateInvoice, State } from '@/app/lib/actions';
 import { useActionState } from 'react';
 
-export default function EditInvoiceForm({
-  invoice,
-  customers,
-}: {
-  invoice: InvoiceForm;
-  customers: CustomerField[];
-}) {
+/**
+ * Creates an invoice, due on `dueDate` unless changed, or edits `invoice` when
+ * given one.
+ */
+export default function InvoiceForm(
+  props: { customers: CustomerField[] } & (
+    | { invoice: Invoice }
+    | {
+        invoice?: undefined;
+        /** The due date it gets by default: 30 days after today (on the server). */
+        dueDate: string;
+      }
+  )
+) {
+  const { customers, invoice } = props;
   const initialState: State = { message: null, errors: {} };
-  const updateInvoiceWithId = updateInvoice.bind(null, invoice.id);
-  const [state, formAction] = useActionState(updateInvoiceWithId, initialState);
+  const action = invoice ? updateInvoice.bind(null, invoice.id) : createInvoice;
+  const [state, formAction] = useActionState(action, initialState);
 
   return (
     <form action={formAction}>
@@ -37,7 +45,7 @@ export default function EditInvoiceForm({
               id="customer"
               name="customerId"
               className="peer block w-full cursor-pointer rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white focus:border-aura focus:ring-aura"
-              defaultValue={invoice.customer_id}
+              defaultValue={invoice?.customer_id ?? ''}
               aria-describedby="customer-error"
             >
               <option value="" disabled>
@@ -73,7 +81,7 @@ export default function EditInvoiceForm({
                 name="amount"
                 type="number"
                 step="0.01"
-                defaultValue={invoice.amount}
+                defaultValue={invoice?.amount}
                 placeholder="Enter USD amount"
                 className="peer block w-full rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white placeholder:text-aura/60 focus:border-aura focus:ring-aura"
                 aria-describedby="amount-error"
@@ -101,14 +109,16 @@ export default function EditInvoiceForm({
               id="dueDate"
               name="dueDate"
               type="date"
-              defaultValue={invoice.due_date}
+              defaultValue={invoice ? invoice.due_date : props.dueDate}
               className="peer block w-full rounded-xl border border-line bg-void/70 py-2.5 pl-10 text-sm text-white scheme-dark focus:border-aura focus:ring-aura"
               aria-describedby="due-date-help due-date-error"
             />
             <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-aura peer-focus:text-plasma" />
           </div>
           <p id="due-date-help" className="mt-2 text-xs text-aura">
-            Not before the invoice date ({invoice.date}), and at most a year after it.
+            {invoice
+              ? `Not before the invoice date (${invoice.date}), and at most a year after it.`
+              : '30 days after the invoice date unless you choose otherwise; at most a year.'}
           </p>
           <div id="due-date-error" aria-live="polite" aria-atomic="true">
             {state.errors?.dueDate &&
@@ -133,7 +143,7 @@ export default function EditInvoiceForm({
                   name="status"
                   type="radio"
                   value="pending"
-                  defaultChecked={invoice.status === 'pending'}
+                  defaultChecked={invoice?.status === 'pending'}
                   className="h-4 w-4 cursor-pointer border-line bg-void text-plasma focus:ring-2 focus:ring-plasma focus:ring-offset-panel"
                   aria-describedby="status-error"
                 />
@@ -150,7 +160,7 @@ export default function EditInvoiceForm({
                   name="status"
                   type="radio"
                   value="paid"
-                  defaultChecked={invoice.status === 'paid'}
+                  defaultChecked={invoice?.status === 'paid'}
                   className="h-4 w-4 cursor-pointer border-line bg-void text-plasma focus:ring-2 focus:ring-plasma focus:ring-offset-panel"
                 />
                 <label
@@ -171,7 +181,8 @@ export default function EditInvoiceForm({
               ))}
           </div>
         </fieldset>
-        {/* What is wrong with no one field (the invoice gone meanwhile, a database error). */}
+        {/* What is wrong with no one field (an account full of invoices, the invoice gone
+            meanwhile, a database error). */}
         <div aria-live="polite" aria-atomic="true">
           {state.message && !state.errors && (
             <p className="mt-4 text-sm text-red-400">{state.message}</p>
@@ -185,7 +196,7 @@ export default function EditInvoiceForm({
         >
           Cancel
         </Link>
-        <Button type="submit">Save invoice</Button>
+        <Button type="submit">{invoice ? 'Save invoice' : 'Create invoice'}</Button>
       </div>
     </form>
   );

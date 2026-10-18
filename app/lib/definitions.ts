@@ -60,15 +60,6 @@ export type CustomersTableType = {
   total_paid: number;
 };
 
-export type FormattedCustomersTable = {
-  id: string;
-  name: string;
-  email: string;
-  total_invoices: number;
-  total_pending: string;
-  total_paid: string;
-};
-
 /** A customer as the edit form shows it. */
 export type CustomerEdit = {
   id: string;

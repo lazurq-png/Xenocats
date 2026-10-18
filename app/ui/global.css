@@ -14,6 +14,14 @@
 
   --color-line: #2d2f47;
 
+  /* The login and sign-up card (app/ui/login-styles.ts), and its fields. */
+  --color-panel-login: #050e20;
+  --color-field-login: #070d22;
+  --color-line-login: #2d3052;
+
+  /* Behind a customer's avatar (app/ui/customer-avatar.tsx). */
+  --color-avatar: #1a1c3a;
+
   --color-plasma: #c1e838;
   --color-plasma-dim: #aacf22;
 

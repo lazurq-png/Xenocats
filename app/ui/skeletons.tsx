@@ -157,7 +157,11 @@ export function InvoicesMobileSkeleton() {
   );
 }
 
-export function InvoicesTableSkeleton() {
+/**
+ * A list page's table while its rows load: six mobile cards, or six rows under
+ * `columns` (the last, the actions, named for screen readers only).
+ */
+function TableSkeleton({ columns, actions }: { columns: string[]; actions: string }) {
   return (
     <div className="mt-6 flow-root">
       <div className="inline-block min-w-full align-middle">
@@ -173,23 +177,17 @@ export function InvoicesTableSkeleton() {
           <table className="hidden min-w-full text-aura md:table">
             <thead className="rounded-lg text-left text-sm font-normal">
               <tr>
-                <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
-                  Customer
-                </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  Email
-                </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  Amount
-                </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  Date
-                </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  Status
-                </th>
+                {columns.map((column, i) => (
+                  <th
+                    key={column}
+                    scope="col"
+                    className={i === 0 ? 'px-4 py-5 font-medium sm:pl-6' : 'px-3 py-5 font-medium'}
+                  >
+                    {column}
+                  </th>
+                ))}
                 <th scope="col" className="relative pb-4 pl-3 pr-6 pt-2 sm:pr-6">
-                  <span className="sr-only">Edit</span>
+                  <span className="sr-only">{actions}</span>
                 </th>
               </tr>
             </thead>
@@ -205,5 +203,20 @@ export function InvoicesTableSkeleton() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function InvoicesTableSkeleton() {
+  return (
+    <TableSkeleton columns={['Customer', 'Email', 'Amount', 'Date', 'Status']} actions="Edit" />
+  );
+}
+
+export function CustomersTableSkeleton() {
+  return (
+    <TableSkeleton
+      columns={['Name', 'Email', 'Total Invoices', 'Total Pending', 'Total Paid']}
+      actions="Edit or delete"
+    />
   );
 }

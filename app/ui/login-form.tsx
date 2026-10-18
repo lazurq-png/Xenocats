@@ -11,11 +11,7 @@ import { useActionState, useState } from 'react';
 import { authenticate } from '@/app/lib/actions';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-
-const inputClass =
-  'peer block h-[46px] w-full rounded-lg border border-[#2d3052] bg-[#070d22] pl-12 text-[13.2px] font-medium text-white placeholder:text-aura-login focus:border-aura-login focus:ring-aura-login';
-const iconClass =
-  'pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-aura-login';
+import { loginCardClass, loginIconClass, loginInputClass } from '@/app/ui/login-styles';
 
 export default function LoginForm() {
   const searchParams = useSearchParams();
@@ -26,10 +22,7 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <form
-      action={formAction}
-      className="rounded-2xl border border-[#2d3052] bg-[#050e20] px-6 pb-8 pt-10 shadow-halo sm:px-[55px]"
-    >
+    <form action={formAction} className={loginCardClass}>
       <h1 className="font-display text-[30px] font-semibold leading-[0.95] text-white sm:text-[40.8px]">
         Welcome back, <br />
         <span className="text-aura-login">stargazer</span>
@@ -47,7 +40,7 @@ export default function LoginForm() {
       </label>
       <div className="relative">
         <input
-          className={inputClass}
+          className={loginInputClass}
           id="login"
           type="text"
           name="login"
@@ -56,7 +49,7 @@ export default function LoginForm() {
           placeholder="Your username"
           required
         />
-        <UserIcon className={iconClass} />
+        <UserIcon className={loginIconClass} />
       </div>
 
       <label className="mb-2 mt-6 block text-[13.9px] font-semibold text-white" htmlFor="password">
@@ -64,7 +57,7 @@ export default function LoginForm() {
       </label>
       <div className="relative">
         <input
-          className={`${inputClass} pr-12`}
+          className={`${loginInputClass} pr-12`}
           id="password"
           type={showPassword ? 'text' : 'password'}
           name="password"
@@ -73,7 +66,7 @@ export default function LoginForm() {
           minLength={6}
           autoComplete="current-password"
         />
-        <LockClosedIcon className={iconClass} />
+        <LockClosedIcon className={loginIconClass} />
         <button
           type="button"
           onClick={() => setShowPassword((shown) => !shown)}
