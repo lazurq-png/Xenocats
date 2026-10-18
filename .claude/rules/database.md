@@ -16,7 +16,7 @@ Open this for schema, migration, and persistence work. Database changes are high
   tests use `xenocats_test`, which they drop and rebuild on every run, and the
   database unit tests (`tests/unit/data.test.ts`) `xenocats_vitest`. Writing
   to any of them is ordinary development. The role cannot create tables in `public`.
-- **Migrations** are numbered SQL files in `db/migrations/` (`0002_<what>.sql`
+- **Migrations** are numbered SQL files in `db/migrations/` (`0012_<what>.sql`
   next), applied in name order by `npm run db:migrate`, each in a transaction,
   and recorded in the schema's `schema_migrations` table. A schema change is a
   new file, never an edit to an applied one. `db:migrate` is also how a
@@ -38,8 +38,9 @@ Open this for schema, migration, and persistence work. Database changes are high
   default, do not), or `ALTER ROLE ... SET search_path` instead. The app forces
   TLS (`ssl: 'require'`), so the server must offer it; the development one does.
 - **Access is raw SQL** through the `postgres` library's tagged templates, in
-  `app/lib/data.ts` (reads), `app/lib/actions.ts` (writes) and `auth.ts`. The
-  template interpolation parameterises values. Never build a query with string
+  `app/lib/data.ts` (reads), `app/lib/actions.ts` (writes) and `auth.ts`, all
+  through the one client in `app/lib/db.ts` (never a `postgres()` of their own:
+  each is a pool of connections). The template interpolation parameterises values. Never build a query with string
   concatenation or `sql.unsafe` (`scripts/db.mjs` runs migration files with it;
   they are repository code, not input).
 - **Money is stored in cents** as integers. Convert at the edges only

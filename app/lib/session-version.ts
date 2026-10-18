@@ -1,13 +1,10 @@
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 
 // Whether a session is still its account's: the account still exists, its session
 // version is the one the session signed in with (changing the password raises it,
 // which ends every session of the account; migration 0008), and the session was
 // not signed out (its id is not in revoked_sessions; migration 0009). Asked on every
 // request that reads a session (auth.config.ts), so it is one query, by keys.
-
-let sql: postgres.Sql | null = null;
-const db = () => (sql ??= postgres(process.env.POSTGRES_URL!, { ssl: 'require' }));
 
 /**
  * Whether the session of `userId`, signed in at `version` (0 for one from before
@@ -21,7 +18,7 @@ export async function isCurrentSession(
   sessionId: unknown
 ): Promise<boolean> {
   try {
-    const [user] = await db()<{ session_version: number; revoked: boolean }[]>`
+    const [user] = await sql<{ session_version: number; revoked: boolean }[]>`
       SELECT session_version,
         EXISTS (SELECT 1 FROM revoked_sessions WHERE id = ${String(sessionId ?? '')}) AS revoked
       FROM users WHERE id = ${userId}`;
@@ -42,8 +39,8 @@ export async function isCurrentSession(
  * anyway). Revocations past their expiry are cleared on the way.
  */
 export async function revokeSession(sessionId: string, expiresAt: number) {
-  await db()`
+  await sql`
     INSERT INTO revoked_sessions (id, expires_at) VALUES (${sessionId}, to_timestamp(${expiresAt}))
     ON CONFLICT (id) DO NOTHING`;
-  await db()`DELETE FROM revoked_sessions WHERE expires_at < now()`;
+  await sql`DELETE FROM revoked_sessions WHERE expires_at < now()`;
 }

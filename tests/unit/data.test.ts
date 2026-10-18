@@ -1090,6 +1090,42 @@ describe.skipIf(!url)('migrations on existing rows', () => {
     ).rejects.toThrow(/survival_runs_run_minutes_check/);
   });
 
+  it('0011 holds new invoices to pending or paid, and keeps an existing one as it was', async () => {
+    await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
+    await sql`CREATE SCHEMA xenocats_vitest_migrations`;
+    for (const name of [
+      '0001_init.sql',
+      '0002_invoice_keys_and_indexes.sql',
+      '0003_invoice_due_dates.sql',
+      '0004_login_failures.sql',
+      '0005_customer_owners.sql',
+      '0006_accounts_and_leaderboard.sql',
+      '0007_invoice_amount_bounds.sql',
+      '0008_session_versions.sql',
+      '0009_revoked_sessions.sql',
+      '0010_endless_runs.sql',
+    ]) {
+      await sql.begin((tx) => tx.unsafe(migration(name)));
+    }
+    const user = await addUser('status@example.com');
+    const [{ id: customer }] = await sql`
+      INSERT INTO customers (name, email, image_url, owner_id)
+      VALUES ('Old', 'old@example.com', '/x.png', ${user}) RETURNING id`;
+    const invoice = (status: string) => sql`
+      INSERT INTO invoices (customer_id, amount, status, date) VALUES (${customer}, 100, ${status}, '2024-01-01')`;
+    // A status from before the rule, outside it.
+    await invoice('draft');
+
+    await sql.begin((tx) => tx.unsafe(migration('0011_invoice_status_check.sql')));
+
+    expect(await sql`SELECT status FROM invoices`).toEqual([{ status: 'draft' }]);
+    await expect(invoice('draft')).rejects.toThrow(/invoices_status_check/);
+    await expect(invoice('Paid')).rejects.toThrow(/invoices_status_check/);
+    await invoice('pending');
+    await invoice('paid');
+    expect(await sql`SELECT count(*)::int AS n FROM invoices`).toEqual([{ n: 3 }]);
+  });
+
   it('0005 on an empty database (no customers) needs no user', async () => {
     await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
     await sql`CREATE SCHEMA xenocats_vitest_migrations`;

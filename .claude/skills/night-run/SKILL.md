@@ -766,8 +766,8 @@ Never, unattended:
   credential anywhere. `test -f .env` is the only permitted contact. Pushed, a
   secret is a disclosure, not a mess.
 - Adding, removing or upgrading a dependency, or running `npm install` in any
-  form. `next`, `react` and `react-dom` are `latest` in `package.json`, so even
-  a bare `npm install` can move them. Whether a dependency earns its place is a
+  form. `package.json` holds ranges, so even a bare `npm install` can move a
+  version the lockfile fixed. Whether a dependency earns its place is a
   human's decision.
 - `npm run format` or `prettier --write .` — they reformat files the task did
   not touch.

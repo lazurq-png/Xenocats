@@ -1,4 +1,4 @@
-import postgres from 'postgres';
+import { sql } from './db';
 import {
   CardStat,
   CustomerEdit,
@@ -19,8 +19,6 @@ import {
 } from './schemas';
 import { formatCurrency } from './utils';
 import { Range, lastTwelveMonths, monthStart, percentChange } from './dashboard';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 // Every read is one account's: `owner` is the signed-in user's id (from the
 // session, never from the browser), and a customer, and through it each of its

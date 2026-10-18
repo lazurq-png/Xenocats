@@ -3,8 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import bcryptjs from 'bcryptjs';
-import postgres from 'postgres';
 import { auth, signIn, signOut } from '@/auth';
+import { sql } from '@/app/lib/db';
 import { AuthError, type CredentialsSignin } from 'next-auth';
 import { BCRYPT_COST } from '@/app/lib/password-check';
 import { LOCKED, claimAttempt, clearFailures, loginLimits } from '@/app/lib/login-limit';
@@ -23,8 +23,6 @@ import {
   SurvivalRun,
   dueDateProblem,
 } from '@/app/lib/schemas';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 // Server Actions are public POST endpoints: proxy.ts only gates page navigation,
 // so every action that changes data checks the session itself, and changes only

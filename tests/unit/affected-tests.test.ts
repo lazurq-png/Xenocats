@@ -153,7 +153,7 @@ describe('affected-tests', () => {
     it('runs every spec of a module the change reaches through all its exports', () => {
       // Every action uses the connection, so every area with a form is in.
       const { e2e } = selectEdited('app/lib/actions.ts', (t) =>
-        t.replace("{ ssl: 'require' }", "{ ssl: 'prefer' }")
+        t.replace("import { sql } from '@/app/lib/db';", "import { sql } from './db';")
       );
       for (const spec of ['invoices', 'customers', 'survival', 'change-password', 'signup'])
         expect(e2e.specs).toContain(`tests/e2e/${spec}.spec.ts`);

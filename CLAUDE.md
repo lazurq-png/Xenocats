@@ -253,8 +253,7 @@ In this repository the checks that exist are:
 | Format     | `npx prettier --check <the files you changed>`   |
 | Browser    | `npm run dev`, then open `http://localhost:3000` |
 
-Use **npm**: the lockfile is `package-lock.json`. The `pnpm` block in
-`package.json` is a leftover and nothing reads it. Node 24 is installed
+Use **npm**: the lockfile is `package-lock.json`. Node 24 is installed
 system-wide and on `PATH`; no prefix is needed. Every check needs `node_modules`,
 installed with `npm ci`; the browser tests also need Chromium
 (`npx playwright install chromium`).
