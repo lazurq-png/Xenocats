@@ -41,10 +41,25 @@ const matchesStatus = (status: InvoiceStatusFilter | null) => {
   return sql`TRUE`;
 };
 
+/**
+ * The invoice list's search: `query` anywhere in the customer's name or email, or
+ * in the invoice's amount, date or status.
+ */
+const matchesQuery = (query: string) => {
+  const pattern = containsPattern(query);
+  return sql`(
+    customers.name ILIKE ${pattern} OR
+    customers.email ILIKE ${pattern} OR
+    invoices.amount::text ILIKE ${pattern} OR
+    invoices.date::text ILIKE ${pattern} OR
+    invoices.status ILIKE ${pattern}
+  )`;
+};
+
 export async function fetchLatestInvoices(owner: string) {
   try {
     const data = await sql<LatestInvoiceRaw[]>`
-      SELECT invoices.amount, invoices.date, invoices.status, ${isOverdue()} AS overdue, customers.name, customers.image_url, customers.email, invoices.id
+      SELECT invoices.amount, invoices.date, invoices.status, ${isOverdue()} AS overdue, customers.name, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE customers.owner_id = ${owner}
@@ -187,18 +202,11 @@ export async function fetchFilteredInvoices(
         invoices.status,
         ${isOverdue()} AS overdue,
         customers.name,
-        customers.email,
-        customers.image_url
+        customers.email
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE customers.owner_id = ${owner}
-      AND (
-        customers.name ILIKE ${containsPattern(query)} OR
-        customers.email ILIKE ${containsPattern(query)} OR
-        invoices.amount::text ILIKE ${containsPattern(query)} OR
-        invoices.date::text ILIKE ${containsPattern(query)} OR
-        invoices.status ILIKE ${containsPattern(query)}
-      )
+      AND ${matchesQuery(query)}
       AND ${matchesStatus(status)}
       ORDER BY invoices.date DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
@@ -246,13 +254,7 @@ export async function fetchInvoicesForExport(
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE customers.owner_id = ${owner}
-      AND (
-        customers.name ILIKE ${containsPattern(query)} OR
-        customers.email ILIKE ${containsPattern(query)} OR
-        invoices.amount::text ILIKE ${containsPattern(query)} OR
-        invoices.date::text ILIKE ${containsPattern(query)} OR
-        invoices.status ILIKE ${containsPattern(query)}
-      )
+      AND ${matchesQuery(query)}
       AND ${matchesStatus(status)}
       ORDER BY invoices.date DESC
       LIMIT ${EXPORT_LIMIT + 1}
@@ -273,13 +275,7 @@ export async function fetchInvoicesPages(
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
     WHERE customers.owner_id = ${owner}
-    AND (
-      customers.name ILIKE ${containsPattern(query)} OR
-      customers.email ILIKE ${containsPattern(query)} OR
-      invoices.amount::text ILIKE ${containsPattern(query)} OR
-      invoices.date::text ILIKE ${containsPattern(query)} OR
-      invoices.status ILIKE ${containsPattern(query)}
-    )
+    AND ${matchesQuery(query)}
     AND ${matchesStatus(status)}
   `;
 
@@ -407,7 +403,6 @@ export async function fetchFilteredCustomers(
 		  customers.id,
 		  customers.name,
 		  customers.email,
-		  customers.image_url,
 		  COUNT(invoices.id) AS total_invoices,
 		  SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END) AS total_pending,
 		  SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid
@@ -415,7 +410,7 @@ export async function fetchFilteredCustomers(
 		LEFT JOIN invoices ON customers.id = invoices.customer_id
 		WHERE customers.owner_id = ${owner}
 		  AND (customers.name ILIKE ${containsPattern(query)} OR customers.email ILIKE ${containsPattern(query)})
-		GROUP BY customers.id, customers.name, customers.email, customers.image_url
+		GROUP BY customers.id, customers.name, customers.email
 		ORDER BY ${by} ${direction}, customers.name ASC, customers.id ASC
 	  `;
 

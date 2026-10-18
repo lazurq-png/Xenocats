@@ -65,7 +65,7 @@ test('an invoice is edited, and the change is saved', async ({ page }) => {
   const newCents = uniqueCents();
   await amount.fill((newCents / 100).toFixed(2));
   await page.getByLabel('Paid').check();
-  await page.getByRole('button', { name: 'Edit invoice' }).click();
+  await page.getByRole('button', { name: 'Save invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
   const row = await rowsFor(page, newCents);
   await expect(row).toHaveCount(1);
@@ -108,7 +108,7 @@ test('an invoice is due when the form says: 30 days by default, never before its
 
   // Before the invoice's date: refused, in the field's own error region.
   await due.fill(addDays(today, -1));
-  await page.getByRole('button', { name: 'Edit invoice' }).click();
+  await page.getByRole('button', { name: 'Save invoice' }).click();
   await expect(page.locator('#due-date-error')).toHaveText(
     'The due date cannot be before the invoice date.'
   );
@@ -117,7 +117,7 @@ test('an invoice is due when the form says: 30 days by default, never before its
 
   // A later one is saved.
   await due.fill(addDays(today, 60));
-  await page.getByRole('button', { name: 'Edit invoice' }).click();
+  await page.getByRole('button', { name: 'Save invoice' }).click();
   await expect(page).toHaveURL(/\/dashboard\/invoices$/, { timeout: 15_000 });
   await page.goto(editUrl);
   await page.waitForLoadState('networkidle');

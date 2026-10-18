@@ -1,5 +1,5 @@
 import Form from '@/app/ui/invoices/create-form';
-import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
+import Breadcrumbs from '@/app/ui/breadcrumbs';
 import { fetchCustomers } from '@/app/lib/data';
 import { currentUserId } from '@/app/lib/session';
 import { PAYMENT_DAYS, addDays } from '@/app/lib/schemas';

@@ -6,7 +6,7 @@ import { InvoiceId } from '@/app/lib/schemas';
 import { dueText, formatCurrency, formatDateToLocal } from '@/app/lib/utils';
 import CustomerAvatar from '@/app/ui/customer-avatar';
 import { DeleteInvoice, UpdateInvoice } from '@/app/ui/invoices/buttons';
-import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
+import Breadcrumbs from '@/app/ui/breadcrumbs';
 import InvoiceStatus from '@/app/ui/invoices/status';
 
 export const metadata: Metadata = {

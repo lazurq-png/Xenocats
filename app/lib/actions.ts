@@ -12,16 +12,15 @@ import { claimSignUp, clientAddress, clientKey, signUpLimit } from '@/app/lib/si
 import { headers } from 'next/headers';
 import {
   ChangePasswordForm,
-  CreateInvoice,
   CustomerForm,
   CustomerId,
+  InvoiceFields,
   InvoiceId,
   MAX_CUSTOMERS_PER_ACCOUNT,
   MAX_INVOICES_PER_ACCOUNT,
   RunMinutes,
   SignUpForm,
   SurvivalRun,
-  UpdateInvoice,
   dueDateProblem,
 } from '@/app/lib/schemas';
 
@@ -61,7 +60,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
   }
 
   // Validate form using Zod
-  const validatedFields = CreateInvoice.safeParse({
+  const validatedFields = InvoiceFields.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
@@ -150,7 +149,7 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
     return { message: 'No such invoice.' };
   }
 
-  const validatedFields = UpdateInvoice.safeParse({
+  const validatedFields = InvoiceFields.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),

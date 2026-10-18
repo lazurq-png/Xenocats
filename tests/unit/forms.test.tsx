@@ -110,7 +110,7 @@ describe('the invoice edit form', () => {
     };
     render(<EditInvoiceForm invoice={invoice} customers={customers} />);
     fireEvent.change(screen.getByLabelText('Choose an amount'), { target: { value: '-5' } });
-    submit('Edit invoice');
+    submit('Save invoice');
     await errorFor('Choose an amount', 'Please enter an amount greater than $0');
     expect(sql).not.toHaveBeenCalled();
   });
@@ -127,7 +127,7 @@ describe('the invoice edit form', () => {
     // Deleted meanwhile: the read finds no invoice of the user's.
     sql.mockResolvedValueOnce([]);
     render(<EditInvoiceForm invoice={invoice} customers={customers} />);
-    submit('Edit invoice');
+    submit('Save invoice');
     const message = await screen.findByText('No such invoice.');
     expect(message.closest('[aria-live="polite"]')).not.toBeNull();
     expect(document.getElementById('amount-error')!.textContent).toBe('');
@@ -145,7 +145,7 @@ describe('the invoice edit form', () => {
     // The invoice is the user's, but its customer (deleted in another tab) is not.
     sql.mockResolvedValueOnce([{ date: '2026-10-09', own_customer: false }]);
     render(<EditInvoiceForm invoice={invoice} customers={customers} />);
-    submit('Edit invoice');
+    submit('Save invoice');
     await errorFor('Choose customer', 'That customer does not exist.');
   });
 });

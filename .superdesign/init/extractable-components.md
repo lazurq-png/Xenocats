@@ -56,7 +56,7 @@
 
 ## Breadcrumbs
 
-- Source: `app/ui/invoices/breadcrumbs.tsx`
+- Source: `app/ui/breadcrumbs.tsx`
 - Category: basic
 - Description: Breadcrumb trail with active last item
 - Extractable props: items (label/href list), activeIndex (number)

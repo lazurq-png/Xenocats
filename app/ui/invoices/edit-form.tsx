@@ -135,6 +135,7 @@ export default function EditInvoiceForm({
                   value="pending"
                   defaultChecked={invoice.status === 'pending'}
                   className="h-4 w-4 cursor-pointer border-line bg-void text-plasma focus:ring-2 focus:ring-plasma focus:ring-offset-panel"
+                  aria-describedby="status-error"
                 />
                 <label
                   htmlFor="pending"
@@ -161,6 +162,14 @@ export default function EditInvoiceForm({
               </div>
             </div>
           </div>
+          <div id="status-error" aria-live="polite" aria-atomic="true">
+            {state.errors?.status &&
+              state.errors.status.map((error: string) => (
+                <p className="mt-2 text-sm text-red-400" key={error}>
+                  {error}
+                </p>
+              ))}
+          </div>
         </fieldset>
         {/* What is wrong with no one field (the invoice gone meanwhile, a database error). */}
         <div aria-live="polite" aria-atomic="true">
@@ -176,7 +185,7 @@ export default function EditInvoiceForm({
         >
           Cancel
         </Link>
-        <Button type="submit">Edit invoice</Button>
+        <Button type="submit">Save invoice</Button>
       </div>
     </form>
   );

@@ -4,7 +4,7 @@ import { fetchCustomerById } from '@/app/lib/data';
 import { currentUserId } from '@/app/lib/session';
 import { CustomerId } from '@/app/lib/schemas';
 import CustomerForm from '@/app/ui/customers/customer-form';
-import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
+import Breadcrumbs from '@/app/ui/breadcrumbs';
 
 export const metadata: Metadata = {
   title: 'Edit customer',

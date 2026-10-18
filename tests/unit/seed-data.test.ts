@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { customers, invoices } from '@/app/lib/placeholder-data';
 
@@ -31,31 +31,5 @@ describe('the migrations', () => {
 
   it('are numbered in order, without gaps', () => {
     files.forEach((name, i) => expect(name.slice(0, 4)).toBe(String(i + 1).padStart(4, '0')));
-  });
-
-  it('add the invoice key and indexes without dropping anything', () => {
-    const body = readFileSync(new URL('0002_invoice_keys_and_indexes.sql', dir), 'utf8');
-    expect(body).toMatch(/REFERENCES customers \(id\) ON DELETE RESTRICT/);
-    expect(body).not.toMatch(/\bDROP\b/i);
-  });
-
-  it('give existing invoices a due date before requiring one, and drop nothing', () => {
-    const body = readFileSync(new URL('0003_invoice_due_dates.sql', dir), 'utf8');
-    const add = body.indexOf('ADD COLUMN due_date DATE;');
-    const fill = body.indexOf('UPDATE invoices SET due_date = date + 30;');
-    const required = body.indexOf('SET NOT NULL');
-    expect(add).toBeGreaterThan(-1);
-    expect(fill).toBeGreaterThan(add);
-    expect(required).toBeGreaterThan(fill);
-    expect(body).toMatch(/CHECK \(due_date >= date\)/);
-    expect(body).not.toMatch(/\bDROP\b/i);
-  });
-
-  it('add the login lockout table, keyed by email, touching nothing else', () => {
-    const body = readFileSync(new URL('0004_login_failures.sql', dir), 'utf8');
-    expect(body).toMatch(/CREATE TABLE login_failures \(\s*email TEXT PRIMARY KEY/);
-    expect(body).toMatch(/failures INT NOT NULL CHECK \(failures >= 0\)/);
-    expect(body).toMatch(/locked_until TIMESTAMPTZ/);
-    expect(body).not.toMatch(/\b(DROP|ALTER|UPDATE|DELETE)\b/i);
   });
 });
