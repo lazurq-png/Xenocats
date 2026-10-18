@@ -112,6 +112,19 @@ Create a plan before substantial implementation when the task involves:
 * uncertain ownership
 * non-trivial migrations
 
+A change may skip the written plan only when all of these hold:
+
+* it touches no authentication, session or secret handling (`auth.ts`,
+  `auth.config.ts`, `proxy.ts`, `app/lib/session*.ts`, `credentials.ts`,
+  `password-check.ts`, the login and sign-up limits)
+* it changes no schema, migration or seed data
+* it changes no CI, Vercel or build configuration
+* the files it changes are known before you start, and stay that set
+* a test exercises the behaviour deterministically, existing or added by the change
+
+If any one does not hold, plan as above, however small the diff will be.
+Skipping the plan never skips exploration, verification or review.
+
 A useful plan contains:
 
 * current behavior
@@ -505,7 +518,16 @@ What changed.
 
 ### Verification
 
-What was run and what passed or failed.
+What was run and what passed or failed, with the counts the test runners
+printed. Keep these apart:
+
+* **Checked by command**: the commands that ran, and their result as observed.
+* **Checked by reading only**: behaviour reasoned about but not exercised by
+  any command.
+* **Assumed**: anything relied on without checking it (the environment, a
+  running service, another session's work).
+
+Leave out a line that would be empty.
 
 ### Notes
 

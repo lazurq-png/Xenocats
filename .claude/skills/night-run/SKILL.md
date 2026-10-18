@@ -326,6 +326,8 @@ The e2e suite starts its own `next dev` on port 3100 with a throwaway
   baseline in full, and must exit 0. The gate runs the part of them a task can
   affect (§2.1). Browser tests may log in and submit
   writing forms: they run against `xenocats_test`, rebuilt before every run.
+  Record each suite's passed, skipped and failed counts in the run-start entry:
+  later full-suite points are compared against them (§2 step 1).
 - **Database tests** (`tests/unit/data.test.ts`) are opt-in: `npm test` skips
   them, so the baseline runs them separately with `DATABASE_TESTS=1`, against
   their own `xenocats_vitest` schema, rebuilt when the file runs. They must
@@ -393,8 +395,12 @@ these additions.
    `npm run test:affected -- --base Nightrun --run` runs the unit and
    e2e selection in one step, stopping at the first failure, but then the build
    comes after the browser tests; either order passes the gate. Record the
-   selection it printed with the results (step 4): which specs ran is part of
-   the evidence.
+   selection it printed with the results (step 4), and each test command's passed,
+   skipped and failed counts: which specs ran, and how many,
+   is part of the evidence. At a full-suite point (§2.1), fewer tests passed
+   or more skipped than at the baseline or the last full-suite point fails the
+   gate, unless this task removed or skipped those tests on purpose and its
+   entry names them.
 
    Before each heavy job in it (the unit command when it is the full suite,
    the database tests, the build, each e2e command, and `--run`), §2.3's
@@ -929,6 +935,13 @@ memory. It contains:
 - **What nothing has checked**: at minimum, which acceptance criteria only a
   reading covers (§5), that nobody looked at the pages, and that no change was
   exercised against a production database (there is none yet).
+- **Suggested rule changes**: only from this run's evidence: a mistake made
+  more than once, a step these documents got wrong or left out, a check that
+  passed a failure. For each, the file and section, the proposed wording, and
+  the entries that show it (task names, `decisions.md` lines), plus whether a
+  tool or CI check would catch it better (`AGENTS.md` §22). These are
+  proposals: the run never edits `AGENTS.md`, `CLAUDE.md`, `.claude/` or this
+  skill to make them. Write "None" when the run gave no reason.
 
 Report only what was observed. "Could not verify X" is useful. A claimed
 passing check that never ran is a lie the morning will act on. Cut prose,

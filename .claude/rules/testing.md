@@ -148,6 +148,22 @@ Do not modify assertions simply to make the suite green.
 
 ---
 
+## Tests That Cannot Pass Silently
+
+A test of something that must exist fails when it is missing. Never guard an
+assertion so that a missing file, route, table, fixture or element turns into
+a pass: no `if (!exists) return`, no conditional `test.skip`, no assertion
+wrapped in a branch that may not run. Tests skip only on the conditions above
+(no `POSTGRES_URL`, `E2E_NO_DATABASE=1`, `DATABASE_TESTS` unset).
+
+A run that exits 0 is not a pass if it ran less than it should. Read the counts
+Vitest and Playwright print (passed, skipped, failed). When you have an earlier
+run of the same command, compare them: fewer tests passed, or more skipped,
+without a test having been removed or skipped on purpose, is a failure to
+explain before the run is reported.
+
+---
+
 ## Definition of Done
 
 A task is not complete merely because:
