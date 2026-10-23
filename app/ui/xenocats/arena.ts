@@ -113,6 +113,11 @@ export type ArenaConfig = {
     guardFree: number;
     /** A cat is touched by what comes within this of its centre (plus its size), px. */
     radius: number;
+    /**
+     * Two cats may come this close, as a share of their sizes added, before they are eased
+     * apart (separate); 0: never (a test's way to have cats stay exactly where they are).
+     */
+    spacing: number;
   };
   /**
    * How many cats the arena aims to hold, by the time into the run: points of
@@ -260,6 +265,12 @@ export type ArenaConfig = {
   };
   /** He picks a chest up within this, px. */
   chestReach: number;
+  /**
+   * A plain chest (an elite's, a visitor's, a swarm's last kitten's) is left at most
+   * this often, ms: a late run sends elites home by the dozen, and a chest each would
+   * hand him every evolution in minutes. A boss's golden chest always comes.
+   */
+  chestGapMs: number;
   /** The base weapons a level-up may offer (the progression keeps some back). */
   availableWeapons: readonly WeaponId[];
   /** How many weapons and passives each Keeper can hold: more in a longer run. */
@@ -349,6 +360,7 @@ export const ARENA_CONFIG: ArenaConfig = {
     hardCap: 6000,
     guardFree: 40,
     radius: 16,
+    spacing: 0.6,
   },
   // A few cats in the first half minute, dozens by one minute, hundreds by two and
   // a half, and from four minutes as many as the frame rate allows.
@@ -412,6 +424,7 @@ export const ARENA_CONFIG: ArenaConfig = {
   schedule: SCHEDULE,
   laserCat: { range: 280, everyMs: 2500, shotSpeed: 420, shotRadius: 8 },
   chestReach: 36,
+  chestGapMs: 40_000,
   availableWeapons: BASE_WEAPONS,
   slots: DEFAULT_SLOTS,
   boost: {
@@ -705,6 +718,12 @@ const FUSED_FROM = new Map<WeaponId, WeaponId>(
   FUSIONS.flatMap((f) => f.from.map((id) => [id, f.to] as const))
 );
 
+/** The Purring Cats comfort every this many steps (soothe). */
+export const SOOTHE_TURNS = 4;
+/** A quarter of the cats are eased apart each step, each off at most this many it overlaps. */
+export const SEPARATE_TURNS = 4;
+export const SEPARATE_NEIGHBOURS = 4;
+
 /** A Static Sock sparks this often, ms. */
 export const SOCK_SPARK_MS = 350;
 /** Most socks clinging at once; the oldest falls off. */
@@ -941,6 +960,14 @@ export function createArena(options: {
   const config: ArenaConfig = { ...ARENA_CONFIG, ...options.config };
   let viewport = options.viewport;
   const grid = createArenaGrid(config.cellSize);
+  // The cats bigger than the cats' size (Fat Cats, Mega Cats, boxes) in a grid of their
+  // own, searched as far again as the biggest of them reaches: so every search looks a
+  // cat's size further in the one grid, and only the big cats near it in the other. A
+  // late run is mostly Fat Cats; scanning them all for every search was most of a step.
+  const bigGrid = createArenaGrid(config.cellSize * 2);
+  const bigNear: number[] = [];
+  let bigCount = 0;
+  let bigReach = 0;
   const near: number[] = [];
 
   let time = 0;
@@ -1093,6 +1120,8 @@ export function createArena(options: {
     ...Array.from({ length: config.startingChests }, () => ({ x: 0, y: 0, golden: false })),
     ...Array.from({ length: config.startingGoldenChests }, () => ({ x: 0, y: 0, golden: true })),
   ];
+  // When the last plain chest was left (config.chestGapMs).
+  let lastPlainChest = -Infinity;
   // The rings of light a boss sent home leaves, spreading.
   const rings: Ring[] = [];
   // What the cats fire: the Laser Cats', the elites' and the bosses' shots.
@@ -1460,6 +1489,11 @@ export function createArena(options: {
         } else swarms.set(cat.swarm, left);
       }
       const boss = cat.variety === 'mega';
+      if (chest && !boss) {
+        // A plain one only if the last was long enough ago.
+        if (time - lastPlainChest < config.chestGapMs) chest = false;
+        else lastPlainChest = time;
+      }
       if (chest) chests.push({ x: cat.x, y: cat.y, golden: boss });
       if (boss) {
         events.push({ kind: 'boss-home', x: cat.x, y: cat.y, type: cat.type });
@@ -1880,12 +1914,73 @@ export function createArena(options: {
     cat.y += (dy / d) * stepLength;
   }
 
+  /** Steps taken: which quarter of the cats is eased apart this step (separate). */
+  let stepsTaken = 0;
+
+  /**
+   * Cats pressed on top of one another are eased apart: each step a quarter of them
+   * (by turns) moves off the few it overlaps most, at most half its size. Nothing stops
+   * a crowd closing in, but a slow, tough crowd following him no longer folds into one
+   * pile a thousand deep (every search near which scans the thousand). A cat held,
+   * swatted, dashing or sitting stays where it is.
+   */
+  function separate() {
+    if (config.cats.spacing <= 0) return;
+    for (let i = stepsTaken % SEPARATE_TURNS; i < cats.length; i += SEPARATE_TURNS) {
+      const cat = cats[i];
+      if (
+        time < cat.stunUntil ||
+        time < cat.flungUntil ||
+        time < cat.dashUntil ||
+        (cat.variety !== null && VARIETIES[cat.variety].gait === 'sit')
+      ) {
+        continue;
+      }
+      // Only the cats in its own cell (and the big ones in theirs): enough to ease a pile
+      // apart, at a quarter of the search.
+      grid.query(cat.x, cat.y, 0, near);
+      if (bigCount > 0) {
+        bigGrid.query(cat.x, cat.y, 0, bigNear);
+        for (const j of bigNear) near.push(j);
+      }
+      let px = 0;
+      let py = 0;
+      let pressed = 0;
+      for (const j of near) {
+        if (j === i) continue;
+        const other = cats[j];
+        const dx = cat.x - other.x;
+        const dy = cat.y - other.y;
+        // They may overlap a little: a crowd is close.
+        const room = (cat.radius + other.radius) * config.cats.spacing;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= room * room) continue;
+        const d = Math.sqrt(d2);
+        // Right on top of each other: apart by their ids, the same way every run.
+        const way = d > 0.01 ? null : ((cat.id - other.id) * 2.399963) % (2 * Math.PI);
+        const ux = way === null ? dx / d : Math.cos(way);
+        const uy = way === null ? dy / d : Math.sin(way);
+        px += ux * (room - d);
+        py += uy * (room - d);
+        if (++pressed >= SEPARATE_NEIGHBOURS) break;
+      }
+      if (pressed === 0) continue;
+      const push = Math.hypot(px, py);
+      const most = cat.radius * 0.5;
+      const k = push > most ? most / push : 1;
+      cat.x += px * k * 0.5;
+      cat.y += py * k * 0.5;
+    }
+  }
+
   /** Indices of this step's Purring Cats (varieties that soothe). */
   const soothers: number[] = [];
 
   /**
    * Every Purring Cat comforts the cats around it: each within its reach (itself
-   * and other Purring Cats aside) loses a little Homesickness, never below none.
+   * and other Purring Cats aside) loses a little Homesickness, never below none. A
+   * slow, steady comfort, so it is given every SOOTHE_TURNS steps, that many steps'
+   * worth at once: a late run holds hundreds of Purring Cats.
    */
   function soothe(dt: number) {
     soothers.length = 0;
@@ -1960,13 +2055,12 @@ export function createArena(options: {
     return fused !== undefined && hero.weapons.has(fused) ? fused : id;
   }
 
-  /** Indices of this step's cats bigger than the cats' size (not in the grid). */
-  const bigCats: number[] = [];
-
-  /** The cats that may be within `range` of a point: the grid's, and the big ones. */
+  /** The cats that may be within `range` of a point: the grid's, and the big ones near it. */
   function gather(x: number, y: number, range: number) {
     grid.query(x, y, range + config.cats.radius, near);
-    for (const i of bigCats) near.push(i);
+    if (bigCount === 0) return;
+    bigGrid.query(x, y, range + bigReach, bigNear);
+    for (const i of bigNear) near.push(i);
   }
 
   const inRange: number[] = [];
@@ -2745,6 +2839,63 @@ export function createArena(options: {
           cat.stunUntil = Math.max(cat.stunUntil, time + s.durationMs);
         }
       }
+    } else if (id === 'peacock-prism') {
+      // It shines out every way at once: rays all round him, through every cat on them.
+      if (nearest(hero, s.area, 1).length === 0) return;
+      for (let k = 0; k < s.count; k++) {
+        const turn = (k * 2 * Math.PI) / s.count + time / 1000;
+        beam(hero, Math.cos(turn), Math.sin(turn), s.area, 18, s.damage);
+      }
+    } else if (id === 'bubble-bath') {
+      // A ring of bubbles outward, and the bath overflows round his feet.
+      if (nearest(hero, 650, 1).length === 0) return;
+      for (let k = 0; k < s.count; k++) {
+        const turn = (k * 2 * Math.PI) / s.count;
+        launch({
+          weapon: 'jacuzzi',
+          bit: true,
+          x: hero.x,
+          y: hero.y,
+          vx: Math.cos(turn) * s.speed,
+          vy: Math.sin(turn) * s.speed,
+          radius: s.area,
+          damage: s.damage,
+          pierce: s.pierce,
+          until: time + s.durationMs,
+        });
+      }
+      addPatch({
+        kind: 'puddle',
+        weapon: 'jacuzzi',
+        x: hero.x,
+        y: hero.y,
+        radius: PUDDLE_RADIUS * 1.5,
+        reach: 0,
+        until: time + PUDDLE_MS,
+        damage: s.damage / 3,
+        capacity: 0,
+        finale: 0,
+        moat: false,
+      });
+    } else if (id === 'fort-hoover') {
+      // The nearest cats boxed where they stand, a castle's box with its moat.
+      const targets = nearest(hero, s.speed, s.count);
+      if (targets.length === 0) return;
+      for (const i of targets) {
+        addPatch({
+          kind: 'box',
+          weapon: 'cardboard-castle',
+          x: cats[i].x,
+          y: cats[i].y,
+          radius: s.area,
+          reach: 0,
+          until: time + s.durationMs,
+          damage: s.damage,
+          capacity: s.pierce,
+          finale: 0,
+          moat: true,
+        });
+      }
     } else if (id === 'milk-symphony') {
       // Every toy in earshot spills milk, outward.
       const toys = patches.filter((p) => p.kind === 'toy');
@@ -3104,11 +3255,28 @@ export function createArena(options: {
   }
 
   /**
-   * One reward from a chest, for `hero`: two evolved weapons that fuse do, in their
-   * place; else a weapon ready to evolve does; otherwise a level-up, while there is
-   * something left to upgrade. A reward with nothing left for it is nothing: false.
+   * One reward from a chest, opened by `hero`: two evolved weapons that fuse do, in
+   * their place; else a weapon ready to evolve does; else the same for the other
+   * Keeper standing (co-op: a chest is shared, as experience is); otherwise a level-up,
+   * while there is something left to upgrade. A reward with nothing left for it is
+   * nothing: false.
    */
   function reward(): boolean {
+    const opener = hero;
+    const others = keepers.filter((k) => k !== opener && standing(k));
+    for (const k of [opener, ...others]) {
+      hero = k;
+      const made = fuseOrEvolve();
+      hero = opener;
+      if (made) return true;
+    }
+    if (keepers.some((k) => standing(k) && upgradesLeftOf(k) > pending)) pending++;
+    else return false;
+    return true;
+  }
+
+  /** Fuses `hero`'s two evolved weapons, or evolves one, if he has either ready: whether he did. */
+  function fuseOrEvolve(): boolean {
     const carried = new Map([...hero.weapons].map(([id, w]) => [id, w.level] as const));
     const fusion = fusionFor(carried);
     const evolution = fusion ? null : evolutionFor(carried, hero.passives);
@@ -3129,8 +3297,7 @@ export function createArena(options: {
       remod(hero);
       everHeld.add(evolution.to);
       events.push({ kind: 'evolution', from: evolution.from, to: evolution.to });
-    } else if (keepers.some((k) => standing(k) && upgradesLeftOf(k) > pending)) pending++;
-    else return false;
+    } else return false;
     return true;
   }
 
@@ -3250,9 +3417,9 @@ export function createArena(options: {
       toys.length = 0;
       for (const p of patches) if (p.kind === 'toy') toys.push(p);
       grid.clear();
-      // The few big cats (bigger than the cats' size) are kept apart, so every
-      // search looks a cat's size further, not the biggest one's.
-      bigCats.length = 0;
+      bigGrid.clear();
+      bigCount = 0;
+      bigReach = 0;
       // How far is too far behind: once a step, not once a cat.
       const cam = camera();
       const far =
@@ -3264,11 +3431,16 @@ export function createArena(options: {
         moveCat(cat, dt);
         if (time < cat.flungUntil) flying.push(i);
         bringBack(cat, cam, far);
-        if (cat.radius > config.cats.radius) bigCats.push(i);
-        else grid.insert(i, cat.x, cat.y);
+        if (cat.radius > config.cats.radius) {
+          bigGrid.insert(i, cat.x, cat.y);
+          bigCount++;
+          bigReach = Math.max(bigReach, cat.radius);
+        } else grid.insert(i, cat.x, cat.y);
       }
+      separate();
+      stepsTaken++;
       moveShots(dt);
-      soothe(dt);
+      if (stepsTaken % SOOTHE_TURNS === 0) soothe(dt * SOOTHE_TURNS);
       deal(null);
       bowl();
       deal(null);

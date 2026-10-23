@@ -295,7 +295,8 @@ describe('the horde', () => {
     expect(at(60_000)).toBeGreaterThanOrEqual(24);
     expect(at(150_000)).toBeGreaterThanOrEqual(200);
     expect(at(240_000)).toBeGreaterThanOrEqual(1000);
-  });
+    // (Four minutes of a growing crowd: a few seconds, more beside the other files.)
+  }, 20_000);
 
   it('while the frame-rate guard says no, only the first few cats come; more when it says yes', () => {
     const free = ARENA_CONFIG.cats.guardFree;
@@ -360,7 +361,8 @@ describe('the laser, with a cat right on the Keeper', () => {
     const a = arena({
       ...unbreakable,
       escalation: [[0, 30]],
-      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9] },
+      // (Not eased apart: the cat on him stays on him.)
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0, homesickness: [1e9, 1e9], spacing: 0 },
       firstShotMs: 20_000,
     });
     let beam: { from: { x: number; y: number }; to: { x: number; y: number } } | null = null;
@@ -1817,6 +1819,68 @@ describe('the bosses attack', () => {
   });
 });
 
+describe('chests', () => {
+  /** Elites only, a Mega Cat at once, nothing picked up and nothing sent home but by hand. */
+  const elites = (config: Partial<ArenaConfig> = {}) =>
+    arena({
+      ...unbreakable,
+      stepMs: 50,
+      escalation: [[0, 8]],
+      startingWeapons: [],
+      chestReach: -1,
+      gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 1 },
+      schedule: { ...xenocatsOnly.schedule!, bosses: [] },
+      secretCat: { afterMs: Infinity, stillMs: Infinity },
+      ...config,
+    });
+  /** Sends every elite home now (by hand: the cats are the arena's own); how many went. */
+  const sendElitesHome = (a: ReturnType<typeof elites>) => {
+    const going = a.cats().filter((c) => c.elite);
+    for (const cat of going) cat.homesickness = cat.limit;
+    a.step(still);
+    return going.length;
+  };
+  const plain = (a: ReturnType<typeof elites>) => a.chests().filter((c) => !c.golden).length;
+
+  it('a plain chest is left at most once in the gap, however many elites go home', () => {
+    const { chestGapMs } = ARENA_CONFIG;
+    expect(chestGapMs).toBe(40_000);
+    const a = elites();
+    stepTo(a, 5_000);
+    expect(sendElitesHome(a)).toBeGreaterThan(2);
+    // Several elites at once: one chest.
+    expect(plain(a)).toBe(1);
+    // More, inside the gap: none.
+    stepTo(a, 20_000);
+    expect(sendElitesHome(a)).toBeGreaterThan(0);
+    expect(plain(a)).toBe(1);
+    // After it: one more.
+    stepTo(a, 5_000 + chestGapMs + 1_000);
+    expect(sendElitesHome(a)).toBeGreaterThan(0);
+    expect(plain(a)).toBe(2);
+  });
+
+  it('a gap of 0 leaves a chest for each, as before', () => {
+    const a = elites({ chestGapMs: 0 });
+    stepTo(a, 5_000);
+    const went = sendElitesHome(a);
+    expect(plain(a)).toBe(went);
+  });
+
+  it("a boss's golden chest always comes, inside the gap too", () => {
+    const a = elites({ schedule: { ...xenocatsOnly.schedule!, bosses: [3_000] } });
+    stepTo(a, 5_000);
+    sendElitesHome(a);
+    expect(plain(a)).toBe(1);
+    const boss = a.cats().find((c) => c.variety === 'mega')!;
+    boss.homesickness = boss.limit;
+    a.step(still);
+    expect(a.chests().filter((c) => c.golden)).toHaveLength(1);
+    expect(plain(a)).toBe(1);
+  });
+});
+
 describe('pickups', () => {
   const quiet = { secretCat: { afterMs: Infinity, stillMs: Infinity } };
 
@@ -2081,12 +2145,14 @@ describe('reroll and skip at a level-up', () => {
 
   it('with nothing left to learn, a level-up asks nothing and the run goes on', () => {
     // One weapon and no passives: only the laser's levels to choose.
+    // (No time goal: standing still, he gathers only the gems that fall near him.)
     const a = levelling({
       availableWeapons: ['laser-pointer'],
       slots: { weapons: 1, passives: 0 },
+      timeGoalMs: Infinity,
     });
     let asked = 0;
-    for (let i = 0; i < 8000 && a.state().level < MAX_WEAPON_LEVEL + 3; i++) {
+    for (let i = 0; i < 16000 && a.state().level < MAX_WEAPON_LEVEL + 3; i++) {
       if (a.choices()) {
         asked++;
         a.choose(0);

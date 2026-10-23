@@ -194,6 +194,35 @@ describe('shared experience, own choices', () => {
     expect(q.x - p.x).toBeGreaterThan(1500);
   });
 
+  it('a chest player 1 opens, with nothing of his to evolve, evolves player 2’s weapon', () => {
+    // Player 2 is ready (Laser Pointer 8 + Battery); player 1 holds nothing that evolves.
+    const a = coop({
+      startingLevel: 8,
+      startingWeapons: ['hairball'],
+      secondPlayer: {
+        startingWeapons: ['laser-pointer'],
+        speed: 210,
+        resolve: 1e12,
+        startingPassives: ['battery'],
+      },
+      // One chest where they start, between the two; only player 1 walks onto it.
+      startingChests: 1,
+      chestReach: 36,
+    });
+    // Both walk right: player 1 onto the chest, player 2 away from it.
+    run(a, 400, right, right);
+    const events = a.drainEvents();
+    expect(a.chests()).toHaveLength(0);
+    const p2 = a.state().heroes[1];
+    expect(Math.hypot(p2.x, p2.y)).toBeGreaterThan(36);
+    expect(events.filter((e) => e.kind === 'evolution')).toEqual([
+      { kind: 'evolution', from: 'laser-pointer', to: 'infinite-laser' },
+    ]);
+    const [h1, h2] = a.state().heroes;
+    expect(h2.weapons.map((w) => w.id)).toEqual(['infinite-laser']);
+    expect(h1.weapons.map((w) => w.id)).toEqual(['hairball']);
+  });
+
   it('a chest evolves the weapon of the Keeper who opens it', () => {
     // Player 2 is ready to evolve (Laser Pointer 8 + Battery); player 1 is not.
     const a = coop({
@@ -289,6 +318,8 @@ describe('downed and revived', () => {
       startingWeapons: [],
       secondPlayer: { startingWeapons: ['laser-pointer'], speed: 210, resolve: 5 },
       gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+      // Not eased apart: every move of a cat is its own walk.
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0.04, spacing: 0 },
     });
     // Player 1 walks off a way, so the two are well apart.
     run(a, 3000, left, still);

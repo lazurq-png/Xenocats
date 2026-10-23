@@ -1056,8 +1056,8 @@ test.describe('on a computer', () => {
     const codex = (await openWindow(page, 'codex')).getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
     await expect(codex.getByText('Yarn Ball + Scissors')).toBeVisible();
-    // Seventeen evolutions, seven fusions and the secret cat: one found, the rest unknown.
-    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(24);
+    // Twenty evolutions, ten fusions and the secret cat: one found, the rest unknown.
+    await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(30);
     // The weapons a milestone keeps back are named, with what brings each.
     const unlocks = codex.getByTestId('survival-codex-weapons');
     await expect(unlocks.locator('li[data-weapon="cardboard-box"]')).toHaveText(

@@ -154,8 +154,8 @@ function KeeperLoadout({
                     </span>
                     :{' '}
                     {f.ready
-                      ? 'ready. The next chest he opens fuses them, and frees a slot.'
-                      : `needs ${f.missing.join(' and ')}, then a chest he opens.`}
+                      ? 'ready. The next chest fuses them, and frees a slot.'
+                      : `needs ${f.missing.join(' and ')}, then a chest.`}
                   </li>
                 ))}
               </ul>
@@ -176,10 +176,10 @@ function KeeperLoadout({
                     </span>
                     :{' '}
                     {e.ready
-                      ? `ready. The next chest he opens evolves it, and the ${PASSIVES[e.with].name} becomes part of it (its slot is freed).`
+                      ? `ready. The next chest evolves it, and the ${PASSIVES[e.with].name} becomes part of it (its slot is freed).`
                       : e.after
-                        ? `ready, after the ${WEAPONS[e.after].name}: one evolves at each chest he opens.`
-                        : `needs ${e.missing.join(' and ')}, then a chest he opens.`}
+                        ? `ready, after the ${WEAPONS[e.after].name}: one evolves at each chest.`
+                        : `needs ${e.missing.join(' and ')}, then a chest.`}
                   </li>
                 ))}
               </ul>
