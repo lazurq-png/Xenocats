@@ -61,7 +61,7 @@ export async function fetchLatestInvoices(owner: string) {
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE customers.owner_id = ${owner}
-      ORDER BY invoices.date DESC
+      ORDER BY invoices.date DESC, invoices.id
       LIMIT 5`;
 
     const latestInvoices = data.map((invoice) => ({
@@ -180,7 +180,8 @@ export async function fetchMonthlyTotals(
 const ITEMS_PER_PAGE = 6;
 /**
  * A page of invoices matching the search `query` and, if given, the `status`.
- * The search and the status combine (both must match).
+ * The search and the status combine (both must match). Newest first, then by id,
+ * so invoices of one day keep one order and each is on exactly one page.
  */
 export async function fetchFilteredInvoices(
   owner: string,
@@ -206,7 +207,7 @@ export async function fetchFilteredInvoices(
       WHERE customers.owner_id = ${owner}
       AND ${matchesQuery(query)}
       AND ${matchesStatus(status)}
-      ORDER BY invoices.date DESC
+      ORDER BY invoices.date DESC, invoices.id
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
 
@@ -254,7 +255,7 @@ export async function fetchInvoicesForExport(
       WHERE customers.owner_id = ${owner}
       AND ${matchesQuery(query)}
       AND ${matchesStatus(status)}
-      ORDER BY invoices.date DESC
+      ORDER BY invoices.date DESC, invoices.id
       LIMIT ${EXPORT_LIMIT + 1}
     `;
   } catch (error) {

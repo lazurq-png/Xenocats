@@ -589,6 +589,62 @@ describe.skipIf(!url)('two accounts', () => {
   });
 });
 
+// Invoices on one day, as every invoice made the same day is: the lists order them
+// by date, then by id, so each one is on exactly one page and in the same place
+// every time. An account of its own, so no other block's rows share its day.
+describe.skipIf(!url)('invoices dated the same day', () => {
+  let sql: postgres.Sql;
+  let data: typeof import('@/app/lib/data');
+  const tag = `sameday${Date.now().toString(36)}`;
+  let user: string;
+  /** The invoices' ids and amounts, in the order every list gives them: by id. */
+  let ids: string[];
+  let amounts: number[];
+
+  beforeAll(async () => {
+    sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
+    process.env.POSTGRES_URL = url!;
+    data = await import('@/app/lib/data');
+    [{ id: user }] = await sql`
+      INSERT INTO users (name, email, password)
+      VALUES (${tag}, ${`${tag}@example.com`}, 'not a hash: nobody logs in as this user')
+      RETURNING id`;
+    const [{ id: customer }] = await sql`
+      INSERT INTO customers (name, email, owner_id)
+      VALUES (${tag}, ${`${tag}@example.com`}, ${user})
+      RETURNING id`;
+    // Thirteen: two full pages of six and one on the third.
+    const rows = await sql<{ id: string; amount: number }[]>`
+      INSERT INTO invoices (customer_id, amount, status, date, due_date)
+      SELECT ${customer}, n * 100, 'paid', ${today}::date, ${addDays(today, 30)}::date
+      FROM generate_series(1, 13) AS n
+      RETURNING id, amount`;
+    rows.sort((a, b) => (a.id < b.id ? -1 : 1));
+    ids = rows.map((row) => row.id);
+    amounts = rows.map((row) => row.amount);
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM invoices WHERE customer_id IN (SELECT id FROM customers WHERE owner_id = ${user})`;
+    await sql`DELETE FROM customers WHERE owner_id = ${user}`;
+    await sql`DELETE FROM users WHERE id = ${user}`;
+    await sql.end();
+  });
+
+  it('pages through them by id, each once', async () => {
+    const pages = [];
+    for (let page = 1; page <= 3; page++) {
+      pages.push(...(await data.fetchFilteredInvoices(user, '', page)).map((row) => row.id));
+    }
+    expect(pages).toEqual(ids);
+  });
+
+  it('the latest five and the export take the same order', async () => {
+    expect((await data.fetchLatestInvoices(user)).map((row) => row.id)).toEqual(ids.slice(0, 5));
+    expect((await data.fetchInvoicesForExport(user, '')).map((row) => row.amount)).toEqual(amounts);
+  });
+});
+
 // The most customers and invoices an account may hold, with creates sent at once:
 // each waits for the account (lockAccount in actions.ts), so the last ones are
 // refused rather than all fitting under the limit on the same count.
