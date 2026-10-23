@@ -131,7 +131,7 @@ Invoice table with search + pagination + create button.
 Entry: `app/dashboard/invoices/page.tsx`
 Dependencies:
 
-- app/ui/invoices/pagination.tsx
+- app/ui/pagination.tsx
   - app/lib/utils.ts
 - app/ui/search.tsx
 - app/ui/invoices/table.tsx
@@ -158,7 +158,7 @@ Create invoice form.
 Entry: `app/dashboard/invoices/create/page.tsx`
 Dependencies:
 
-- app/ui/invoices/create-form.tsx
+- app/ui/invoices/invoice-form.tsx
   - app/lib/definitions.ts
   - app/ui/button.tsx
   - app/lib/actions.ts
@@ -178,7 +178,7 @@ Edit invoice form.
 Entry: `app/dashboard/invoices/[id]/edit/page.tsx`
 Dependencies:
 
-- app/ui/invoices/edit-form.tsx
+- app/ui/invoices/invoice-form.tsx
   - app/lib/definitions.ts
   - app/ui/button.tsx
   - app/lib/actions.ts

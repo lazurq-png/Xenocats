@@ -95,7 +95,6 @@ export type UpgradeId =
   | 'lint-roller'
   | 'deep-pockets'
   | 'patience'
-  | 'firm-no'
   | 'lucky-coat-button'
   | 'spare-pocket'
   | 'second-wind';
@@ -184,12 +183,6 @@ export const UPGRADES: Readonly<
   patience: {
     name: 'Patience',
     description: 'He regains 1 Resolve every 5 seconds, unhurried.',
-    maxLevel: 3,
-    baseCost: 25,
-  },
-  'firm-no': {
-    name: 'Firm No',
-    description: 'One more banish to use in every run: a banished choice never comes back.',
     maxLevel: 3,
     baseCost: 25,
   },
@@ -352,7 +345,8 @@ export function parseProgress(raw: string | null): Progress {
   }
   const tufts = Number(d.tufts);
   const progress: Progress = {
-    tufts: Number.isInteger(tufts) && tufts >= 0 && tufts < 1e9 ? tufts : 0,
+    tufts:
+      (Number.isInteger(tufts) && tufts >= 0 && tufts < 1e9 ? tufts : 0) + firmNoRefund(d.upgrades),
     upgrades,
     milestones: [...new Set(list(d.milestones).filter((m) => isIn(MILESTONES, m)))],
     bought: [...new Set(list(d.bought).filter((c) => isIn(CHARACTERS, c)))],
@@ -362,6 +356,19 @@ export function parseProgress(raw: string | null): Progress {
   // A character he no longer has (say, a hand-edited store) is not his to choose.
   if (!hasCharacter(progress, progress.character)) progress.character = 'keeper';
   return progress;
+}
+
+/**
+ * The Firm No (one more banish a run) is no longer sold: what was paid for its levels
+ * comes back as tufts, once (the next save no longer has it). It cost 25, then ×1.7 a level.
+ */
+function firmNoRefund(upgrades: unknown): number {
+  if (typeof upgrades !== 'object' || upgrades === null) return 0;
+  const level = (upgrades as Record<string, unknown>)['firm-no'];
+  if (!Number.isInteger(level) || (level as number) <= 0) return 0;
+  let refund = 0;
+  for (let l = 0; l < Math.min(level as number, 3); l++) refund += Math.round(25 * 1.7 ** l);
+  return refund;
 }
 
 export function serializeProgress(progress: Progress): string {
@@ -431,6 +438,21 @@ export function availableWeapons(progress: Progress): WeaponId[] {
   });
 }
 
+/**
+ * The weapons a milestone keeps from him, for the codex: each named, with the milestone
+ * that brings it and whether he has reached it.
+ */
+export function weaponUnlocks(
+  progress: Progress
+): { id: WeaponId; name: string; milestone: string; unlocked: boolean }[] {
+  return (Object.entries(WEAPON_UNLOCKS) as [WeaponId, MilestoneId][]).map(([id, milestone]) => ({
+    id,
+    name: WEAPONS[id].name,
+    milestone: MILESTONES[milestone].text,
+    unlocked: progress.milestones.includes(milestone),
+  }));
+}
+
 /** The codex: each entry's name and what makes it once found, "???" and nothing until then. */
 export function codexEntries(
   progress: Progress
@@ -489,7 +511,6 @@ export function runConfig(
       revivals: level('second-wind'),
       rerolls: level('second-opinion'),
       skips: level('shrug'),
-      banishes: level('firm-no'),
     },
     secondPlayer:
       second === null

@@ -19,7 +19,7 @@ export function UpdateInvoice({ id }: { id: string }) {
   return (
     <Link
       href={`/dashboard/invoices/${id}/edit`}
-      className="rounded-lg border border-line p-2 text-aura transition-colors hover:border-aura hover:text-white"
+      className="tap-area rounded-lg border border-line p-2 text-aura transition-colors hover:border-aura hover:text-white"
     >
       <span className="sr-only">Edit</span>
       <PencilIcon className="w-5" />
@@ -31,7 +31,7 @@ export function ViewInvoice({ id, label }: { id: string; label: string }) {
   return (
     <Link
       href={`/dashboard/invoices/${id}`}
-      className="rounded-lg border border-line p-2 text-aura transition-colors hover:border-aura hover:text-white"
+      className="tap-area rounded-lg border border-line p-2 text-aura transition-colors hover:border-aura hover:text-white"
     >
       <span className="sr-only">View {label}</span>
       <EyeIcon className="w-5" />

@@ -274,7 +274,7 @@ export default function InvoiceStatus({ status }: { status: string }) {
 
 ## Pagination
 
-- Path: `app/ui/invoices/pagination.tsx`
+- Path: `app/ui/pagination.tsx`
 - URL-synced page links.
 - Props: totalPages
 

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -43,6 +43,8 @@ vi.mock('@/auth', () => ({ auth, signIn: vi.fn() }));
 vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
+// The sign-up limit keys addresses with the app's secret (sign-up-limit.ts).
+vi.stubEnv('AUTH_SECRET', 'a secret for the tests');
 // The address a sign-up comes from, for the sign-up limit (a test sets its own).
 const { clientIp } = vi.hoisted(() => ({ clientIp: { value: '10.0.0.0' } }));
 vi.mock('next/headers', () => ({
@@ -282,7 +284,7 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
       for (const customer of customers) {
         const theirs = invoices.filter((invoice) => invoice.customer_id === customer.id);
         const row = rows.find((r) => r.name === customer.name)!;
-        expect(Number(row.total_invoices)).toBe(theirs.length);
+        expect(row.total_invoices).toBe(theirs.length);
         expect(row.total_paid).toBe(formatCurrency(sum(theirs.filter((r) => r.status === 'paid'))));
         expect(row.total_pending).toBe(
           formatCurrency(sum(theirs.filter((r) => r.status === 'pending')))
@@ -339,8 +341,8 @@ describe.skipIf(!url)('the queries in app/lib/data.ts', () => {
     beforeAll(async () => {
       sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
       const [{ id }] = await sql`
-        INSERT INTO customers (name, email, image_url, owner_id)
-        VALUES (${tag}, ${`${tag}@example.com`}, '/customers/amy-burns.png', ${owner})
+        INSERT INTO customers (name, email, owner_id)
+        VALUES (${tag}, ${`${tag}@example.com`}, ${owner})
         RETURNING id`;
       await sql`
         INSERT INTO invoices (customer_id, amount, status, date, due_date) VALUES
@@ -423,8 +425,8 @@ describe.skipIf(!url)('two accounts', () => {
       VALUES (${tag}, ${`${tag}@example.com`}, 'not a hash: nobody logs in as this user')
       RETURNING id`;
     [{ id: otherCustomer }] = await sql`
-      INSERT INTO customers (name, email, image_url, owner_id)
-      VALUES (${tag}, ${`${tag}@example.com`}, '/x.png', ${other})
+      INSERT INTO customers (name, email, owner_id)
+      VALUES (${tag}, ${`${tag}@example.com`}, ${other})
       RETURNING id`;
     [{ id: otherInvoice }] = await sql`
       INSERT INTO invoices (customer_id, amount, status, date, due_date)
@@ -480,6 +482,7 @@ describe.skipIf(!url)('two accounts', () => {
       otherInvoice,
     ]);
     expect(await data.fetchInvoicesPages(other, '')).toBe(1);
+    expect(await data.fetchCustomersPages(other, '')).toBe(1);
     expect((await data.fetchInvoicesForExport(other, '')).map((row) => row.name)).toEqual([tag]);
     expect(await data.fetchCustomers(other)).toEqual([{ id: otherCustomer, name: tag }]);
     expect((await data.fetchFilteredCustomers(other, '')).map((row) => row.name)).toEqual([tag]);
@@ -566,6 +569,156 @@ describe.skipIf(!url)('two accounts', () => {
     expect(created.owner_id).toBe(other);
     expect(await data.fetchFilteredCustomers(owner, `${tag} second`)).toEqual([]);
   });
+
+  // After the test above: the other account has two customers, `${tag}` and `${tag} second`.
+  it("pages the customers six at a time, counting only the owner's", async () => {
+    await sql`
+      INSERT INTO customers (name, email, owner_id)
+      SELECT ${tag} || ' p' || n, ${tag} || n || '@example.com', ${other}
+      FROM generate_series(1, 5) AS n`;
+    // Seven: two pages, the seventh by name alone on the second.
+    expect(await data.fetchCustomersPages(other, '')).toBe(2);
+    expect(await data.fetchFilteredCustomers(other, '', 'name', 'asc', 1)).toHaveLength(6);
+    expect(
+      (await data.fetchFilteredCustomers(other, '', 'name', 'asc', 2)).map((row) => row.name)
+    ).toEqual([`${tag} second`]);
+    // The search counts as the list filters, and none of them is the demo user's.
+    expect(await data.fetchCustomersPages(other, `${tag} p`)).toBe(1);
+    expect(await data.fetchCustomersPages(owner, tag)).toBe(0);
+    expect(await data.fetchCustomersPages(other, '%')).toBe(0);
+  });
+});
+
+// Invoices on one day, as every invoice made the same day is: the lists order them
+// by date, then by id, so each one is on exactly one page and in the same place
+// every time. An account of its own, so no other block's rows share its day.
+describe.skipIf(!url)('invoices dated the same day', () => {
+  let sql: postgres.Sql;
+  let data: typeof import('@/app/lib/data');
+  const tag = `sameday${Date.now().toString(36)}`;
+  let user: string;
+  /** The invoices' ids and amounts, in the order every list gives them: by id. */
+  let ids: string[];
+  let amounts: number[];
+
+  beforeAll(async () => {
+    sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
+    process.env.POSTGRES_URL = url!;
+    data = await import('@/app/lib/data');
+    [{ id: user }] = await sql`
+      INSERT INTO users (name, email, password)
+      VALUES (${tag}, ${`${tag}@example.com`}, 'not a hash: nobody logs in as this user')
+      RETURNING id`;
+    const [{ id: customer }] = await sql`
+      INSERT INTO customers (name, email, owner_id)
+      VALUES (${tag}, ${`${tag}@example.com`}, ${user})
+      RETURNING id`;
+    // Thirteen: two full pages of six and one on the third.
+    const rows = await sql<{ id: string; amount: number }[]>`
+      INSERT INTO invoices (customer_id, amount, status, date, due_date)
+      SELECT ${customer}, n * 100, 'paid', ${today}::date, ${addDays(today, 30)}::date
+      FROM generate_series(1, 13) AS n
+      RETURNING id, amount`;
+    rows.sort((a, b) => (a.id < b.id ? -1 : 1));
+    ids = rows.map((row) => row.id);
+    amounts = rows.map((row) => row.amount);
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM invoices WHERE customer_id IN (SELECT id FROM customers WHERE owner_id = ${user})`;
+    await sql`DELETE FROM customers WHERE owner_id = ${user}`;
+    await sql`DELETE FROM users WHERE id = ${user}`;
+    await sql.end();
+  });
+
+  it('pages through them by id, each once', async () => {
+    const pages = [];
+    for (let page = 1; page <= 3; page++) {
+      pages.push(...(await data.fetchFilteredInvoices(user, '', page)).map((row) => row.id));
+    }
+    expect(pages).toEqual(ids);
+  });
+
+  it('the latest five and the export take the same order', async () => {
+    expect((await data.fetchLatestInvoices(user)).map((row) => row.id)).toEqual(ids.slice(0, 5));
+    expect((await data.fetchInvoicesForExport(user, '')).map((row) => row.amount)).toEqual(amounts);
+  });
+});
+
+// The most customers and invoices an account may hold, with creates sent at once:
+// each waits for the account (lockAccount in actions.ts), so the last ones are
+// refused rather than all fitting under the limit on the same count.
+describe.skipIf(!url)('account limits under creates sent at once', () => {
+  let sql: postgres.Sql;
+  let actions: typeof import('@/app/lib/actions');
+  const tag = `full${Date.now().toString(36)}`;
+  let user: string;
+
+  beforeAll(async () => {
+    sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
+    process.env.POSTGRES_URL = url!;
+    actions = await import('@/app/lib/actions');
+    [{ id: user }] = await sql`
+      INSERT INTO users (name, email, password)
+      VALUES (${tag}, ${`${tag}@example.com`}, 'not a hash: nobody logs in as this user')
+      RETURNING id`;
+    auth.mockResolvedValue({ user: { id: user } });
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM invoices WHERE customer_id IN (SELECT id FROM customers WHERE owner_id = ${user})`;
+    await sql`DELETE FROM customers WHERE owner_id = ${user}`;
+    await sql`DELETE FROM users WHERE id = ${user}`;
+    await sql.end();
+  });
+
+  /** Sends `n` creates at once and counts the ones refused for a full account. */
+  const sendAtOnce = async (n: number, create: () => Promise<{ message?: string | null }>) =>
+    (await Promise.all(Array.from({ length: n }, create))).filter((result) =>
+      result?.message?.startsWith('An account holds at most')
+    ).length;
+
+  it('stops customers at the limit', async () => {
+    const { MAX_CUSTOMERS_PER_ACCOUNT } = await import('@/app/lib/schemas');
+    // Two short of full; then six at once: two are made, four refused.
+    await sql`
+      INSERT INTO customers (name, email, owner_id)
+      SELECT ${tag} || n, ${tag} || n || '@example.com', ${user}
+      FROM generate_series(1, ${MAX_CUSTOMERS_PER_ACCOUNT - 2}) AS n`;
+    const refused = await sendAtOnce(6, () => {
+      const form = new FormData();
+      form.set('name', `${tag} at once`);
+      form.set('email', `${tag}-once@example.com`);
+      return actions.createCustomer({}, form);
+    });
+    const [{ n }] = await sql`SELECT count(*)::int AS n FROM customers WHERE owner_id = ${user}`;
+    expect(n).toBe(MAX_CUSTOMERS_PER_ACCOUNT);
+    expect(refused).toBe(4);
+  }, 60_000);
+
+  it('stops invoices at the limit', async () => {
+    const { MAX_INVOICES_PER_ACCOUNT } = await import('@/app/lib/schemas');
+    const [{ id: customer }] = await sql`
+      SELECT id FROM customers WHERE owner_id = ${user} LIMIT 1`;
+    await sql`
+      INSERT INTO invoices (customer_id, amount, status, date, due_date)
+      SELECT ${customer}, 100, 'paid', ${today}, ${addDays(today, 30)}
+      FROM generate_series(1, ${MAX_INVOICES_PER_ACCOUNT - 2})`;
+    const refused = await sendAtOnce(6, () => {
+      const form = new FormData();
+      form.set('customerId', customer);
+      form.set('amount', '1.00');
+      form.set('status', 'pending');
+      form.set('dueDate', addDays(today, 30));
+      return actions.createInvoice({}, form);
+    });
+    const [{ n }] = await sql`
+      SELECT count(*)::int AS n FROM invoices
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE customers.owner_id = ${user}`;
+    expect(n).toBe(MAX_INVOICES_PER_ACCOUNT);
+    expect(refused).toBe(4);
+  }, 60_000);
 });
 
 // Accounts made with a username (signUp, and its limit a day), and Survival's
@@ -672,12 +825,9 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
     expect(
       await actions.recordSurvivalRun({ runId, name: 'Long', timeMs: 300_001, sentHome: 1 })
     ).toBe('invalid');
-    // More cats than a minute of play could send home.
+    // However many cats it sent home: a strong run sends home thousands a second.
     expect(
-      await actions.recordSurvivalRun({ runId, name: 'Many', timeMs: 60_000, sentHome: 100_000 })
-    ).toBe('invalid');
-    expect(
-      await actions.recordSurvivalRun({ runId, name: 'Short', timeMs: 60_000, sentHome: 10 })
+      await actions.recordSurvivalRun({ runId, name: 'Short', timeMs: 60_000, sentHome: 100_000 })
     ).toBe('saved');
     // Once.
     expect(
@@ -1090,23 +1240,19 @@ describe.skipIf(!url)('migrations on existing rows', () => {
     ).rejects.toThrow(/survival_runs_run_minutes_check/);
   });
 
-  it('0011 holds new invoices to pending or paid, and keeps an existing one as it was', async () => {
+  /** A fresh schema with the migrations up to `last` (a file name) applied, as db.mjs applies them. */
+  const migratedUpTo = async (last: string) => {
     await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
     await sql`CREATE SCHEMA xenocats_vitest_migrations`;
-    for (const name of [
-      '0001_init.sql',
-      '0002_invoice_keys_and_indexes.sql',
-      '0003_invoice_due_dates.sql',
-      '0004_login_failures.sql',
-      '0005_customer_owners.sql',
-      '0006_accounts_and_leaderboard.sql',
-      '0007_invoice_amount_bounds.sql',
-      '0008_session_versions.sql',
-      '0009_revoked_sessions.sql',
-      '0010_endless_runs.sql',
-    ]) {
-      await sql.begin((tx) => tx.unsafe(migration(name)));
-    }
+    const names = readdirSync(new URL('../../db/migrations/', import.meta.url))
+      .filter((name) => name.endsWith('.sql') && name <= last)
+      .sort();
+    expect(names.at(-1)).toBe(last);
+    for (const name of names) await sql.begin((tx) => tx.unsafe(migration(name)));
+  };
+
+  it('0011 holds new invoices to pending or paid, and keeps an existing one as it was', async () => {
+    await migratedUpTo('0010_endless_runs.sql');
     const user = await addUser('status@example.com');
     const [{ id: customer }] = await sql`
       INSERT INTO customers (name, email, image_url, owner_id)
@@ -1124,6 +1270,26 @@ describe.skipIf(!url)('migrations on existing rows', () => {
     await invoice('pending');
     await invoice('paid');
     expect(await sql`SELECT count(*)::int AS n FROM invoices`).toEqual([{ n: 3 }]);
+  });
+
+  it('0012 lets a customer be made without an image, and keeps the images there are', async () => {
+    await migratedUpTo('0011_invoice_status_check.sql');
+    const owner = { id: await addUser('image@example.com') };
+    await sql`
+      INSERT INTO customers (name, email, image_url, owner_id)
+      VALUES ('Old', 'old@example.com', '/x.png', ${owner.id})`;
+    await sql.begin((tx) => tx.unsafe(migration('0012_customer_image_optional.sql')));
+    expect(await sql`SELECT image_url FROM customers`).toEqual([{ image_url: '/x.png' }]);
+    await sql`INSERT INTO customers (name, email, owner_id) VALUES ('New', 'n@example.com', ${owner.id})`;
+    // The app before this change still writes one, and still can.
+    await sql`
+      INSERT INTO customers (name, email, image_url, owner_id)
+      VALUES ('Older app', 'o@example.com', '/y.png', ${owner.id})`;
+    expect(await sql`SELECT name, image_url FROM customers ORDER BY name`).toEqual([
+      { name: 'New', image_url: null },
+      { name: 'Old', image_url: '/x.png' },
+      { name: 'Older app', image_url: '/y.png' },
+    ]);
   });
 
   it('0005 on an empty database (no customers) needs no user', async () => {

@@ -1064,6 +1064,17 @@ function absorbedBy(weapons: ReadonlyMap<WeaponId, number>): Set<WeaponId> {
   return absorbed;
 }
 
+/**
+ * The passives a weapon took in when it evolved (they are part of it now, at their
+ * highest level): its evolution's, or, fused, both its parents'. None for a base weapon.
+ */
+export function passivesIn(id: WeaponId): PassiveId[] {
+  const fusion = FUSIONS.find((f) => f.to === id);
+  if (fusion) return fusion.from.flatMap(passivesIn);
+  const evolution = EVOLUTIONS.find((e) => e.to === id);
+  return evolution ? [evolution.with] : [];
+}
+
 /** The evolution a chest opened now would bring, if any: the first that is ready. */
 export function evolutionFor(
   weapons: ReadonlyMap<WeaponId, number>,
@@ -1275,7 +1286,9 @@ export function weaponStats(id: WeaponId, level: number, mods: Modifiers): Weapo
 
 /** Experience needed from `level` to the next. */
 export function xpToNext(level: number): number {
-  return Math.round(5 + (level - 1) * 9 + Math.max(level - 1, 0) ** 1.6 * 0.8);
+  // The square term is small for a five-minute run's levels, and makes the last of a long
+  // run's (every weapon and passive at its best) cost about twice what they did.
+  return Math.round(5 + (level - 1) * 9 + Math.max(level - 1, 0) ** 2 * 0.4);
 }
 
 export type Choice =
@@ -1287,23 +1300,17 @@ export type Choice =
  * level of one held, never one at its highest level; `count` of them, all
  * different, at random. With nothing left, none.
  */
-/** A choice's weapon or passive, whatever its level: what a banish removes. */
-export const choiceKey = (kind: Choice['kind'], id: string) => `${kind}:${id}`;
-
 export function offerChoices(
   weapons: ReadonlyMap<WeaponId, number>,
   passives: ReadonlyMap<PassiveId, number>,
   count: number,
   random: Random,
   available: readonly WeaponId[] = BASE_WEAPONS,
-  slots: Slots = DEFAULT_SLOTS,
-  /** Never offered: what he has banished this run, and what is on screen beside a replacement. */
-  excluded: ReadonlySet<string> = new Set()
+  slots: Slots = DEFAULT_SLOTS
 ): Choice[] {
   const pool: Choice[] = [];
   const absorbed = absorbedBy(weapons);
   for (const id of available) {
-    if (excluded.has(choiceKey('weapon', id))) continue;
     // A weapon that has evolved is gone for good: its evolution holds its place, or a
     // fused weapon that took the evolution up.
     if (EVOLUTIONS.some((e) => e.from === id && (weapons.has(e.to) || absorbed.has(e.to)))) {
@@ -1314,8 +1321,10 @@ export function offerChoices(
       if (weapons.size < slots.weapons) pool.push({ kind: 'weapon', id, level: 1 });
     } else if (level < MAX_WEAPON_LEVEL) pool.push({ kind: 'weapon', id, level: level + 1 });
   }
+  // A passive an evolved weapon took in is part of it now: never offered again.
+  const takenIn = new Set([...weapons.keys()].flatMap(passivesIn));
   for (const id of Object.keys(PASSIVES) as PassiveId[]) {
-    if (excluded.has(choiceKey('passive', id))) continue;
+    if (takenIn.has(id)) continue;
     const level = passives.get(id);
     if (level === undefined) {
       if (passives.size < slots.passives) pool.push({ kind: 'passive', id, level: 1 });
@@ -1326,6 +1335,42 @@ export function offerChoices(
     picked.push(pool.splice(random.int(0, pool.length - 1), 1)[0]);
   }
   return picked;
+}
+
+/**
+ * How many level-ups a Keeper could still use, by offerChoices' rules: every level
+ * left on what he holds, and every level of what still has a slot to come into (the
+ * most levels first, when the slots run out before the candidates).
+ */
+export function upgradesLeft(
+  weapons: ReadonlyMap<WeaponId, number>,
+  passives: ReadonlyMap<PassiveId, number>,
+  available: readonly WeaponId[] = BASE_WEAPONS,
+  slots: Slots = DEFAULT_SLOTS
+): number {
+  const absorbed = absorbedBy(weapons);
+  let left = 0;
+  let newWeapons = 0;
+  for (const id of available) {
+    if (EVOLUTIONS.some((e) => e.from === id && (weapons.has(e.to) || absorbed.has(e.to)))) {
+      continue;
+    }
+    const level = weapons.get(id);
+    if (level === undefined) newWeapons++;
+    else left += MAX_WEAPON_LEVEL - level;
+  }
+  left += Math.min(newWeapons, Math.max(slots.weapons - weapons.size, 0)) * MAX_WEAPON_LEVEL;
+  const takenIn = new Set([...weapons.keys()].flatMap(passivesIn));
+  const newPassives: number[] = [];
+  for (const id of Object.keys(PASSIVES) as PassiveId[]) {
+    if (takenIn.has(id)) continue;
+    const level = passives.get(id);
+    if (level === undefined) newPassives.push(PASSIVES[id].maxLevel);
+    else left += PASSIVES[id].maxLevel - level;
+  }
+  const free = Math.max(slots.passives - passives.size, 0);
+  for (const max of newPassives.sort((a, b) => b - a).slice(0, free)) left += max;
+  return left;
 }
 
 const percent = (after: number, before: number) => Math.round((after / before - 1) * 100);
@@ -1501,18 +1546,20 @@ export type Loadout = {
     evolved: boolean;
     /** What the next level adds (levelChanges), or null at the top or evolved. */
     next: string | null;
+    /** The passives an evolved (or fused) weapon took in, at their highest level, and what they give. */
+    includes: { id: PassiveId; name: string; gives: string }[];
   }[];
   /** Infinity in a run with no limit; so is freePassiveSlots. */
   freeWeaponSlots: number;
   passives: { id: PassiveId; name: string; level: number; maxLevel: number; gives: string }[];
   freePassiveSlots: number;
   /**
-   * Each evolution he has started (holds its weapon or its passive), not yet made,
-   * and still possible (a missing weapon or passive has a free slot to come into):
-   * what is still missing, or, with nothing missing, `ready` for the one the next
-   * chest he opens evolves (evolutionFor: the first ready, in EVOLUTIONS' order)
-   * and `after` naming it for any other ready one. A secret one is never named
-   * here: the codex keeps it until it is found.
+   * Each evolution within reach, not yet made: he holds its weapon and its passive, and
+   * one of the two is at its highest level. What is still missing (the weapon's last
+   * levels), or, with nothing missing, `ready` for the one the next chest he opens
+   * evolves (evolutionFor: the first ready, in EVOLUTIONS' order) and `after` naming
+   * it for any other ready one. A secret one is never named here: the codex keeps it
+   * until it is found.
    */
   evolutions: {
     from: WeaponId;
@@ -1523,8 +1570,9 @@ export type Loadout = {
     after: WeaponId | null;
   }[];
   /**
-   * Each fusion he has started (holds one of its two evolved weapons), not yet made:
-   * what is still missing, or `ready` when both are held (the next chest fuses them).
+   * Each fusion within reach, not yet made: he holds one of its two evolved weapons, and
+   * the other too or its evolution is within reach. What is still missing, or `ready`
+   * when both are held (the next chest fuses them).
    */
   fusions: {
     from: readonly [WeaponId, WeaponId];
@@ -1545,8 +1593,23 @@ export function loadout(
     ...EVOLUTIONS.map((e) => e.to),
     ...FUSIONS.map((f) => f.to),
   ]);
+  const absorbed = absorbedBy(weaponLevels);
   // What the next chest he opens evolves, by the chest's own rule.
   const first = evolutionFor(weaponLevels, passiveLevels);
+  // Within reach: not made yet, both halves held, and one of them at its highest level.
+  const nearEvolutions = EVOLUTIONS.filter((e) => {
+    const level = weaponLevels.get(e.from);
+    const with_ = passiveLevels.get(e.with);
+    return (
+      !e.secret &&
+      !weaponLevels.has(e.to) &&
+      !absorbed.has(e.to) &&
+      level !== undefined &&
+      with_ !== undefined &&
+      (level >= MAX_WEAPON_LEVEL || with_ >= PASSIVES[e.with].maxLevel)
+    );
+  });
+  const near = new Set(nearEvolutions.map((e) => e.to));
   return {
     weapons: weapons.map(({ id, level }) => {
       const evolved = evolvedIds.has(id);
@@ -1559,6 +1622,11 @@ export function loadout(
         maxLevel,
         evolved,
         next: changes.length > 0 ? `${capitalise(changes.join(', '))}.` : null,
+        includes: passivesIn(id).map((p) => ({
+          id: p,
+          name: PASSIVES[p].name,
+          gives: `${capitalise(passiveTotal(p, PASSIVES[p].maxLevel).join(', '))}.`,
+        })),
       };
     }),
     freeWeaponSlots: Math.max(slots.weapons - weapons.length, 0),
@@ -1571,29 +1639,22 @@ export function loadout(
     })),
     freePassiveSlots: Math.max(slots.passives - passives.length, 0),
     fusions: FUSIONS.filter(
-      (f) => !weaponLevels.has(f.to) && f.from.some((id) => weaponLevels.has(id))
+      (f) =>
+        !weaponLevels.has(f.to) &&
+        f.from.some((id) => weaponLevels.has(id)) &&
+        f.from.every((id) => weaponLevels.has(id) || near.has(id))
     ).map((f) => {
       const missing = f.from
         .filter((id) => !weaponLevels.has(id))
         .map((id) => `the ${WEAPONS[id].name}`);
       return { from: f.from, to: f.to, missing, ready: missing.length === 0 };
     }),
-    evolutions: EVOLUTIONS.filter(
-      (e) =>
-        !e.secret &&
-        !weaponLevels.has(e.to) &&
-        (weaponLevels.has(e.from) || passiveLevels.has(e.with)) &&
-        // A piece he lacks must have a slot to come into, or it is out of reach.
-        (weaponLevels.has(e.from) || weapons.length < slots.weapons) &&
-        (passiveLevels.has(e.with) || passives.length < slots.passives)
-    ).map((e) => {
-      const level = weaponLevels.get(e.from);
-      const missing: string[] = [];
-      if (level === undefined) missing.push(`the ${WEAPONS[e.from].name}`);
-      else if (level < MAX_WEAPON_LEVEL) {
-        missing.push(`the ${WEAPONS[e.from].name} at level ${MAX_WEAPON_LEVEL} (now ${level})`);
-      }
-      if (!passiveLevels.has(e.with)) missing.push(`the ${PASSIVES[e.with].name}`);
+    evolutions: nearEvolutions.map((e) => {
+      const level = weaponLevels.get(e.from)!;
+      const missing =
+        level < MAX_WEAPON_LEVEL
+          ? [`the ${WEAPONS[e.from].name} at level ${MAX_WEAPON_LEVEL} (now ${level})`]
+          : [];
       const done = missing.length === 0;
       return {
         from: e.from,

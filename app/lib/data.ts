@@ -61,7 +61,7 @@ export async function fetchLatestInvoices(owner: string) {
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE customers.owner_id = ${owner}
-      ORDER BY invoices.date DESC
+      ORDER BY invoices.date DESC, invoices.id
       LIMIT 5`;
 
     const latestInvoices = data.map((invoice) => ({
@@ -180,7 +180,8 @@ export async function fetchMonthlyTotals(
 const ITEMS_PER_PAGE = 6;
 /**
  * A page of invoices matching the search `query` and, if given, the `status`.
- * The search and the status combine (both must match).
+ * The search and the status combine (both must match). Newest first, then by id,
+ * so invoices of one day keep one order and each is on exactly one page.
  */
 export async function fetchFilteredInvoices(
   owner: string,
@@ -206,7 +207,7 @@ export async function fetchFilteredInvoices(
       WHERE customers.owner_id = ${owner}
       AND ${matchesQuery(query)}
       AND ${matchesStatus(status)}
-      ORDER BY invoices.date DESC
+      ORDER BY invoices.date DESC, invoices.id
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
 
@@ -254,7 +255,7 @@ export async function fetchInvoicesForExport(
       WHERE customers.owner_id = ${owner}
       AND ${matchesQuery(query)}
       AND ${matchesStatus(status)}
-      ORDER BY invoices.date DESC
+      ORDER BY invoices.date DESC, invoices.id
       LIMIT ${EXPORT_LIMIT + 1}
     `;
   } catch (error) {
@@ -383,17 +384,19 @@ const CUSTOMER_ORDER = {
 };
 
 /**
- * The owner's customers matching `query`, each with their invoice count and totals,
- * sorted by `sort` (a column of CustomerSort; anything else is the name) in `dir`
- * ('desc', or ascending), then by name and id, so equal totals keep one order.
+ * A page of the owner's customers matching `query`, each with their invoice count and
+ * totals, sorted by `sort` (a column of CustomerSort; anything else is the name) in
+ * `dir` ('desc', or ascending), then by name and id, so equal totals keep one order.
  */
 export async function fetchFilteredCustomers(
   owner: string,
   query: string,
   sort: unknown = 'name',
-  dir: unknown = 'asc'
+  dir: unknown = 'asc',
+  currentPage = 1
 ) {
   const by = CUSTOMER_ORDER[parseCustomerSort(sort)]();
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
   const direction = parseSortDirection(dir) === 'desc' ? sql`DESC` : sql`ASC`;
   try {
     const data = await sql<CustomersTableType[]>`
@@ -401,7 +404,7 @@ export async function fetchFilteredCustomers(
 		  customers.id,
 		  customers.name,
 		  customers.email,
-		  COUNT(invoices.id) AS total_invoices,
+		  COUNT(invoices.id)::int AS total_invoices,
 		  SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END) AS total_pending,
 		  SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid
 		FROM customers
@@ -410,6 +413,7 @@ export async function fetchFilteredCustomers(
 		  AND (customers.name ILIKE ${containsPattern(query)} OR customers.email ILIKE ${containsPattern(query)})
 		GROUP BY customers.id, customers.name, customers.email
 		ORDER BY ${by} ${direction}, customers.name ASC, customers.id ASC
+		LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
 	  `;
 
     const customers = data.map((customer) => ({
@@ -422,6 +426,20 @@ export async function fetchFilteredCustomers(
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch customer table.');
+  }
+}
+
+/** How many pages of customers match `query`, ITEMS_PER_PAGE to a page. */
+export async function fetchCustomersPages(owner: string, query: string) {
+  try {
+    const [{ count }] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM customers
+      WHERE owner_id = ${owner}
+        AND (name ILIKE ${containsPattern(query)} OR email ILIKE ${containsPattern(query)})`;
+    return Math.ceil(count / ITEMS_PER_PAGE);
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch the number of customers.');
   }
 }
 

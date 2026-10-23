@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Nothing here reaches a database or a real session: `postgres`, `@/auth` and the
 // Next.js runtime helpers the actions call are all replaced with fakes.
-const { sql, auth, signIn, signOut, revalidatePath, redirect } = vi.hoisted(() => ({
-  sql: vi.fn(),
+const { sql, locks, auth, signIn, signOut, revalidatePath, redirect } = vi.hoisted(() => ({
+  // A transaction (sql.begin) runs its statements on the same fake, except the lock
+  // on the account it takes first, which goes to `locks` (whose account, in order).
+  sql: Object.assign(vi.fn(), { begin: vi.fn() }),
+  locks: [] as unknown[],
   auth: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
@@ -62,9 +65,19 @@ function invoiceForm(fields: Record<string, string> = {}) {
 
 const signedIn = { user: { id: 'u1', name: 'User', email: 'user@example.com' } };
 
+// The sign-up limit keys addresses with the app's secret (sign-up-limit.ts).
+vi.stubEnv('AUTH_SECRET', 'a secret for the tests');
+
 beforeEach(() => {
   vi.clearAllMocks();
   sql.mockResolvedValue([]);
+  locks.length = 0;
+  sql.begin.mockImplementation((statements: (tx: unknown) => unknown) =>
+    statements((strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (strings.join('').includes('pg_advisory_xact_lock')) return (locks.push(values[0]), []);
+      return sql(strings, ...values);
+    })
+  );
 });
 
 describe('without a session', () => {
@@ -115,6 +128,8 @@ describe('with a session', () => {
   it('createInvoice stores the amount in cents, dated today, due when the form says', async () => {
     const due = addDays(today(), 45);
     await createInvoice({}, invoiceForm({ dueDate: due }));
+    // The account is held first, so creates sent at once count each other's rows.
+    expect(locks).toEqual(['account:u1']);
     expect(sql).toHaveBeenCalledTimes(1);
     // For the customer only if it is the session's user's own, and while the account
     // holds fewer than the most invoices it may.
@@ -320,10 +335,11 @@ describe('customer actions', () => {
 
     it('createCustomer stores the trimmed values and refreshes everything that shows customers', async () => {
       await createCustomer({}, customerForm());
+      expect(locks).toEqual(['account:u1']);
       expect(sql).toHaveBeenCalledTimes(1);
       expect(sql.mock.calls[0].slice(1, 3)).toEqual(['Orbital Snacks', 'orbit@example.com']);
       // The session's user owns it.
-      expect(sql.mock.calls[0][4]).toBe('u1');
+      expect(sql.mock.calls[0][3]).toBe('u1');
       for (const path of [
         '/dashboard/customers',
         '/dashboard/invoices',

@@ -64,7 +64,7 @@
 
 ## Pagination
 
-- Source: `app/ui/invoices/pagination.tsx`
+- Source: `app/ui/pagination.tsx`
 - Category: basic
 - Description: Previous / numbered / next page links
 - Extractable props: currentPage (number, default 1), totalPages (number, default 5)

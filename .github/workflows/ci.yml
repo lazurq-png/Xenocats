@@ -98,7 +98,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           npx vitest run tests/unit/xenocats/arena tests/unit/xenocats/arsenal tests/unit/xenocats/kitchen-drawer tests/unit/xenocats/varieties tests/unit/xenocats/progression tests/unit/xenocats/coop tests/unit/xenocats/test-hooks
-          tests/unit/xenocats/walking
+          tests/unit/xenocats/walking tests/unit/xenocats/gamepad
+          tests/unit/xenocats/cat-attacks tests/unit/xenocats/space-backdrop
           tests/unit/xenocats/page-hits tests/unit/xenocats/sounds
           tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat tests/unit/xenocats/combos
           tests/unit/xenocats/puppets tests/unit/xenocats/movement-pad

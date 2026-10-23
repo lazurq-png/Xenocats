@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // writes nothing. As in actions.test.ts, `postgres`, `@/auth` and the Next.js
 // helpers are fakes; the browser tests (tests/e2e/invoices.spec.ts and
 // customers.spec.ts) submit valid forms against a real database.
-const { sql, auth } = vi.hoisted(() => ({ sql: vi.fn(), auth: vi.fn() }));
+const { sql, auth } = vi.hoisted(() => ({
+  sql: Object.assign(vi.fn(), { begin: vi.fn() }),
+  auth: vi.fn(),
+}));
 
 vi.mock('postgres', () => ({ default: () => sql }));
 vi.mock('@/auth', () => ({ auth, signIn: vi.fn() }));
@@ -15,8 +18,7 @@ vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 
-const { default: CreateInvoiceForm } = await import('@/app/ui/invoices/create-form');
-const { default: EditInvoiceForm } = await import('@/app/ui/invoices/edit-form');
+const { default: InvoiceForm } = await import('@/app/ui/invoices/invoice-form');
 const { default: CustomerForm } = await import('@/app/ui/customers/customer-form');
 const { addDays } = await import('@/app/lib/schemas');
 
@@ -26,6 +28,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ user: { id: 'u1', name: 'User', email: 'user@example.com' } });
   sql.mockResolvedValue([]);
+  // A transaction runs on the same fake; the account lock it takes first answers nothing.
+  sql.begin.mockImplementation((statements: (tx: unknown) => unknown) =>
+    statements((strings: TemplateStringsArray, ...values: unknown[]) =>
+      strings.join('').includes('pg_advisory_xact_lock') ? [] : sql(strings, ...values)
+    )
+  );
 });
 afterEach(() => cleanup());
 
@@ -45,7 +53,7 @@ const submit = (name: string) => fireEvent.click(screen.getByRole('button', { na
 
 describe('the invoice create form', () => {
   it('refuses an empty form with an error beside each field, and writes nothing', async () => {
-    render(<CreateInvoiceForm customers={customers} dueDate="2026-11-08" />);
+    render(<InvoiceForm customers={customers} dueDate="2026-11-08" />);
     // No customer chosen: the select stays on its disabled "Select a customer", which a
     // browser leaves out of the form, but jsdom sends as "". Disabled, the select sends
     // nothing, as a browser's does.
@@ -58,7 +66,7 @@ describe('the invoice create form', () => {
   });
 
   it('refuses a zero amount alone: the fields filled in are not errors', async () => {
-    render(<CreateInvoiceForm customers={customers} dueDate="2026-11-08" />);
+    render(<InvoiceForm customers={customers} dueDate="2026-11-08" />);
     fireEvent.change(screen.getByLabelText('Choose customer'), {
       target: { value: customers[0].id },
     });
@@ -80,7 +88,7 @@ describe('the invoice create form, for an account full of invoices', () => {
     // Due a month from today: the action dates the invoice by the clock, so a fixed
     // date would one day be before it, and the due-date check would answer instead.
     const due = addDays(new Date().toISOString().slice(0, 10), 30);
-    render(<CreateInvoiceForm customers={customers} dueDate={due} />);
+    render(<InvoiceForm customers={customers} dueDate={due} />);
     fireEvent.change(screen.getByLabelText('Choose customer'), {
       target: { value: customers[0].id },
     });
@@ -108,7 +116,7 @@ describe('the invoice edit form', () => {
       date: '2026-10-09',
       due_date: '2026-11-08',
     };
-    render(<EditInvoiceForm invoice={invoice} customers={customers} />);
+    render(<InvoiceForm invoice={invoice} customers={customers} />);
     fireEvent.change(screen.getByLabelText('Choose an amount'), { target: { value: '-5' } });
     submit('Save invoice');
     await errorFor('Choose an amount', 'Please enter an amount greater than $0');
@@ -126,7 +134,7 @@ describe('the invoice edit form', () => {
     };
     // Deleted meanwhile: the read finds no invoice of the user's.
     sql.mockResolvedValueOnce([]);
-    render(<EditInvoiceForm invoice={invoice} customers={customers} />);
+    render(<InvoiceForm invoice={invoice} customers={customers} />);
     submit('Save invoice');
     const message = await screen.findByText('No such invoice.');
     expect(message.closest('[aria-live="polite"]')).not.toBeNull();
@@ -144,7 +152,7 @@ describe('the invoice edit form', () => {
     };
     // The invoice is the user's, but its customer (deleted in another tab) is not.
     sql.mockResolvedValueOnce([{ date: '2026-10-09', own_customer: false }]);
-    render(<EditInvoiceForm invoice={invoice} customers={customers} />);
+    render(<InvoiceForm invoice={invoice} customers={customers} />);
     submit('Save invoice');
     await errorFor('Choose customer', 'That customer does not exist.');
   });

@@ -115,7 +115,7 @@ export function BossBar({ store }: { store: HudStore }) {
   return (
     <div
       data-testid="survival-boss"
-      className="pointer-events-none absolute inset-x-0 top-24 mx-auto flex w-full max-w-md flex-col items-center gap-1 px-4 text-sm font-semibold text-cream"
+      className="mx-auto flex w-full max-w-md flex-col items-center gap-1 px-4 text-sm font-semibold text-cream"
     >
       <span id="boss-label">{VARIETIES.mega.name}</span>
       <div
@@ -138,7 +138,10 @@ export function BossBar({ store }: { store: HudStore }) {
   );
 }
 
-/** The bar along the top: time, Resolve, cats sent home, level, and Pause. */
+/**
+ * The bar along the top: time, Resolve, cats sent home and level, wrapping into rows
+ * on a narrow screen, and Pause beside them, always on the first row.
+ */
 export function HudBar({
   store,
   showFps,
@@ -156,83 +159,85 @@ export function HudBar({
 }) {
   const hud = useHud(store);
   return (
-    <div className="relative flex flex-wrap items-center gap-6 p-4 text-sm font-semibold text-cream">
-      {showFps && (
-        <p data-testid="survival-fps" data-frame-ms={hud?.frameMs ?? ''}>
-          {hud?.frameMs ?? 0} ms · {hud?.cats ?? 0} cats
+    <div className="flex items-center gap-3 p-3 text-sm font-semibold text-cream sm:p-4">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 sm:gap-x-6">
+        {showFps && (
+          <p data-testid="survival-fps" data-frame-ms={hud?.frameMs ?? ''}>
+            {hud?.frameMs ?? 0} ms · {hud?.cats ?? 0} cats
+          </p>
+        )}
+        <p data-testid="survival-time">
+          Time {clockText(hud?.time ?? 0)}
+          {runLength === ENDLESS ? ' (endless)' : ` / ${clockText(runLength * 60_000)}`}
         </p>
-      )}
-      <p data-testid="survival-time">
-        Time {clockText(hud?.time ?? 0)}
-        {runLength === ENDLESS ? ' (endless)' : ` / ${clockText(runLength * 60_000)}`}
-      </p>
-      <div className="flex items-center gap-2">
-        <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>
-        <div
-          role="meter"
-          aria-labelledby="resolve-label"
-          aria-valuemin={0}
-          aria-valuemax={hud?.maxResolve ?? ARENA_CONFIG.hero.resolve}
-          aria-valuenow={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
-          className="h-2 w-32 overflow-hidden rounded-full bg-panel"
-        >
-          <div
-            className="h-full bg-plasma"
-            style={{
-              width: `${(100 * (hud?.resolve ?? 1)) / (hud?.maxResolve ?? 1)}%`,
-            }}
-          />
-        </div>
-        <span data-testid="survival-resolve">
-          {hud?.heroes[0]?.down
-            ? `Down, back in ${Math.ceil(hud.heroes[0].backIn / 1000)} s`
-            : Math.ceil(hud?.resolve ?? 100)}
-        </span>
-      </div>
-      {hud && hud.heroes.length > 1 && (
         <div className="flex items-center gap-2">
-          <span id="resolve2-label">Player 2 Resolve</span>
+          <span id="resolve-label">{runPlayers === 2 ? 'Player 1 Resolve' : 'Resolve'}</span>
           <div
             role="meter"
-            aria-labelledby="resolve2-label"
+            aria-labelledby="resolve-label"
             aria-valuemin={0}
-            aria-valuemax={hud.heroes[1].maxResolve}
-            aria-valuenow={hud.heroes[1].resolve}
-            className="h-2 w-32 overflow-hidden rounded-full bg-panel"
+            aria-valuemax={hud?.maxResolve ?? ARENA_CONFIG.hero.resolve}
+            aria-valuenow={hud?.resolve ?? ARENA_CONFIG.hero.resolve}
+            className="h-2 w-20 overflow-hidden rounded-full bg-panel sm:w-32"
           >
             <div
-              className="h-full bg-aura"
+              className="h-full bg-plasma"
               style={{
-                width: `${(100 * hud.heroes[1].resolve) / hud.heroes[1].maxResolve}%`,
+                width: `${(100 * (hud?.resolve ?? 1)) / (hud?.maxResolve ?? 1)}%`,
               }}
             />
           </div>
-          <span data-testid="survival-resolve2">
-            {hud.heroes[1].down
-              ? `Down, back in ${Math.ceil(hud.heroes[1].backIn / 1000)} s`
-              : Math.ceil(hud.heroes[1].resolve)}
+          <span data-testid="survival-resolve">
+            {hud?.heroes[0]?.down
+              ? `Down, back in ${Math.ceil(hud.heroes[0].backIn / 1000)} s`
+              : Math.ceil(hud?.resolve ?? 100)}
           </span>
         </div>
-      )}
-      <p data-testid="survival-sent-home">Cats sent home: {hud?.sentHome ?? 0}</p>
-      <div className="flex items-center gap-2">
-        <span data-testid="survival-level">Level {hud?.level ?? 1}</span>
-        <div
-          role="progressbar"
-          aria-label="Experience"
-          aria-valuemin={0}
-          aria-valuemax={hud?.xpToNext ?? 5}
-          aria-valuenow={hud?.xp ?? 0}
-          className="h-2 w-24 overflow-hidden rounded-full bg-panel"
-        >
+        {hud && hud.heroes.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span id="resolve2-label">Player 2 Resolve</span>
+            <div
+              role="meter"
+              aria-labelledby="resolve2-label"
+              aria-valuemin={0}
+              aria-valuemax={hud.heroes[1].maxResolve}
+              aria-valuenow={hud.heroes[1].resolve}
+              className="h-2 w-20 overflow-hidden rounded-full bg-panel sm:w-32"
+            >
+              <div
+                className="h-full bg-aura"
+                style={{
+                  width: `${(100 * hud.heroes[1].resolve) / hud.heroes[1].maxResolve}%`,
+                }}
+              />
+            </div>
+            <span data-testid="survival-resolve2">
+              {hud.heroes[1].down
+                ? `Down, back in ${Math.ceil(hud.heroes[1].backIn / 1000)} s`
+                : Math.ceil(hud.heroes[1].resolve)}
+            </span>
+          </div>
+        )}
+        <p data-testid="survival-sent-home">Cats sent home: {hud?.sentHome ?? 0}</p>
+        <div className="flex items-center gap-2">
+          <span data-testid="survival-level">Level {hud?.level ?? 1}</span>
           <div
-            className="h-full bg-aura"
-            style={{ width: `${(100 * (hud?.xp ?? 0)) / (hud?.xpToNext ?? 5)}%` }}
-          />
+            role="progressbar"
+            aria-label="Experience"
+            aria-valuemin={0}
+            aria-valuemax={hud?.xpToNext ?? 5}
+            aria-valuenow={hud?.xp ?? 0}
+            className="h-2 w-16 overflow-hidden rounded-full bg-panel sm:w-24"
+          >
+            <div
+              className="h-full bg-aura"
+              style={{ width: `${(100 * (hud?.xp ?? 0)) / (hud?.xpToNext ?? 5)}%` }}
+            />
+          </div>
         </div>
       </div>
       {playing && (
-        <Button className="ml-auto" onClick={onPause}>
+        <Button className="pointer-events-auto h-11 shrink-0" onClick={onPause}>
           Pause
         </Button>
       )}

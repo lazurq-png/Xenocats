@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import bcryptjs from 'bcryptjs';
+import type postgres from 'postgres';
 import { auth, signIn, signOut } from '@/auth';
 import { sql } from '@/app/lib/db';
 import { AuthError, type CredentialsSignin } from 'next-auth';
@@ -46,6 +47,14 @@ export type State = {
 
 /** An invoice's customer that is not one of the user's own: unknown, or another account's. */
 const NO_CUSTOMER = 'That customer does not exist.';
+
+/**
+ * Holds `owner`'s account until the transaction `tx` ends: another create for the
+ * same account waits here, then counts what this one wrote. Without it, creates
+ * sent at once would each count the same rows and all fit under the account's limit.
+ */
+const lockAccount = (tx: postgres.TransactionSql, owner: string) =>
+  tx`SELECT pg_advisory_xact_lock(hashtextextended(${`account:${owner}`}, 0))`;
 
 /** The database's own check on the due date (db/migrations/0003) refused it. */
 const isDueDateRefused = (error: unknown) =>
@@ -92,31 +101,36 @@ export async function createInvoice(prevState: State, formData: FormData) {
 
   // Insert data into the database: only for one of the user's own customers.
   try {
-    const inserted = await sql`
-      INSERT INTO invoices (customer_id, amount, status, date, due_date)
-      SELECT id, ${amountInCents}::int, ${status}, ${date}::date, ${dueDate}::date
-      FROM customers
-      WHERE id = ${customerId} AND owner_id = ${owner}
-        AND (
-          SELECT count(*) FROM invoices
-          JOIN customers AS theirs ON invoices.customer_id = theirs.id
-          WHERE theirs.owner_id = ${owner}
-        ) < ${MAX_INVOICES_PER_ACCOUNT}
-    `;
-    if (inserted.count === 0) {
-      // Not one of the user's customers, or the account is full: which, only now.
-      const [held] = await sql<{ n: number }[]>`
-        SELECT count(*)::int AS n FROM invoices
-        JOIN customers ON invoices.customer_id = customers.id
-        WHERE customers.owner_id = ${owner}
+    const refused = await sql.begin(async (tx): Promise<State | null> => {
+      await lockAccount(tx, owner);
+      const inserted = await tx`
+        INSERT INTO invoices (customer_id, amount, status, date, due_date)
+        SELECT id, ${amountInCents}::int, ${status}, ${date}::date, ${dueDate}::date
+        FROM customers
+        WHERE id = ${customerId} AND owner_id = ${owner}
+          AND (
+            SELECT count(*) FROM invoices
+            JOIN customers AS theirs ON invoices.customer_id = theirs.id
+            WHERE theirs.owner_id = ${owner}
+          ) < ${MAX_INVOICES_PER_ACCOUNT}
       `;
-      if ((held?.n ?? 0) >= MAX_INVOICES_PER_ACCOUNT) {
-        return {
-          message: `An account holds at most ${MAX_INVOICES_PER_ACCOUNT.toLocaleString('en-US')} invoices. Delete some to create more.`,
-        };
+      if (inserted.count === 0) {
+        // Not one of the user's customers, or the account is full: which, only now.
+        const [held] = await tx<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM invoices
+          JOIN customers ON invoices.customer_id = customers.id
+          WHERE customers.owner_id = ${owner}
+        `;
+        if ((held?.n ?? 0) >= MAX_INVOICES_PER_ACCOUNT) {
+          return {
+            message: `An account holds at most ${MAX_INVOICES_PER_ACCOUNT.toLocaleString('en-US')} invoices. Delete some to create more.`,
+          };
+        }
+        return noCustomer;
       }
-      return noCustomer;
-    }
+      return null;
+    });
+    if (refused) return refused;
   } catch (error) {
     if (isDueDateRefused(error)) {
       return {
@@ -263,10 +277,6 @@ export type CustomerState = {
   message?: string | null;
 };
 
-// Every customer gets the same stored image: avatars are drawn from the name
-// (app/ui/customer-avatar.tsx), and the column cannot be empty.
-const CUSTOMER_IMAGE = '/xenocats/avatar-1.webp';
-
 /** What shows customers: their list, the invoice list (names) and the invoice form. */
 function revalidateCustomers() {
   revalidatePath('/dashboard/customers');
@@ -293,11 +303,14 @@ export async function createCustomer(prevState: CustomerState, formData: FormDat
 
   const { name, email } = validatedFields.data;
   try {
-    const inserted = await sql`
-      INSERT INTO customers (name, email, image_url, owner_id)
-      SELECT ${name}, ${email}, ${CUSTOMER_IMAGE}, ${owner}
-      WHERE (SELECT count(*) FROM customers WHERE owner_id = ${owner}) < ${MAX_CUSTOMERS_PER_ACCOUNT}
-    `;
+    const inserted = await sql.begin(async (tx) => {
+      await lockAccount(tx, owner);
+      return tx`
+        INSERT INTO customers (name, email, owner_id)
+        SELECT ${name}, ${email}, ${owner}
+        WHERE (SELECT count(*) FROM customers WHERE owner_id = ${owner}) < ${MAX_CUSTOMERS_PER_ACCOUNT}
+      `;
+    });
     if (inserted.count === 0) {
       return {
         message: `An account holds at most ${MAX_CUSTOMERS_PER_ACCOUNT.toLocaleString('en-US')} customers. Delete some to create more.`,
@@ -500,8 +513,6 @@ export type SurvivalRunResult = 'saved' | 'signed-out' | 'invalid' | 'error';
 
 /** How far a run's time may run ahead of the server's clock: the start's round trip, ms. */
 const START_ALLOWANCE_MS = 2000;
-/** More cats than this a second is no run anyone played. */
-const MAX_CATS_PER_SECOND = 100;
 /** The most runs one player can finish in an hour. */
 const MAX_RUNS_PER_HOUR = 60;
 
@@ -509,9 +520,9 @@ const MAX_RUNS_PER_HOUR = 60;
  * Finishes a run startSurvivalRun started, under the name the player typed for it:
  * on the leaderboard from now on. Only the signed-in player's own run in progress,
  * once; never with a time longer than its length (an endless run, minutes 0, has
- * none), or than the time since it started
- * (give or take the start's round trip), nor more cats than that time allows; and at
- * most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes nothing.
+ * none), or than the time since it started (give or take the start's round trip);
+ * and at most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes
+ * nothing.
  */
 export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult> {
   const owner = await signedInUser();
@@ -526,7 +537,6 @@ export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult
       WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL
         AND (run_minutes = 0 OR ${timeMs}::int <= run_minutes * 60000)
         AND ${timeMs}::int <= EXTRACT(EPOCH FROM now() - started_at) * 1000 + ${START_ALLOWANCE_MS}
-        AND ${sentHome}::int <= ${timeMs}::int / 1000.0 * ${MAX_CATS_PER_SECOND} + 10
         AND (
           SELECT count(*) FROM survival_runs AS recent
           WHERE recent.user_id = ${owner} AND recent.finished_at > now() - interval '1 hour'

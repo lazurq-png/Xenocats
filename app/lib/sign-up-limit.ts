@@ -67,9 +67,15 @@ export function addressBlock(address: string): string {
     .join(':')}::/64`;
 }
 
-/** The key an address is counted under: a hash of its block keyed with the app's secret. */
-export const clientKey = (address: string, secret = process.env.AUTH_SECRET ?? '') =>
-  createHmac('sha256', secret).update(addressBlock(address)).digest('hex');
+/**
+ * The key an address is counted under: a hash of its block keyed with the app's
+ * secret. With no secret it throws: a hash keyed with nothing would give the
+ * addresses away to anyone who can read the table.
+ */
+export function clientKey(address: string, secret = process.env.AUTH_SECRET) {
+  if (!secret) throw new Error('AUTH_SECRET is not set: the sign-up limit cannot key addresses.');
+  return createHmac('sha256', secret).update(addressBlock(address)).digest('hex');
+}
 
 /** Counts a sign-up from `key` and says whether it is within the day's limit. */
 export async function claimSignUp(sql: Sql, key: string, max: number): Promise<boolean> {

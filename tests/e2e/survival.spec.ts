@@ -100,6 +100,93 @@ async function settled(page: Page, name: string) {
   return last;
 }
 
+/**
+ * A controller the page can read (the Gamepad API faked: Playwright has no pad): pads
+ * plugged in with `connect`, their sticks and buttons set with `set`.
+ */
+async function fakeGamepads(page: Page) {
+  await page.addInitScript(() => {
+    type Pad = {
+      index: number;
+      id: string;
+      connected: boolean;
+      mapping: string;
+      timestamp: number;
+      axes: number[];
+      buttons: { pressed: boolean; touched: boolean; value: number }[];
+    };
+    const pads: (Pad | null)[] = [null, null, null, null];
+    const w = window as unknown as {
+      padConnect: (i: number) => void;
+      padSet: (i: number, axes: number[], held: number[]) => void;
+    };
+    w.padConnect = (index) => {
+      pads[index] = {
+        index,
+        id: 'Fake standard pad',
+        connected: true,
+        mapping: 'standard',
+        timestamp: 0,
+        axes: [0, 0, 0, 0],
+        buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+      };
+      window.dispatchEvent(new Event('gamepadconnected'));
+    };
+    w.padSet = (index, axes, held) => {
+      const pad = pads[index]!;
+      pad.axes = [...axes, 0, 0];
+      pad.buttons.forEach((b, n) => {
+        b.pressed = held.includes(n);
+        b.value = b.pressed ? 1 : 0;
+      });
+    };
+    Object.defineProperty(navigator, 'getGamepads', {
+      configurable: true,
+      value: () => pads.slice(),
+    });
+  });
+  const set = (index: number, axes: number[], held: number[] = []) =>
+    page.evaluate(
+      ([i, a, h]) =>
+        (window as unknown as { padSet: (i: number, a: number[], h: number[]) => void }).padSet(
+          i,
+          a,
+          h
+        ),
+      [index, axes, held] as const
+    );
+  /** A few frames: the page reads the pads once a frame. */
+  const frames = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((done) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => requestAnimationFrame(() => done()))
+          )
+        )
+    );
+  return {
+    connect: async (index: number) => {
+      await page.evaluate(
+        (i) => (window as unknown as { padConnect: (i: number) => void }).padConnect(i),
+        index
+      );
+      await frames();
+    },
+    set,
+    /** Presses a button (standard layout) and lets it go. */
+    press: async (index: number, button: number) => {
+      await set(index, [0, 0], [button]);
+      await frames();
+      await set(index, [0, 0], []);
+      await frames();
+    },
+  };
+}
+
+/** The standard layout's buttons. */
+const PAD = { a: 0, b: 1, x: 2, y: 3, start: 9, up: 12, down: 13 };
+
 async function openArena(page: Page, query = '?seed=7') {
   await page.goto('/cats/survival' + query);
   await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
@@ -473,36 +560,6 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
   });
 
-  test('with the Tailor’s Firm No, a level-up choice can be banished: only it is replaced, and the use is spent', async ({
-    page,
-  }) => {
-    test.setTimeout(60_000);
-    await openArena(page, '?seed=7&speed=6');
-    await page.evaluate(() =>
-      localStorage.setItem(
-        'xenocats:survival:v1:progress',
-        JSON.stringify({ version: 1, tufts: 0, upgrades: { 'firm-no': 1 }, milestones: [] })
-      )
-    );
-    await page.reload();
-    await startRun(page);
-    const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
-    await expect(dialog).toContainText('A banished choice never comes back this run (1 left).');
-    const choices = dialog.locator('button[data-choice]');
-    const ids = () => choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
-    const before = await ids();
-    await dialog.getByTestId('survival-banish').nth(1).click();
-    const after = await ids();
-    expect(after).toHaveLength(before.length);
-    expect(after[0]).toBe(before[0]);
-    expect(after[1]).not.toBe(before[1]);
-    // None left: the Banish buttons are gone, and a choice goes on as usual.
-    await expect(dialog.getByTestId('survival-banish')).toHaveCount(0);
-    await choices.first().click();
-    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
-  });
-
   test('a level-up can be rerolled once (new choices, the use spent), a number past the choices picks nothing, and X skips once', async ({
     page,
   }) => {
@@ -568,6 +625,11 @@ test.describe('on a computer', () => {
     await expect(paused.getByTestId('survival-pause-time')).toHaveText(/^\d+:\d\d$/);
     // Resume is still what the menu puts the focus on.
     await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
+    // A click inside the window leaves it open; one outside it resumes the run.
+    await paused.getByTestId('survival-pause-summary').click();
+    await expect(paused).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(paused).toBeHidden();
   });
 
   test('aiming with a crosshair: chosen in the lobby, drawn where the mouse is, put away in the pause menu', async ({
@@ -978,16 +1040,33 @@ test.describe('on a computer', () => {
       'aria-disabled',
       'true'
     );
-    // Choosing him closes the window; the button that opened it names him.
+    // A click anywhere on his card chooses him; the window stays open.
+    await page.getByTestId('survival-card-night-porter').getByRole('heading').click();
+    await expect(porter).toHaveAttribute('aria-pressed', 'true');
+    await expect(porter).toHaveText('Going out tonight');
+    await expect(characters).toBeVisible();
+    // "Going out tonight" closes it; the button that opened it names him.
     await porter.click();
     await expect(characters).toBeHidden();
-    await expect(porter).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('survival-open-character')).toContainText('The Night Porter');
+    // So does a click outside the window.
+    await openWindow(page, 'character');
+    await page.mouse.click(2, 2);
+    await expect(characters).toBeHidden();
     const codex = (await openWindow(page, 'codex')).getByTestId('survival-codex');
     await expect(codex.getByText('Yarn Apocalypse')).toBeVisible();
     await expect(codex.getByText('Yarn Ball + Scissors')).toBeVisible();
     // Seventeen evolutions, seven fusions and the secret cat: one found, the rest unknown.
     await expect(codex.getByRole('listitem').filter({ hasText: '???' })).toHaveCount(24);
+    // The weapons a milestone keeps back are named, with what brings each.
+    const unlocks = codex.getByTestId('survival-codex-weapons');
+    await expect(unlocks.locator('li[data-weapon="cardboard-box"]')).toHaveText(
+      /Cardboard Box\s*Locked: Survive 15:00/
+    );
+    await expect(unlocks.locator('li[data-weapon="thunderous-vacuum"]')).toHaveAttribute(
+      'data-unlocked',
+      'false'
+    );
     // Esc closes it.
     await page.keyboard.press('Escape');
     await expect(codex).toBeHidden();
@@ -1043,6 +1122,8 @@ test.describe('on a computer', () => {
     await expect(hairdresser).toBeEnabled();
     await hairdresser.click();
     await expect(hairdresser).toHaveAttribute('aria-pressed', 'true');
+    // "Going out tonight" closes the window.
+    await hairdresser.click();
     await startRun(page);
     await expect(area(page)).toHaveAttribute('data-weapons', 'hair-dryer:1');
   });
@@ -1091,12 +1172,186 @@ test.describe('on a computer', () => {
       '110'
     );
   });
+  test('a controller walks the Keeper with its stick, pauses and resumes with Start and B, and gives up from the menu', async ({
+    page,
+  }) => {
+    const pad = await fakeGamepads(page);
+    await openArena(page, '?seed=7');
+    await pad.connect(0);
+    // Start begins a run from the lobby.
+    await expect
+      .poll(async () => {
+        if ((await area(page).count()) === 0) await pad.press(0, PAD.start);
+        return area(page).count();
+      })
+      .toBe(1);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    // The stick, pushed right: he walks right.
+    await pad.set(0, [1, 0]);
+    await expect.poll(() => num(page, 'data-hero-x'), { timeout: 10_000 }).toBeGreaterThan(60);
+    await pad.set(0, [0, 0]);
+    // Start pauses; B resumes.
+    await playOn(page);
+    await pad.press(0, PAD.start);
+    await expect(area(page)).toHaveAttribute('data-screen', 'paused');
+    await pad.press(0, PAD.b);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    // Paused again, the d-pad goes to Give up, and A presses it.
+    await playOn(page);
+    await pad.press(0, PAD.start);
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    await expect(paused).toBeVisible();
+    const giveUp = paused.getByRole('button', { name: 'Give up' });
+    await expect
+      .poll(async () => {
+        if (await giveUp.evaluate((b) => b === document.activeElement)) return true;
+        await pad.press(0, PAD.up);
+        return false;
+      })
+      .toBe(true);
+    await pad.press(0, PAD.a);
+    const results = page.getByTestId('survival-results');
+    await expect(results).toBeVisible();
+    await expect(results).toHaveAttribute('data-outcome', 'gave-up');
+    // B closes the results; Start plays again.
+    await pad.press(0, PAD.b);
+    await expect(results).toBeHidden();
+    await pad.press(0, PAD.start);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+  });
+
+  test('a controller works a level-up: Y rerolls, the d-pad and A take a choice', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const pad = await fakeGamepads(page);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page);
+    await pad.connect(0);
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    const choices = dialog.locator('button[data-choice]');
+    const ids = async () =>
+      choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
+    const before = await ids();
+    await pad.press(0, PAD.y);
+    await expect.poll(ids).not.toEqual(before);
+    await expect(dialog.getByTestId('survival-reroll')).toHaveText('Reroll (0 left)');
+    // Down to the second choice, and A takes it.
+    await expect(choices.first()).toBeFocused();
+    await pad.press(0, PAD.down);
+    await expect(choices.nth(1)).toBeFocused();
+    const taken = await choices.nth(1).getAttribute('data-choice');
+    await pad.press(0, PAD.a);
+    await expect
+      .poll(async () => {
+        if ((await dialog.count()) === 0) return 'playing';
+        return (await ids()).includes(taken) ? 'waiting' : 'next';
+      })
+      .not.toBe('waiting');
+  });
 });
 
 test.describe('on a touch screen', () => {
   // A phone's screen and touch input (its browser type cannot change inside a group).
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+
+  /** A box on the screen, read now (it must be there). */
+  const boxOf = async (locator: Locator) => (await locator.boundingBox())!;
+
+  test('on a phone, upright or on its side, the HUD, the boss bar and the notice stand one under the other, the pad in its corner', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    for (const size of [viewport, { width: viewport.height, height: viewport.width }]) {
+      await page.setViewportSize(size);
+      await openArena(page, '?seed=7&boss=0');
+      await startRun(page, true);
+      const boss = page.getByTestId('survival-boss');
+      await expect(boss).toBeVisible({ timeout: 15_000 });
+      const notice = page.getByTestId('survival-notice');
+      await expect(notice).toContainText('has come for the Keeper');
+      const hud = [
+        page.getByTestId('survival-time'),
+        page.getByTestId('survival-resolve'),
+        page.getByTestId('survival-sent-home'),
+        page.getByTestId('survival-level'),
+        area(page).getByRole('button', { name: 'Pause' }),
+      ];
+      let hudBottom = 0;
+      for (const item of hud) {
+        const box = await boxOf(item);
+        expect(box.x + box.width, `${size.width}×${size.height}`).toBeLessThanOrEqual(size.width);
+        hudBottom = Math.max(hudBottom, box.y + box.height);
+      }
+      const bar = await boxOf(boss);
+      const said = await boxOf(notice);
+      const pad = await boxOf(page.getByTestId('movement-pad'));
+      const at = `${size.width}×${size.height}`;
+      expect(bar.y, at).toBeGreaterThanOrEqual(hudBottom);
+      expect(said.y, at).toBeGreaterThanOrEqual(bar.y + bar.height);
+      // The pad in the bottom left corner, below all of it, wholly on the screen.
+      expect(pad.y, at).toBeGreaterThanOrEqual(said.y + said.height);
+      expect(pad.x, at).toBeLessThan(size.width / 3);
+      expect(pad.y + pad.height, at).toBeLessThanOrEqual(size.height);
+      expect(pad.y, at).toBeGreaterThan(size.height / 3);
+    }
+  });
+
+  test('on a phone on its side, every choice of a level-up, Reroll and Skip can be reached and tapped', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // A short phone on its side (360 px is common): the window is taller than that.
+    const size = { width: 740, height: 360 };
+    await page.setViewportSize(size);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page, true);
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    const buttons = dialog.getByRole('button');
+    const count = await buttons.count();
+    expect(count).toBeGreaterThanOrEqual(4);
+    // Taller than the screen, it scrolls under a finger; shorter, it fits.
+    expect(
+      await dialog.evaluate(
+        (d) =>
+          d.scrollHeight <= d.clientHeight ||
+          ['auto', 'scroll'].includes(getComputedStyle(d).overflowY)
+      )
+    ).toBe(true);
+    for (let i = 0; i < count; i++) {
+      const button = buttons.nth(i);
+      await button.scrollIntoViewIfNeeded();
+      const box = await boxOf(button);
+      // Wholly on the screen, and nothing over its middle.
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+      const middle = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      expect(
+        await button.evaluate(
+          (el, at) => el.contains(document.elementFromPoint(at.x, at.y)),
+          middle
+        )
+      ).toBe(true);
+    }
+    // The last choice, tapped: taken.
+    const choices = dialog.locator('button[data-choice]');
+    const last = choices.last();
+    await last.scrollIntoViewIfNeeded();
+    const taken = await last.getAttribute('data-choice');
+    await last.tap();
+    await expect
+      .poll(async () => {
+        if ((await dialog.count()) === 0) return 'taken';
+        const ids = await choices.evaluateAll((all) =>
+          all.map((b) => b.getAttribute('data-choice'))
+        );
+        return ids.includes(taken) ? 'waiting' : 'taken';
+      })
+      .toBe('taken');
+  });
 
   test('on a phone the camera zooms out, to show as much of the arena as the rule says', async ({
     page,

@@ -19,7 +19,7 @@ export default function Page() {
       >
         Skip to main content
       </a>
-      <main className="mx-auto max-w-[1366px] px-6 pb-12 pt-4 md:px-12">
+      <main className="mx-auto max-w-[1366px] px-6 pb-20 pt-4 md:px-12 md:pb-12">
         <header className="mb-12 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <Link href="/" aria-label="Xenocat Analytics home">
             <XenocatLogo />

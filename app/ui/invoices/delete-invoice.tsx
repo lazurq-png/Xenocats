@@ -78,7 +78,7 @@ export function DeleteInvoice({
       <button
         type="button"
         onClick={open}
-        className="rounded-lg border border-line p-2 text-aura transition-colors hover:border-red-400 hover:text-red-400"
+        className="tap-area rounded-lg border border-line p-2 text-aura transition-colors hover:border-red-400 hover:text-red-400"
       >
         <span className="sr-only">Delete {label}</span>
         <TrashIcon className="w-5" />

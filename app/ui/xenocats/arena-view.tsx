@@ -28,6 +28,10 @@ import {
   PICKUP_SVG,
   VARIETY_SVG,
 } from './arena-art';
+import { drawEnemyShot, drawRareMarker, drawTelegraph } from './attack-art';
+import { drawSpace } from './space-backdrop';
+import type { PadAction } from './gamepad';
+import { menuPress, useGamepads } from './gamepad-view';
 import { DRAWN_DIRECTIONS, directionOfAngle, facesAway, spriteOf } from './hero-direction';
 import {
   type Choice,
@@ -161,8 +165,6 @@ const HUD_EVERY_MS = 150;
 /** Cats drawn this size, px. */
 const CAT_SIZE = 44;
 const HERO_SIZE = 56;
-/** The floor's tiles, px. */
-const TILE = 96;
 /** A game step more than this behind is dropped: the game slows rather than freezing. */
 const MAX_STEPS_PER_FRAME = 240;
 /** Never more than this many sounds start within `SOUND_WINDOW_MS`. */
@@ -297,8 +299,8 @@ export default function ArenaGame({
   } | null>(null);
   // A level-up's choices, while the run waits for one.
   const [choices, setChoices] = useState<Choice[] | null>(null);
-  // What the Keeper whose choice waits has left to reroll, to skip and to banish.
-  const [uses, setUses] = useState({ rerolls: 0, skips: 0, banishes: 0 });
+  // What the Keeper whose choice waits has left to reroll and to skip.
+  const [uses, setUses] = useState({ rerolls: 0, skips: 0 });
   // The level the waiting choice is for (several can wait after one gem).
   const [choiceLevel, setChoiceLevel] = useState(2);
   // One Keeper, or two at one keyboard; player 2's character; whose choice it is.
@@ -311,7 +313,7 @@ export default function ArenaGame({
   // An evolution's announcement, for a few seconds.
   const [notice, setNotice] = useState<string | null>(null);
   // A golden chest's reel, while it spins and shows what it landed on.
-  const [reel, setReel] = useState<{ rewards: number; key: number } | null>(null);
+  const [reel, setReel] = useState<{ rewards: number; picks: number; key: number } | null>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
   // How long a run lasts: the lobby's choice, kept in the browser. The run in progress
   // (or just over) keeps the length it started with.
@@ -550,13 +552,32 @@ export default function ArenaGame({
     if (screenRef.current !== 'choosing' || !arenaRef.current?.skip()) return;
     refresh();
   }, [refresh]);
-  const banish = useCallback(
-    (index: number) => {
-      if (screenRef.current !== 'choosing' || !arenaRef.current?.banish(index)) return;
-      refresh();
-    },
-    [refresh]
-  );
+
+  // A controller works the run as the keys do (gamepad.ts): Start pauses and resumes,
+  // and the menus are worked with the d-pad, A, B, and Y and X at a level-up.
+  const pads = useGamepads((player: number, action: PadAction, count: number) => {
+    const now = screenRef.current;
+    if (now === 'playing') {
+      if (action === 'pause') show('paused');
+    } else if (now === 'paused') {
+      if (action === 'pause' || action === 'back') show('playing');
+      else menuPress(pauseRef.current, action);
+    } else if (now === 'choosing') {
+      // With a pad each in co-op, the choice is the chooser's to make.
+      if (count > 1 && player !== arenaRef.current?.chooser()) return;
+      if (action === 'reroll') reroll();
+      else if (action === 'skip') skip();
+      else menuPress(choiceRef.current, action);
+    } else if (now === 'results' && resultsRef.current?.open) {
+      if (action === 'back') resultsRef.current.close();
+      else menuPress(resultsRef.current, action);
+    } else if (action === 'pause') {
+      // In the lobby, Start begins a run (or the next).
+      lobbyActionsRef.current
+        ?.querySelector<HTMLButtonElement>('[data-testid="survival-start"]')
+        ?.click();
+    }
+  });
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
 
@@ -608,8 +629,13 @@ export default function ArenaGame({
       }
       if (node.parentElement === document.body) break;
     }
+    // Nor does the page behind it scroll (on a phone, a swipe would carry it along).
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    root.style.overflow = 'hidden';
     return () => {
       for (const element of marked) element.removeAttribute('inert');
+      root.style.overflow = overflow;
     };
   }, [running]);
 
@@ -721,7 +747,7 @@ export default function ArenaGame({
     const motherships: { x: number; y: number; type: number; start: number }[] = [];
     let slowUntil = 0;
     let shakeUntil = 0;
-    // While a golden chest's reel shows, a waiting level-up's choices wait for it.
+    // While a golden chest's reel shows, the run and a waiting level-up's choices wait for it.
     let reelUntil = 0;
     const met = new Set<number>();
     const sounds: number[] = [];
@@ -773,21 +799,16 @@ export default function ArenaGame({
         const k = ((shakeUntil - time) / BOSS_SHAKE_MS) * BOSS_SHAKE;
         context.translate((Math.random() * 2 - 1) * k, (Math.random() * 2 - 1) * k);
       }
-      context.fillStyle = '#070b14';
-      context.fillRect(0, 0, width, height);
-      // The floor: faint tiles that slide as he walks.
-      context.strokeStyle = 'rgba(45, 47, 71, 0.55)';
-      context.lineWidth = 1;
-      context.beginPath();
-      for (let x = -(((camX % TILE) + TILE) % TILE); x < width; x += TILE) {
-        context.moveTo(x + 0.5, 0);
-        context.lineTo(x + 0.5, height);
-      }
-      for (let y = -(((camY % TILE) + TILE) % TILE); y < height; y += TILE) {
-        context.moveTo(0, y + 0.5);
-        context.lineTo(width, y + 0.5);
-      }
-      context.stroke();
+      // Outer space: stars sliding at their own pace as he walks (space-backdrop.ts).
+      drawSpace(context, {
+        camX: cam.x,
+        camY: cam.y,
+        width,
+        height,
+        zoom: cam.zoom,
+        time,
+        light,
+      });
 
       // The Purring Cats' comfort: a faint warm halo as far as it reaches (to a
       // cat's edge), under everything else so the gems and chests stay clear.
@@ -914,31 +935,8 @@ export default function ArenaGame({
         }
       }
 
-      // An elite's attack winding up: where it will land, filling as the moment nears.
-      for (const warning of arena.telegraphs()) {
-        const ex = warning.x - camX;
-        const ey = warning.y - camY;
-        const fill = 0.08 + 0.22 * warning.progress;
-        context.fillStyle = `rgba(255, 99, 99, ${fill})`;
-        context.strokeStyle = 'rgba(255, 99, 99, 0.85)';
-        context.lineWidth = 2;
-        if (warning.shape === 'line') {
-          const angle = Math.atan2(warning.aimY - warning.y, warning.aimX - warning.x);
-          context.save();
-          context.translate(ex, ey);
-          context.rotate(angle);
-          context.fillRect(0, -warning.width / 2, warning.length, warning.width);
-          context.strokeRect(0, -warning.width / 2, warning.length, warning.width);
-          context.restore();
-        } else {
-          const cx = (warning.shape === 'ring' ? warning.x : warning.aimX) - camX;
-          const cy = (warning.shape === 'ring' ? warning.y : warning.aimY) - camY;
-          context.beginPath();
-          context.arc(cx, cy, warning.radius, 0, 2 * Math.PI);
-          context.fill();
-          context.stroke();
-        }
-      }
+      // An attack winding up (an elite's, a boss's): where it will go, filling as the moment nears.
+      for (const warning of arena.telegraphs()) drawTelegraph(context, warning, camX, camY);
 
       // The beams.
       context.strokeStyle = '#c1e838';
@@ -981,7 +979,7 @@ export default function ArenaGame({
         context.fillRect(x - 3, y - 3, 6, 6);
       }
 
-      // The cats; an elite ringed, a homesick one with its bar.
+      // The cats; a homesick one with its bar (the rare ones are marked after, over them all).
       for (const cat of arena.cats()) {
         const x = cat.x - camX;
         const y = cat.y - camY;
@@ -1002,13 +1000,6 @@ export default function ArenaGame({
           context.arc(x, y, half * 0.7, 0, 2 * Math.PI);
           context.fill();
         }
-        if (cat.elite && !cat.variety) {
-          context.strokeStyle = '#9d86ff';
-          context.lineWidth = 2;
-          context.beginPath();
-          context.arc(x, y, half + 2, 0, 2 * Math.PI);
-          context.stroke();
-        }
         if (cat.homesickness > 0) {
           context.fillStyle = 'rgba(7, 11, 20, 0.8)';
           context.fillRect(x - half, y - half - 6, size, 4);
@@ -1026,6 +1017,15 @@ export default function ArenaGame({
           if (startle) context.drawImage(startle, x - 9, y - half - 24, 18, 18);
         }
       }
+      // The rare cats (elites, visiting xenocats) marked over the crowd, so none is lost in it.
+      for (const cat of arena.cats()) {
+        if (cat.variety || (!cat.elite && !cat.visitor)) continue;
+        const x = cat.x - camX;
+        const y = cat.y - camY;
+        if (x < -CAT_SIZE || y < -CAT_SIZE || x > width + CAT_SIZE || y > height + CAT_SIZE)
+          continue;
+        drawRareMarker(context, x, y, CAT_SIZE / 2, cat.elite, time, light);
+      }
       // The Static Socks, clinging to their cats.
       const sock = kitSprites['static-sock']();
       if (sock) {
@@ -1037,12 +1037,12 @@ export default function ArenaGame({
         }
       }
 
-      // The Laser Cats' shots.
-      context.fillStyle = '#ef4444';
+      // The cats' shots: the Laser Cats' small and red, the elites' and the bosses' their own.
       for (const shot of arena.shots()) {
-        context.beginPath();
-        context.arc(shot.x - camX, shot.y - camY, 5, 0, 2 * Math.PI);
-        context.fill();
+        const x = shot.x - camX;
+        const y = shot.y - camY;
+        if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
+        drawEnemyShot(context, shot, x, y, light);
       }
 
       // What his weapons fired, and the Can Opener's blades.
@@ -1207,6 +1207,8 @@ export default function ArenaGame({
             context.save();
             context.translate(0, HERO_SIZE * 0.08);
             context.rotate(h.lookAngle);
+            // Pointing left, it is turned over too, so its top stays up.
+            if (Math.cos(h.lookAngle) < 0) context.scale(1, -1);
             const k = (HERO_SIZE * 1.1) / 64;
             context.drawImage(tool, -10 * k, -32 * k, 64 * k, 64 * k);
             context.restore();
@@ -1289,11 +1291,17 @@ export default function ArenaGame({
           );
         } else if (runMs > AUTO_JUDGE_UNTIL_MS) judging = false;
       }
-      carry += real * speedRef.current * (now < slowUntil ? BOSS_SLOW : 1);
-      // Alone, WASD and the arrow keys both walk him; in co-op, each player his own.
+      // A golden chest's reel holds the run still while it spins and shows.
+      if (now < reelUntil) carry = 0;
+      else carry += real * speedRef.current * (now < slowUntil ? BOSS_SLOW : 1);
+      // Alone, WASD and the arrow keys both walk him; in co-op, each player his own. A
+      // controller walks him when no key does (in co-op, the second pad player 2).
+      const moves = (v: Vec) => v.x !== 0 || v.y !== 0;
+      const [stick, stick2] = pads.current.walks;
       const keys = walkDirection(held, twoPlayers ? PLAYER_KEYS[0] : undefined);
-      const input = keys.x !== 0 || keys.y !== 0 ? keys : padRef.current;
-      const input2 = twoPlayers ? walkDirection(held, PLAYER_KEYS[1]) : { x: 0, y: 0 };
+      const input = moves(keys) ? keys : moves(stick) ? stick : padRef.current;
+      const keys2 = twoPlayers ? walkDirection(held, PLAYER_KEYS[1]) : { x: 0, y: 0 };
+      const input2 = moves(keys2) || !twoPlayers ? keys2 : stick2;
       // Player 1 aims where the mouse points: the screen, back into the arena
       // under the camera (centred on it, `zoom` arena pixels to a screen pixel).
       const pointer = aimRef.current === 'crosshair' ? pointerRef.current : null;
@@ -1350,7 +1358,7 @@ export default function ArenaGame({
           if (player) player.play(soundsFor(CAT_TYPES[event.type]).wake);
         } else if (event.kind === 'chest' && event.golden) {
           reelUntil = now + REEL_SPIN_MS + REEL_HOLD_MS;
-          setReel({ rewards: event.rewards, key: now });
+          setReel({ rewards: event.rewards, picks: event.picks, key: now });
           if (player) player.play(soundsFor(CAT_TYPES[0]).wake);
         } else if (event.kind === 'chest') {
           if (player) sound(() => player.play(soundsFor(CAT_TYPES[0]).arrive));
@@ -1534,7 +1542,7 @@ export default function ArenaGame({
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onHidden);
     };
-  }, [running, finish, pause, show, choose, reroll, skip, hudStore]);
+  }, [running, finish, pause, show, choose, reroll, skip, hudStore, pads]);
 
   return (
     <div>
@@ -1548,14 +1556,14 @@ export default function ArenaGame({
       <p className="mt-2 max-w-2xl text-sm text-aura">
         {touch
           ? 'Walk with the pad. Tap Pause to stop for a moment.'
-          : 'Walk with WASD or the arrow keys. Esc pauses.'}
+          : 'Walk with WASD, the arrow keys, or a controller’s stick. Esc (or Start) pauses.'}
       </p>
       {!running && <ProgressionPanel />}
       {!touch && (
         <fieldset className="mt-4 text-sm text-aura">
           <legend className="font-semibold text-cream">Keepers</legend>
-          <div className="mt-1 flex flex-wrap gap-4">
-            <label className="flex items-center gap-2">
+          <div className="mt-1 flex flex-wrap gap-x-4">
+            <label className="flex min-h-11 items-center gap-2">
               <input
                 type="radio"
                 name="survival-players"
@@ -1566,7 +1574,7 @@ export default function ArenaGame({
               />
               One
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex min-h-11 items-center gap-2">
               <input
                 type="radio"
                 name="survival-players"
@@ -1575,7 +1583,8 @@ export default function ArenaGame({
                 onChange={() => setPlayers(2)}
                 className="border-line bg-void text-aura focus:ring-aura"
               />
-              Two, at one keyboard: player 1 walks with WASD, player 2 with the arrow keys
+              Two, at one keyboard: player 1 walks with WASD, player 2 with the arrow keys (or a
+              controller each)
             </label>
           </div>
           {players === 2 && (
@@ -1585,7 +1594,7 @@ export default function ArenaGame({
                 data-testid="survival-player2-character"
                 value={secondCharacter}
                 onChange={(event) => setSecondCharacter(event.target.value as CharacterId)}
-                className="rounded-lg border-line bg-void py-1 text-sm text-cream focus:ring-aura"
+                className="min-h-11 rounded-lg border-line bg-void py-1 text-sm text-cream focus:ring-aura"
               >
                 {(Object.keys(CHARACTERS) as CharacterId[])
                   .filter((id) => hasCharacter(progress, id))
@@ -1601,9 +1610,9 @@ export default function ArenaGame({
       )}
       <fieldset className="mt-4 text-sm text-aura" disabled={running}>
         <legend className="font-semibold text-cream">Run length</legend>
-        <div className="mt-1 flex flex-wrap gap-4">
+        <div className="mt-1 flex flex-wrap gap-x-4">
           {RUN_LENGTHS.map((minutes) => (
-            <label key={minutes} className="flex items-center gap-2">
+            <label key={minutes} className="flex min-h-11 items-center gap-2">
               <input
                 type="radio"
                 name="survival-length"
@@ -1788,24 +1797,33 @@ export default function ArenaGame({
             aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
           }`}
         >
-          <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
-          <BossBar store={hudStore} />
-          <p
-            role="status"
-            data-testid="survival-notice"
-            className="pointer-events-none absolute inset-x-0 top-40 px-4 text-center font-display text-lg font-semibold text-plasma"
-          >
-            {notice}
-          </p>
-          {reel && <GoldenReel key={reel.key} rewards={reel.rewards} />}
-          <HudBar
-            store={hudStore}
-            showFps={showFps}
-            runLength={runLength}
-            runPlayers={runPlayers}
-            playing={screen === 'playing'}
-            onPause={pause}
+          {/* No browser gesture (a scroll, a pinch) on the arena itself: a swipe is play. */}
+          <canvas
+            ref={canvasRef}
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full touch-none"
           />
+          {reel && <GoldenReel key={reel.key} rewards={reel.rewards} picks={reel.picks} />}
+          {/* Along the top, one under the other: the HUD (however many rows it wraps to
+              on a narrow screen), the boss's bar, then the notice. Nothing overlaps. */}
+          <div className="pointer-events-none relative flex flex-col gap-2">
+            <HudBar
+              store={hudStore}
+              showFps={showFps}
+              runLength={runLength}
+              runPlayers={runPlayers}
+              playing={screen === 'playing'}
+              onPause={pause}
+            />
+            <BossBar store={hudStore} />
+            <p
+              role="status"
+              data-testid="survival-notice"
+              className="px-4 text-center font-display text-base font-semibold text-plasma sm:text-lg"
+            >
+              {notice}
+            </p>
+          </div>
 
           {screen === 'choosing' && choices && (
             <div
@@ -1816,9 +1834,10 @@ export default function ArenaGame({
               aria-labelledby="level-up-heading"
               aria-describedby="level-up-help"
               data-testid="survival-level-up"
-              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60 p-4"
+              // Scrolls when it does not fit (a phone on its side), centred when it does.
+              className="absolute inset-0 z-20 flex overflow-y-auto bg-void/60 p-4"
             >
-              <div className="w-full max-w-lg rounded-2xl border border-line bg-panel p-6">
+              <div className="m-auto w-full max-w-lg rounded-2xl border border-line bg-panel p-6 short:max-w-4xl short:p-4">
                 <h2 id="level-up-heading" className="font-display text-xl text-cream">
                   Level {choiceLevel}.{' '}
                   {runPlayers === 2 ? `Player ${chooser + 1}, choose one.` : 'Choose one.'}
@@ -1826,11 +1845,9 @@ export default function ArenaGame({
                 <p id="level-up-help" className="mt-1 text-sm text-aura">
                   {touch
                     ? 'Tap a choice.'
-                    : `Press 1 to ${choices.length}, or use the arrow keys and Enter. R rerolls, X skips.`}
-                  {uses.banishes > 0 &&
-                    ` A banished choice never comes back this run (${uses.banishes} left).`}
+                    : `Press 1 to ${choices.length}, or use the arrow keys and Enter. R rerolls, X skips. On a controller: the d-pad and A, Y rerolls, X skips.`}
                 </p>
-                <ol className="mt-4 grid gap-2">
+                <ol className="mt-4 grid gap-2 short:grid-cols-2">
                   {choices.map((choice, i) => {
                     const { name, description, change } = describeChoice(choice);
                     const kind = choice.kind === 'weapon' ? 'Weapon' : 'Passive';
@@ -1865,17 +1882,6 @@ export default function ArenaGame({
                             </span>
                           )}
                         </button>
-                        {uses.banishes > 0 && (
-                          <button
-                            type="button"
-                            data-testid="survival-banish"
-                            aria-label={`Banish ${name}`}
-                            onClick={() => banish(i)}
-                            className="shrink-0 rounded-xl border border-line bg-void/70 px-3 text-xs font-semibold text-cream hover:border-aura focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-plasma"
-                          >
-                            Banish
-                          </button>
-                        )}
                       </li>
                     );
                   })}
@@ -1912,9 +1918,13 @@ export default function ArenaGame({
               role="dialog"
               aria-modal="true"
               aria-labelledby="pause-heading"
+              // A click outside the window (on the dimmed run) resumes, as Resume does.
+              onClick={(event) => {
+                if (event.target === event.currentTarget) resume();
+              }}
               className="absolute inset-0 z-20 flex items-center justify-center bg-void/60 p-4"
             >
-              <div className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-center">
+              <div className="max-h-[calc(100dvh-2rem)] w-full max-w-4xl overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-center">
                 <h2 id="pause-heading" className="font-display text-xl text-cream">
                   Paused
                 </h2>

@@ -11,6 +11,7 @@ import {
   PICKUP_SVG,
   VARIETY_SVG,
 } from '@/app/ui/xenocats/arena-art';
+import { MAX_WEAPON_LEVEL } from '@/app/ui/xenocats/arsenal';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import {
@@ -490,9 +491,73 @@ describe('the Mega Cat', () => {
         chosen++;
       }
       expect(chosen).toBe(opened.rewards);
+      expect(opened.picks).toBe(opened.rewards);
     }
     expect([...counts.keys()].sort()).toEqual([1, 3, 5]);
     expect(counts.get(1)!).toBeGreaterThan(counts.get(5)!);
+  });
+
+  it('a chest gives no more picks than there are upgrades left; the rest are nothing', () => {
+    // One weapon slot and no passive slots: the Laser Pointer one level short of its
+    // highest is all there is left to upgrade.
+    for (let seed = 1; seed <= 30; seed++) {
+      const a = arena(
+        {
+          startingGoldenChests: 1,
+          chestReach: ARENA_CONFIG.chestReach,
+          escalation: [[0, 0]],
+          startingWeapons: ['laser-pointer'],
+          startingLevel: MAX_WEAPON_LEVEL - 1,
+          slots: { weapons: 1, passives: 0 },
+        },
+        seed
+      );
+      const resolve = a.state().hero.resolve;
+      a.step(still);
+      const opened = a.drainEvents().find((e) => e.kind === 'chest');
+      if (opened?.kind !== 'chest') throw new Error('the chest was not opened');
+      expect(opened.picks).toBe(1);
+      let chosen = 0;
+      while (a.choices()) {
+        a.choose(0);
+        chosen++;
+      }
+      expect(chosen).toBe(1);
+      expect(a.state().weapons).toEqual([{ id: 'laser-pointer', level: MAX_WEAPON_LEVEL }]);
+      // The rest are nothing: not even Resolve.
+      expect(a.state().hero.resolve).toBeLessThanOrEqual(resolve);
+    }
+  });
+
+  it('an evolution counts as one of the picks, and the rest are level-ups', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const a = arena(
+        {
+          startingGoldenChests: 1,
+          chestReach: ARENA_CONFIG.chestReach,
+          escalation: [[0, 0]],
+          startingWeapons: ['laser-pointer'],
+          startingLevel: MAX_WEAPON_LEVEL,
+          startingPassives: ['battery'],
+        },
+        seed
+      );
+      a.step(still);
+      const events = a.drainEvents();
+      const opened = events.find((e) => e.kind === 'chest');
+      if (opened?.kind !== 'chest') throw new Error('the chest was not opened');
+      if (opened.rewards !== 5) continue;
+      expect(events.some((e) => e.kind === 'evolution')).toBe(true);
+      expect(opened.picks).toBe(5);
+      let chosen = 0;
+      while (a.choices()) {
+        a.choose(0);
+        chosen++;
+      }
+      expect(chosen).toBe(4);
+      return;
+    }
+    throw new Error('no seed rolled a 5');
   });
 });
 

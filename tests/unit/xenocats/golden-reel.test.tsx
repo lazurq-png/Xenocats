@@ -11,7 +11,7 @@ afterEach(() => {
 describe('the golden chest’s reel', () => {
   it('spins, then lands on what the chest holds and says so', () => {
     vi.useFakeTimers();
-    render(<GoldenReel rewards={3} />);
+    render(<GoldenReel rewards={3} picks={3} />);
     expect(screen.getByText('Golden chest')).toBeTruthy();
     // Still spinning: nothing is announced yet.
     expect(screen.getByRole('status').textContent).toBe('');
@@ -24,10 +24,27 @@ describe('the golden chest’s reel', () => {
 
   it('one reward is said as one', () => {
     vi.useFakeTimers();
-    render(<GoldenReel rewards={1} />);
+    render(<GoldenReel rewards={1} picks={1} />);
     act(() => {
       vi.advanceTimersByTime(REEL_SPIN_MS + 400);
     });
     expect(screen.getByRole('status').textContent).toBe('1 reward');
+  });
+
+  it('says when there is too little left to upgrade for all it holds', () => {
+    vi.useFakeTimers();
+    render(<GoldenReel rewards={5} picks={1} />);
+    act(() => {
+      vi.advanceTimersByTime(REEL_SPIN_MS + 400);
+    });
+    expect(screen.getByRole('status').textContent).toBe('5 rewards, but only 1 upgrade is left');
+    cleanup();
+    render(<GoldenReel rewards={3} picks={0} />);
+    act(() => {
+      vi.advanceTimersByTime(REEL_SPIN_MS + 400);
+    });
+    expect(screen.getByRole('status').textContent).toBe(
+      '3 rewards, but nothing is left to upgrade'
+    );
   });
 });

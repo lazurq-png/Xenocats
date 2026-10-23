@@ -1,5 +1,6 @@
 'use client';
 
+import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import type { Vec } from './effects';
 import { KNOB_SIZE, PAD_SIZE, knobOffset, padDirection } from './movement-pad';
@@ -72,7 +73,12 @@ export function MovementPad({
       aria-hidden="true"
       data-testid="movement-pad"
       data-held={held}
-      className={`relative touch-none select-none rounded-full border-2 border-line bg-panel/70 ${className ?? ''}`}
+      // Placed where `className` puts it (the arena fixes it to the screen's corner);
+      // relative where it stands without one. Never both: the later rule would win.
+      className={clsx(
+        className ?? 'relative',
+        'touch-none select-none rounded-full border-2 border-line bg-panel/70'
+      )}
       style={{ width: PAD_SIZE, height: PAD_SIZE }}
       onPointerDown={(event) => {
         if (pointerRef.current !== null) return;

@@ -316,8 +316,9 @@ describe('downed and revived', () => {
         const dx = cat.x - was.x;
         const dy = cat.y - was.y;
         const moved = Math.hypot(dx, dy);
-        // (A cat brought round from far behind jumps: not a walk.)
-        if (moved === 0 || moved > 10) continue;
+        // (A cat brought round from far behind jumps, and an elite's dash runs on past
+        // him: neither is a walk.)
+        if (moved === 0 || moved > 10 || cat.dashUntil > a.state().time) continue;
         // It walked towards player 1, not the one lying down.
         const tx = p.x - was.x;
         const ty = p.y - was.y;

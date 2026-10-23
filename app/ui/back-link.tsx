@@ -16,7 +16,7 @@ export default function BackLink({
     <Link
       href={href}
       className={clsx(
-        'flex items-center gap-2 whitespace-nowrap border-b-2 border-aura-link/70 pb-1 text-[16.5px] font-semibold text-aura-link transition hover:border-aura hover:text-aura',
+        'tap-area flex items-center gap-2 whitespace-nowrap border-b-2 border-aura-link/70 pb-1 text-[16.5px] font-semibold text-aura-link transition hover:border-aura hover:text-aura',
         className
       )}
     >

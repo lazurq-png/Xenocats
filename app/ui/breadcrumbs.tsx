@@ -17,7 +17,9 @@ export default function Breadcrumbs({ breadcrumbs }: { breadcrumbs: Breadcrumb[]
             aria-current={breadcrumb.active}
             className={clsx(breadcrumb.active ? 'text-plasma' : 'text-aura hover:text-white')}
           >
-            <Link href={breadcrumb.href}>{breadcrumb.label}</Link>
+            <Link href={breadcrumb.href} className="tap-area">
+              {breadcrumb.label}
+            </Link>
             {index < breadcrumbs.length - 1 ? (
               <span className="mx-3 inline-block text-line">/</span>
             ) : null}

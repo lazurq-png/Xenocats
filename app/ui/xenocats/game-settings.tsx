@@ -29,7 +29,7 @@ export function GameSettings({ where, touch }: { where: 'lobby' | 'pause'; touch
       className="mt-4 text-left text-sm text-aura"
     >
       <legend className="font-semibold text-cream">Settings</legend>
-      <label className="mt-1 flex items-center gap-2">
+      <label className="mt-1 flex min-h-11 items-center gap-2">
         <input
           type="checkbox"
           data-testid={`survival-${where}-sound`}
@@ -46,14 +46,14 @@ export function GameSettings({ where, touch }: { where: 'lobby' | 'pause'; touch
       </label>
       <fieldset className="mt-2">
         <legend className="text-cream">Graphics</legend>
-        <div className="mt-1 flex flex-wrap gap-4">
+        <div className="mt-1 flex flex-wrap gap-x-4">
           {(
             [
               ['full', 'Full'],
               ['light', 'Light: no glows, for a slow screen'],
             ] as const
           ).map(([mode, label]) => (
-            <label key={mode} className="flex items-center gap-2">
+            <label key={mode} className="flex min-h-11 items-center gap-2">
               <input
                 type="radio"
                 name={`survival-${where}-graphics`}
@@ -70,14 +70,14 @@ export function GameSettings({ where, touch }: { where: 'lobby' | 'pause'; touch
       {!touch && (
         <fieldset className="mt-2">
           <legend className="text-cream">Aim</legend>
-          <div className="mt-1 flex flex-wrap gap-4">
+          <div className="mt-1 flex flex-wrap gap-x-4">
             {(
               [
                 ['auto', 'Automatic: his weapons find the cats'],
                 ['crosshair', 'Crosshair: they fire where the mouse points'],
               ] as const
             ).map(([mode, label]) => (
-              <label key={mode} className="flex items-center gap-2">
+              <label key={mode} className="flex min-h-11 items-center gap-2">
                 <input
                   type="radio"
                   name={`survival-${where}-aim`}

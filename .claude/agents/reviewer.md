@@ -58,11 +58,12 @@ A Next.js App Router app (`CLAUDE.md` §2 maps it). Worth checking every time:
   and must not assume the caller is logged in because the button sits behind
   `/dashboard`. Flag a new or changed action that trusts its arguments or skips
   a session check the task implies.
-- **The proxy matcher.** `proxy.ts` excludes `/api`, `_next` assets and image
-  files (`png`, `webp`, `svg`, `jpg`, `jpeg`, `ico`) from `auth.config.ts`'s
-  `authorized` callback, which only protects
-  `/dashboard`. A new route under `/api` or outside `/dashboard` is public. Say
-  so if the task did not mean it to be.
+- **The proxy matcher.** `proxy.ts` excludes only `_next` assets and image files
+  (`png`, `webp`, `svg`, `jpg`, `jpeg`, `ico`) from `auth.config.ts`'s
+  `authorized` callback, which only protects `/dashboard` (and sends a signed-in
+  user anywhere else but `/cats` to it). A new route outside `/dashboard`,
+  `/api` included, is public unless it checks the session itself. Say so if the
+  task did not mean it to be.
 - **SQL.** Queries use `postgres` tagged templates (`` sql`... ${x}` ``), which
   parameterise. `sql.unsafe`, string concatenation into a query, or a
   user-controlled identifier (a sort column, a table name) is an injection
