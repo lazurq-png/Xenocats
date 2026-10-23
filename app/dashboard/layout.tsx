@@ -19,10 +19,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <SideNav />
           </div>
           <div className="grow md:overflow-y-auto">
+            {/* Room at the foot on a phone, so the sound toggle in the corner never sits
+                over the page's last row. */}
             <main
               id="main-content"
               tabIndex={-1}
-              className="min-h-full px-4 py-6 focus-visible:outline-hidden md:rounded-bl-[40px] md:border-b md:border-l md:border-line/70 md:px-8 md:py-9"
+              className="min-h-full px-4 pb-20 pt-6 focus-visible:outline-hidden md:rounded-bl-[40px] md:border-b md:border-l md:border-line/70 md:px-8 md:py-9"
             >
               {children}
             </main>

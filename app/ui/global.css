@@ -2,6 +2,28 @@
 
 @plugin '@tailwindcss/forms';
 
+/* A short screen: a phone on its side. What would not fit its height is laid out wider. */
+@custom-variant short (@media (max-height: 500px));
+
+/*
+ * A small link or control made easy to tap with a finger: its touch area reaches at
+ * least 44 px each way round its middle, its look unchanged (the area is an empty
+ * ::after, and a tap on it is a tap on the control). 48 px, as it is centred on the
+ * padding box: a border to one side (an underline) moves it off centre.
+ */
+@utility tap-area {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 48px);
+    height: max(100%, 48px);
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* Sampled from the Canva mockup ("Xenocat Analytics website mockup"). */
 @theme {
   --color-void: #070b14;

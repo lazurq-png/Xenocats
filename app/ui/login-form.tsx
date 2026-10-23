@@ -72,7 +72,7 @@ export default function LoginForm() {
           onClick={() => setShowPassword((shown) => !shown)}
           aria-label={showPassword ? 'Hide password' : 'Show password'}
           aria-pressed={showPassword}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm p-1 text-aura-login transition hover:text-white focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-aura-login"
+          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-3 text-aura-login transition hover:text-white focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-aura-login"
         >
           {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
         </button>
@@ -95,7 +95,10 @@ export default function LoginForm() {
       </div>
       <p className="mt-2 text-sm text-aura-login">
         New here?{' '}
-        <Link href="/signup" className="font-semibold text-white underline hover:text-plasma">
+        <Link
+          href="/signup"
+          className="tap-area font-semibold text-white underline hover:text-plasma"
+        >
           Create an account
         </Link>
       </p>

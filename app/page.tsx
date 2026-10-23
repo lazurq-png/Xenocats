@@ -33,7 +33,7 @@ export default function Page() {
               </Link>
               <Link
                 href="/cats"
-                className="border-b-2 border-aura-link/70 pb-1 text-[20.8px] font-semibold text-aura-link transition hover:border-aura hover:text-aura"
+                className="tap-area border-b-2 border-aura-link/70 pb-1 text-[20.8px] font-semibold text-aura-link transition hover:border-aura hover:text-aura"
               >
                 Meet the cats
               </Link>

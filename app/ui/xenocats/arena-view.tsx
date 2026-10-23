@@ -629,8 +629,13 @@ export default function ArenaGame({
       }
       if (node.parentElement === document.body) break;
     }
+    // Nor does the page behind it scroll (on a phone, a swipe would carry it along).
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    root.style.overflow = 'hidden';
     return () => {
       for (const element of marked) element.removeAttribute('inert');
+      root.style.overflow = overflow;
     };
   }, [running]);
 
@@ -1557,8 +1562,8 @@ export default function ArenaGame({
       {!touch && (
         <fieldset className="mt-4 text-sm text-aura">
           <legend className="font-semibold text-cream">Keepers</legend>
-          <div className="mt-1 flex flex-wrap gap-4">
-            <label className="flex items-center gap-2">
+          <div className="mt-1 flex flex-wrap gap-x-4">
+            <label className="flex min-h-11 items-center gap-2">
               <input
                 type="radio"
                 name="survival-players"
@@ -1569,7 +1574,7 @@ export default function ArenaGame({
               />
               One
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex min-h-11 items-center gap-2">
               <input
                 type="radio"
                 name="survival-players"
@@ -1589,7 +1594,7 @@ export default function ArenaGame({
                 data-testid="survival-player2-character"
                 value={secondCharacter}
                 onChange={(event) => setSecondCharacter(event.target.value as CharacterId)}
-                className="rounded-lg border-line bg-void py-1 text-sm text-cream focus:ring-aura"
+                className="min-h-11 rounded-lg border-line bg-void py-1 text-sm text-cream focus:ring-aura"
               >
                 {(Object.keys(CHARACTERS) as CharacterId[])
                   .filter((id) => hasCharacter(progress, id))
@@ -1605,9 +1610,9 @@ export default function ArenaGame({
       )}
       <fieldset className="mt-4 text-sm text-aura" disabled={running}>
         <legend className="font-semibold text-cream">Run length</legend>
-        <div className="mt-1 flex flex-wrap gap-4">
+        <div className="mt-1 flex flex-wrap gap-x-4">
           {RUN_LENGTHS.map((minutes) => (
-            <label key={minutes} className="flex items-center gap-2">
+            <label key={minutes} className="flex min-h-11 items-center gap-2">
               <input
                 type="radio"
                 name="survival-length"
@@ -1792,24 +1797,33 @@ export default function ArenaGame({
             aimMode === 'crosshair' && screen === 'playing' ? ' cursor-none' : ''
           }`}
         >
-          <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full" />
-          <BossBar store={hudStore} />
-          <p
-            role="status"
-            data-testid="survival-notice"
-            className="pointer-events-none absolute inset-x-0 top-40 px-4 text-center font-display text-lg font-semibold text-plasma"
-          >
-            {notice}
-          </p>
-          {reel && <GoldenReel key={reel.key} rewards={reel.rewards} picks={reel.picks} />}
-          <HudBar
-            store={hudStore}
-            showFps={showFps}
-            runLength={runLength}
-            runPlayers={runPlayers}
-            playing={screen === 'playing'}
-            onPause={pause}
+          {/* No browser gesture (a scroll, a pinch) on the arena itself: a swipe is play. */}
+          <canvas
+            ref={canvasRef}
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full touch-none"
           />
+          {reel && <GoldenReel key={reel.key} rewards={reel.rewards} picks={reel.picks} />}
+          {/* Along the top, one under the other: the HUD (however many rows it wraps to
+              on a narrow screen), the boss's bar, then the notice. Nothing overlaps. */}
+          <div className="pointer-events-none relative flex flex-col gap-2">
+            <HudBar
+              store={hudStore}
+              showFps={showFps}
+              runLength={runLength}
+              runPlayers={runPlayers}
+              playing={screen === 'playing'}
+              onPause={pause}
+            />
+            <BossBar store={hudStore} />
+            <p
+              role="status"
+              data-testid="survival-notice"
+              className="px-4 text-center font-display text-base font-semibold text-plasma sm:text-lg"
+            >
+              {notice}
+            </p>
+          </div>
 
           {screen === 'choosing' && choices && (
             <div
@@ -1820,9 +1834,10 @@ export default function ArenaGame({
               aria-labelledby="level-up-heading"
               aria-describedby="level-up-help"
               data-testid="survival-level-up"
-              className="absolute inset-0 z-20 flex items-center justify-center bg-void/60 p-4"
+              // Scrolls when it does not fit (a phone on its side), centred when it does.
+              className="absolute inset-0 z-20 flex overflow-y-auto bg-void/60 p-4"
             >
-              <div className="w-full max-w-lg rounded-2xl border border-line bg-panel p-6">
+              <div className="m-auto w-full max-w-lg rounded-2xl border border-line bg-panel p-6 short:max-w-4xl short:p-4">
                 <h2 id="level-up-heading" className="font-display text-xl text-cream">
                   Level {choiceLevel}.{' '}
                   {runPlayers === 2 ? `Player ${chooser + 1}, choose one.` : 'Choose one.'}
@@ -1832,7 +1847,7 @@ export default function ArenaGame({
                     ? 'Tap a choice.'
                     : `Press 1 to ${choices.length}, or use the arrow keys and Enter. R rerolls, X skips. On a controller: the d-pad and A, Y rerolls, X skips.`}
                 </p>
-                <ol className="mt-4 grid gap-2">
+                <ol className="mt-4 grid gap-2 short:grid-cols-2">
                   {choices.map((choice, i) => {
                     const { name, description, change } = describeChoice(choice);
                     const kind = choice.kind === 'weapon' ? 'Weapon' : 'Passive';

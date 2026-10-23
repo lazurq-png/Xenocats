@@ -1257,6 +1257,102 @@ test.describe('on a touch screen', () => {
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Pixel 7'];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
 
+  /** A box on the screen, read now (it must be there). */
+  const boxOf = async (locator: Locator) => (await locator.boundingBox())!;
+
+  test('on a phone, upright or on its side, the HUD, the boss bar and the notice stand one under the other, the pad in its corner', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    for (const size of [viewport, { width: viewport.height, height: viewport.width }]) {
+      await page.setViewportSize(size);
+      await openArena(page, '?seed=7&boss=0');
+      await startRun(page, true);
+      const boss = page.getByTestId('survival-boss');
+      await expect(boss).toBeVisible({ timeout: 15_000 });
+      const notice = page.getByTestId('survival-notice');
+      await expect(notice).toContainText('has come for the Keeper');
+      const hud = [
+        page.getByTestId('survival-time'),
+        page.getByTestId('survival-resolve'),
+        page.getByTestId('survival-sent-home'),
+        page.getByTestId('survival-level'),
+        area(page).getByRole('button', { name: 'Pause' }),
+      ];
+      let hudBottom = 0;
+      for (const item of hud) {
+        const box = await boxOf(item);
+        expect(box.x + box.width, `${size.width}×${size.height}`).toBeLessThanOrEqual(size.width);
+        hudBottom = Math.max(hudBottom, box.y + box.height);
+      }
+      const bar = await boxOf(boss);
+      const said = await boxOf(notice);
+      const pad = await boxOf(page.getByTestId('movement-pad'));
+      const at = `${size.width}×${size.height}`;
+      expect(bar.y, at).toBeGreaterThanOrEqual(hudBottom);
+      expect(said.y, at).toBeGreaterThanOrEqual(bar.y + bar.height);
+      // The pad in the bottom left corner, below all of it, wholly on the screen.
+      expect(pad.y, at).toBeGreaterThanOrEqual(said.y + said.height);
+      expect(pad.x, at).toBeLessThan(size.width / 3);
+      expect(pad.y + pad.height, at).toBeLessThanOrEqual(size.height);
+      expect(pad.y, at).toBeGreaterThan(size.height / 3);
+    }
+  });
+
+  test('on a phone on its side, every choice of a level-up, Reroll and Skip can be reached and tapped', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // A short phone on its side (360 px is common): the window is taller than that.
+    const size = { width: 740, height: 360 };
+    await page.setViewportSize(size);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page, true);
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    const buttons = dialog.getByRole('button');
+    const count = await buttons.count();
+    expect(count).toBeGreaterThanOrEqual(4);
+    // Taller than the screen, it scrolls under a finger; shorter, it fits.
+    expect(
+      await dialog.evaluate(
+        (d) =>
+          d.scrollHeight <= d.clientHeight ||
+          ['auto', 'scroll'].includes(getComputedStyle(d).overflowY)
+      )
+    ).toBe(true);
+    for (let i = 0; i < count; i++) {
+      const button = buttons.nth(i);
+      await button.scrollIntoViewIfNeeded();
+      const box = await boxOf(button);
+      // Wholly on the screen, and nothing over its middle.
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+      const middle = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      expect(
+        await button.evaluate(
+          (el, at) => el.contains(document.elementFromPoint(at.x, at.y)),
+          middle
+        )
+      ).toBe(true);
+    }
+    // The last choice, tapped: taken.
+    const choices = dialog.locator('button[data-choice]');
+    const last = choices.last();
+    await last.scrollIntoViewIfNeeded();
+    const taken = await last.getAttribute('data-choice');
+    await last.tap();
+    await expect
+      .poll(async () => {
+        if ((await dialog.count()) === 0) return 'taken';
+        const ids = await choices.evaluateAll((all) =>
+          all.map((b) => b.getAttribute('data-choice'))
+        );
+        return ids.includes(taken) ? 'waiting' : 'taken';
+      })
+      .toBe('taken');
+  });
+
   test('on a phone the camera zooms out, to show as much of the arena as the rule says', async ({
     page,
   }) => {

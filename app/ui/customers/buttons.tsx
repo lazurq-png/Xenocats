@@ -21,7 +21,7 @@ export function UpdateCustomer({ id, name }: { id: string; name: string }) {
   return (
     <Link
       href={`/dashboard/customers/${id}/edit`}
-      className="rounded-lg border border-line p-2 text-aura transition-colors hover:border-aura hover:text-white"
+      className="tap-area rounded-lg border border-line p-2 text-aura transition-colors hover:border-aura hover:text-white"
     >
       <span className="sr-only">Edit {name}</span>
       <PencilIcon className="w-5" />
@@ -45,7 +45,7 @@ export function DeleteCustomer({ id, name }: { id: string; name: string }) {
         type="submit"
         disabled={pending}
         aria-describedby={errorId}
-        className="rounded-lg border border-line p-2 text-aura transition-colors hover:border-red-400 hover:text-red-400 disabled:opacity-50"
+        className="tap-area rounded-lg border border-line p-2 text-aura transition-colors hover:border-red-400 hover:text-red-400 disabled:opacity-50"
       >
         <span className="sr-only">Delete {name}</span>
         <TrashIcon className="w-5" />

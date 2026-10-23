@@ -109,7 +109,10 @@ export default function SignUpForm() {
       </div>
       <p className="mt-2 text-sm text-aura-login">
         Already have an account?{' '}
-        <Link href="/login" className="font-semibold text-white underline hover:text-plasma">
+        <Link
+          href="/login"
+          className="tap-area font-semibold text-white underline hover:text-plasma"
+        >
           Log in
         </Link>
       </p>

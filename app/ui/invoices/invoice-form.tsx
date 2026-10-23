@@ -135,9 +135,10 @@ export default function InvoiceForm(
           <legend className="mb-2 block text-sm font-medium text-white">
             Set the invoice status
           </legend>
-          <div className="rounded-xl border border-line bg-void/70 px-[14px] py-3">
+          <div className="rounded-xl border border-line bg-void/70 px-[14px] py-1">
             <div className="flex gap-4">
-              <div className="flex items-center">
+              {/* The radio and its pill, one label: a tap anywhere on either chooses it. */}
+              <label htmlFor="pending" className="flex min-h-11 cursor-pointer items-center">
                 <input
                   id="pending"
                   name="status"
@@ -147,14 +148,11 @@ export default function InvoiceForm(
                   className="h-4 w-4 cursor-pointer border-line bg-void text-plasma focus:ring-2 focus:ring-plasma focus:ring-offset-panel"
                   aria-describedby="status-error"
                 />
-                <label
-                  htmlFor="pending"
-                  className="ml-2 flex cursor-pointer items-center gap-1.5 rounded-full border border-aura/60 px-3 py-1.5 text-xs font-medium text-aura"
-                >
+                <span className="ml-2 flex items-center gap-1.5 rounded-full border border-aura/60 px-3 py-1.5 text-xs font-medium text-aura">
                   Pending <ClockIcon className="h-4 w-4" />
-                </label>
-              </div>
-              <div className="flex items-center">
+                </span>
+              </label>
+              <label htmlFor="paid" className="flex min-h-11 cursor-pointer items-center">
                 <input
                   id="paid"
                   name="status"
@@ -163,13 +161,10 @@ export default function InvoiceForm(
                   defaultChecked={invoice?.status === 'paid'}
                   className="h-4 w-4 cursor-pointer border-line bg-void text-plasma focus:ring-2 focus:ring-plasma focus:ring-offset-panel"
                 />
-                <label
-                  htmlFor="paid"
-                  className="ml-2 flex cursor-pointer items-center gap-1.5 rounded-full border border-plasma/60 px-3 py-1.5 text-xs font-medium text-plasma"
-                >
+                <span className="ml-2 flex items-center gap-1.5 rounded-full border border-plasma/60 px-3 py-1.5 text-xs font-medium text-plasma">
                   Paid <CheckIcon className="h-4 w-4" />
-                </label>
-              </div>
+                </span>
+              </label>
             </div>
           </div>
           <div id="status-error" aria-live="polite" aria-atomic="true">

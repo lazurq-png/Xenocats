@@ -71,6 +71,7 @@ const GROUPS: Record<string, string[]> = {
     'cat-states',
     'dashboard-range',
     'signup',
+    'phone',
   ],
   customers: ['customers'],
   invoices: ['invoices-filter', 'invoice-detail', 'invoice-export', 'invoices', 'own-data'],

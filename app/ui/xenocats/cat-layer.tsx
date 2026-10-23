@@ -479,7 +479,7 @@ function SoundToggle() {
       aria-pressed={on}
       title={on ? 'Cat sounds on' : 'Cat sounds off'}
       onClick={() => setSoundEnabled(!on)}
-      className="fixed bottom-4 right-4 z-9997 flex h-10 w-10 items-center justify-center rounded-full border border-line bg-panel text-aura shadow-glow transition hover:text-plasma focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma"
+      className="fixed bottom-4 right-4 z-9997 flex size-11 items-center justify-center rounded-full border border-line bg-panel text-aura shadow-glow transition hover:text-plasma focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plasma"
     >
       <Icon className="h-5 w-5" aria-hidden="true" />
     </button>
