@@ -106,10 +106,15 @@ test('the list sorts by Total Paid, then the other way round, and the sort survi
     'aria-sort',
     'ascending'
   );
-  /** Each row's Total Paid, in cents, top to bottom (the desktop table). */
+  /**
+   * Each row's Total Paid, in cents, top to bottom (the desktop table). Visible rows only:
+   * while the list streams in, React holds the new rows in a hidden copy as well, and
+   * a read in that moment saw every customer twice (6 rows sorted, then the same 6).
+   */
   const paid = () =>
     page
       .locator('table tbody tr')
+      .filter({ visible: true })
       .evaluateAll((rows) =>
         rows.map((row) =>
           Math.round(Number(row.children[4].textContent!.replace(/[$,]/g, '')) * 100)
@@ -155,7 +160,7 @@ test('the list shows six customers a page, and pages through the rest', async ({
       INSERT INTO customers (name, email, owner_id)
       SELECT ${tag} || ' ' || n, 'pager' || n || '@example.com', ${users[0].id}
       FROM generate_series(1, 7) AS n`;
-    const rows = page.locator('table tbody tr');
+    const rows = page.locator('table tbody tr').filter({ visible: true });
 
     await page.goto(`/dashboard/customers?query=${encodeURIComponent(tag)}`);
     await expect(rows).toHaveCount(6);

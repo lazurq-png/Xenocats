@@ -88,6 +88,22 @@ describe('experience', () => {
       expect(xpToNext(level + 1)).toBeGreaterThan(xpToNext(level));
     }
   });
+
+  it('the late levels cost far more than the early ones grow: a five-minute run is barely touched', () => {
+    // The curve before its cube (2026-10): what each level would cost without it.
+    const square = (level: number) =>
+      Math.round(5 + (level - 1) * 9 + Math.max(level - 1, 0) ** 2 * 0.4);
+    const total = (curve: (level: number) => number, to: number) => {
+      let sum = 0;
+      for (let level = 1; level < to; level++) sum += curve(level);
+      return sum;
+    };
+    // A five-minute run's levels (about 25): within a tenth.
+    expect(total(xpToNext, 25) / total(square, 25)).toBeLessThan(1.1);
+    // A long run's (every weapon and passive at its best is about level 150): half again and more.
+    expect(total(xpToNext, 100) / total(square, 100)).toBeGreaterThan(1.4);
+    expect(total(xpToNext, 150) / total(square, 150)).toBeGreaterThan(1.6);
+  });
 });
 
 describe('the level-up offer', () => {
@@ -414,9 +430,15 @@ describe('every weapon, at level 1 and at its top level', () => {
       ...steady,
       startingWeapons: ['vacuum-cleaner'],
       escalation: [[0, 30]],
-      cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9], speed: [0, 0], eliteShare: 0 },
+      cats: {
+        ...ARENA_CONFIG.cats,
+        homesickness: [1e9, 1e9],
+        speed: [0, 0],
+        eliteShare: 0,
+        spacing: 0,
+      },
     });
-    // Cats that do not walk (nor dash, as an elite would): only the vacuum moves them. All thirty first, then he
+    // Cats that do not walk (nor dash, as an elite would, nor are eased apart): only the vacuum moves them. All thirty first, then he
     // walks among them; any cat that moves was drawn in, from within its reach.
     stepWhile(a, () => a.state().cats < 30);
     const area = weaponStats('vacuum-cleaner', 1, none).area;
@@ -1387,7 +1409,7 @@ describe('the household arsenal: five weapons and five passives, each its own wa
       expect(BASE_WEAPONS).not.toContain(id);
       expect(EVOLUTIONS.some((e) => e.to === id)).toBe(true);
     }
-    expect(EVOLUTIONS).toHaveLength(17);
+    expect(EVOLUTIONS).toHaveLength(20);
   });
 
   it('four of the five have a way of working no earlier weapon has: sweep, lure, trap and blow', () => {
@@ -2127,5 +2149,32 @@ describe('the colour of how far an item has come', () => {
         );
       }
     }
+  });
+});
+
+describe('the full arsenal', () => {
+  it('every base weapon evolves, with a passive of its own, and every passive evolves one', () => {
+    for (const id of BASE_WEAPONS) {
+      expect(
+        EVOLUTIONS.filter((e) => e.from === id),
+        id
+      ).toHaveLength(1);
+    }
+    for (const id of Object.keys(PASSIVES) as PassiveId[]) {
+      expect(
+        EVOLUTIONS.filter((e) => e.with === id),
+        id
+      ).toHaveLength(1);
+    }
+  });
+
+  it('every evolved weapon is part of one fusion: a full run ends with ten fused weapons', () => {
+    for (const { to } of EVOLUTIONS) {
+      expect(
+        FUSIONS.filter((f) => f.from.includes(to)),
+        to
+      ).toHaveLength(1);
+    }
+    expect(FUSIONS).toHaveLength(BASE_WEAPONS.length / 2);
   });
 });

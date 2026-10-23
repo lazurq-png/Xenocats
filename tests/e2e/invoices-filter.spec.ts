@@ -7,8 +7,11 @@ import { DEMO_USER } from './demo-user';
 test.skip(!process.env.E2E_POSTGRES_URL, 'needs a database (POSTGRES_URL)');
 test.use({ storageState: DEMO_USER });
 
-/** The desktop table's rows (the phone list is hidden at this width). */
-const rows = (page: Page) => page.locator('table tbody tr');
+/**
+ * The desktop table's rows (the phone list is hidden at this width), visible ones only:
+ * while the list streams in, React holds the new rows in a hidden copy as well.
+ */
+const rows = (page: Page) => page.locator('table tbody tr').filter({ visible: true });
 
 const rowTexts = (page: Page) =>
   rows(page).evaluateAll((all) => all.map((row) => row.textContent ?? ''));

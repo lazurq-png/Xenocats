@@ -137,6 +137,7 @@ const SHOT_COLOR: Record<string, string> = {
   'yarn-ball': '#f472b6',
   'yarn-apocalypse': '#ec4899',
   hairball: '#a8865b',
+  'lucky-furball': '#e0b45c',
   'bottomless-saucer': '#f5f0e0',
   'bath-tub': '#7dd3fc',
   jacuzzi: '#38bdf8',
@@ -150,6 +151,7 @@ const SHOT_COLOR: Record<string, string> = {
 const ZONE_COLOR: Record<string, string> = {
   'alarm-clock': '251, 191, 36',
   'grandfather-clock': '217, 119, 6',
+  'roaring-upright': '125, 211, 252',
 };
 
 /** How long an evolution's announcement stays, ms. */

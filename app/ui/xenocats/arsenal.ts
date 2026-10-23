@@ -58,6 +58,9 @@ export type WeaponId =
   | 'pickle-jar'
   | 'heatwave-fan'
   | 'grandfather-clock'
+  | 'laser-light-show'
+  | 'lucky-furball'
+  | 'roaring-upright'
   // Fused: two evolved weapons made one at a chest (FUSIONS); never offered.
   | 'thunderstorm'
   | 'scorching-maw'
@@ -65,7 +68,10 @@ export type WeaponId =
   | 'milk-symphony'
   | 'grand-slam'
   | 'kitchen-sink'
-  | 'clockwork-gale';
+  | 'clockwork-gale'
+  | 'peacock-prism'
+  | 'bubble-bath'
+  | 'fort-hoover';
 
 export type PassiveId =
   | 'rubber-chicken'
@@ -199,7 +205,10 @@ type FusedId =
   | 'milk-symphony'
   | 'grand-slam'
   | 'kitchen-sink'
-  | 'clockwork-gale';
+  | 'clockwork-gale'
+  | 'peacock-prism'
+  | 'bubble-bath'
+  | 'fort-hoover';
 
 const FUSED_WEAPONS: Readonly<Record<FusedId, WeaponInfo>> = {
   thunderstorm: {
@@ -313,6 +322,57 @@ const FUSED_WEAPONS: Readonly<Record<FusedId, WeaponInfo>> = {
       // How long the cats stand still, ms.
       durationMs: 1800,
       pierce: 99,
+    }),
+  },
+  'peacock-prism': {
+    name: 'Peacock Prism',
+    description:
+      'Feathers that catch the light, and a light that will not stay still. Now and then it shines out every way at once.',
+    kind: 'fused',
+    unit: 'ray',
+    levels: fixed({
+      cooldownMs: 1800,
+      damage: 110,
+      // How far the rays reach, px.
+      area: 520,
+      count: 12,
+      speed: 0,
+      durationMs: 200,
+      pierce: 99,
+    }),
+  },
+  'bubble-bath': {
+    name: 'Bubble Bath',
+    description:
+      'Bubbles everywhere, and the bath overflows. Now and then a ring of bubbles, and a puddle round his feet.',
+    kind: 'fused',
+    unit: 'bubble',
+    levels: fixed({
+      cooldownMs: 2600,
+      damage: 80,
+      area: 20,
+      count: 16,
+      speed: 330,
+      durationMs: 1300,
+      pierce: 3,
+    }),
+  },
+  'fort-hoover': {
+    name: 'Fort Hoover',
+    description:
+      'A castle with a vacuum in its keep. Now and then the nearest cats are boxed where they stand.',
+    kind: 'fused',
+    unit: 'box',
+    levels: fixed({
+      cooldownMs: 3000,
+      damage: 70,
+      // A box's size, px; it reaches for cats this far, px (speed).
+      area: 70,
+      count: 5,
+      speed: 420,
+      durationMs: 3500,
+      // Cats a box takes.
+      pierce: 8,
     }),
   },
 };
@@ -983,6 +1043,53 @@ export const WEAPONS: Readonly<Record<WeaponId, WeaponInfo>> = {
       pierce: 99,
     }),
   },
+  'laser-light-show': {
+    name: 'Laser Light Show',
+    description:
+      'The red dot puts on a show. It leaps further and more often, and the cats cannot look away.',
+    kind: 'chain',
+    unit: 'jump',
+    levels: fixed({
+      cooldownMs: 700,
+      damage: 48,
+      area: 320,
+      count: 12,
+      speed: 0,
+      durationMs: 220,
+      pierce: 99,
+    }),
+  },
+  'lucky-furball': {
+    name: 'Lucky Furball',
+    description: 'Coughed up for luck, and it brings some. It bursts wider, into bigger pieces.',
+    kind: 'burst',
+    unit: 'piece',
+    levels: fixed({
+      cooldownMs: 1100,
+      damage: 55,
+      area: 20,
+      count: 12,
+      speed: 380,
+      durationMs: 1100,
+      pierce: 2,
+    }),
+  },
+  'roaring-upright': {
+    name: 'Roaring Upright',
+    description:
+      'The vacuum at full roar, squeaking as it goes. Every cat near him wishes it were anywhere else.',
+    kind: 'zone',
+    unit: 'zone',
+    levels: fixed({
+      cooldownMs: 0,
+      damage: 45,
+      area: 250,
+      count: 1,
+      speed: 0,
+      durationMs: 0,
+      pierce: 99,
+    }),
+  },
   'grandfather-clock': {
     name: 'Grandfather Clock',
     description: 'Every chime is a minute long. Cats near him slow to a crawl, and grow homesick.',
@@ -1024,6 +1131,9 @@ export const EVOLUTIONS: readonly Evolution[] = [
   { from: 'cucumber', with: 'cookie-jar', to: 'pickle-jar' },
   { from: 'ceiling-fan', with: 'hot-water-bottle', to: 'heatwave-fan' },
   { from: 'alarm-clock', with: 'loaded-dice', to: 'grandfather-clock' },
+  { from: 'laser-pointer-deluxe', with: 'stern-look', to: 'laser-light-show' },
+  { from: 'hairball', with: 'lucky-bell', to: 'lucky-furball' },
+  { from: 'thunderous-vacuum', with: 'rubber-chicken', to: 'roaring-upright' },
 ];
 
 /**
@@ -1041,6 +1151,9 @@ export const FUSIONS: readonly Fusion[] = [
   { from: ['serve-machine', 'static-storm'], to: 'grand-slam' },
   { from: ['cast-iron-skillet', 'pickle-jar'], to: 'kitchen-sink' },
   { from: ['heatwave-fan', 'grandfather-clock'], to: 'clockwork-gale' },
+  { from: ['peacock-tail', 'laser-light-show'], to: 'peacock-prism' },
+  { from: ['jacuzzi', 'lucky-furball'], to: 'bubble-bath' },
+  { from: ['cardboard-castle', 'roaring-upright'], to: 'fort-hoover' },
 ];
 
 /** The weapons a level-up may offer: all but the evolved and the fused ones. */
@@ -1287,8 +1400,12 @@ export function weaponStats(id: WeaponId, level: number, mods: Modifiers): Weapo
 /** Experience needed from `level` to the next. */
 export function xpToNext(level: number): number {
   // The square term is small for a five-minute run's levels, and makes the last of a long
-  // run's (every weapon and passive at its best) cost about twice what they did.
-  return Math.round(5 + (level - 1) * 9 + Math.max(level - 1, 0) ** 2 * 0.4);
+  // run's (every weapon and passive at its best) cost about twice what they did. The cube
+  // is smaller still early (a few per cent by level 10) and the most of all late (level
+  // 100 costs about 80% more): a late run sends cats home by the thousand, and every
+  // weapon at its best should not come before twenty minutes or so.
+  const n = Math.max(level - 1, 0);
+  return Math.round(5 + n * 9 + n ** 2 * 0.4 + n ** 3 * 0.004);
 }
 
 export type Choice =
@@ -1556,7 +1673,7 @@ export type Loadout = {
   /**
    * Each evolution within reach, not yet made: he holds its weapon and its passive, and
    * one of the two is at its highest level. What is still missing (the weapon's last
-   * levels), or, with nothing missing, `ready` for the one the next chest he opens
+   * levels), or, with nothing missing, `ready` for the one the next chest
    * evolves (evolutionFor: the first ready, in EVOLUTIONS' order) and `after` naming
    * it for any other ready one. A secret one is never named here: the codex keeps it
    * until it is found.
@@ -1594,7 +1711,7 @@ export function loadout(
     ...FUSIONS.map((f) => f.to),
   ]);
   const absorbed = absorbedBy(weaponLevels);
-  // What the next chest he opens evolves, by the chest's own rule.
+  // What the next chest evolves, by the chest's own rule.
   const first = evolutionFor(weaponLevels, passiveLevels);
   // Within reach: not made yet, both halves held, and one of them at its highest level.
   const nearEvolutions = EVOLUTIONS.filter((e) => {

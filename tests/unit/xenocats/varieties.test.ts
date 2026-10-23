@@ -4,6 +4,7 @@ import {
   type ArenaCat,
   type ArenaConfig,
   createArena,
+  SOOTHE_TURNS,
 } from '@/app/ui/xenocats/arena';
 import {
   HERO_BODY_SVGS,
@@ -608,11 +609,24 @@ describe('the Purring Cat', () => {
     // Seen: a cat in two Purring Cats' reach; a Purring Cat in another's.
     let doubly = 0;
     let purringInReach = 0;
+    // The purring comes every SOOTHE_TURNS steps, that many steps' worth at once.
+    let comforts = 0;
     stepTo(a, 40_000, () => {
       const before = new Map(a.cats().map((c) => [c.id, c.homesickness]));
       a.step(still);
       if (a.drainEvents().some((e) => e.kind === 'fired')) return;
       const purrers = a.cats().filter((c) => c.variety === 'comforter');
+      const near = (cat: ArenaCat) =>
+        cat.variety === 'comforter'
+          ? 0
+          : purrers.filter((p) => Math.hypot(p.x - cat.x, p.y - cat.y) <= radius + cat.radius)
+              .length;
+      // A step the purring came: some cat in reach, with Homesickness to lose, lost it.
+      const purred = a.cats().some((cat) => {
+        const was = before.get(cat.id);
+        return was !== undefined && was > 0 && near(cat) > 0 && cat.homesickness !== was;
+      });
+      if (purred) comforts++;
       for (const cat of a.cats()) {
         const was = before.get(cat.id);
         if (was === undefined) continue;
@@ -625,21 +639,23 @@ describe('the Purring Cat', () => {
           purringInReach++;
         }
         // Each Purring Cat in reach comforts it (several add up).
-        const purringNear =
-          cat.variety === 'comforter'
-            ? 0
-            : purrers.filter((p) => Math.hypot(p.x - cat.x, p.y - cat.y) <= radius + cat.radius)
-                .length;
-        if (purringNear > 0) {
-          expect(cat.homesickness).toBeCloseTo(Math.max(was - purringNear * perSecond * dt, 0), 9);
+        const purringNear = near(cat);
+        if (purred && purringNear > 0) {
+          expect(cat.homesickness).toBeCloseTo(
+            Math.max(was - purringNear * perSecond * dt * SOOTHE_TURNS, 0),
+            9
+          );
           if (was > 0) soothed++;
           if (was > 0 && purringNear > 1) doubly++;
         } else {
           expect(cat.homesickness).toBe(was);
-          if (was > 0) kept++;
+          if (was > 0 && purringNear === 0) kept++;
         }
       }
     });
+    // About one step in SOOTHE_TURNS, never more.
+    expect(comforts).toBeGreaterThan(0);
+    expect(comforts).toBeLessThanOrEqual(Math.ceil(40_000 / a.config.stepMs / SOOTHE_TURNS) + 1);
     expect(soothed).toBeGreaterThan(20);
     expect(kept).toBeGreaterThan(20);
     expect(doubly).toBeGreaterThan(0);
@@ -664,6 +680,8 @@ describe('the xenocats are special, not the horde', () => {
         // No horde at all: only the visits.
         escalation: [[0, 0]],
         schedule: { ...only('basic'), xenocats: { from: 1000, everyMs: [2000, 2000] } },
+        // A visit every two seconds: no gap between plain chests (a game's is chestGapMs).
+        chestGapMs: 0,
       },
       4
     );
