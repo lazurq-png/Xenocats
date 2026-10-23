@@ -47,6 +47,7 @@ export function useGamepads(
       }
       const read = reader.read(list);
       state.current = { walks: read.walks, pads: read.pads };
+      if (read.presses.length > 0) markPadInput();
       for (const press of read.presses) handler.current(press.player, press.action, read.pads);
       frame = read.pads > 0 ? requestAnimationFrame(poll) : 0;
     };
@@ -54,14 +55,33 @@ export function useGamepads(
       if (frame === 0) frame = requestAnimationFrame(poll);
     };
     window.addEventListener('gamepadconnected', start);
+    // A mouse, a finger or a key takes over again: focus shows as the browser decides.
+    window.addEventListener('pointerdown', clearPadInput, true);
+    window.addEventListener('keydown', clearPadInput, true);
     // One look now, for a pad already connected (it stops at once if there is none).
     start();
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('gamepadconnected', start);
+      window.removeEventListener('pointerdown', clearPadInput, true);
+      window.removeEventListener('keydown', clearPadInput, true);
+      clearPadInput();
     };
   }, []);
   return state;
+}
+
+/**
+ * A controller moves focus by script, which the browser does not count as a reason to
+ * show it (:focus-visible is for keys): the arrow keys showed what was chosen, the d-pad
+ * moved the same focus unseen. While a pad works the menus the page is marked, and
+ * global.css rings whatever has focus.
+ */
+function markPadInput() {
+  document.documentElement.dataset.input = 'pad';
+}
+function clearPadInput() {
+  delete document.documentElement.dataset.input;
 }
 
 /**

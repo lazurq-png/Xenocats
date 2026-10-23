@@ -837,7 +837,8 @@ test.describe('on a computer', () => {
     const dialog = levelUp(page);
     await expect(dialog).toBeVisible({ timeout: 40_000 });
     await page.keyboard.up('d');
-    await expect(dialog.getByRole('heading', { name: /Level 2\. Choose one\./ })).toBeVisible();
+    // (Level 2's, or a chest's he walked over first: a level-up at the level he is.)
+    await expect(dialog.getByRole('heading', { name: /Level \d+\. Choose one\./ })).toBeVisible();
     await expect(area(page)).toHaveAttribute('data-screen', 'choosing');
     // Focus in the dialog, on the first choice; the arrow keys move it.
     const buttons = dialog.getByRole('button');
@@ -895,7 +896,6 @@ test.describe('on a computer', () => {
     await expect(dialog).toHaveCount(0);
     await expect(area(page)).toBeFocused();
     await expect.poll(() => num(page, 'data-time')).toBeGreaterThan(Number(waited));
-    expect(await num(page, 'data-level')).toBeGreaterThanOrEqual(2);
   });
 
   test('a Mega Cat arrives, its Homesickness shown in a bar of its own', async ({ page }) => {
@@ -1241,6 +1241,10 @@ test.describe('on a computer', () => {
     await expect(choices.first()).toBeFocused();
     await pad.press(0, PAD.down);
     await expect(choices.nth(1)).toBeFocused();
+    // And it shows: a focus moved by script is never :focus-visible, so the page rings it.
+    const ring = (i: number) => choices.nth(i).evaluate((el) => getComputedStyle(el).outlineStyle);
+    await expect.poll(() => ring(1)).toBe('solid');
+    expect(await ring(0)).toBe('none');
     const taken = await choices.nth(1).getAttribute('data-choice');
     await pad.press(0, PAD.a);
     await expect

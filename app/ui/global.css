@@ -6,6 +6,15 @@
 @custom-variant short (@media (max-height: 500px));
 
 /*
+ * A controller's focus (gamepad-view.ts marks the page while a pad works the menus):
+ * moved by script, it is never :focus-visible, so it is ringed here as a key's would be.
+ */
+:root[data-input='pad'] :focus {
+  outline: 2px solid var(--color-plasma);
+  outline-offset: 2px;
+}
+
+/*
  * A small link or control made easy to tap with a finger: its touch area reaches at
  * least 44 px each way round its middle, its look unchanged (the area is an empty
  * ::after, and a tap on it is a tap on the control). 48 px, as it is centred on the
