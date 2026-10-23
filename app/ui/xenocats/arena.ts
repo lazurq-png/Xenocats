@@ -43,6 +43,15 @@ import {
   weaponStats,
   xpToNext,
 } from './arsenal';
+import {
+  type AttackShape,
+  MEGA_SHAPE,
+  type MegaPattern,
+  burstAngles,
+  matriarchPatternAt,
+  megaPatternAt,
+  steer,
+} from './cat-attacks';
 import type { CatType } from './cat-types';
 import { type Vec } from './effects';
 import { createArenaGrid } from './arena-grid';
@@ -138,39 +147,62 @@ export type ArenaConfig = {
     reach: number;
   };
   /**
-   * An elite xenocat near a Keeper winds up an attack (shaped by its effect), stands
-   * still while it does, then lands it where the Keeper was when it began; a Keeper
-   * who has moved out of the shape is not hit. Then it rests for `cooldownMs`.
+   * An elite xenocat near a Keeper winds up an attack (shaped by its effect), standing
+   * still and warning where it will go, then lets it loose: a burst of shots on every
+   * side, one at where he stood; a slow shot that follows him; or a dash, the elite
+   * itself charging at him and turning after him as it goes. None stays where it was
+   * aimed, so stepping out of the warning is not enough: he must get out of its way.
+   * What reaches him drains his Resolve and lays the elite's effect on him. Then it
+   * rests for `cooldownMs`.
    */
   eliteAttack: {
-    /** A blast or a line begins within this of a Keeper, px (well inside the smallest screen). */
+    /** A bolt or a dash begins within this of a Keeper, px (well inside the smallest screen). */
     range: number;
+    /** A burst begins within this, px. */
+    burstRange: number;
     windUpMs: number;
-    /** A ring starts with the Keeper inside it, even beside the elite: a longer wind-up to leave it. */
-    ringWindUpMs: number;
     cooldownMs: number;
-    /** Rings round the elite (Cryo and the slows; the pulls), px. */
-    ringRadius: number;
-    pullRadius: number;
-    /** A blast at the aim, px. */
-    blastRadius: number;
-    /** A line from the elite through the aim: its length and width, px. */
-    lineLength: number;
-    lineWidth: number;
+    /** A burst's shots: how many, px/s, their size, how long they fly, ms. */
+    burst: { shots: number; speed: number; radius: number; lifeMs: number };
+    /** A bolt: px/s, its size, how long it flies and follows him, ms, and how fast it turns, rad/s. */
+    bolt: { speed: number; radius: number; lifeMs: number; homingMs: number; turn: number };
+    /** A dash: px/s, how long, ms, how fast it turns after him, rad/s; its lane's width as warned, px. */
+    dash: { speed: number; ms: number; turn: number; width: number };
   };
   /**
-   * The bosses attack too, wound up and dodgeable like an elite's: the Mega Cat
-   * pounces where the Keeper stood; the Matriarch calls a ring of kittens round where
-   * he stood. Each stands still for its wind-up.
+   * The bosses attack too, each warned and wound up, standing still. The Mega Cat goes
+   * round three: it pounces where the Keeper stood (landing on that spot), charges
+   * along a lane through it (straight on, as wide as itself), and looses a volley of
+   * shots on every side. The Matriarch calls a ring of kittens round where he stood
+   * and, the next time, looses a volley of her own.
    */
   bossAttack: {
     pounce: {
       /** It begins within this of a Keeper (and not already on him), px. */
       range: number;
       windUpMs: number;
+      /** Its rest after each of its attacks, whichever, ms. */
       cooldownMs: number;
       /** What it lands on, px, round where he was. */
       radius: number;
+    };
+    charge: {
+      /** It begins within this of a Keeper, px. */
+      range: number;
+      windUpMs: number;
+      /** px/s, and for how long, ms. */
+      speed: number;
+      ms: number;
+    };
+    volley: {
+      /** It begins within this of a Keeper, px. */
+      range: number;
+      windUpMs: number;
+      /** How many shots, px/s, their size, how long they fly, ms. */
+      shots: number;
+      speed: number;
+      radius: number;
+      lifeMs: number;
     };
     summon: {
       /** The Matriarch's first call, and then one this often, ms after she comes. */
@@ -337,17 +369,19 @@ export const ARENA_CONFIG: ArenaConfig = {
   matriarch: { speed: 330, reach: 70 },
   eliteAttack: {
     range: 300,
+    burstRange: 220,
     windUpMs: 900,
-    ringWindUpMs: 1100,
     cooldownMs: 3500,
-    ringRadius: 110,
-    pullRadius: 140,
-    blastRadius: 70,
-    lineLength: 330,
-    lineWidth: 44,
+    // Slower than he walks: a step aside, between two shots, is enough.
+    burst: { shots: 8, speed: 170, radius: 9, lifeMs: 3000 },
+    // A little quicker than he walks, but it turns slowly: a late step aside, not a run.
+    bolt: { speed: 230, radius: 11, lifeMs: 3500, homingMs: 2500, turn: 1.6 },
+    dash: { speed: 560, ms: 750, turn: 2.4, width: 40 },
   },
   bossAttack: {
     pounce: { range: 420, windUpMs: 1100, cooldownMs: 6000, radius: 120 },
+    charge: { range: 520, windUpMs: 1000, speed: 760, ms: 800 },
+    volley: { range: 600, windUpMs: 1200, shots: 16, speed: 190, radius: 13, lifeMs: 4000 },
     summon: {
       firstMs: 3000,
       everyMs: 8000,
@@ -489,41 +523,71 @@ export const HERO_EFFECTS: Readonly<Record<string, HeroEffect>> = {
   tiny: { kind: 'veil' },
 };
 
-/** What an elite's attack looks like and where it lands. */
-export type AttackShape = 'ring' | 'blast' | 'line';
+export type { AttackShape, MegaPattern };
 
-/** The shape of the attack drawn from an effect (the hero effect's kind). */
-export function attackShapeOf(effect: HeroEffect): AttackShape {
+/** The attack an elite's effect (the hero effect's kind) gives it. */
+export type EliteShape = Exclude<AttackShape, 'blast'>;
+export function attackShapeOf(effect: HeroEffect): EliteShape {
   switch (effect.kind) {
     case 'freeze':
     case 'slow':
-      return 'ring';
+      return 'burst';
     case 'push':
-      return effect.way === 'toward' ? 'ring' : 'blast';
+      return effect.way === 'toward' ? 'burst' : 'bolt';
     case 'jump':
     case 'jitter':
-      return 'blast';
+      return 'bolt';
     default:
-      return 'line';
+      return 'dash';
   }
 }
 
-/** An elite's attack winding up, for the view to warn with. */
+/** An attack winding up (an elite's or a boss's), for the view to warn with. */
 export type Telegraph = {
   shape: AttackShape;
-  /** The elite. */
+  /** The cat. */
   x: number;
   y: number;
   /** Where the Keeper was when it began. */
   aimX: number;
   aimY: number;
-  /** A ring's or a blast's radius; a line's length and width. */
+  /** A blast's radius; a bolt's or a burst's shots' size. */
   radius: number;
+  /** A dash's lane (or how far a burst's spokes are drawn), and the lane's width, px. */
   length: number;
   width: number;
-  /** 0 as it begins, 1 as it lands. */
+  /** A burst's shots (its spokes); 0 for the rest. */
+  count: number;
+  /** A boss's (the Mega Cat's or the Matriarch's). */
+  boss: boolean;
+  /** 0 as it begins, 1 as it is let loose. */
   progress: number;
 };
+
+/** What a cat fired, in flight: a Laser Cat's shot, an elite's, or a boss's. */
+export type EnemyShot = {
+  kind: 'laser' | 'elite' | 'boss';
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  until: number;
+  drain: number;
+  /** The xenocat type whose effect it lays (an elite's), else -1. */
+  type: number;
+  variety: VarietyId | null;
+  /** It turns toward the nearest Keeper until then, at most `turn` rad/s. */
+  homingUntil: number;
+  turn: number;
+};
+
+/** Most cats' shots in flight at once: an elite's burst in a crowd adds no more. */
+export const ENEMY_SHOT_CAP = 400;
+
+/** How far a burst's spokes, and a volley's, are drawn while it winds up, px. */
+export const BURST_WARNING = 120;
+export const VOLLEY_WARNING = 220;
 
 export type ArenaCat = {
   id: number;
@@ -554,6 +618,13 @@ export type ArenaCat = {
   aimX: number;
   aimY: number;
   nextAttackAt: number;
+  /** How many attacks it has let loose (a Mega Cat's next pattern is by this). */
+  attacks: number;
+  /** Dashing (an elite's dash, a Mega Cat's charge) until then, this fast, turning at most `dashTurn` rad/s. */
+  dashUntil: number;
+  dashVx: number;
+  dashVy: number;
+  dashTurn: number;
   /** Held still until (a Peacock Tail's touch, a box), slowed until (a puddle), scorched until. */
   stunUntil: number;
   slowUntil: number;
@@ -808,16 +879,20 @@ export type ArenaEvent =
       elite: boolean;
       /** Which Keeper (0 for player 1, 1 for player 2). */
       player: number;
+      /** How: a touch, a shot, a dash (or a charge), a pounce. */
+      how: 'touch' | 'shot' | 'dash' | 'pounce';
     }
   /** A Mega Cat has come, wearing the face of xenocat `type`. */
   | { kind: 'boss'; x: number; y: number; type: number }
   /** A xenocat (one with artwork) has come: rare, and an elite as often as not. */
   | { kind: 'xenocat'; type: number; elite: boolean }
-  /** An elite begins to wind up an attack, and when it lands (hit or not). */
+  /** An elite (or a boss) begins to wind up an attack; an elite lets its attack loose. */
   | { kind: 'wind-up'; x: number; y: number; type: number; shape: AttackShape }
-  | { kind: 'elite-attack'; x: number; y: number; type: number; hits: number }
-  /** The Mega Cat pounced, or the Matriarch's kittens came. */
+  | { kind: 'elite-attack'; x: number; y: number; type: number; shape: EliteShape }
+  /** The Mega Cat pounced, and on how many. */
   | { kind: 'boss-pounce'; x: number; y: number; hits: number }
+  /** A boss let a charge or a volley loose (the Matriarch's volley too). */
+  | { kind: 'boss-attack'; x: number; y: number; pattern: 'charge' | 'volley' }
   /** A pickup was left, or taken. */
   | { kind: 'pickup-left'; pickup: PickupKind; x: number; y: number }
   | { kind: 'pickup-taken'; pickup: PickupKind; player: number }
@@ -991,6 +1066,8 @@ export function createArena(options: {
   let matriarchWind = 0;
   let matriarchAim: Vec = { x: 0, y: 0 };
   let matriarchNextAt = Infinity;
+  /** How many calls she has made: summons and volleys by turns. */
+  let matriarchCalls = 0;
   /** One wind-up ended, wherever it was: landed, held still, or the cat went home. */
   function stopWinding(cat: ArenaCat) {
     windingUp--;
@@ -1018,10 +1095,35 @@ export function createArena(options: {
   ];
   // The rings of light a boss sent home leaves, spreading.
   const rings: Ring[] = [];
-  // The Laser Cats' shots.
-  type Shot = { x: number; y: number; vx: number; vy: number; until: number; drain: number };
-  const shots: Shot[] = [];
-  const spareShots: Shot[] = [];
+  // What the cats fire: the Laser Cats', the elites' and the bosses' shots.
+  const shots: EnemyShot[] = [];
+  const spareShots: EnemyShot[] = [];
+  /** Fires a cat's shot from `from` at `angle`, unless too many fly already. */
+  function catFires(
+    from: Vec,
+    angle: number,
+    s: Pick<EnemyShot, 'kind' | 'radius' | 'drain' | 'type' | 'variety' | 'turn'> & {
+      speed: number;
+      lifeMs: number;
+      homingMs: number;
+    }
+  ) {
+    if (shots.length >= ENEMY_SHOT_CAP) return;
+    const shot = spareShots.pop() ?? ({} as EnemyShot);
+    shot.kind = s.kind;
+    shot.x = from.x;
+    shot.y = from.y;
+    shot.vx = Math.cos(angle) * s.speed;
+    shot.vy = Math.sin(angle) * s.speed;
+    shot.radius = s.radius;
+    shot.until = time + s.lifeMs;
+    shot.drain = s.drain;
+    shot.type = s.type;
+    shot.variety = s.variety;
+    shot.homingUntil = time + s.homingMs;
+    shot.turn = s.turn;
+    shots.push(shot);
+  }
 
   // What the weapons fired.
   const projectiles: Projectile[] = [];
@@ -1151,6 +1253,11 @@ export function createArena(options: {
     cat.aimX = 0;
     cat.aimY = 0;
     cat.nextAttackAt = 0;
+    cat.attacks = 0;
+    cat.dashUntil = 0;
+    cat.dashVx = 0;
+    cat.dashVy = 0;
+    cat.dashTurn = 0;
     cat.stunUntil = 0;
     cat.slowUntil = 0;
     cat.vulnUntil = 0;
@@ -1414,14 +1521,19 @@ export function createArena(options: {
 
   /** Lays an elite's effect on the hero, if none is on him; whether it did. */
   function afflict(cat: ArenaCat): boolean {
-    if (hero.effect && time < hero.effect.until) return false;
     if (cat.variety !== null) return false;
-    const type = types[cat.type];
+    return afflictBy(cat.type, cat);
+  }
+
+  /** Lays xenocat `typeIndex`'s effect on the hero, as from `from`, if none is on him; whether it did. */
+  function afflictBy(typeIndex: number, from: Vec): boolean {
+    if (hero.effect && time < hero.effect.until) return false;
+    const type = types[typeIndex];
     const kind = HERO_EFFECTS[type.effect.id];
     if (!kind) return false;
     const until =
       time + Math.min(type.effect.durationMs, config.cats.effectMaxMs) * (1 - hero.mods.guard);
-    const away = { x: hero.x - cat.x, y: hero.y - cat.y };
+    const away = { x: hero.x - from.x, y: hero.y - from.y };
     const length = Math.hypot(away.x, away.y) || 1;
     const angle = random.next() * 2 * Math.PI;
     let way = { x: away.x / length, y: away.y / length };
@@ -1431,124 +1543,190 @@ export function createArena(options: {
       else if (kind.way === 'fixed') way = { x: Math.cos(angle), y: Math.sin(angle) };
     }
     if (kind.kind === 'jump') {
-      const from = { x: hero.x, y: hero.y };
+      const before = { x: hero.x, y: hero.y };
       hero.x += Math.cos(angle) * kind.distance;
       hero.y += Math.sin(angle) * kind.distance;
       // In co-op, not out of the other's sight.
-      tether(hero, from);
+      tether(hero, before);
     }
-    hero.effect = { effect: kind, until, from: { x: cat.x, y: cat.y }, way };
+    hero.effect = { effect: kind, until, from: { x: from.x, y: from.y }, way };
     return true;
   }
 
   /**
-   * The Mega Cat near a Keeper stands still, then pounces where he stood: it lands
-   * there (a Keeper still within the radius loses Resolve), and goes on from there.
-   * Returns whether it spends this step on it.
+   * A cat's attack (a shot, a dash, a pounce) reaches Keeper `k`: it drains his Resolve,
+   * he is untouchable for a moment, and an elite's lays its effect on him.
    */
-  function megaPounces(cat: ArenaCat, target: Keeper, d: number): boolean {
-    const a = config.bossAttack.pounce;
+  function strike(
+    k: Keeper,
+    drain: number,
+    who: { type: number; variety: VarietyId | null; elite: boolean },
+    how: 'shot' | 'dash' | 'pounce',
+    from: Vec
+  ) {
+    k.resolve = Math.max(k.resolve - drainNow(drain, k), 0);
+    k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
+    events.push({
+      kind: 'hero-hit',
+      type: who.type,
+      variety: who.variety,
+      elite: who.elite,
+      player: k.index,
+      how,
+    });
+    if (!who.elite || who.type < 0) return;
+    const was = hero;
+    hero = k;
+    afflictBy(who.type, from);
+    hero = was;
+  }
+
+  /** A cat begins to dash at `angle`: this fast, for so long, turning after him at most `turn` rad/s. */
+  function startDash(cat: ArenaCat, angle: number, speed: number, ms: number, turn: number) {
+    cat.dashUntil = time + ms;
+    cat.dashVx = Math.cos(angle) * speed;
+    cat.dashVy = Math.sin(angle) * speed;
+    cat.dashTurn = turn;
+  }
+
+  /** A dashing cat's step: on, turning after the nearest Keeper if it may, striking whom it reaches. */
+  function dashStep(cat: ArenaCat, dt: number) {
+    if (cat.dashTurn > 0) {
+      const k = nearestKeeper(cat.x, cat.y);
+      const v = steer(cat.dashVx, cat.dashVy, k.x - cat.x, k.y - cat.y, cat.dashTurn * dt);
+      cat.dashVx = v.vx;
+      cat.dashVy = v.vy;
+    }
+    cat.x += cat.dashVx * dt;
+    cat.y += cat.dashVy * dt;
+    for (const k of keepers) {
+      if (!standing(k) || time < k.untouchableUntil) continue;
+      if (Math.hypot(k.x - cat.x, k.y - cat.y) > cat.radius + config.hero.reach / 2) continue;
+      strike(k, cat.drain, cat, 'dash', cat);
+    }
+  }
+
+  /** A boss's volley: shots on every side of `from`, the first at `aim`. */
+  function volley(from: Vec, aim: Vec, drain: number, variety: VarietyId) {
+    const v = config.bossAttack.volley;
+    for (const turn of burstAngles(Math.atan2(aim.y - from.y, aim.x - from.x), v.shots)) {
+      catFires(from, turn, {
+        kind: 'boss',
+        radius: v.radius,
+        drain,
+        type: -1,
+        variety,
+        speed: v.speed,
+        lifeMs: v.lifeMs,
+        homingMs: 0,
+        turn: 0,
+      });
+    }
+  }
+
+  /**
+   * The Mega Cat near a Keeper stands still, winds up its next attack (its patterns go
+   * round), then lets it loose: it pounces where he stood (a Keeper still within the
+   * radius loses Resolve, and it goes on from there), charges through that spot, or
+   * looses a volley. Returns whether it spends this step on it.
+   */
+  function megaAttacks(cat: ArenaCat, target: Keeper, d: number): boolean {
+    const b = config.bossAttack;
+    const pattern = megaPatternAt(cat.attacks);
     if (cat.windUntil > 0) {
       if (time < cat.windUntil) return true;
       cat.windUntil = 0;
       stopWinding(cat);
-      cat.nextAttackAt = time + a.cooldownMs;
+      cat.attacks++;
+      cat.nextAttackAt = time + b.pounce.cooldownMs;
+      if (pattern === 'charge') {
+        const angle = Math.atan2(cat.aimY - cat.y, cat.aimX - cat.x);
+        startDash(cat, angle, b.charge.speed, b.charge.ms, 0);
+        events.push({ kind: 'boss-attack', x: cat.x, y: cat.y, pattern });
+        return true;
+      }
+      if (pattern === 'volley') {
+        volley(cat, { x: cat.aimX, y: cat.aimY }, cat.drain / 2, 'mega');
+        events.push({ kind: 'boss-attack', x: cat.x, y: cat.y, pattern });
+        return true;
+      }
       cat.x = cat.aimX;
       cat.y = cat.aimY;
       let hits = 0;
       for (const k of keepers) {
         if (!standing(k) || time < k.untouchableUntil) continue;
-        if (Math.hypot(k.x - cat.aimX, k.y - cat.aimY) > a.radius + config.hero.reach / 2) continue;
-        k.resolve = Math.max(k.resolve - drainNow(cat.drain, k), 0);
-        k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
-        events.push({
-          kind: 'hero-hit',
-          type: cat.type,
-          variety: cat.variety,
-          elite: false,
-          player: k.index,
-        });
+        if (Math.hypot(k.x - cat.aimX, k.y - cat.aimY) > b.pounce.radius + config.hero.reach / 2) {
+          continue;
+        }
+        strike(k, cat.drain, cat, 'pounce', cat);
         hits++;
       }
       events.push({ kind: 'boss-pounce', x: cat.x, y: cat.y, hits });
       return true;
     }
-    if (time >= cat.nextAttackAt && d <= a.range && d > a.radius) {
+    if (time < cat.nextAttackAt || d > b[pattern].range) return false;
+    // It pounces only at one it is not already on.
+    if (pattern === 'pounce' && d <= b.pounce.radius) return false;
+    cat.windUntil = time + b[pattern].windUpMs;
+    cat.aimX = target.x;
+    cat.aimY = target.y;
+    windUpsBegun++;
+    windingUp++;
+    megaWinding++;
+    bossWindUpsBegun++;
+    events.push({
+      kind: 'wind-up',
+      x: cat.x,
+      y: cat.y,
+      type: cat.type,
+      shape: MEGA_SHAPE[pattern],
+    });
+    return true;
+  }
+
+  /** The attack an elite xenocat winds up, or null for a cat that has none. */
+  function attackOf(cat: ArenaCat): EliteShape | null {
+    if (!cat.elite || cat.variety !== null || cat.type < 0) return null;
+    const kind = HERO_EFFECTS[types[cat.type].effect.id];
+    return kind ? attackShapeOf(kind) : null;
+  }
+
+  /**
+   * An elite near a Keeper winds up, standing still, aimed where he is; then lets its
+   * attack loose (config.eliteAttack). Returns whether the elite spends this step on it
+   * (no walking).
+   */
+  function eliteAttacks(cat: ArenaCat, target: Keeper, d: number): boolean {
+    const shape = attackOf(cat);
+    if (!shape) return false;
+    const a = config.eliteAttack;
+    if (cat.windUntil > 0) {
+      if (time < cat.windUntil) return true;
+      cat.windUntil = 0;
+      stopWinding(cat);
+      cat.attacks++;
+      cat.nextAttackAt = time + a.cooldownMs;
+      const angle = Math.atan2(cat.aimY - cat.y, cat.aimX - cat.x);
+      const own = { kind: 'elite' as const, drain: cat.drain, type: cat.type, variety: null };
+      if (shape === 'burst') {
+        const { shots: count, speed, radius, lifeMs } = a.burst;
+        for (const turn of burstAngles(angle, count)) {
+          catFires(cat, turn, { ...own, radius, speed, lifeMs, homingMs: 0, turn: 0 });
+        }
+      } else if (shape === 'bolt') {
+        catFires(cat, angle, { ...own, ...a.bolt });
+      } else startDash(cat, angle, a.dash.speed, a.dash.ms, a.dash.turn);
+      events.push({ kind: 'elite-attack', x: cat.x, y: cat.y, type: cat.type, shape });
+      return true;
+    }
+    const begins = shape === 'burst' ? a.burstRange : a.range;
+    if (time >= cat.nextAttackAt && d <= begins) {
       cat.windUntil = time + a.windUpMs;
       cat.aimX = target.x;
       cat.aimY = target.y;
       windUpsBegun++;
       windingUp++;
-      megaWinding++;
-      bossWindUpsBegun++;
-      events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape: 'blast' });
-      return true;
-    }
-    return false;
-  }
-
-  /** The attack an elite xenocat winds up, or null for a cat that has none. */
-  function attackOf(cat: ArenaCat): { shape: AttackShape; radius: number; begins: number } | null {
-    if (!cat.elite || cat.variety !== null || cat.type < 0) return null;
-    const kind = HERO_EFFECTS[types[cat.type].effect.id];
-    if (!kind) return null;
-    const a = config.eliteAttack;
-    const shape = attackShapeOf(kind);
-    // A ring is round the elite itself, so it begins only once a Keeper is inside it;
-    // a blast or a line reaches out to him from `range`.
-    if (shape === 'line') return { shape, radius: a.lineLength, begins: a.range };
-    if (shape === 'blast') return { shape, radius: a.blastRadius, begins: a.range };
-    const radius = kind.kind === 'push' ? a.pullRadius : a.ringRadius;
-    return { shape, radius, begins: radius };
-  }
-
-  /** Whether a Keeper stands in the shape an elite aimed at `aim` (where he was). */
-  function struck(cat: ArenaCat, k: Keeper, shape: AttackShape, radius: number): boolean {
-    const reach = config.hero.reach / 2;
-    if (shape === 'ring') return Math.hypot(k.x - cat.x, k.y - cat.y) <= radius + reach;
-    if (shape === 'blast') return Math.hypot(k.x - cat.aimX, k.y - cat.aimY) <= radius + reach;
-    // A line from the elite through the aim, as long as it is, as wide as it is.
-    const dx = cat.aimX - cat.x;
-    const dy = cat.aimY - cat.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const ux = dx / length;
-    const uy = dy / length;
-    const along = (k.x - cat.x) * ux + (k.y - cat.y) * uy;
-    const across = Math.abs((k.x - cat.x) * uy - (k.y - cat.y) * ux);
-    return along >= 0 && along <= radius && across <= config.eliteAttack.lineWidth / 2 + reach;
-  }
-
-  /**
-   * An elite near a Keeper winds up, standing still, and then lands its attack
-   * where he was. Returns whether the elite spends this step on it (no walking).
-   */
-  function eliteAttacks(cat: ArenaCat, target: Keeper, d: number): boolean {
-    const attack = attackOf(cat);
-    if (!attack) return false;
-    const a = config.eliteAttack;
-    const windUp = attack.shape === 'ring' ? a.ringWindUpMs : a.windUpMs;
-    if (cat.windUntil > 0) {
-      if (time < cat.windUntil) return true;
-      cat.windUntil = 0;
-      stopWinding(cat);
-      cat.nextAttackAt = time + a.cooldownMs;
-      let hits = 0;
-      for (const k of keepers) {
-        if (!standing(k) || !struck(cat, k, attack.shape, attack.radius)) continue;
-        hero = k;
-        if (afflict(cat)) hits++;
-      }
-      hero = keepers[0];
-      events.push({ kind: 'elite-attack', x: cat.x, y: cat.y, type: cat.type, hits });
-      return true;
-    }
-    if (time >= cat.nextAttackAt && d <= attack.begins) {
-      cat.windUntil = time + windUp;
-      cat.aimX = target.x;
-      cat.aimY = target.y;
-      windUpsBegun++;
-      windingUp++;
-      events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape: attack.shape });
+      events.push({ kind: 'wind-up', x: cat.x, y: cat.y, type: cat.type, shape });
       return true;
     }
     return false;
@@ -1605,8 +1783,12 @@ export function createArena(options: {
       return;
     }
     if (time < cat.stunUntil) {
-      // Held still, an elite loses its wind-up: it must begin again.
+      // Held still, an elite loses its wind-up (or its dash): it must begin again.
       loseWindUp(cat);
+      return;
+    }
+    if (time < cat.dashUntil) {
+      dashStep(cat, dt);
       return;
     }
     const slowed = time < cat.slowUntil;
@@ -1624,8 +1806,12 @@ export function createArena(options: {
     cat.speed = speed;
   }
 
-  /** An elite (or a Mega Cat) winding up an attack loses it: it must begin again, after its own rest. */
+  /**
+   * An elite (or a Mega Cat) winding up an attack loses it: it must begin again, after
+   * its own rest. A dash stops where it is.
+   */
   function loseWindUp(cat: ArenaCat) {
+    cat.dashUntil = 0;
     if (cat.windUntil > 0) {
       cat.windUntil = 0;
       stopWinding(cat);
@@ -1646,7 +1832,7 @@ export function createArena(options: {
     const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
     if (gait === 'sit') return;
     if (cat.elite && eliteAttacks(cat, target, d)) return;
-    if (cat.variety === 'mega' && megaPounces(cat, target, d)) return;
+    if (cat.variety === 'mega' && megaAttacks(cat, target, d)) return;
     const toy = lureOf(cat);
     if (toy) {
       const tx = toy.x - cat.x;
@@ -1675,14 +1861,17 @@ export function createArena(options: {
     if (gait === 'snipe') {
       if (time >= cat.shotAt && d < config.laserCat.range + 120) {
         cat.shotAt = time + config.laserCat.everyMs;
-        const shot = spareShots.pop() ?? ({} as Shot);
-        shot.x = cat.x;
-        shot.y = cat.y;
-        shot.vx = (dx / d) * config.laserCat.shotSpeed;
-        shot.vy = (dy / d) * config.laserCat.shotSpeed;
-        shot.until = time + 2500;
-        shot.drain = cat.drain;
-        shots.push(shot);
+        catFires(cat, Math.atan2(dy, dx), {
+          kind: 'laser',
+          radius: config.laserCat.shotRadius,
+          drain: cat.drain,
+          type: -1,
+          variety: 'laser',
+          speed: config.laserCat.shotSpeed,
+          lifeMs: 2500,
+          homingMs: 0,
+          turn: 0,
+        });
       }
       if (d <= config.laserCat.range) return;
     }
@@ -1715,32 +1904,28 @@ export function createArena(options: {
     }
   }
 
-  /** The Laser Cats' shots fly; one that reaches him drains his Resolve. */
+  /**
+   * The cats' shots fly (a bolt turning after the nearest Keeper while it may); one that
+   * reaches a Keeper is spent, and drains his Resolve (an elite's lays its effect too).
+   */
   function moveShots(dt: number) {
     for (let i = shots.length - 1; i >= 0; i--) {
       const shot = shots[i];
+      if (time < shot.homingUntil && shot.turn > 0) {
+        const k = nearestKeeper(shot.x, shot.y);
+        const v = steer(shot.vx, shot.vy, k.x - shot.x, k.y - shot.y, shot.turn * dt);
+        shot.vx = v.vx;
+        shot.vy = v.vy;
+      }
       shot.x += shot.vx * dt;
       shot.y += shot.vy * dt;
       let hit = false;
       for (const k of keepers) {
         if (!standing(k)) continue;
-        if (
-          Math.hypot(shot.x - k.x, shot.y - k.y) >
-          config.hero.reach / 2 + config.laserCat.shotRadius
-        ) {
-          continue;
-        }
+        if (Math.hypot(shot.x - k.x, shot.y - k.y) > config.hero.reach / 2 + shot.radius) continue;
         hit = true;
         if (time >= k.untouchableUntil) {
-          k.resolve = Math.max(k.resolve - drainNow(shot.drain, k), 0);
-          k.untouchableUntil = time + config.hero.untouchableMs + k.mods.grace;
-          events.push({
-            kind: 'hero-hit',
-            type: -1,
-            variety: 'laser',
-            elite: false,
-            player: k.index,
-          });
+          strike(k, shot.drain, { ...shot, elite: shot.kind === 'elite' }, 'shot', shot);
         }
         break;
       }
@@ -3106,6 +3291,7 @@ export function createArena(options: {
             variety: cat.variety,
             elite: cat.elite,
             player: k.index,
+            how: 'touch',
           });
           if (cat.elite) afflict(cat);
           break;
@@ -3191,10 +3377,20 @@ export function createArena(options: {
         let calling = false;
         if (matriarchWind > 0) {
           calling = true;
-          if (time >= matriarchWind) {
+          if (time >= matriarchWind && matriarchPatternAt(matriarchCalls) === 'volley') {
+            // Her volley: shots on every side, the first at where he stood.
+            matriarchWind = 0;
+            windingUp--;
+            matriarchCalls++;
+            matriarchNextAt = time + call.everyMs;
+            volley(matriarch, matriarchAim, VARIETIES.mega.drain / 2, 'mega');
+            events.push({ kind: 'boss-attack', x: matriarch.x, y: matriarch.y, pattern: 'volley' });
+            calling = false;
+          } else if (time >= matriarchWind) {
             // The kittens come, in a ring round where he stood.
             matriarchWind = 0;
             windingUp--;
+            matriarchCalls++;
             matriarchNextAt = time + call.everyMs;
             let came = 0;
             for (let k = 0; k < call.kittens && cats.length < config.cats.hardCap; k++) {
@@ -3214,7 +3410,9 @@ export function createArena(options: {
             calling = false;
           }
         } else if (time >= matriarchNextAt && d > call.minDistance) {
-          matriarchWind = time + call.windUpMs;
+          const pattern = matriarchPatternAt(matriarchCalls);
+          matriarchWind =
+            time + (pattern === 'volley' ? config.bossAttack.volley.windUpMs : call.windUpMs);
           matriarchAim = { x: target.x, y: target.y };
           windUpsBegun++;
           bossWindUpsBegun++;
@@ -3225,7 +3423,7 @@ export function createArena(options: {
             x: matriarch.x,
             y: matriarch.y,
             type: -1,
-            shape: 'blast',
+            shape: pattern === 'volley' ? 'burst' : 'blast',
           });
         }
         // She stands still while she calls.
@@ -3355,61 +3553,94 @@ export function createArena(options: {
       }),
     /** The shared camera (one Keeper: on him, at the screen's own zoom). */
     camera,
-    /** Every elite's attack winding up now, for the view to warn with. */
+    /** Every attack winding up now (the elites' and the bosses'), for the view to warn with. */
     telegraphs: (): Telegraph[] => {
       const all: Telegraph[] = [];
       if (windingUp === 0) return all;
+      const b = config.bossAttack;
+      const progress = (until: number, windUpMs: number) =>
+        Math.min(1, Math.max(0, 1 - (until - time) / windUpMs));
+      const warn = (
+        t: Omit<Telegraph, 'radius' | 'length' | 'width' | 'count'> & Partial<Telegraph>
+      ) => all.push({ radius: 0, length: 0, width: 0, count: 0, ...t });
       if (matriarchWind > 0 && matriarch) {
-        const call = config.bossAttack.summon;
-        all.push({
-          shape: 'blast',
-          x: matriarch.x,
-          y: matriarch.y,
-          aimX: matriarchAim.x,
-          aimY: matriarchAim.y,
-          radius: call.ringRadius,
-          length: 0,
-          width: 0,
-          progress: Math.min(1, Math.max(0, 1 - (matriarchWind - time) / call.windUpMs)),
-        });
+        const at = { x: matriarch.x, y: matriarch.y, aimX: matriarchAim.x, aimY: matriarchAim.y };
+        if (matriarchPatternAt(matriarchCalls) === 'volley') {
+          warn({
+            ...at,
+            shape: 'burst',
+            boss: true,
+            radius: b.volley.radius,
+            length: VOLLEY_WARNING,
+            count: b.volley.shots,
+            progress: progress(matriarchWind, b.volley.windUpMs),
+          });
+        } else {
+          warn({
+            ...at,
+            shape: 'blast',
+            boss: true,
+            radius: b.summon.ringRadius,
+            progress: progress(matriarchWind, b.summon.windUpMs),
+          });
+        }
       }
+      const a = config.eliteAttack;
       for (const cat of cats) {
         if (cat.windUntil <= 0) continue;
+        const at = { x: cat.x, y: cat.y, aimX: cat.aimX, aimY: cat.aimY };
         if (cat.variety === 'mega') {
-          const a = config.bossAttack.pounce;
-          all.push({
-            shape: 'blast',
-            x: cat.x,
-            y: cat.y,
-            aimX: cat.aimX,
-            aimY: cat.aimY,
-            radius: a.radius,
-            length: 0,
-            width: 0,
-            progress: Math.min(1, Math.max(0, 1 - (cat.windUntil - time) / a.windUpMs)),
-          });
+          const pattern = megaPatternAt(cat.attacks);
+          const p = progress(cat.windUntil, b[pattern].windUpMs);
+          if (pattern === 'pounce') {
+            warn({ ...at, shape: 'blast', boss: true, radius: b.pounce.radius, progress: p });
+          } else if (pattern === 'charge') {
+            warn({
+              ...at,
+              shape: 'dash',
+              boss: true,
+              length: (b.charge.speed * b.charge.ms) / 1000,
+              width: cat.radius * 2,
+              progress: p,
+            });
+          } else {
+            warn({
+              ...at,
+              shape: 'burst',
+              boss: true,
+              radius: b.volley.radius,
+              length: VOLLEY_WARNING,
+              count: b.volley.shots,
+              progress: p,
+            });
+          }
           continue;
         }
-        const attack = attackOf(cat);
-        if (!attack) continue;
-        const a = config.eliteAttack;
-        all.push({
-          shape: attack.shape,
-          x: cat.x,
-          y: cat.y,
-          aimX: cat.aimX,
-          aimY: cat.aimY,
-          radius: attack.shape === 'line' ? 0 : attack.radius,
-          length: attack.shape === 'line' ? attack.radius : 0,
-          width: a.lineWidth,
-          progress: Math.min(
-            1,
-            Math.max(
-              0,
-              1 - (cat.windUntil - time) / (attack.shape === 'ring' ? a.ringWindUpMs : a.windUpMs)
-            )
-          ),
-        });
+        const shape = attackOf(cat);
+        if (!shape) continue;
+        const p = progress(cat.windUntil, a.windUpMs);
+        if (shape === 'burst') {
+          warn({
+            ...at,
+            shape,
+            boss: false,
+            radius: a.burst.radius,
+            length: BURST_WARNING,
+            count: a.burst.shots,
+            progress: p,
+          });
+        } else if (shape === 'bolt') {
+          warn({ ...at, shape, boss: false, radius: a.bolt.radius, progress: p });
+        } else {
+          warn({
+            ...at,
+            shape,
+            boss: false,
+            length: (a.dash.speed * a.dash.ms) / 1000,
+            width: a.dash.width,
+            progress: p,
+          });
+        }
       }
       return all;
     },
@@ -3437,7 +3668,8 @@ export function createArena(options: {
     chests: (): readonly Chest[] => chests,
     /** The rings of light spreading from where bosses were sent home. */
     rings: (): readonly Ring[] => rings,
-    shots: (): readonly { x: number; y: number }[] => shots,
+    /** The cats' shots in flight (read, do not keep: the objects are reused). */
+    shots: (): readonly EnemyShot[] => shots,
 
     state() {
       const first = keepers[0];
@@ -3488,9 +3720,15 @@ export function createArena(options: {
         pickupsTaken,
         lastPickup,
         bossWindUpsBegun,
-        /** The boss that is winding up an attack: the Mega Cat's pounce, or the Matriarch's call. */
-        bossWindUp:
-          matriarchWind > 0 ? ('summon' as const) : megaWinding > 0 ? ('pounce' as const) : null,
+        /** What a boss is winding up: the Matriarch's call (a summon or a volley), else a Mega Cat's attack. */
+        bossWindUp: ((): MegaPattern | 'summon' | null => {
+          if (matriarchWind > 0) return matriarchPatternAt(matriarchCalls);
+          if (megaWinding === 0) return null;
+          for (const cat of cats) {
+            if (cat.variety === 'mega' && cat.windUntil > 0) return megaPatternAt(cat.attacks);
+          }
+          return null;
+        })(),
         windUpsBegun,
         sentHome,
         level,

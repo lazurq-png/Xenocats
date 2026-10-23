@@ -100,6 +100,93 @@ async function settled(page: Page, name: string) {
   return last;
 }
 
+/**
+ * A controller the page can read (the Gamepad API faked: Playwright has no pad): pads
+ * plugged in with `connect`, their sticks and buttons set with `set`.
+ */
+async function fakeGamepads(page: Page) {
+  await page.addInitScript(() => {
+    type Pad = {
+      index: number;
+      id: string;
+      connected: boolean;
+      mapping: string;
+      timestamp: number;
+      axes: number[];
+      buttons: { pressed: boolean; touched: boolean; value: number }[];
+    };
+    const pads: (Pad | null)[] = [null, null, null, null];
+    const w = window as unknown as {
+      padConnect: (i: number) => void;
+      padSet: (i: number, axes: number[], held: number[]) => void;
+    };
+    w.padConnect = (index) => {
+      pads[index] = {
+        index,
+        id: 'Fake standard pad',
+        connected: true,
+        mapping: 'standard',
+        timestamp: 0,
+        axes: [0, 0, 0, 0],
+        buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+      };
+      window.dispatchEvent(new Event('gamepadconnected'));
+    };
+    w.padSet = (index, axes, held) => {
+      const pad = pads[index]!;
+      pad.axes = [...axes, 0, 0];
+      pad.buttons.forEach((b, n) => {
+        b.pressed = held.includes(n);
+        b.value = b.pressed ? 1 : 0;
+      });
+    };
+    Object.defineProperty(navigator, 'getGamepads', {
+      configurable: true,
+      value: () => pads.slice(),
+    });
+  });
+  const set = (index: number, axes: number[], held: number[] = []) =>
+    page.evaluate(
+      ([i, a, h]) =>
+        (window as unknown as { padSet: (i: number, a: number[], h: number[]) => void }).padSet(
+          i,
+          a,
+          h
+        ),
+      [index, axes, held] as const
+    );
+  /** A few frames: the page reads the pads once a frame. */
+  const frames = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((done) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => requestAnimationFrame(() => done()))
+          )
+        )
+    );
+  return {
+    connect: async (index: number) => {
+      await page.evaluate(
+        (i) => (window as unknown as { padConnect: (i: number) => void }).padConnect(i),
+        index
+      );
+      await frames();
+    },
+    set,
+    /** Presses a button (standard layout) and lets it go. */
+    press: async (index: number, button: number) => {
+      await set(index, [0, 0], [button]);
+      await frames();
+      await set(index, [0, 0], []);
+      await frames();
+    },
+  };
+}
+
+/** The standard layout's buttons. */
+const PAD = { a: 0, b: 1, x: 2, y: 3, start: 9, up: 12, down: 13 };
+
 async function openArena(page: Page, query = '?seed=7') {
   await page.goto('/cats/survival' + query);
   await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
@@ -1084,6 +1171,84 @@ test.describe('on a computer', () => {
       'aria-valuemax',
       '110'
     );
+  });
+  test('a controller walks the Keeper with its stick, pauses and resumes with Start and B, and gives up from the menu', async ({
+    page,
+  }) => {
+    const pad = await fakeGamepads(page);
+    await openArena(page, '?seed=7');
+    await pad.connect(0);
+    // Start begins a run from the lobby.
+    await expect
+      .poll(async () => {
+        if ((await area(page).count()) === 0) await pad.press(0, PAD.start);
+        return area(page).count();
+      })
+      .toBe(1);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    // The stick, pushed right: he walks right.
+    await pad.set(0, [1, 0]);
+    await expect.poll(() => num(page, 'data-hero-x'), { timeout: 10_000 }).toBeGreaterThan(60);
+    await pad.set(0, [0, 0]);
+    // Start pauses; B resumes.
+    await playOn(page);
+    await pad.press(0, PAD.start);
+    await expect(area(page)).toHaveAttribute('data-screen', 'paused');
+    await pad.press(0, PAD.b);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+    // Paused again, the d-pad goes to Give up, and A presses it.
+    await playOn(page);
+    await pad.press(0, PAD.start);
+    const paused = page.getByRole('dialog', { name: 'Paused' });
+    await expect(paused).toBeVisible();
+    const giveUp = paused.getByRole('button', { name: 'Give up' });
+    await expect
+      .poll(async () => {
+        if (await giveUp.evaluate((b) => b === document.activeElement)) return true;
+        await pad.press(0, PAD.up);
+        return false;
+      })
+      .toBe(true);
+    await pad.press(0, PAD.a);
+    const results = page.getByTestId('survival-results');
+    await expect(results).toBeVisible();
+    await expect(results).toHaveAttribute('data-outcome', 'gave-up');
+    // B closes the results; Start plays again.
+    await pad.press(0, PAD.b);
+    await expect(results).toBeHidden();
+    await pad.press(0, PAD.start);
+    await expect(area(page)).toHaveAttribute('data-screen', 'playing');
+  });
+
+  test('a controller works a level-up: Y rerolls, the d-pad and A take a choice', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const pad = await fakeGamepads(page);
+    await openArena(page, '?seed=7&speed=6');
+    await startRun(page);
+    await pad.connect(0);
+    const dialog = levelUp(page);
+    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    const choices = dialog.locator('button[data-choice]');
+    const ids = async () =>
+      choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
+    const before = await ids();
+    await pad.press(0, PAD.y);
+    await expect.poll(ids).not.toEqual(before);
+    await expect(dialog.getByTestId('survival-reroll')).toHaveText('Reroll (0 left)');
+    // Down to the second choice, and A takes it.
+    await expect(choices.first()).toBeFocused();
+    await pad.press(0, PAD.down);
+    await expect(choices.nth(1)).toBeFocused();
+    const taken = await choices.nth(1).getAttribute('data-choice');
+    await pad.press(0, PAD.a);
+    await expect
+      .poll(async () => {
+        if ((await dialog.count()) === 0) return 'playing';
+        return (await ids()).includes(taken) ? 'waiting' : 'next';
+      })
+      .not.toBe('waiting');
   });
 });
 

@@ -414,9 +414,9 @@ describe('every weapon, at level 1 and at its top level', () => {
       ...steady,
       startingWeapons: ['vacuum-cleaner'],
       escalation: [[0, 30]],
-      cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9], speed: [0, 0] },
+      cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9], speed: [0, 0], eliteShare: 0 },
     });
-    // Cats that do not walk: only the vacuum moves them. All thirty first, then he
+    // Cats that do not walk (nor dash, as an elite would): only the vacuum moves them. All thirty first, then he
     // walks among them; any cat that moves was drawn in, from within its reach.
     stepWhile(a, () => a.state().cats < 30);
     const area = weaponStats('vacuum-cleaner', 1, none).area;
