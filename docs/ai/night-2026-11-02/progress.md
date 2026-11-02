@@ -196,3 +196,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `package.json` changed): prettier on the changed files: clean; actionlint with shellcheck and pyflakes: clean; lint: 0 errors, 0 warnings; tsc: clean; `npm test`: 1137 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. Whether dependency review and CodeQL pass on GitHub is checked by reading only until the first pull request runs them (neither runs on a push to `Nightrun`).
 - **Reviewer:** approved; two Low notes became Q7 and Q8 (D70).
 - **T11's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41544905982 (Nightrun at dfc823f).
+
+## T13 — Survival specs on the page's clock (completed)
+
+- Branch `2026-11-02-t13-survival-clock`, base 1ab6978. Started 2026-11-03 00:29, completed 00:46.
+- **What the code does:**
+  - `tests/e2e/survival.spec.ts`: `openArena` installs the page's clock; `runUntil` runs it on a step at a time until what a test waits for comes, failing after a stated amount of page time; 28 waits for the run (time, cats, cats sent home, level-ups, a pickup, wind-ups, the boss bar, the facing) use it, and three fixed real-time waits became `clock.runFor`. The slow-screen test keeps the page's own clock.
+- **What it brings:** the Survival specs no longer depend on how busy the machine is: the run gets exactly the page time a test asks for, at a steady 60 frames a second, so a slow CI runner or a crowded local run cannot starve them, and a seeded run plays the same each time. They also run faster: the spec alone took 29 s at 4 workers.
+- Decisions: D71–D75 (D72: the failure it was meant to cure did not reproduce before the change, at 6 or 10 workers).
+- **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; build: exit 0. Before the change, the full browser suite at 6 workers: 163 passed, 2 skipped, twice; at 10 workers: the same, twice. After: at 6 workers three times in a row: 163 passed, 2 skipped, 0 failed each (1.6 min each, against 1.8–1.9 before). The selection on the final state (`survival.spec.ts`, 4 workers): 41 passed. (a) and (b) checked by command; (c) by reading (every `runUntil` throws at its limit; the reviewer traced each).
+- **Reviewer:** approved; one Low (a stale comment), fixed (D75).
+- **T12's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41545782312 (Nightrun at 1ab6978).
