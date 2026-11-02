@@ -320,9 +320,10 @@ over a migrated and seeded `xenocats` schema, then every browser test against
 `next start` (`E2E_SERVER=start`), in one `playwright test`; and *e2e* — the
 specs for what differs under `next dev` (smoke, security headers, the dashboard
 login) against it. The browser specs' groups are projects in
-`playwright.config.ts` (`GROUPS`); a new spec goes in one, and a new unit test
-file in a `Unit tests (...)` step of `ci.yml`, which the *checks* job verifies
-(`.claude/rules/testing.md`, "A new test file goes in a CI group"). The *build* and *e2e* jobs run inside the Playwright image
+`playwright.config.ts` (`GROUPS`); a new spec goes in one. A new unit test file
+needs nothing: the Vitest projects in `vitest.config.mts` take it by folder and
+environment, and the *checks* job runs them a project at a time and verifies every
+file is in exactly one (`.claude/rules/testing.md`, "A new test file goes in a CI group"). The *build* and *e2e* jobs run inside the Playwright image
 (`mcr.microsoft.com/playwright`, its tag the locked `@playwright/test` version),
 so Chromium is not installed on every run. Each starts a throwaway PostgreSQL
 service container, which `scripts/ci-database.mjs` switches TLS on for and

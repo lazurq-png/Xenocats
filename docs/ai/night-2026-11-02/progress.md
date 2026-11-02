@@ -207,3 +207,16 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; build: exit 0. Before the change, the full browser suite at 6 workers: 163 passed, 2 skipped, twice; at 10 workers: the same, twice. After: at 6 workers three times in a row: 163 passed, 2 skipped, 0 failed each (1.6 min each, against 1.8–1.9 before). The selection on the final state (`survival.spec.ts`, 4 workers): 41 passed. (a) and (b) checked by command; (c) by reading (every `runUntil` throws at its limit; the reviewer traced each).
 - **Reviewer:** approved; one Low (a stale comment), fixed (D75).
 - **T12's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41545782312 (Nightrun at 1ab6978).
+
+## T14 — Unit test groups by folder (completed)
+
+- Branch `2026-11-02-t14-unit-groups`, base 9d249f2. Started 2026-11-03 00:46, completed 00:54.
+- **What the code does:**
+  - `vitest.config.mts`: four Vitest projects that choose their own files: `dashboard` (`tests/unit/` outside `xenocats/`), `cats` (`tests/unit/xenocats/`), `jsdom` (every file with the jsdom environment line), `database` (`data.test.ts`).
+  - `.github/workflows/ci.yml`: one step per project (`npx vitest run --project …`) in place of four hand-written file lists; the database step runs its project; "Every test file is in a group" checks the unit files with `scripts/unit-projects.mjs` (new), the specs as before.
+  - `.claude/rules/testing.md` ("A new test file goes in a CI group"), `CLAUDE.md` §9 and `.claude/agents/reviewer.md` say so.
+- **What it brings:** a new unit test file runs in CI with no edit anywhere, a new folder of them too; a file can no longer be left out of CI by forgetting to list it, nor run twice by a prefix (two did: D81).
+- Decisions: D76–D81.
+- **Verification** (full-suite point: `vitest.config.mts` changed): prettier, actionlint, lint (0 errors, 0 warnings), tsc: clean; `node scripts/unit-projects.mjs`: 54 files, each in one project; tried with a stray file (failed, then landed in `dashboard`); each project as CI runs it: 228 + 713 + 196 = 1,137 passed, as `npm test` before; `npm test`: 1,137 passed, 52 skipped; database project with `DATABASE_TESTS=1`: 52 passed, guard accepts it; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. (a)–(e) checked by command.
+- **Reviewer:** approved, no defects (D81).
+- **T13's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41547904895 (Nightrun at 9d249f2).
