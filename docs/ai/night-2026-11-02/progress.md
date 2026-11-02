@@ -40,3 +40,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
   - `E2E_WORKERS=4 npm run test:e2e`: 162 passed, 2 skipped; `E2E_SERVER=start`: 162 passed, 2 skipped (same as baseline).
   - Criteria (a)–(c) checked by command; (d) checked by command against the self-signed development server only; Neon itself by reading only (Q1).
 - **Reviewer:** approved, no defects. Its two notes (production unprovable from here; `db.mjs` unverified) became Q1 and Q2.
+
+## T2 — One session check per request (completed)
+
+- Branch `2026-11-02-t2-session-once`, base 61c6fc7. Started 2026-11-02 22:48, completed 22:50.
+- **What the code does:**
+  - `app/lib/session.ts`: `currentSession = cache(() => auth())`, the request's session read once; `currentUserId()` reads it.
+  - `tests/unit/session.test.ts` (new, in CI's "Unit tests (dashboard)" step): four concurrent calls in one request make one `auth()` call; the next request makes its own; a signed-out request redirects every caller to the login.
+- **What it brings:** the dashboard overview now checks the session against the database once per page instead of three times (plus the proxy's), so each overview load makes two fewer queries, and a revoked session is still refused on the next request.
+- Decisions: D5–D7.
+- **Verification:** prettier on the 3 changed files: clean; lint: 0 errors, 0 warnings (baseline 0); tsc: clean; actionlint (ci.yml changed): clean. The test fails (2 of 3) with `cache()` taken out, and passes with it. Selection (`test:affected --base Nightrun`): `vitest related` → 1 file, 3 passed; build: exit 0; e2e: 18 specs (dashboard, customers, invoices and others reaching `currentUserId`), 54 passed, 0 skipped, 0 failed. (a) and (b) checked by command, against React's server cache imitated (D7); that it dedupes in a real Next render is checked by reading only.
+- **Reviewer:** approved, no defects.
+- **T1's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41531462962 (Nightrun at 61c6fc7).
