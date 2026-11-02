@@ -35,3 +35,9 @@ Numbered non-obvious choices, with their reasons.
 - **D20** The `image_url` inserts left in `data.test.ts` are all in "migrations on existing rows", on schemas migrated only up to 0011 or earlier, where 0001 makes the column `NOT NULL`: they model data from before 0012, and must name it. None runs on a schema with 0014. So (b) holds with them in place; removing them would break those tests, not finish the task. The new 0014 test inserts it only before 0014, and a customer without it after.
 - **D21** `DROP COLUMN image_url`, not `IF EXISTS`: every database has had it since 0001, and a missing column would mean a schema these migrations did not make, which should fail loudly.
 - **D22** `app/ui/customer-avatar.tsx`'s comment named 0012 as the column's end; it now names 0014. `.superdesign/init/components.md` (a design-tool snapshot of the component) still says "the stored `image_url`", which stays true as history; left alone.
+
+## T5 — "Pending" means unpaid and not yet due, everywhere
+
+- **D23** Acceptance criteria: (a) the dashboard's card, the revenue chart (legend, bar titles, the table of its figures, its caption) and the customer list's total (desktop header and phone label), which count every unpaid invoice, say "Unpaid"; (b) the invoice list, its filter, the status pill, the invoice form and the CSV keep "Pending" for unpaid and not yet due; (c) the backlog entry is gone.
+- **D24** Labels only: the data's names (`pending` in `fetchCardData` and the monthly totals, `total_pending` and its `?sort=total_pending`) stay, so no query, bookmarked URL or test of the data changes. The skeleton's column list follows the table.
+- **D25** A browser test (`dashboard.spec.ts`, "totals of every unpaid invoice") checks both pages for "Unpaid" and for no "Pending" heading or column; no existing test named those labels.

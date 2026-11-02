@@ -52,7 +52,7 @@ export default async function CustomersTable({
                   </div>
                   <div className="flex w-full items-center justify-between border-b border-line py-5">
                     <div className="flex w-1/2 flex-col">
-                      <p className="text-xs text-aura">Pending</p>
+                      <p className="text-xs text-aura">Unpaid</p>
                       <p className="font-medium">{customer.total_pending}</p>
                     </div>
                     <div className="flex w-1/2 flex-col">
@@ -95,7 +95,7 @@ export default async function CustomersTable({
                     aria-sort={sorted('total_pending')}
                     className="px-3 py-5 font-medium"
                   >
-                    {header('total_pending', 'Total Pending')}
+                    {header('total_pending', 'Total Unpaid')}
                   </th>
                   <th
                     scope="col"

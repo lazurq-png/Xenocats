@@ -10,18 +10,6 @@ Remove an entry when it is done or decided.
 
 ## Decisions for a human
 
-### "Pending" means two things
-
-The invoice list, its filter and the CSV split unpaid invoices into Pending (not
-yet due) and Overdue. The dashboard's Pending card and chart, and the customers
-table's Pending total, still add up every unpaid invoice, overdue included
-(`fetchCardData` and the monthly totals in `app/lib/data.ts`). On the seed data
-every unpaid invoice is overdue, so the list's Pending filter is empty while the
-dashboard shows a Pending total.
-
-- (a) Relabel those figures "Unpaid": the smallest change.
-- (b) Show Overdue separately there too, as the list does.
-
 ### One time zone
 
 The app dates an invoice by the UTC day (`createInvoice`, the create form's

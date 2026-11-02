@@ -48,3 +48,28 @@ test.describe('with the cats paused', () => {
     await expect(page.getByTestId('xenocat')).toHaveCount(0);
   });
 });
+
+// Pending means unpaid and not yet due, as the invoice list uses it. The
+// dashboard's and the customer list's totals count every unpaid invoice, overdue
+// included, so they say Unpaid.
+test.describe('totals of every unpaid invoice', () => {
+  test.use({ storageState: DEMO_USER });
+
+  test('are called Unpaid on the dashboard and the customer list, never Pending', async ({
+    page,
+  }) => {
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { name: 'Unpaid', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pending', exact: true })).toHaveCount(0);
+    // The revenue chart's legend, and its table of the same figures.
+    const legend = page.getByRole('listitem').filter({ hasText: /^\s*(Unpaid|Pending)\s*$/ });
+    await expect(legend).toHaveCount(1);
+    await expect(legend).toHaveText('Unpaid');
+    await expect(page.getByRole('columnheader', { name: 'Unpaid', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('columnheader', { name: 'Pending', exact: true })).toHaveCount(0);
+
+    await page.goto('/dashboard/customers');
+    await expect(page.getByRole('columnheader', { name: 'Total Unpaid' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Total Pending' })).toHaveCount(0);
+  });
+});

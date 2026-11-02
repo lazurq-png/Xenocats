@@ -88,3 +88,18 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `FULL`, the schema changed): prettier on the changed TS files: clean; lint: 0 errors, 0 warnings; tsc: clean; `npm test`: 1127 passed, 50 skipped; database tests: 50 passed, 0 skipped (+1); build: exit 0; e2e under `next dev` and `next start`: 162 passed, 2 skipped each, on a test schema rebuilt with 0014. (a)–(c) checked by command; (d) in Q5.
 - **Reviewer:** approved, no defects. Its note (old Nightrun previews on Neon would break after 0014) is in Q5.
 - **T3's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41534587801 (Nightrun at 74aaac6).
+
+## T5 — "Pending" means unpaid and not yet due, everywhere (completed)
+
+- Branch `2026-11-02-t5-unpaid-label`, base 6852499. Started 2026-11-02 23:15, completed 23:20.
+- **What the code does:**
+  - `app/ui/dashboard/cards.tsx`: the card that sums every unpaid invoice is titled "Unpaid".
+  - `app/ui/dashboard/revenue-chart.tsx`: legend, bar titles, the screen-reader table's caption and column say "unpaid"; the component's comment says why.
+  - `app/ui/customers/table.tsx`, `app/ui/skeletons.tsx`: "Total Unpaid" on desktop and in its skeleton, "Unpaid" on a phone.
+  - `tests/e2e/dashboard.spec.ts`: "totals of every unpaid invoice" — the overview's card heading, chart legend and chart column, and the customer list's column, say Unpaid and nowhere Pending.
+  - `docs/backlog.md`: the "'Pending' means two things" entry is removed.
+- **What it brings:** a user reading the dashboard no longer sees a Pending total that includes overdue invoices while the invoice list's Pending filter (not yet due) shows none of them; "Pending" now means one thing across the app.
+- Decisions: D23–D25.
+- **Verification:** prettier on the 5 changed files: clean; lint: 0 errors, 0 warnings; tsc: clean. Selection: `vitest related` found no unit test for these files (none exists; exit 0); build: exit 0; e2e: 14 specs, 43 passed, 0 skipped. After the reviewer's finding, the changed spec alone (`dashboard.spec.ts`, the only file the fix touched): 5 passed. **Tested in a browser, not seen**: a human should look at the overview card and chart legend, and the customer list on a phone and on a desktop. (a)–(c) checked by command (the browser test); (b) by reading only (no file of it changed).
+- **Reviewer:** approved; one Low finding (the legend check matched the card heading instead, so it could not fail), fixed: the legend is now found as its own list item.
+- **T4's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41535623142 (Nightrun at 6852499).
