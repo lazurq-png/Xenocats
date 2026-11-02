@@ -130,3 +130,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier on the 6 changed files: clean; lint: 0 errors, 0 warnings; tsc: clean. Selection, on the final state: `vitest related` → 10 files, 596 passed, 52 skipped; database tests: 52 passed, 0 skipped; build: exit 0; e2e: 4 specs (benchmark, leaderboard, phone, survival), 47 passed, 2 skipped (the two opt-in benchmark specs). After the last reviewer note, a test-only change: `actions.test.ts` 57 passed, and a comment in `data.test.ts`. (a)–(d) checked by command; that the bound holds for every possible run is checked by reading the spawn sources (D33) and by the seeded runs, not exhaustively.
 - **Reviewer:** first pass Request Changes, one Medium (a timed run reports its time stopped at the goal while its cats go on: the bound could refuse an honest run) and one Low (the refusal's wording); fixed (D38, D39). Second pass: approve, one Low (the elapsed bound applied to every run, loosening it); fixed (D41). Third pass: approve, no findings; its optional endless-run test added.
 - **T6's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41537849608 (Nightrun at ffd90d0).
+
+## T8 — Co-op patches and swatted cats get an owner (completed)
+
+- Branch `2026-11-02-t8-coop-owners`, base ca4a668. Started 2026-11-02 23:52, completed 2026-11-03 00:01.
+- **What the code does:**
+  - `app/ui/xenocats/arena.ts`: a patch (toy, box, puddle) records the Keeper whose weapon laid it (`owner`), and a swatted cat the Keeper who swatted it (`flungOwner`); while they hurt cats, that Keeper is the one whose passives apply and whose weapons decide the credit (a fused weapon's parent counts for the fused one he holds).
+  - `tests/unit/xenocats/coop.test.ts`: "what each Keeper leaves behind is his" — player 2's toy, box and swatted cats hurt elites by his Reading Glasses (×1.15; before, ×1.00 and ×1.10); once his Jacuzzi is part of his Bubble Bath, its puddles count for the Bubble Bath.
+- **What it brings:** in co-op, player 2's toys, boxes, puddles and swatted cats now use his own passives, and his weapon report credits his fused weapons with their work; before, they used player 1's, so his passives and his fusions were short-changed.
+- Decisions: D42–D46.
+- **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean. Both new tests fail with the arena change stashed and pass with it. Selection: `vitest related` → 10 files, 598 passed, 52 skipped; build: exit 0; e2e: 4 specs, 47 passed, 2 skipped. (a)–(c) checked by command.
+- **Reviewer:** approved, no defects.
+- **T7's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41540733887 (Nightrun at ca4a668).

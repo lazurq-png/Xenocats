@@ -709,6 +709,8 @@ export type ArenaCat = {
   flungHits: number[];
   /** The weapon that swatted it. */
   flungBy: WeaponId | null;
+  /** Whose swat sent it flying (the Keeper's index): his passives, his credit. */
+  flungOwner: number;
   /** The weapon whose homesickness reached it last (credited if it goes home), or null. */
   lastHitBy: WeaponId | null;
 };
@@ -731,6 +733,8 @@ export type Patch = {
   /** A Squeak Symphony's last note, and a Cardboard Castle's slow field. */
   finale: number;
   moat: boolean;
+  /** Whose weapon set it down (the Keeper's index): his passives, his credit. */
+  owner: number;
 };
 
 /** A swing of the Feather Wand: from him, this way, this far, this wide (half-angle). */
@@ -1353,6 +1357,7 @@ export function createArena(options: {
     cat.flungHits.length = 0;
     cat.lastHitBy = null;
     cat.flungBy = null;
+    cat.flungOwner = 0;
     cats.push(cat);
     return cat;
   }
@@ -2089,7 +2094,7 @@ export function createArena(options: {
   /**
    * Homesickness from a weapon of `kind`: nothing, to a cat it passes through. An
    * elite (not a swarm's kitten) or a Mega Cat takes more by the Reading Glasses of
-   * the Keeper whose weapon it is (`hero`; for what lies on the ground, player 1).
+   * the Keeper whose weapon it is (`hero`).
    */
   function hurt(cat: ArenaCat, amount: number, kind: WeaponKind) {
     if (cat.variety && VARIETIES[cat.variety].immuneTo?.includes(kind)) return;
@@ -2365,6 +2370,7 @@ export function createArena(options: {
         const turn = (k * 2 * Math.PI) / s.count;
         const ring = k === 0 ? 0 : 50;
         addPatch({
+          owner: hero.index,
           kind: 'toy',
           weapon: id,
           x: at.x + Math.cos(turn) * ring,
@@ -2385,6 +2391,7 @@ export function createArena(options: {
       if (targets.length === 0) return false;
       for (const i of targets) {
         addPatch({
+          owner: hero.index,
           kind: 'box',
           weapon: id,
           x: cats[i].x,
@@ -2416,6 +2423,7 @@ export function createArena(options: {
         cat.flungVy = (way.y * s.speed) / flight;
         cat.flungDamage = s.damage * SWAT_BOWL_SHARE;
         cat.flungBy = id;
+        cat.flungOwner = hero.index;
         cat.flungHits.length = 0;
         cat.flungHits.push(cat.id);
       }
@@ -2579,10 +2587,14 @@ export function createArena(options: {
     }
   }
 
-  /** Each swatted cat in flight hurts the cats it lands among, each once. */
+  /**
+   * Each swatted cat in flight hurts the cats it lands among, each once, with the
+   * passives (and to the credit) of the Keeper who swatted it.
+   */
   function bowl() {
     for (const i of flying) {
       const cat = cats[i];
+      hero = keepers[cat.flungOwner] ?? keepers[0];
       for (const j of within(cat, cat.radius)) {
         const other = cats[j];
         // (Itself first in the list, then those it has bowled over.)
@@ -2593,6 +2605,7 @@ export function createArena(options: {
         hurt(other, cat.flungDamage, 'swat');
       }
     }
+    hero = keepers[0];
   }
 
   /** Whether `cat` is still the live cat with this id (sent home, its object waits for reuse). */
@@ -2667,10 +2680,14 @@ export function createArena(options: {
     }
   }
 
-  /** What his weapons set down works, and gives out. */
+  /**
+   * What the Keepers' weapons set down works, and gives out: each with its own
+   * Keeper's passives, to his credit.
+   */
   function updatePatches(dt: number) {
     for (let n = patches.length - 1; n >= 0; n--) {
       const p = patches[n];
+      hero = keepers[p.owner] ?? keepers[0];
       deal(p.weapon);
       if (time >= p.until) {
         if (p.finale > 0) {
@@ -2704,6 +2721,7 @@ export function createArena(options: {
         }
       }
     }
+    hero = keepers[0];
     for (let n = sweeps.length - 1; n >= 0; n--) {
       if (time >= sweeps[n].until) sweeps.splice(n, 1);
     }
@@ -2917,6 +2935,7 @@ export function createArena(options: {
         });
       }
       addPatch({
+        owner: hero.index,
         kind: 'puddle',
         weapon: 'jacuzzi',
         x: hero.x,
@@ -2935,6 +2954,7 @@ export function createArena(options: {
       if (targets.length === 0) return;
       for (const i of targets) {
         addPatch({
+          owner: hero.index,
           kind: 'box',
           weapon: 'cardboard-castle',
           x: cats[i].x,
@@ -3119,6 +3139,7 @@ export function createArena(options: {
           const s = weaponStats(p.weapon, owner.weapons.get(p.weapon)?.level ?? 1, owner.mods);
           if (p.weapon === 'jacuzzi') {
             addPatch({
+              owner: p.owner,
               kind: 'puddle',
               weapon: p.weapon,
               x: p.x,
@@ -3175,6 +3196,7 @@ export function createArena(options: {
         // A Monsoon droplet marked for it leaves a puddle that slows the cats in it.
         if (p.weapon === 'monsoon' && p.splits > 0) {
           addPatch({
+            owner: p.owner,
             kind: 'puddle',
             weapon: p.weapon,
             x: p.x,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ARENA_CONFIG, type ArenaConfig, createArena } from '@/app/ui/xenocats/arena';
+import { MAX_WEAPON_LEVEL } from '@/app/ui/xenocats/arsenal';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import { PLAYER_KEYS, walkDirection } from '@/app/ui/xenocats/walking';
@@ -455,4 +456,82 @@ describe('downed and revived', () => {
     expect(kinds.filter((k) => k === 'downed').length).toBeGreaterThanOrEqual(1);
     expect(a.state().heroes.every((h) => h.down)).toBe(true);
   });
+});
+
+// What a Keeper's weapon leaves behind (a toy, a box, a puddle) and a cat his swat
+// sends flying go on hurting after he moves on: with his own passives, to his own
+// credit, not player 1's.
+describe('what each Keeper leaves behind is his', () => {
+  /** Player 2's weapon at work among elites, Reading Glasses or not; player 1 unarmed. */
+  const homesicknessBy = (
+    weapon: 'squeaky-toy' | 'cardboard-box' | 'frying-pan',
+    glasses: boolean
+  ) => {
+    const a = coop({
+      startingWeapons: [],
+      secondPlayer: {
+        startingWeapons: [weapon],
+        speed: 210,
+        resolve: 1e12,
+        startingPassives: glasses ? ['reading-glasses'] : [],
+      },
+      escalation: [[0, 120]],
+      // Every cat an elite, and none goes home: so the same cats stay in reach, and
+      // what the weapon deals is its damage times the passive alone. Crowded, and
+      // packed close (no spacing), so a swatted cat lands among others.
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 1, homesickness: [1e9, 1e9], spacing: 0 },
+      gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+    });
+    run(a, 8000);
+    return a.weaponReport().find((w) => w.id === weapon)?.homesickness ?? 0;
+  };
+
+  it("player 2's toy, box and swatted cats hurt elites by his Reading Glasses", () => {
+    // (A swat's own blow was already his: what changed is the cat it sends flying.
+    // Before, the toy and the box gave ×1.00, the pan ×1.10.)
+    for (const weapon of ['squeaky-toy', 'cardboard-box', 'frying-pan'] as const) {
+      const without = homesicknessBy(weapon, false);
+      expect(without, weapon).toBeGreaterThan(0);
+      // Player 1 has no glasses: before, the toy and the flying cats used his.
+      expect(homesicknessBy(weapon, true) / without, weapon).toBeCloseTo(1.15, 2);
+    }
+  });
+
+  // His two parents at their highest, a chest between the two to fuse them, and player
+  // 1 unarmed: he holds no fused weapon, so by his weapons what player 2's parent left
+  // behind would stay the parent's.
+  for (const [parent, other, fused, what] of [
+    ['jacuzzi', 'lucky-furball', 'bubble-bath', 'its puddles'],
+  ] as const) {
+    it(`once player 2's ${parent} is part of his ${fused}, ${what} count for the ${fused}`, () => {
+      const a = coop({
+        startingWeapons: [],
+        secondPlayer: { startingWeapons: [parent, other], speed: 210, resolve: 1e12 },
+        startingLevel: MAX_WEAPON_LEVEL,
+        startingChests: 1,
+        chestReach: ARENA_CONFIG.chestReach,
+        escalation: [[0, 60]],
+        schedule: {
+          arrivals: [{ from: 0, who: 'basic', weight: 1 }],
+          swarms: { from: Infinity, everyMs: 1, size: [0, 0] },
+          bosses: [],
+        },
+        cats: { ...ARENA_CONFIG.cats, homesickness: [1e9, 1e9] },
+        gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+      });
+      let atFusion: Record<string, number> | null = null;
+      stepTo(a, 20_000, () => {
+        // Player 2 steps onto the chest first (it lies between the two).
+        a.step(still, true, a.state().time < 400 ? left : still);
+        if (!atFusion && a.drainEvents().some((e) => e.kind === 'fusion')) {
+          atFusion = Object.fromEntries(a.weaponReport().map((w) => [w.id, w.homesickness]));
+        }
+      });
+      expect(atFusion).not.toBeNull();
+      const after = Object.fromEntries(a.weaponReport().map((w) => [w.id, w.homesickness]));
+      // The parent's work since, all of it, is the fused weapon's.
+      expect(after[parent]).toBe(atFusion![parent]);
+      expect(after[fused]).toBeGreaterThan(0);
+    });
+  }
 });
