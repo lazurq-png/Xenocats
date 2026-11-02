@@ -22,13 +22,6 @@ None open.
 - pruning `login_failures` rows of emails that never log in (an attacker adds
   one row per address they try).
 
-### CI's database tests can pass with every test skipped
-
-With the database tests opt-in, a CI step that lost `DATABASE_TESTS: '1'` (or
-its `POSTGRES_URL`) would report green with every test skipped. A one-line
-guard: fail the step if the Vitest summary shows nothing passed. Low urgency
-(set aside 2026-10-08).
-
 ### An index for the searches
 
 The invoice and customer searches match `ILIKE '%term%'`, which no B-tree index

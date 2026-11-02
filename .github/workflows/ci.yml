@@ -17,6 +17,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch, or to the same pull request, cancels the run it
+# supersedes: only the newest commit's result is wanted.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Says whether this run would repeat one that passed: a pull request from dev
   # into main where main changes no file since it last took dev (its own commits
@@ -54,6 +60,37 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # On a pull request into main (a deploy to production): the migrations it adds, in
+  # the job summary. No deploy migrates Neon; a human runs db:migrate against it, and
+  # must before this deploys, or the new code meets the old schema.
+  migrations:
+    name: New migrations
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: List the migrations this pull request adds
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          added=$(git diff --name-only --diff-filter=A "$BASE...$HEAD" -- db/migrations/)
+          {
+            echo "## New migrations"
+            if [ -n "$added" ]; then
+              echo "Apply them to Neon (npm run db:migrate) before this deploys:"
+              for file in $added; do echo "- $file"; done
+            else
+              echo "None."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          for file in $added; do
+            echo "::warning file=$file::$file is new: migrate Neon before this deploys"
+          done
+
   checks:
     name: Lint, type check, unit tests
     needs: tested
@@ -69,7 +106,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # Every file Prettier checks (.prettierignore leaves out Markdown and the rest).
+      - name: Formatting
+        if: ${{ !cancelled() }}
+        run: npx prettier --check .
       - name: Type check
+        if: ${{ !cancelled() }}
         run: npx next typegen && npx tsc --noEmit
       # The unit tests run in named groups, each even if an earlier one failed,
       # so a failure is identifiable from the job's step names alone.
@@ -80,7 +122,7 @@ jobs:
           tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
           tests/unit/csv tests/unit/export-route tests/unit/invoice-status
           tests/unit/login-limit tests/unit/password-check tests/unit/credentials tests/unit/cat-error tests/unit/affected-tests
-          tests/unit/db-ssl tests/unit/session
+          tests/unit/db-ssl tests/unit/session tests/unit/ci-passed
           tests/unit/forms tests/unit/input-safeguards
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
@@ -187,9 +229,13 @@ jobs:
       # Only this job has a database for them (the checks job skips this file),
       # whether or not the build and browser tests passed. The tests rebuild
       # their own schema, xenocats_vitest, on this job's server.
+      # And they must have run: with DATABASE_TESTS or POSTGRES_URL lost, every test
+      # would skip and the step pass. Vitest's JSON report says how many passed.
       - name: Database tests
         if: ${{ !cancelled() && steps.database.outcome == 'success' }}
-        run: npx vitest run tests/unit/data
+        run: |
+          npx vitest run tests/unit/data --reporter=default --reporter=json --outputFile.json=vitest-data.json
+          node scripts/ci-passed.mjs vitest-data.json "database test"
         env:
           DATABASE_TESTS: '1'
       - uses: actions/upload-artifact@v4

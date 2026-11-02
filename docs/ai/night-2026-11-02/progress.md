@@ -142,3 +142,17 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean. Both new tests fail with the arena change stashed and pass with it. Selection: `vitest related` → 10 files, 598 passed, 52 skipped; build: exit 0; e2e: 4 specs, 47 passed, 2 skipped. (a)–(c) checked by command.
 - **Reviewer:** approved, no defects.
 - **T7's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41540733887 (Nightrun at ca4a668).
+
+## T9 — CI (completed)
+
+- Branch `2026-11-02-t9-ci-concurrency`, base d3cb6bc. Started 2026-11-03 00:01, completed 00:08.
+- **What the code does:**
+  - `.github/workflows/ci.yml`: a `concurrency` group (the workflow and the pull request, else the ref) cancels a run a newer push supersedes; the checks job runs `npx prettier --check .` (and the type check runs even if formatting failed); the database-tests step fails unless at least one test passed (`scripts/ci-passed.mjs` reads Vitest's JSON report); a new `migrations` job, on pull requests into `main`, lists the migrations the pull request adds in the job summary, with a warning on each, to migrate Neon first.
+  - `scripts/ci-passed.mjs` (new) and `tests/unit/ci-passed.test.ts` (new, in "Unit tests (dashboard)").
+  - `.github/dependabot.yml` (new): npm weekly, minor and patch in one group, and GitHub Actions weekly, both as pull requests into `dev`.
+  - `docs/backlog.md`: the "CI's database tests can pass with every test skipped" entry is removed.
+- **What it brings:** CI stops spending runners on commits a newer push replaced, catches unformatted files and a database-test step that silently tested nothing, and a release to production now says in its pull request which migrations Neon needs first; dependency updates arrive on their own, tested on `dev`.
+- Decisions: D47–D52.
+- **Verification** (full-suite point: `FULL`, the new script is outside what the selector traces): prettier on the changed files: clean; `npx prettier --check .`: clean; lint: 0 errors, 0 warnings; tsc: clean; actionlint with shellcheck and pyflakes: clean (and after the review's edit). The guard tried on real Vitest reports (52 passed: exit 0; all skipped: exit 1), and the migrations job's script run locally (lists 0013 and 0014 for `main`...`Nightrun`; "None." with no new file). `npm test`: 53 files passed, 1 skipped; 1136 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. What the workflow does on GitHub (cancelling, the summary, Dependabot) is checked by reading only until its CI run.
+- **Reviewer:** approved; one Low (a formatting failure would skip the type check), fixed (D52). Its note on `CLAUDE.md` §9 is D51.
+- **T8's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41541961155 (Nightrun at d3cb6bc).
