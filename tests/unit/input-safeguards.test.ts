@@ -12,6 +12,7 @@ import {
   clientAddress,
   clientKey,
   signUpLimit,
+  proxyWarning,
   trustedProxyHeader,
 } from '@/app/lib/sign-up-limit';
 
@@ -146,6 +147,17 @@ describe('the sign-up limit', () => {
     expect(signUpLimit({ SIGNUP_MAX_PER_DAY: '5' })).toBe(5);
     expect(signUpLimit({ SIGNUP_MAX_PER_DAY: '-1' })).toBe(2);
     expect(signUpLimit({ SIGNUP_MAX_PER_DAY: 'lots' })).toBe(2);
+  });
+
+  it('a production server with no trusted proxy header warns that the address limits fall back', () => {
+    const production = { NODE_ENV: 'production' };
+    expect(proxyWarning(production)).toMatch(/TRUSTED_PROXY_HEADER/);
+    expect(proxyWarning(production)).toMatch(/sign-up limit[^]*login name only/);
+    expect(proxyWarning({ ...production, VERCEL: '1' })).toBeNull();
+    expect(proxyWarning({ ...production, TRUSTED_PROXY_HEADER: 'x-forwarded-for' })).toBeNull();
+    // Not in development or the tests: there no proxy is the rule.
+    expect(proxyWarning({ NODE_ENV: 'development' })).toBeNull();
+    expect(proxyWarning({ NODE_ENV: 'test' })).toBeNull();
   });
 
   it('believes a proxy header only where the deployment says a proxy sets it', () => {

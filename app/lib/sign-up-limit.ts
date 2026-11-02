@@ -29,6 +29,21 @@ export function trustedProxyHeader(
 }
 
 /**
+ * What a production server says when it starts with no trusted proxy header
+ * (instrumentation.ts): every client then shares one sign-up count, and failed
+ * logins are counted per login name only (credentials.ts). Null where a proxy is
+ * named, or outside production.
+ */
+export function proxyWarning(env: Record<string, string | undefined> = process.env) {
+  if (env.NODE_ENV !== 'production' || trustedProxyHeader(env) !== null) return null;
+  return (
+    'No trusted proxy header (TRUSTED_PROXY_HEADER, or VERCEL=1): every client shares ' +
+    'one sign-up limit, and failed logins are limited per login name only, not per ' +
+    'client address. Set TRUSTED_PROXY_HEADER if a proxy in front of the app sets one.'
+  );
+}
+
+/**
  * The client's address, from the trusted proxy's header. With no trusted proxy (or
  * no address in its header), 'unknown': every such client shares one count, so the
  * limit holds for all of them together rather than not at all.

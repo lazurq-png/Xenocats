@@ -19,6 +19,8 @@ test('every page response carries the security headers', async ({ request }) => 
     expect(headers['referrer-policy'], path).toBe('strict-origin-when-cross-origin');
     expect(headers['strict-transport-security'], path).toMatch(/max-age=\d+/);
     expect(headers['permissions-policy'], path).toContain('camera=()');
+    // And none saying what serves it.
+    expect(headers['x-powered-by'], path).toBeUndefined();
   }
 });
 

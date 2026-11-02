@@ -156,3 +156,17 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `FULL`, the new script is outside what the selector traces): prettier on the changed files: clean; `npx prettier --check .`: clean; lint: 0 errors, 0 warnings; tsc: clean; actionlint with shellcheck and pyflakes: clean (and after the review's edit). The guard tried on real Vitest reports (52 passed: exit 0; all skipped: exit 1), and the migrations job's script run locally (lists 0013 and 0014 for `main`...`Nightrun`; "None." with no new file). `npm test`: 53 files passed, 1 skipped; 1136 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. What the workflow does on GitHub (cancelling, the summary, Dependabot) is checked by reading only until its CI run.
 - **Reviewer:** approved; one Low (a formatting failure would skip the type check), fixed (D52). Its note on `CLAUDE.md` §9 is D51.
 - **T8's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41541961155 (Nightrun at d3cb6bc).
+
+## T10 — Small cleanups (completed)
+
+- Branch `2026-11-02-t10-small-cleanups`, base 9bbc934. Started 2026-11-03 00:08, completed 00:16.
+- **What the code does:**
+  - `tsconfig.json`: `scripts/seed.js`, long gone, is out of `include`.
+  - `package.json`: `"dev": "next dev"` (Turbopack is Next 16's default).
+  - `next.config.ts`: `poweredByHeader: false`; `tests/e2e/security-headers.spec.ts` checks no page response carries `X-Powered-By`.
+  - `app/lib/sign-up-limit.ts`: `proxyWarning(env)`, the warning a production server gives without a trusted proxy header; `instrumentation.ts` (new) prints it once when a Node.js server instance starts. `tests/unit/input-safeguards.test.ts` tests when it speaks.
+- **What it brings:** someone deploying off Vercel without a proxy header now learns at startup that the sign-up and login address limits have fallen back, instead of finding out from abuse; responses no longer advertise the framework; the configuration no longer names a file that is not there.
+- Decisions: D53–D56.
+- **Verification** (full-suite point: `FULL`, `package.json` and `instrumentation.ts` changed): prettier on the changed files: clean; lint: 0 errors, 0 warnings; tsc: clean. The warning seen on a real `next start` after a build (D54). `npm test`: 53 files passed, 1 skipped; 1137 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. (a)–(d) checked by command.
+- **Reviewer:** approved, no defects; its note on `playwright.config.ts` is D55.
+- **T9's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41543017299 (Nightrun at 9bbc934): the new concurrency group, formatting step and database-test guard ran green on GitHub.

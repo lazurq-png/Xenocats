@@ -37,6 +37,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // No X-Powered-By: Next.js: it tells nobody anything they need.
+  poweredByHeader: false,
   // The images in /public are already small WebPs, served as they are. Next's
   // optimizer (/_next/image, as of 16.3.6) hangs for good on an image whose first
   // request is aborted mid-encode — a navigation away at the wrong moment — and
