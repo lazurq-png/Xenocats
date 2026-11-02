@@ -981,6 +981,29 @@ describe.skipIf(!url)('sessions in the database', () => {
   });
 });
 
+// The TLS modes of the app's connection (app/lib/db-ssl.ts) against a real server.
+// The development and CI servers sign their own certificates, so the mode the app
+// uses on Vercel must refuse them: that is what shows it checks the certificate.
+describe.skipIf(!url)('TLS to the database', () => {
+  it('connects without checking the certificate off Vercel, and refuses an unsigned one on it', async () => {
+    const { databaseSsl } = await import('@/app/lib/db-ssl');
+    const connect = async (ssl: ReturnType<typeof databaseSsl>) => {
+      const sql = postgres(url!, { ssl, max: 1, connect_timeout: 10, onnotice: () => {} });
+      try {
+        const [{ ssl: on }] = await sql`SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()`;
+        return on;
+      } finally {
+        await sql.end({ timeout: 1 });
+      }
+    };
+
+    expect(await connect(databaseSsl({}))).toBe(true);
+    await expect(connect(databaseSsl({ VERCEL: '1' }))).rejects.toMatchObject({
+      code: expect.stringMatching(/CERT|SIGNED|ALTNAME/),
+    });
+  });
+});
+
 // The login lockout's statements (app/lib/login-limit.ts) against the same schema,
 // which the file-level beforeAll rebuilds; each test on an email of its own.
 describe.skipIf(!url)('the login lockout in the database', () => {
