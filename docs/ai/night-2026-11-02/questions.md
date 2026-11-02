@@ -26,3 +26,12 @@ T3 counts failed logins per client address only where a trusted proxy header say
 ## Q6 — `docs/backlog.md`'s "Login lockout: what it does not cover" lists a per-address limit as not built
 
 T3 built it. The entry's first bullet is now out of date; the run left it, since no task names that entry. Recommendation: drop the bullet when merging.
+
+## Q7 — Vercel and `engines.node` (T12)
+
+`package.json` now says `"engines": { "node": ">=24" }`. Vercel picks a project's Node version from it, and with a range that opens upward it may move to a newer major when Vercel offers one. Options: (a) keep `>=24` as the plan said; (b) `24.x`, which pins the major on Vercel and still says "24 or newer" to nobody else. Recommendation: (b) if production should change major only on purpose. Meanwhile: (a), as written.
+(Added after T12's review: CI tests on Node 24 exactly, `node-version: 24`, so with `>=24` production on Vercel could run a major CI never tested. That favours (b).)
+
+## Q8 — `package-lock.json` does not repeat the new `engines` (T12)
+
+npm copies the root package's `engines` into the lockfile's root entry; the run added it to `package.json` by hand, since any `npm install` is a human's (§3). `npm ci` does not mind, but the next `npm install` (a Dependabot pull request, say) will add those three lines, unexplained, to an unrelated change. **For a human:** `npm install --package-lock-only` adds just them, changing no dependency.

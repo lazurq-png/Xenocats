@@ -1,0 +1,44 @@
+name: CodeQL
+
+# GitHub's code scanning for the JavaScript and TypeScript: what it finds shows in
+# the repository's Security tab, and on a pull request as annotations.
+#
+# Not on pushes to Nightrun: an unattended run polls that branch's runs for its
+# CI result (.claude/skills/night-run/ci-poll.mjs takes the first completed run on
+# the branch), so a second workflow there would answer for CI. Its work reaches
+# CodeQL through the pull request into dev, and then dev itself.
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [Nightrun, dev, main]
+  schedule:
+    # Weekly, for advisories that appear without a change here.
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (JavaScript and TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          # No build needed: CodeQL reads the sources.
+          build-mode: none
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript

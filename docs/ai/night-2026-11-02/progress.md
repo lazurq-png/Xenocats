@@ -183,3 +183,16 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** documentation only: `test:affected` selects nothing (0 unit files, 0 specs); `npx prettier --check .`: clean (Markdown is not checked; `.env.example` has no parser); lint: 0 errors, 0 warnings; build: exit 0. `.env.example` parses with `node --env-file` (all keys empty). The first-run steps checked by reading against `scripts/db.mjs`, `app/lib/db.ts` and the seed; not run from a fresh clone.
 - **Reviewer:** Request Changes, three Low (a false claim that `.superdesign` is regenerated; an inaccurate CI sentence; a stale pointer in `.claude/README.md`), all fixed (D63); re-review: approved.
 - **T10's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41544149321 (Nightrun at 00dd2b8).
+
+## T12 — CI, more (completed)
+
+- Branch `2026-11-02-t12-ci-more`, base dfc823f. Started 2026-11-03 00:23, completed 00:29.
+- **What the code does:**
+  - `.github/workflows/ci.yml`: a `dependency-review` job on pull requests (`actions/dependency-review-action`), failing on a vulnerability the pull request adds.
+  - `.github/workflows/codeql.yml` (new): CodeQL for JavaScript and TypeScript on pull requests into `Nightrun`, `dev` and `main`, pushes to `dev`, and weekly; not on pushes to `Nightrun` (D66).
+  - `package.json`: `"engines": { "node": ">=24" }`. `.nvmrc` (new): `24`.
+- **What it brings:** a pull request that brings in a vulnerable dependency, or code CodeQL flags (injection, unsafe redirects and the like), now says so before it is merged; a contributor's version manager and npm both know the project needs Node 24.
+- Decisions: D64–D70 (D69: a slip, `npm ci --dry-run` run once; nothing changed). Questions: Q7, Q8.
+- **Verification** (full-suite point: `package.json` changed): prettier on the changed files: clean; actionlint with shellcheck and pyflakes: clean; lint: 0 errors, 0 warnings; tsc: clean; `npm test`: 1137 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. Whether dependency review and CodeQL pass on GitHub is checked by reading only until the first pull request runs them (neither runs on a push to `Nightrun`).
+- **Reviewer:** approved; two Low notes became Q7 and Q8 (D70).
+- **T11's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41544905982 (Nightrun at dfc823f).

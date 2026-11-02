@@ -91,6 +91,18 @@ jobs:
             echo "::warning file=$file::$file is new: migrate Neon before this deploys"
           done
 
+  # On a pull request: the dependencies it adds or changes, against the advisory
+  # database. It fails only on a vulnerability the pull request brings in, so one
+  # already on the base branch (today's zod advisory) does not turn every run red.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/dependency-review-action@v4
+
   checks:
     name: Lint, type check, unit tests
     needs: tested
