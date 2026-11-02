@@ -91,13 +91,23 @@ if git rev-parse -q --verify refs/heads/Nightrun >/dev/null; then
   p=$(git show "Nightrun:docs/ai/night-$r/progress.md" 2>/dev/null)
   d=$(printf '%s\n' "$p" | grep -oE 'Deadline: [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}' \
         | tail -n 1 | cut -c11-)
+  lag=""                                    # how Nightrun differs from main and dev
+  for b in main dev; do
+    if c=$(git rev-list --left-right --count "Nightrun...$b" 2>/dev/null); then
+      read -r ahead behind <<< "$c"
+      [ "$ahead $behind" = "0 0" ] || lag="$lag, $ahead ahead of and $behind behind $b"
+    else
+      lag="$lag, no $b to compare with"
+    fi
+  done
+  lag=${lag:-, level with main and dev}
   if ! printf '%s\n' "$r" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
-    echo "Nightrun: no run date recorded"
+    echo "Nightrun: no run date recorded$lag"
   elif ! printf '%s\n' "$p" | grep -q '^## Morning report' \
        || { [ -n "$d" ] && [[ "$now" < "$d" ]]; }; then
     echo "in progress: Nightrun, run $r (deadline ${d:-not recorded})"
   else
-    echo "finished: Nightrun, run $r, not yet merged or deleted"
+    echo "finished: Nightrun, run $r$lag"
   fi
 fi
 ```
@@ -107,20 +117,28 @@ fi
 - **The loop prints `in progress`** → you are **resuming** that run: go to
   §9.2. Do not run §1.0, §1.2 or §1.4. Recreating the branch or state files is
   how a run loses its history.
-- **It prints `finished`, or `no run date recorded`** → `Nightrun` is still
-  there from an earlier run, or was not made by §1.2. A human merges or deletes
-  it in the morning; until then no new run can take the name. **Stop**: create
-  no branch, and never rename, delete or reuse it yourself. Write an
-  uncommitted `progress.md` in today's directory (`docs/ai/night-$(date
-  +%F)/`) saying which line the loop printed, and end. A turn started by the
-  run's own timer (§9.4) writes nothing: it deletes the timer and ends.
+- **It prints `finished`, or `no run date recorded`, ending in `level with
+  main and dev`** → `Nightrun` is an earlier run's (or one not made by §1.2)
+  at the very commit `main` and `dev` are at: nothing on it is unmerged, and
+  nothing merged since is missing from it. A new run reuses it as it is
+  (§1.2), on the same terms as a loop that prints nothing (below).
+- **It prints `finished`, or `no run date recorded`, with anything else** →
+  `Nightrun` is ahead of or behind `main` or `dev`, or one of them is missing.
+  Behind, a run would start from old code; ahead, it holds work nobody has
+  merged. A human brings it level (merges its work into `dev` and `main`, then
+  fast-forwards `dev` and `Nightrun` to `main`) or deletes it; until then no
+  new run can take the name. **Stop**: create no branch, and never move,
+  rename, delete or reuse it yourself. Write an uncommitted `progress.md` in
+  today's directory (`docs/ai/night-$(date +%F)/`) quoting the line the loop
+  printed, and end. A turn started by the run's own timer (§9.4) writes
+  nothing: it deletes the timer and ends.
 - **It prints nothing** → a new run: §1.0–§1.5 in order, **unless this turn's
   prompt forbids starting one** (the run's own timer does, §9.4): then delete
   that timer (`CronList`, `CronDelete`) and stop, skipping §1.0 and writing
   nothing.
 
 The loop reads `progress.md` from the run branch, never from the working tree.
-A new run is cut from `main`, which lacks an unmerged earlier run, so the tree
+A new run starts at `main`'s commit, which lacks an unmerged earlier run, so the tree
 would make a finished run look unfinished. A run branch with no committed
 `progress.md` (its first task not yet committed) counts as in progress, which is
 correct.
@@ -231,13 +249,29 @@ main                         base; never committed to
     └── <YYYY-MM-DD>-t2-<slug>    cut after t1 merged
 ```
 
+A new branch, when §1's loop printed nothing:
+
 ```bash
 git checkout main && git checkout -b Nightrun
+```
+
+An earlier run's that §1 found `level with main and dev`, reused as it is: it is
+already at `main`'s commit, so nothing moves.
+
+```bash
+git checkout Nightrun
+```
+
+Then, either way:
+
+```bash
 git config branch.Nightrun.description <YYYY-MM-DD>   # the run's date (§1)
 ```
 
-- **The run branch is always `Nightrun`**, whatever the date. A human merges or
-  deletes it after the run, which frees the name for the next one (§1). Task
+- **The run branch is always `Nightrun`**, whatever the date. After a run, a
+  human merges its work into `dev` and `main`, then fast-forwards `dev` and
+  `Nightrun` to `main` (or deletes `Nightrun`); the next run reuses it once it
+  is level with both (§1), and stops while it is ahead or behind. Task
   branches are named after the run's date and the task alone, with no `night`
   in them: `<YYYY-MM-DD>-t<N>-<slug>`, and likewise `-c<N>-checkpoint`,
   `-e<n>-<slug>` (§2.2), `-t0-baseline` (§1.5) and `-t<N>-report` (§7). The state directory keeps its dated name,
@@ -250,7 +284,8 @@ git config branch.Nightrun.description <YYYY-MM-DD>   # the run's date (§1)
   branch is meant: a git command, or the report's branch columns and State.
 - **The date is recorded on the branch**, as its description in the
   repository's local git config, because the name no longer carries it. §1's
-  loop and a resumed session read it there. Git removes it with the branch.
+  loop and a resumed session read it there. Git removes it with the branch; a
+  reused branch's is overwritten with the new run's date.
 - **The separator is a hyphen**, never a slash. Git stores refs as paths, so a
   branch `x` and a branch `x/y` cannot coexist; the failure (`cannot lock ref`)
   only appears at the second branch.
@@ -270,7 +305,8 @@ git ls-remote --heads origin Nightrun "<YYYY-MM-DD>-*"
 | No remote | Local-only run: record it, skip every push and poll. Not a failure. |
 | Reachable, no matching branch | Normal. |
 | Matching branch, **resuming** | Expected. Confirm with `git fetch origin && git merge-base --is-ancestor origin/Nightrun Nightrun`, then continue. |
-| Matching branch, **new run** | **Stop.** `Nightrun` on the remote is an earlier run's that a human has not yet merged or deleted, or someone else owns the date's names. |
+| `Nightrun`, **new run** | An earlier run's. Continue only if the commit it names is the one `main` and `dev` are at (`git rev-parse main dev`), as §1 requires of the local branch; the run's pushes then move it forward. Ahead, behind or diverged: **stop**, as §1 does, quoting both commits. |
+| A branch of this run's date, **new run** | **Stop.** Someone else owns the date's names. |
 | Unreachable | Continue local-only, record why. |
 
 Create, delete or fetch nothing else on the remote.
@@ -526,9 +562,10 @@ these additions.
    git push --set-upstream origin Nightrun
    ```
 
-   `--set-upstream` on `Nightrun` too: the run creates it locally (§1.2), so
-   without it the branch tracks nothing and a human's bare `git push` on it
-   fails. Setting it again on every push changes nothing.
+   `--set-upstream` on `Nightrun` too: a `Nightrun` the run creates (§1.2)
+   tracks nothing until it is set, and a human's bare `git push` on it then
+   fails. Setting it again on every push, or on a reused branch, changes
+   nothing.
 
    A **rejected push**: record it, push nothing further for the rest of the
    run, and keep working locally. No PRs, ever. Local-only runs skip this step.
@@ -753,7 +790,8 @@ Never, unattended:
 
 - `git push --force` / `--force-with-lease`, `--delete`, `--tags`, or a push to
   anything but `Nightrun` and this run's own `<YYYY-MM-DD>-…` task branches:
-  never `main`, never a ref this run did not create. Check the name before
+  never `main`, never a ref this run did not create (`Nightrun` aside, which
+  §1.2 creates or reuses level with `main` and `dev`). Check the name before
   every push.
 - Opening a pull request.
 - Rewriting history (`rebase`, `commit --amend`, `reset --hard`) except over
