@@ -36,24 +36,13 @@ on UTC they disagree for some hours a day: an invoice created then is "due in 29
 
 Undecided (2026-10-08): fix it in the dashboard or in the database.
 
-### The demo login on the production database
-
-`app/lib/placeholder-data.ts` seeds the Next.js course's demo login
-(`user@nextmail.com`). `db:seed` refuses a public host, but nothing shows
-whether the production (Neon) database was ever seeded from it before that
-check existed. If it was, anyone who has read the course can log in there.
-Check for that user on production, and remove it or change its password.
-
 ## Proposed tasks
 
 ### Drop `customers.image_url`
 
-**First, check Neon:** the code that stops writing `image_url` reached `main`,
-and so production, on 2026-10-23 (pull request #31, with migration 0012). It
-inserts customers without an image, which the column's old `NOT NULL` refuses:
-until 0012 is applied to the Neon database (`db:migrate`), every new customer
-there fails. Nothing in the repository records whether it has been; Neon's
-`schema_migrations` table does.
+Neon has migration 0012: its `schema_migrations` records it on 2026-10-23, the
+day pull request #31 brought the code that stops writing `image_url` to `main`
+(checked 2026-11-02).
 
 Nothing reads the column, and since migration 0012 nothing writes it: avatars are
 drawn from the name. 0012 only made it optional, because `main` (what production
