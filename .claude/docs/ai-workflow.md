@@ -255,7 +255,7 @@ Use it for:
 
 ## Claude Rules
 
-Use `.claude/rules/*.md` for domain-scoped reference material. These are not auto-loaded — CLAUDE.md should tell the agent which one to open for a given task type.
+Use `.claude/rules/*.md` for domain-scoped reference material. Claude Code loads a rule file without `paths:` frontmatter at the start of every session, and one with `paths:` when it reads or edits a file matching its globs; CLAUDE.md should say which rule applies to which task type.
 
 Examples:
 
@@ -315,7 +315,7 @@ Examples:
 
 ## Hooks and CI
 
-**Hooks: none.** There is no `.claude/settings.json` (only `settings.example.json`, which is inert). Nothing is enforced at commit time, and an unattended run started with permissions bypassed ignores `settings.json` entirely even if one is added — see `.claude/skills/night-run/SKILL.md`.
+**Hooks: none.** There is no `.claude/settings.json` (only `settings.example.json`, which is inert). Nothing is enforced at commit time. An unattended run starts with permissions bypassed, where a `settings.json` `allow` list would have no effect but its `deny` rules would still block; with none, the run's guardrails are the instructions in `.claude/skills/night-run/SKILL.md`.
 
 **CI: yes.** `.github/workflows/ci.yml` runs on pushes to `Nightrun` and `dev` and on pull requests into `Nightrun`, `dev` or `main` (a merge into `main` runs none, since its pull request was tested and the merge only deploys; a pull request from `dev` into `main` skips the tests when that exact commit already passed on `dev`; other branches, a night run's task branches included, run none), in three jobs: lint + type check + unit tests; `npm run build` over the runner's own PostgreSQL, migrated and seeded in the job (prerendering `/dashboard` queries the database), followed by the Playwright browser tests against `next start` (`E2E_SERVER=start`); and the browser tests against a `next dev` server, which run even when the build cannot. Each job generates a throwaway `AUTH_SECRET`. CI runs on GitHub; a local agent must never report its result without having observed it (the night-run skill's read-only poll is the one sanctioned way).
 

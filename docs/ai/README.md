@@ -72,10 +72,23 @@ The run cannot fix any of these, and most of them end it silently:
 
 1. **Everything the run should build on is on `main`.** The run branch is cut
    from `main`; work left on another branch is not there.
-2. **The last run's `Nightrun` branch is merged or deleted**, locally and on
-   `origin`. Every run's integration branch has that one name, so while the old
-   one exists a new run stops at preflight. Its task branches
-   (`<YYYY-MM-DD>-t<N>-<slug>`) are named by date and need not be removed.
+2. **The last run's `Nightrun` branch is level with `main` and `dev`**, or
+   deleted, locally and on `origin`: the same commit as both. Every run's
+   integration branch has that one name. A new run reuses a level one; one that
+   is behind or ahead of either stops it at preflight, which says by how many
+   commits. Once the last run's pull requests are merged (into `dev`, then
+   `main`), bring both level with `main` and push them:
+
+   ```powershell
+   git checkout main; git pull
+   git checkout dev; git merge --ff-only main; if ($?) { git push }
+   git checkout Nightrun; git merge --ff-only main; if ($?) { git push }
+   git checkout main
+   ```
+
+   A refused `--ff-only` means that branch has commits `main` lacks: merge them
+   into `main` first. The run's task branches (`<YYYY-MM-DD>-t<N>-<slug>`) are
+   named by date and need not be removed.
 3. `npm ci` and `npx playwright install chromium` have been run.
 4. `.env` holds `POSTGRES_URL` (the development database, with
    `?search_path=xenocats`), `AUTH_SECRET` and `AUTH_URL`, and the local
@@ -105,7 +118,7 @@ The run cannot fix any of these, and most of them end it silently:
     touch `.github/workflows/`: without them such a task is abandoned.
 
 ```text
-/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.4): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.4); (2) the loop in the skill's §1 prints the Nightrun branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) no branch Nightrun exists and docs/ai/night-<today>/plan.md exists → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
+/loop 20m Run unattended: no human is available until the plan's goal time. Invoke the night-run skill and follow it exactly. This /loop is the run's timer (§9.4): arm no other timer, and when the run ends delete this loop (CronList, CronDelete). Decide which case this firing is, first match wins: (1) this session already holds the run → heartbeat (§9.4); (2) the loop in the skill's §1 prints the Nightrun branch as in progress (its deadline not yet passed, or no morning report) → resume it (§9.2); (3) docs/ai/night-<today>/plan.md exists, and either no branch Nightrun exists or the loop in the skill's §1 prints it level with main and dev → start a new run (§1); (4) otherwise → stop immediately: skip §1.0, create no branch, write no file, and delete this loop. The plan's goal is the deadline; its tasks, then exploration of the kinds it names, are the only work, and the run never stops early for lack of work.
 ```
 
 ### Starting it from the CLI

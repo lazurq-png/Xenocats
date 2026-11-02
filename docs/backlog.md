@@ -36,37 +36,22 @@ on UTC they disagree for some hours a day: an invoice created then is "due in 29
 
 Undecided (2026-10-08): fix it in the dashboard or in the database.
 
-### The demo login on the production database
-
-`app/lib/placeholder-data.ts` seeds the Next.js course's demo login
-(`user@nextmail.com`). `db:seed` refuses a public host, but nothing shows
-whether the production (Neon) database was ever seeded from it before that
-check existed. If it was, anyone who has read the course can log in there.
-Check for that user on production, and remove it or change its password.
-
 ## Proposed tasks
 
 ### Drop `customers.image_url`
 
-**First, before this reaches Neon:** apply migration 0012 to the Neon database
-(`db:migrate`) before any deployment there runs the code that stops writing
-`image_url` (the commit that added 0012). That code inserts customers without an
-image, which the column's old `NOT NULL` refuses. 0012 is safe for `main` as it is.
+Neon has migration 0012: its `schema_migrations` records it on 2026-10-23, the
+day pull request #31 brought the code that stops writing `image_url` to `main`
+(checked 2026-11-02).
 
 Nothing reads the column, and since migration 0012 nothing writes it: avatars are
 drawn from the name. 0012 only made it optional, because `main` (what production
-runs) still selects and inserts it, and dropping it on a database `main` uses would
-break the customer and invoice pages there. Once every deployment that shares a
-database runs code without `image_url` (production and previews on Neon), a
-migration `ALTER TABLE customers DROP COLUMN image_url` finishes it.
-
-### Gamepad support
-
-Through the browser's Gamepad API: the left stick (or d-pad) moves the Keeper,
-Start pauses, and the level-up cards, pause menu and results can be navigated
-and chosen. In co-op, a pad can be the second player. Keyboard and touch
-unchanged. Unit tests on the mapping from pad state to input (no real pad
-needed); browser tests with a stubbed `navigator.getGamepads`.
+runs) still selected and inserted it then, and dropping it on a database `main`
+uses would have broken the customer and invoice pages there. `main` no longer
+names it; `Nightrun` (58af8cf, 2026-10-17), whose preview also uses Neon, still
+does. Once every deployment that shares a database runs code without `image_url`
+(production and previews on Neon), a migration
+`ALTER TABLE customers DROP COLUMN image_url` finishes it.
 
 ### Login lockout: what it does not cover
 
