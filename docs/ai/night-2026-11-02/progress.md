@@ -103,3 +103,16 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier on the 5 changed files: clean; lint: 0 errors, 0 warnings; tsc: clean. Selection: `vitest related` found no unit test for these files (none exists; exit 0); build: exit 0; e2e: 14 specs, 43 passed, 0 skipped. After the reviewer's finding, the changed spec alone (`dashboard.spec.ts`, the only file the fix touched): 5 passed. **Tested in a browser, not seen**: a human should look at the overview card and chart legend, and the customer list on a phone and on a desktop. (a)–(c) checked by command (the browser test); (b) by reading only (no file of it changed).
 - **Reviewer:** approved; one Low finding (the legend check matched the card heading instead, so it could not fail), fixed: the legend is now found as its own list item.
 - **T4's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41535623142 (Nightrun at 6852499).
+
+## T6 — One time zone (completed)
+
+- Branch `2026-11-02-t6-utc-timezone`, base 02d44a1. Started 2026-11-02 23:20, completed 23:30.
+- **What the code does:**
+  - `app/lib/db.ts`: the app's client starts every session with `TimeZone: 'UTC'`, so `CURRENT_DATE` is the UTC day the app dates invoices by.
+  - `tests/unit/data.test.ts`: "one time zone" — an invoice made today is due in 30 days and not overdue by the app's queries, where a session on a zone across midnight from UTC gets another day and another count; and the app's sessions report `TimeZone` UTC and today's UTC date (fails without the change: the development server is on GMT).
+  - `docs/backlog.md`: the "One time zone" entry is removed; "Decisions for a human" now says "None open."
+- **What it brings:** on a database server not on UTC, an invoice made in the hours around midnight is no longer "due in 29 (or 31) days", and an invoice due today is no longer counted overdue (or not) by the server's clock rather than the app's.
+- Decisions: D26–D31.
+- **Verification** (full-suite point: `FULL`, `db.ts` reaches `auth.ts`): prettier, lint (0 errors, 0 warnings), tsc: clean. `npm test`: first run 1 failed, 1126 passed (D31: an unidentified flake); four runs on the final state: 1127 passed, 52 skipped, 0 failed. Database tests: 52 passed, 0 skipped (+2), on the final state. Build: exit 0. E2E under `next dev`: 163 passed, 2 skipped; under `next start`: 163 passed, 2 skipped (+1 since the baseline: T5's test). The build and e2e ran before the review's test-only edit, which changes no file they use. (a)–(c) checked by command.
+- **Reviewer:** approved; two Low notes on the test (the user-facing half passes without the change where the server is on UTC's day; the zone was chosen at load time), both addressed (D30).
+- **T5's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41536402867 (Nightrun at 02d44a1).

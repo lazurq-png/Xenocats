@@ -981,6 +981,72 @@ describe.skipIf(!url)('sessions in the database', () => {
   });
 });
 
+// The app dates an invoice by the UTC day (createInvoice), and its connection
+// (app/lib/db.ts) runs on UTC, so CURRENT_DATE (the overdue rule, "due in N days")
+// is the same day. A session on another zone is the server not on UTC: one chosen
+// to be across midnight from UTC now, whatever the hour, so the test does not
+// depend on when it runs (UTC-12 before noon UTC is yesterday, UTC+14 after is tomorrow).
+describe.skipIf(!url)('one time zone', () => {
+  let sql: postgres.Sql;
+  let data: typeof import('@/app/lib/data');
+  const tag = `tz${Date.now().toString(36)}`;
+  let invoice: string;
+
+  beforeAll(async () => {
+    process.env.POSTGRES_URL = url!;
+    data = await import('@/app/lib/data');
+    sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
+    // Made as createInvoice makes one now: dated today (UTC), due in 30 days.
+    const [{ id }] = await sql`
+      INSERT INTO customers (name, email, owner_id)
+      VALUES (${tag}, ${`${tag}@example.com`}, ${owner}) RETURNING id`;
+    [{ id: invoice }] = await sql`
+      INSERT INTO invoices (customer_id, amount, status, date, due_date)
+      VALUES (${id}, 100, 'pending', ${today}, ${addDays(today, 30)}) RETURNING id`;
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM invoices WHERE customer_id IN (SELECT id FROM customers WHERE name = ${tag})`;
+    await sql`DELETE FROM customers WHERE name = ${tag}`;
+    await sql.end();
+  });
+
+  // What the change means for a user. Where the server's own zone is on UTC's day
+  // (CI's always is), the app's half passes without the change too; the next test
+  // is the one that fails without it, everywhere.
+  it("an invoice made today is due in 30 days, though the server's day is another", async () => {
+    // The server's day, on a session that sets no zone of its own: here, the other
+    // side of midnight, chosen just before the query.
+    const elsewhere = new Date().getUTCHours() < 12 ? 'Etc/GMT+12' : 'Etc/GMT-14';
+    const other = postgres(url!, {
+      ssl: 'require',
+      max: 1,
+      onnotice: () => {},
+      connection: { TimeZone: elsewhere },
+    });
+    try {
+      const [row] = await other`
+        SELECT CURRENT_DATE::text AS today, (due_date - CURRENT_DATE) AS days
+        FROM invoices WHERE id = ${invoice}`;
+      expect(row.today).not.toBe(today);
+      expect(row.days).not.toBe(30);
+    } finally {
+      await other.end();
+    }
+    // The app's own connection counts from the UTC day it dated the invoice by.
+    const detail = await data.fetchInvoiceDetail(owner, invoice);
+    expect(detail?.days_until_due).toBe(30);
+    expect(detail?.overdue).toBe(false);
+  });
+
+  it("the app's sessions run on UTC", async () => {
+    const { sql: app } = await import('@/app/lib/db');
+    const [row] =
+      await app`SELECT current_setting('TimeZone') AS zone, CURRENT_DATE::text AS today`;
+    expect(row).toEqual({ zone: 'UTC', today });
+  });
+});
+
 // The TLS modes of the app's connection (app/lib/db-ssl.ts) against a real server.
 // The development and CI servers sign their own certificates, so the mode the app
 // uses on Vercel must refuse them: that is what shows it checks the certificate.

@@ -10,19 +10,7 @@ Remove an entry when it is done or decided.
 
 ## Decisions for a human
 
-### One time zone
-
-The app dates an invoice by the UTC day (`createInvoice`, the create form's
-default due date), while `CURRENT_DATE` (the overdue rule, "Due in N days") is
-the day in the database session's time zone, which nothing sets. On a server not
-on UTC they disagree for some hours a day: an invoice created then is "due in 29
-(or 31) days", and dates near midnight land on the other side of "overdue".
-
-- (a) Set `TimeZone: 'UTC'` on the app's `postgres` connections, so every
-  "today" is the same. It touches every date the app reads.
-- (b) Compute "today" in the app and pass it to the queries.
-
-Undecided (2026-10-08): fix it in the dashboard or in the database.
+None open.
 
 ## Proposed tasks
 
