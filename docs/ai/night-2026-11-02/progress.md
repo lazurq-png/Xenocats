@@ -74,3 +74,17 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
   - Criteria (a)–(e) checked by command against the database and fakes; the address limit end to end through `auth.ts` (headers to key) is checked by reading only (D17).
 - **Reviewer:** approved; three Low findings (prune could fail a login; a quiet spell could reset during a running lock; README silent), all fixed (D18) and re-reviewed: approved.
 - **T2's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41532246608 (Nightrun at d3578ca).
+
+## T4 — Drop `customers.image_url` (completed)
+
+- Branch `2026-11-02-t4-drop-image-url`, base 74aaac6. Started 2026-11-02 23:08, completed 23:15.
+- **What the code does:**
+  - `db/migrations/0014_drop_customer_image_url.sql` (new): `ALTER TABLE customers DROP COLUMN image_url`, with the order it must be applied in.
+  - `tests/unit/data.test.ts`: "0014 drops the image column and keeps every customer" — on a schema migrated to 0013, customers with and without an image survive 0014, the column is gone, and a customer is made without it.
+  - `app/ui/customer-avatar.tsx`: its comment names 0014 as where the column went.
+  - `docs/backlog.md`: the "Drop `customers.image_url`" entry is removed.
+- **What it brings:** the schema no longer carries a column nothing uses, so a reader of the database or a future query cannot mistake the course's leftover image paths for live data.
+- Decisions: D19–D22. Questions: Q5 (**migrate Neon only once no deployment names the column**), Q6.
+- **Verification** (full-suite point: `FULL`, the schema changed): prettier on the changed TS files: clean; lint: 0 errors, 0 warnings; tsc: clean; `npm test`: 1127 passed, 50 skipped; database tests: 50 passed, 0 skipped (+1); build: exit 0; e2e under `next dev` and `next start`: 162 passed, 2 skipped each, on a test schema rebuilt with 0014. (a)–(c) checked by command; (d) in Q5.
+- **Reviewer:** approved, no defects. Its note (old Nightrun previews on Neon would break after 0014) is in Q5.
+- **T3's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41534587801 (Nightrun at 74aaac6).

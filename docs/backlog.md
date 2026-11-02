@@ -38,21 +38,6 @@ Undecided (2026-10-08): fix it in the dashboard or in the database.
 
 ## Proposed tasks
 
-### Drop `customers.image_url`
-
-Neon has migration 0012: its `schema_migrations` records it on 2026-10-23, the
-day pull request #31 brought the code that stops writing `image_url` to `main`
-(checked 2026-11-02).
-
-Nothing reads the column, and since migration 0012 nothing writes it: avatars are
-drawn from the name. 0012 only made it optional, because `main` (what production
-runs) still selected and inserted it then, and dropping it on a database `main`
-uses would have broken the customer and invoice pages there. `main` no longer
-names it; `Nightrun` (58af8cf, 2026-10-17), whose preview also uses Neon, still
-does. Once every deployment that shares a database runs code without `image_url`
-(production and previews on Neon), a migration
-`ALTER TABLE customers DROP COLUMN image_url` finishes it.
-
 ### Login lockout: what it does not cover
 
 `app/lib/login-limit.ts` locks an email after repeated failures. Not built:

@@ -18,3 +18,11 @@ T3 counts failed logins per client address only where a trusted proxy header say
 ## Q4 — Apply migration 0013 to Neon before deploying T3
 
 `db/migrations/0013_login_failures_last_attempt.sql` adds `login_failures.last_attempt`. The code from T3 on names that column in every login attempt, so a deployment that reaches Neon before the migration does would fail every login. **A human must run `npm run db:migrate` against Neon before `main` (or a preview using Neon) runs this code.** The code before T3 does not name the column, so migrating first is safe.
+
+## Q5 — Apply migration 0014 to Neon, after checking no deployment names `image_url` (T4)
+
+`db/migrations/0014_drop_customer_image_url.sql` drops `customers.image_url`. **A human runs `npm run db:migrate` against Neon**, after confirming every deployment using Neon (production on `main`, and any preview) runs code that never names the column: `main` since #31, and `Nightrun` from this run's start (fast-forwarded to `main`). A preview of an older branch would fail on its customer and invoice pages. Migrations 0013 (Q4) and 0014 go together; 0013 is needed first by T3's code, and 0014 needs nothing from the code.
+
+## Q6 — `docs/backlog.md`'s "Login lockout: what it does not cover" lists a per-address limit as not built
+
+T3 built it. The entry's first bullet is now out of date; the run left it, since no task names that entry. Recommendation: drop the bullet when merging.

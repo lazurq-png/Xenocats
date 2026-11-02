@@ -1394,6 +1394,26 @@ describe.skipIf(!url)('migrations on existing rows', () => {
     ]);
   });
 
+  it('0014 drops the image column and keeps every customer', async () => {
+    await migratedUpTo('0013_login_failures_last_attempt.sql');
+    const owner = await addUser('drop-image@example.com');
+    await sql`
+      INSERT INTO customers (name, email, image_url, owner_id) VALUES
+        ('With', 'w@example.com', '/x.png', ${owner}), ('Without', 'o@example.com', NULL, ${owner})`;
+    await sql.begin((tx) => tx.unsafe(migration('0014_drop_customer_image_url.sql')));
+    expect(await sql`SELECT name, email FROM customers ORDER BY name`).toEqual([
+      { name: 'With', email: 'w@example.com' },
+      { name: 'Without', email: 'o@example.com' },
+    ]);
+    const columns = await sql`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'xenocats_vitest_migrations' AND table_name = 'customers'
+        AND column_name = 'image_url'`;
+    expect(columns).toHaveLength(0);
+    // The app as it is makes customers without it.
+    await sql`INSERT INTO customers (name, email, owner_id) VALUES ('New', 'n@example.com', ${owner})`;
+  });
+
   it('0005 on an empty database (no customers) needs no user', async () => {
     await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
     await sql`CREATE SCHEMA xenocats_vitest_migrations`;

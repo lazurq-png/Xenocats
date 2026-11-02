@@ -5,8 +5,8 @@ const AVATARS = [1, 2, 3, 4, 5].map((n) => `/xenocats/avatar-cat-${n}.svg`);
 
 /**
  * A customer's avatar, chosen from the name so a customer always gets the same
- * one. It replaced the course's stored images (the `image_url` column, no longer
- * written: migration 0012).
+ * one. It replaced the course's stored images (the `image_url` column, made
+ * optional by migration 0012 and dropped by 0014).
  */
 export default function CustomerAvatar({ name, size = 28 }: { name: string; size?: number }) {
   let hash = 0;
