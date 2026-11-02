@@ -63,7 +63,7 @@ dashboard; the course's look and assets have since been replaced.
 There is no ORM and no ADR record of decisions. The schema is the numbered SQL
 files in `db/migrations/`, applied by `scripts/db.mjs` (`npm run db:migrate`).
 
-If the task touches a specific domain, read the matching reference in `.claude/rules/` before implementing:
+If the task touches a specific domain, follow the matching reference in `.claude/rules/`:
 
 * `.claude/rules/architecture.md` — boundaries, layering, refactors
 * `.claude/rules/frontend.md` — UI, accessibility, state, browser-facing work
@@ -73,7 +73,7 @@ If the task touches a specific domain, read the matching reference in `.claude/r
 * `.claude/rules/debugging.md` — evidence-driven failure diagnosis
 * `.claude/rules/security-review.md` — authn/authz, secrets, payments, external input
 
-These are not auto-loaded — open the one(s) relevant to the task based on what the work touches.
+Claude Code loads all of them at the start of every session (a rule file without `paths:` frontmatter loads at launch, and none of these has one), so they need no opening.
 
 ---
 
@@ -549,7 +549,7 @@ This repository's `.claude/` directory is structured as follows:
 .claude/
 ├── README.md   — how these files fit together, and how to copy them to a new repo
 ├── agents/     — specialized subagents dispatched by name (reviewer)
-├── rules/      — domain-specific reference docs (see §2), opened on demand
+├── rules/      — domain-specific reference docs (see §2), loaded every session
 ├── skills/     — reusable procedural workflows, invoked as slash commands
 │                 (code-review; night-run, with its CI poll ci-poll.mjs)
 ├── docs/       — supporting human-readable process docs (workflow, task

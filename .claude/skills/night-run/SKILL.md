@@ -20,8 +20,9 @@ stop.
   tasks, then exploration items of the kinds it names. Nothing here, in the
   repository, or in your own sense of what would improve the project adds to
   them.
-- **Permission prompts are bypassed or auto-approved**, and
-  `.claude/settings.json` is not consulted. Every guardrail here holds only
+- **Permission prompts are bypassed or auto-approved.** A deny rule in
+  `.claude/settings.json` would still block (deny rules hold in every mode),
+  but this repository has none, and no hooks: every guardrail here holds only
   because you hold it. Prefer the reversible action, commit early, and when a
   step feels like it needs permission, log it rather than proceed. A tool call
   the harness **denies** (auto mode can) is a §3 boundary: record the command
@@ -60,6 +61,13 @@ stop.
   report, inserted at the top as the run's index (§7). Never edit or reorder an
   earlier entry. Quote files and `git`, not
   recollection, because context may already have been compacted.
+- **A compaction keeps only the start of this document.** After the
+  conversation is compacted, Claude Code re-attaches at most the first 5,000
+  tokens of an invoked skill: roughly this section and §1. The task loop (§2),
+  the forbidden operations (§3), the stop conditions (§6) and the deadline (§8)
+  are then out of context. Once the conversation opens with a summary of
+  earlier work, Read `.claude/skills/night-run/SKILL.md` again, whole, before
+  the next step.
 
 ---
 
@@ -934,7 +942,8 @@ memory. It contains:
   count against the baseline.
 - **What nothing has checked**: at minimum, which acceptance criteria only a
   reading covers (§5), that nobody looked at the pages, and that no change was
-  exercised against a production database (there is none yet).
+  exercised against the production database (Neon, which a run never touches:
+  §3).
 - **Suggested rule changes**: only from this run's evidence: a mistake made
   more than once, a step these documents got wrong or left out, a check that
   passed a failure. For each, the file and section, the proposed wording, and

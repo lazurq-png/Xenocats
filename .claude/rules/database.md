@@ -6,12 +6,15 @@ Open this for schema, migration, and persistence work. Database changes are high
 
 ## This Repository
 
-- **A development database, no production one yet.** `POSTGRES_URL` in `.env`
+- **A development database here; production on Neon.** `POSTGRES_URL` in `.env`
   points at PostgreSQL 17 on the development PC itself (`localhost:5432`, the
   Windows service `postgresql-x64-17`), whose data has no value. TLS is on with
   a self-signed certificate, because the app connects with `ssl: 'require'`;
-  never loosen that to suit a local server. Vercel's deployments read their own
-  `POSTGRES_URL` (Neon) from Vercel, never from `.env`. The app
+  never loosen that to suit a local server. Vercel's preview and production
+  deployments read their own `POSTGRES_URL` from Vercel, never from `.env`: the
+  production database, Neon PostgreSQL, whose data is real. No build or deploy
+  migrates it; a migration reaches it only when a human runs `db:migrate`
+  against it. Never point `.env` at it, and never seed or reset it. The app
   uses the schema the URL names in `?search_path=` (`xenocats`); the browser
   tests use `xenocats_test`, which they drop and rebuild on every run, and the
   database unit tests (`tests/unit/data.test.ts`) `xenocats_vitest`. Writing
@@ -19,8 +22,8 @@ Open this for schema, migration, and persistence work. Database changes are high
 - **Migrations** are numbered SQL files in `db/migrations/` (`0013_<what>.sql`
   next), applied in name order by `npm run db:migrate`, each in a transaction,
   and recorded in the schema's `schema_migrations` table. A schema change is a
-  new file, never an edit to an applied one. `db:migrate` is also how a
-  production database will be built, so a migration must work on a database
+  new file, never an edit to an applied one. `db:migrate` is also how the
+  production database is migrated, so a migration must work on a database
   that already has data: `ALTER`, not drop-and-recreate.
 - **Seed data** is `app/lib/placeholder-data.ts`, loaded by `npm run db:seed`
   (idempotent) or `db:reset` (drop, migrate, seed). Both refuse a host that is
@@ -33,7 +36,7 @@ Open this for schema, migration, and persistence work. Database changes are high
   and seeded (`.github/workflows/ci.yml`).
   It is a fresh, empty server every run, so CI proves every migration applies
   from scratch.
-- **A future production database** needs a connection that accepts
+- **The production database**, like any other, needs a connection that accepts
   `search_path` as a startup parameter (some poolers, e.g. PgBouncer by
   default, do not), or `ALTER ROLE ... SET search_path` instead. The app forces
   TLS (`ssl: 'require'`), so the server must offer it; the development one does.

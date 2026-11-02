@@ -12,8 +12,8 @@ CLAUDE.md               Claude Code operating model — always loaded by the ext
 ├── README.md           this file
 ├── agents/             subagents dispatched by name (reviewer: independent review,
 │                        no Edit or Write tool)
-├── rules/              domain reference docs — NOT auto-loaded; CLAUDE.md tells the
-│                        agent which one to open for a given task
+├── rules/              domain reference docs — loaded in every session (none has
+│                        `paths:` frontmatter); CLAUDE.md §2 maps tasks to them
 ├── skills/              reusable procedures invoked as slash commands
 │                        (/code-review; /night-run, with its CI poll ci-poll.mjs)
 ├── docs/                 supporting human-readable process docs — workflow narrative,
@@ -49,19 +49,19 @@ lint + type check + unit tests; the build followed by the browser tests against
 `next start`; and the browser tests against `next dev`. The last two start the
 runner's own PostgreSQL, so CI uses no outside database and no secret.
 
-### Why rules aren't auto-loaded
+### How rules load
 
-Only `CLAUDE.md` (and nested per-directory `CLAUDE.md` files, which *are* scoped by
-location) load automatically. There's no built-in mechanism that opens a file based on
-a glob match against whatever's being edited, so the rules in `.claude/rules/` are
-reference material Claude opens on demand — `CLAUDE.md` §2 lists which file to read for
-which kind of task (frontend, backend, database, testing, debugging, architecture,
-security-review). Reviewing a diff is the `code-review` skill.
+Claude Code loads a rule file in `.claude/rules/` at launch, alongside
+`CLAUDE.md`, unless the file has `paths:` frontmatter (a list of globs); one
+with `paths:` loads only when Claude reads or edits a file that matches. None
+of these rules has `paths:`, so all of them are in context in every session,
+and `CLAUDE.md` §2 says which applies to which kind of task (frontend, backend,
+database, testing, debugging, architecture, security-review). Reviewing a diff
+is the `code-review` skill.
 
-If a real project has stable directory boundaries (e.g. `src/frontend/`,
-`src/backend/`), prefer dropping the matching rule file into a nested `CLAUDE.md`
-there instead — Claude Code loads those automatically based on which files are being
-touched, which scopes guidance by location more precisely than a flat `rules/` folder.
+To keep a rule out of sessions that never touch its area, give it `paths:`.
+A nested `CLAUDE.md` scopes guidance by location the same way: Claude Code
+loads one when it works with files in that directory.
 
 ### Unattended operation
 
@@ -74,8 +74,9 @@ is missing. It covers
 preflight, a branch per task merged onto a run branch and pushed as each one
 finishes, durable state under `docs/ai/night-<date>/`, forbidden operations, and
 stop conditions. It is invoked by the `/loop 20m` prompt in `docs/ai/README.md`
-rather than auto-loaded, so it costs nothing during ordinary supervised work. Unattended sessions run with permission prompts bypassed, which
-means its guardrails are honoured by instruction, not enforced by the harness.
+rather than auto-loaded, so it costs nothing during ordinary supervised work. Unattended sessions run with permission prompts bypassed, and
+this repository has no `settings.json` deny rules or hooks, so its guardrails
+are honoured by instruction, not enforced by the harness.
 
 ### Code review
 
@@ -97,10 +98,10 @@ diff.
    documents went on citing it for weeks.)
 3. Copy `.claude/settings.example.json` to `.claude/settings.json` only if you
    want to pre-approve specific commands/permissions; otherwise omit it and let
-   the extension prompt as usual. Note that a `deny` list there does **not**
-   protect an unattended run started with permissions bypassed — in that mode
-   nothing in `settings.json` is consulted, which is why `night-run`'s forbidden
-   operations are written as instructions instead.
+   the extension prompt as usual. In a run started with permissions bypassed
+   its `allow` list has no effect, but its `deny` list still blocks: deny rules
+   hold in every permission mode. This repository has none, so `night-run`'s
+   forbidden operations are held by instruction alone.
 4. Trim `.claude/rules/*.md` and `.claude/docs/*.md` down to what the project
    actually needs — delete the domains that don't apply (e.g. `database.md` for
    a repo with no persistence layer).
