@@ -2,14 +2,15 @@ import bcryptjs from 'bcryptjs';
 import type { Sql } from 'postgres';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkCredentials } from '@/app/lib/credentials';
-import { LOCKED } from '@/app/lib/login-limit';
+import { ADDRESS_LOCKED, LOCKED } from '@/app/lib/login-limit';
 
 // The sign-in's decision against a fake database: the lockout's count, the user
 // lookup and the clearing of failures are answered here; bcrypt is real.
 
 const limits = { maxFailures: 5, lockMinutes: 15 };
+const perAddress = { maxFailures: 20, lockMinutes: 15, forgetAfterMinutes: 15 };
 
-async function database(attempt = 1) {
+async function database(attempt = 1, addressAttempt = 1) {
   const user = {
     id: 'u1',
     name: 'User',
@@ -21,7 +22,10 @@ async function database(attempt = 1) {
   const sql = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
     const text = strings.join('?');
     statements.push(text);
-    if (text.includes('INSERT INTO login_failures')) return Promise.resolve([{ attempt }]);
+    if (text.includes('INSERT INTO login_failures')) {
+      const address = String(values[0]).startsWith('login-address:');
+      return Promise.resolve([{ attempt: address ? addressAttempt : attempt }]);
+    }
     if (text.includes('FROM users WHERE email')) {
       return Promise.resolve(values[0] === user.email ? [user] : []);
     }
@@ -42,7 +46,7 @@ describe('checkCredentials', () => {
     expect(await checkCredentials(sql, { login: user.email, password: '123456' }, limits)).toBe(
       user
     );
-    expect(statements.some((s) => s.includes('DELETE FROM login_failures'))).toBe(true);
+    expect(statements.some((s) => s.includes('DELETE FROM login_failures WHERE email'))).toBe(true);
   });
 
   it('counts a login under its own prefix, apart from every other lockout', async () => {
@@ -65,7 +69,9 @@ describe('checkCredentials', () => {
     // An unknown email still costs a comparison: the time tells nothing, so it cannot
     // show which emails have accounts.
     expect(compare).toHaveBeenCalledTimes(2);
-    expect(statements.some((s) => s.includes('DELETE FROM login_failures'))).toBe(false);
+    expect(statements.some((s) => s.includes('DELETE FROM login_failures WHERE email'))).toBe(
+      false
+    );
   });
 
   it('a locked email is refused as locked, before any comparison', async () => {
@@ -107,5 +113,119 @@ describe('checkCredentials', () => {
       expect(await checkCredentials(sql, credentials, limits)).toBeNull();
     }
     expect(statements).toEqual([]);
+  });
+
+  describe('with the client address a trusted proxy gave', () => {
+    const calls = (sql: Sql) =>
+      (sql as unknown as { mock: { calls: [TemplateStringsArray, ...unknown[]][] } }).mock.calls;
+    const keys = (sql: Sql) =>
+      calls(sql)
+        .filter(([strings]) => strings.join('?').includes('INSERT INTO login_failures'))
+        .map(([, key]) => key);
+
+    it('counts the address first, under a prefix of its own, then the name', async () => {
+      const { sql } = await database();
+      await checkCredentials(
+        sql,
+        { login: 'Stargazer', password: 'wrong!!' },
+        limits,
+        'abc',
+        perAddress
+      );
+      expect(keys(sql)).toEqual(['login-address:abc', 'login:stargazer']);
+    });
+
+    it('a locked address is refused before the name is counted or any comparison', async () => {
+      const { sql, user } = await database(1, 21);
+      const compare = vi.spyOn(bcryptjs, 'compare');
+      expect(
+        await checkCredentials(
+          sql,
+          { login: user.email, password: '123456' },
+          limits,
+          'abc',
+          perAddress
+        )
+      ).toBe(ADDRESS_LOCKED);
+      expect(keys(sql)).toEqual(['login-address:abc']);
+      expect(compare).not.toHaveBeenCalled();
+    });
+
+    it('a success gives back its own attempt for the address, and clears the name', async () => {
+      const { sql, user, statements } = await database();
+      expect(
+        await checkCredentials(
+          sql,
+          { login: user.email, password: '123456' },
+          limits,
+          'abc',
+          perAddress
+        )
+      ).toBe(user);
+      const refund = calls(sql).find(([strings]) =>
+        strings.join('?').includes('greatest(failures - 1')
+      );
+      expect(refund?.slice(1)).toEqual([perAddress.maxFailures, 'login-address:abc']);
+      expect(statements.some((s) => s.includes('DELETE FROM login_failures WHERE email'))).toBe(
+        true
+      );
+    });
+
+    it('a failure keeps the address counted', async () => {
+      const { sql, user, statements } = await database();
+      await checkCredentials(
+        sql,
+        { login: user.email, password: 'wrong!!' },
+        limits,
+        'abc',
+        perAddress
+      );
+      expect(statements.some((s) => s.includes('greatest(failures - 1'))).toBe(false);
+    });
+
+    it('prunes the spent rows on the way, and a failed prune fails no login', async () => {
+      const { sql, user, statements } = await database();
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const prune = /DELETE FROM login_failures\s+WHERE locked_until/;
+      const failing = ((strings: TemplateStringsArray, ...values: unknown[]) =>
+        prune.test(strings.join('?'))
+          ? Promise.reject(new Error('lock timeout'))
+          : (sql as unknown as (s: TemplateStringsArray, ...v: unknown[]) => unknown)(
+              strings,
+              ...values
+            )) as unknown as Sql;
+      expect(
+        await checkCredentials(
+          failing,
+          { login: user.email, password: '123456' },
+          limits,
+          'abc',
+          perAddress
+        )
+      ).toBe(user);
+      expect(statements.some((s) => prune.test(s))).toBe(false);
+      expect(error).toHaveBeenCalledWith('Failed to prune login failures:', expect.any(Error));
+      // And without a failure, the prune is sent.
+      await checkCredentials(
+        sql,
+        { login: user.email, password: '123456' },
+        limits,
+        'abc',
+        perAddress
+      );
+      expect(statements.some((s) => prune.test(s))).toBe(true);
+    });
+
+    it('with no trusted proxy, only the name is counted', async () => {
+      const { sql } = await database();
+      await checkCredentials(
+        sql,
+        { login: 'Stargazer', password: 'wrong!!' },
+        limits,
+        null,
+        perAddress
+      );
+      expect(keys(sql)).toEqual(['login:stargazer']);
+    });
   });
 });

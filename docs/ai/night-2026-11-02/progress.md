@@ -52,3 +52,25 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier on the 3 changed files: clean; lint: 0 errors, 0 warnings (baseline 0); tsc: clean; actionlint (ci.yml changed): clean. The test fails (2 of 3) with `cache()` taken out, and passes with it. Selection (`test:affected --base Nightrun`): `vitest related` → 1 file, 3 passed; build: exit 0; e2e: 18 specs (dashboard, customers, invoices and others reaching `currentUserId`), 54 passed, 0 skipped, 0 failed. (a) and (b) checked by command, against React's server cache imitated (D7); that it dedupes in a real Next render is checked by reading only.
 - **Reviewer:** approved, no defects.
 - **T1's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41531462962 (Nightrun at 61c6fc7).
+
+## T3 — A login limit per client address (completed)
+
+- Branch `2026-11-02-t3-login-address-limit`, base d3578ca. Started 2026-11-02 22:53, completed 23:08.
+- **What the code does:**
+  - `db/migrations/0013_login_failures_last_attempt.sql` (new): `login_failures.last_attempt`, `NOT NULL DEFAULT now()`.
+  - `app/lib/login-limit.ts`: `claimAttempt` records `last_attempt` and, given `forgetAfterMinutes`, restarts a count left quiet that long with no lock set; `addressLimits()` (20 failures, `LOGIN_ADDRESS_MAX_FAILURES`; the login lock minutes); `addressKey()`; `refundAttempt()` gives back one attempt and the lock it set; `pruneLoginFailures()` deletes rows whose lock ran out, or with no lock and no attempt for a day, logging rather than throwing on failure; `ADDRESS_LOCKED`.
+  - `app/lib/credentials.ts`: with a client key, counts the address before the name and refuses a locked address before counting the name or comparing a password; prunes after the name's count; a success clears the name and refunds the address's attempt.
+  - `auth.ts`: `authorize` keys the trusted proxy's client address (`clientAddress`, `clientKey`), none when it is 'unknown', and throws `AddressLocked` for `ADDRESS_LOCKED`.
+  - `app/lib/actions.ts`: `authenticate` says "Too many failed logins from here. Try again later." for a locked address.
+  - `README.md`: `LOGIN_ADDRESS_MAX_FAILURES`, and that without a trusted proxy failed logins are counted per name only.
+  - Tests: `credentials.test.ts` (+6: address counted first under its prefix, locked address refused before the name or a comparison, success refunds, failure does not, no proxy counts the name only, a failing prune fails no login), `login-limit.test.ts` (+3: `addressLimits`, `addressKey`, the quiet spell as a parameter), `data.test.ts` (+6 against the database: an address's count forgotten after a quiet spell and a name's not, a shorter spell no reset, a spell never ends a running lock, refund, pruning, migration 0013 on existing rows with the older app still writing).
+- **What it brings:** one client address can no longer try password after password across many login names, nor lock name after name: on Vercel it gets 20 failed logins per 15 minutes in all. The `login_failures` table stops growing with every name ever mistyped.
+- Decisions: D8–D18. Questions: Q3, Q4 (**migrate Neon before deploying**).
+- **Verification** (full-suite point: the selector printed `FULL`, `credentials.ts` reaches `auth.ts`; run on the final state after the review fixes):
+  - prettier on the changed files: clean; lint: 0 errors, 0 warnings (baseline 0); tsc: clean.
+  - `npm test`: 52 files passed, 1 skipped; 1127 passed, 49 skipped (T2's 1118 + 9 new unit tests; 6 new database tests skipped without opt-in).
+  - `DATABASE_TESTS=1 npx vitest run tests/unit/data`: 49 passed, 0 skipped (43 + 6).
+  - `npm run build`: exit 0. `E2E_WORKERS=4 npm run test:e2e`: 162 passed, 2 skipped; `E2E_SERVER=start`: 162 passed, 2 skipped (as the baseline).
+  - Criteria (a)–(e) checked by command against the database and fakes; the address limit end to end through `auth.ts` (headers to key) is checked by reading only (D17).
+- **Reviewer:** approved; three Low findings (prune could fail a login; a quiet spell could reset during a running lock; README silent), all fixed (D18) and re-reviewed: approved.
+- **T2's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41532246608 (Nightrun at d3578ca).

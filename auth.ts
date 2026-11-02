@@ -2,13 +2,19 @@ import NextAuth, { CredentialsSignin } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from './auth.config';
 import { checkCredentials } from '@/app/lib/credentials';
-import { LOCKED } from '@/app/lib/login-limit';
+import { ADDRESS_LOCKED, LOCKED } from '@/app/lib/login-limit';
+import { clientAddress, clientKey } from '@/app/lib/sign-up-limit';
 import { revokeSession } from '@/app/lib/session-version';
 import { sql } from '@/app/lib/db';
 
 /** A refused login for an email that is locked out; `authenticate` says so. */
 class LoginLocked extends CredentialsSignin {
   code = LOCKED;
+}
+
+/** A refused login from a client address that is locked out; `authenticate` says so. */
+class AddressLocked extends CredentialsSignin {
+  code = ADDRESS_LOCKED;
 }
 
 export const { auth, signIn, signOut } = NextAuth({
@@ -34,9 +40,14 @@ export const { auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       // The decision is checkCredentials' (app/lib/credentials.ts).
-      async authorize(credentials) {
-        const result = await checkCredentials(sql, credentials);
+      async authorize(credentials, request) {
+        // The address a trusted proxy saw, keyed as the sign-up limit keys it; none
+        // without such a proxy (checkCredentials says why).
+        const address = clientAddress(request.headers);
+        const client = address === 'unknown' ? null : clientKey(address);
+        const result = await checkCredentials(sql, credentials, undefined, client);
         if (result === LOCKED) throw new LoginLocked();
+        if (result === ADDRESS_LOCKED) throw new AddressLocked();
         return result;
       },
     }),

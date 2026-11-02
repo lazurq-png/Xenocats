@@ -1055,6 +1055,85 @@ describe.skipIf(!url)('the login lockout in the database', () => {
     }
     expect(await lockout.claimAttempt(sql, key, limits)).toBe(false);
   });
+  // A client address's count (in front of the name's, app/lib/credentials.ts).
+  const perAddress = { ...limits, forgetAfterMinutes: limits.lockMinutes };
+  const quiet = (key: string, minutes: number) => sql`
+    UPDATE login_failures SET last_attempt = now() - make_interval(mins => ${minutes})
+    WHERE email = ${key}`;
+
+  it("an address's count is forgotten after a quiet spell; a login name's is not", async () => {
+    const address = `login-address:${email('quiet')}`;
+    const name = email('quiet-name');
+    for (let i = 0; i < limits.maxFailures - 1; i++) {
+      await lockout.claimAttempt(sql, address, perAddress);
+      await lockout.claimAttempt(sql, name, limits);
+    }
+    await quiet(address, limits.lockMinutes + 1);
+    await quiet(name, limits.lockMinutes + 1);
+    // The address starts again from 1: N more attempts, then refused.
+    for (let i = 0; i < limits.maxFailures; i++) {
+      expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(true);
+    }
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+    // The name, as before this change, still remembers: its Nth, then refused.
+    expect(await lockout.claimAttempt(sql, name, limits)).toBe(true);
+    expect(await lockout.claimAttempt(sql, name, limits)).toBe(false);
+  });
+
+  it('a quiet spell never ends a lock that is still running', async () => {
+    const address = `login-address:${email('quiet-lock')}`;
+    for (let i = 0; i < limits.maxFailures; i++)
+      await lockout.claimAttempt(sql, address, perAddress);
+    // Quiet for longer than the spell, but locked for longer still (a lock set
+    // under a larger LOGIN_LOCK_MINUTES).
+    await quiet(address, limits.lockMinutes + 1);
+    await sql`
+      UPDATE login_failures SET locked_until = now() + interval '1 hour' WHERE email = ${address}`;
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+  });
+
+  it("a quiet spell shorter than the address's is no reset", async () => {
+    const address = `login-address:${email('short')}`;
+    for (let i = 0; i < limits.maxFailures; i++)
+      await lockout.claimAttempt(sql, address, perAddress);
+    await quiet(address, limits.lockMinutes - 1);
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+  });
+
+  it("a success gives back its attempt, and the lock it set, but not the address's other failures", async () => {
+    const address = `login-address:${email('refund')}`;
+    for (let i = 0; i < limits.maxFailures; i++) {
+      expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(true);
+    }
+    // The Nth was a success: its own attempt and the lock it set are given back.
+    await lockout.refundAttempt(sql, address, perAddress.maxFailures);
+    const [row] =
+      await sql`SELECT failures, locked_until FROM login_failures WHERE email = ${address}`;
+    expect(row).toEqual({ failures: limits.maxFailures - 1, locked_until: null });
+    // The others still count: one more, and the address is locked.
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(true);
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+  });
+
+  it('pruning deletes the rows whose lock and count have run out, and keeps the rest', async () => {
+    const key = (name: string) => email(`prune-${name}`);
+    const rows = {
+      expired: key('expired'),
+      stale: key('stale'),
+      recent: key('recent'),
+      locked: key('locked'),
+    };
+    await sql`
+      INSERT INTO login_failures (email, failures, locked_until, last_attempt) VALUES
+        (${rows.expired}, 3, now() - interval '1 second', now() - interval '20 minutes'),
+        (${rows.stale}, 2, NULL, now() - interval '25 hours'),
+        (${rows.recent}, 2, NULL, now() - interval '23 hours'),
+        (${rows.locked}, 3, now() + interval '5 minutes', now() - interval '25 hours')`;
+    await lockout.pruneLoginFailures(sql);
+    const left = await sql`
+      SELECT email FROM login_failures WHERE email IN ${sql(Object.values(rows))}`;
+    expect(left.map((row) => row.email).sort()).toEqual([rows.locked, rows.recent].sort());
+  });
 });
 
 // Migrations on tables that already hold rows: 0003 applied after 0001 and 0002
@@ -1332,5 +1411,24 @@ describe.skipIf(!url)('migrations on existing rows', () => {
       WHERE table_schema = 'xenocats_vitest_migrations' AND table_name = 'customers'
         AND column_name = 'owner_id'`;
     expect(column.is_nullable).toBe('NO');
+  });
+
+  it('0013 gives existing login failures a last attempt, and the app before it still counts', async () => {
+    await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
+    await sql`CREATE SCHEMA xenocats_vitest_migrations`;
+    await sql.unsafe(migration('0004_login_failures.sql'));
+    await sql`INSERT INTO login_failures (email, failures) VALUES ('login:old', 2)`;
+    await sql.begin((tx) => tx.unsafe(migration('0013_login_failures_last_attempt.sql')));
+    const [old] = await sql`
+      SELECT failures, last_attempt > now() - interval '1 minute' AS recent
+      FROM login_failures WHERE email = 'login:old'`;
+    expect(old).toEqual({ failures: 2, recent: true });
+    // The app before this change names no last_attempt, and still can.
+    await sql`
+      INSERT INTO login_failures (email, failures) VALUES ('login:older-app', 1)
+      ON CONFLICT (email) DO UPDATE SET failures = login_failures.failures + 1`;
+    expect((await sql`SELECT 1 FROM login_failures WHERE email = 'login:older-app'`).length).toBe(
+      1
+    );
   });
 });

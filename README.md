@@ -22,11 +22,14 @@ npm run dev
 The app reads `POSTGRES_URL`, `AUTH_SECRET` and `AUTH_URL` from `.env`, and
 optionally `LOGIN_MAX_FAILURES` and `LOGIN_LOCK_MINUTES`: after that many
 failed logins in a row a login name (a username or an email) is refused for
-that many minutes (default 5 and 15). `SIGNUP_MAX_PER_DAY` caps the accounts made from one address a day
+that many minutes (default 5 and 15). `LOGIN_ADDRESS_MAX_FAILURES` (default 20) does the
+same for one client address, across every name it tries, for the same minutes.
+`SIGNUP_MAX_PER_DAY` caps the accounts made from one address a day
 (default 2). The address is believed only from a proxy that sets it: on Vercel
 `X-Real-IP`; elsewhere set `TRUSTED_PROXY_HEADER` to `x-real-ip` or
 `x-forwarded-for` (the last entry), and only if the proxy in front of the app
-overwrites that header. Without one, every client shares the one daily limit.
+overwrites that header. Without one, every client shares the one daily sign-up
+limit, and failed logins are counted per login name only.
 The checks (lint, type check, unit and browser tests, build) are listed in
 `CLAUDE.md` §9.
 

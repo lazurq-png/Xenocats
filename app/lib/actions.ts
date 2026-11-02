@@ -8,7 +8,13 @@ import { auth, signIn, signOut } from '@/auth';
 import { sql } from '@/app/lib/db';
 import { AuthError, type CredentialsSignin } from 'next-auth';
 import { BCRYPT_COST } from '@/app/lib/password-check';
-import { LOCKED, claimAttempt, clearFailures, loginLimits } from '@/app/lib/login-limit';
+import {
+  ADDRESS_LOCKED,
+  LOCKED,
+  claimAttempt,
+  clearFailures,
+  loginLimits,
+} from '@/app/lib/login-limit';
 import { claimSignUp, clientAddress, clientKey, signUpLimit } from '@/app/lib/sign-up-limit';
 import { headers } from 'next/headers';
 import {
@@ -409,6 +415,9 @@ export async function authenticate(prevState: string | undefined, formData: Form
           if ((error as CredentialsSignin).code === LOCKED) {
             // Not how long: the time left differs from lock to lock.
             return 'Too many failed logins for this account. Try again later.';
+          }
+          if ((error as CredentialsSignin).code === ADDRESS_LOCKED) {
+            return 'Too many failed logins from here. Try again later.';
           }
           return 'Invalid credentials.';
         default:
