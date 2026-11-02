@@ -91,16 +91,13 @@ if git rev-parse -q --verify refs/heads/Nightrun >/dev/null; then
   p=$(git show "Nightrun:docs/ai/night-$r/progress.md" 2>/dev/null)
   d=$(printf '%s\n' "$p" | grep -oE 'Deadline: [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}' \
         | tail -n 1 | cut -c11-)
-  lag=""                                    # how Nightrun differs from main and dev
-  for b in main dev; do
-    if c=$(git rev-list --left-right --count "Nightrun...$b" 2>/dev/null); then
-      read -r ahead behind <<< "$c"
-      [ "$ahead $behind" = "0 0" ] || lag="$lag, $ahead ahead of and $behind behind $b"
-    else
-      lag="$lag, no $b to compare with"
-    fi
-  done
-  lag=${lag:-, level with main and dev}
+  if c=$(git rev-list --left-right --count Nightrun...main 2>/dev/null); then
+    read -r ahead behind <<< "$c"           # commits only on Nightrun, only on main
+    if [ "$ahead" = 0 ]; then lag=", $behind behind main: reusable"
+    else lag=", $ahead ahead of main: unmerged"; fi
+  else
+    lag=", no main to compare with"
+  fi
   if ! printf '%s\n' "$r" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
     echo "Nightrun: no run date recorded$lag"
   elif ! printf '%s\n' "$p" | grep -q '^## Morning report' \
@@ -117,18 +114,15 @@ fi
 - **The loop prints `in progress`** → you are **resuming** that run: go to
   §9.2. Do not run §1.0, §1.2 or §1.4. Recreating the branch or state files is
   how a run loses its history.
-- **It prints `finished`, or `no run date recorded`, ending in `level with
-  main and dev`** → `Nightrun` is an earlier run's (or one not made by §1.2)
-  at the very commit `main` and `dev` are at: nothing on it is unmerged, and
-  nothing merged since is missing from it. A new run reuses it as it is
-  (§1.2), on the same terms as a loop that prints nothing (below).
+- **It prints `finished`, or `no run date recorded`, ending in `reusable`** →
+  `Nightrun` is an earlier run's (or one not made by §1.2) with nothing on it
+  that `main` lacks: its work is merged. A new run reuses it, fast-forwarding
+  it to `main` (§1.2), on the same terms as a loop that prints nothing (below).
 - **It prints `finished`, or `no run date recorded`, with anything else** →
-  `Nightrun` is ahead of or behind `main` or `dev`, or one of them is missing.
-  Behind, a run would start from old code; ahead, it holds work nobody has
-  merged. A human brings it level (merges its work into `dev` and `main`, then
-  fast-forwards `dev` and `Nightrun` to `main`) or deletes it; until then no
-  new run can take the name. **Stop**: create no branch, and never move,
-  rename, delete or reuse it yourself. Write an uncommitted `progress.md` in
+  `Nightrun` has commits `main` lacks (work nobody has merged), or there is no
+  `main`. A human merges that work into `main` or deletes the branch; until
+  then no new run can take the name. **Stop**: create no branch, and never
+  move, rename, delete or reuse it yourself. Write an uncommitted `progress.md` in
   today's directory (`docs/ai/night-$(date +%F)/`) quoting the line the loop
   printed, and end. A turn started by the run's own timer (§9.4) writes
   nothing: it deletes the timer and ends.
@@ -255,11 +249,13 @@ A new branch, when §1's loop printed nothing:
 git checkout main && git checkout -b Nightrun
 ```
 
-An earlier run's that §1 found `level with main and dev`, reused as it is: it is
-already at `main`'s commit, so nothing moves.
+An earlier run's that §1 found `reusable`, fast-forwarded to `main` (it only
+moves forward: the check refuses a branch with commits `main` lacks, and the
+working tree is not touched before the checkout):
 
 ```bash
-git checkout Nightrun
+git checkout main && git merge-base --is-ancestor Nightrun main \
+  && git branch -f Nightrun main && git checkout Nightrun
 ```
 
 Then, either way:
@@ -269,9 +265,9 @@ git config branch.Nightrun.description <YYYY-MM-DD>   # the run's date (§1)
 ```
 
 - **The run branch is always `Nightrun`**, whatever the date. After a run, a
-  human merges its work into `dev` and `main`, then fast-forwards `dev` and
-  `Nightrun` to `main` (or deletes `Nightrun`); the next run reuses it once it
-  is level with both (§1), and stops while it is ahead or behind. Task
+  human merges its work into `main` (through `dev`); the next run then
+  fast-forwards `Nightrun` to `main` and reuses it (§1), or creates it if it is
+  gone. While it holds work `main` lacks, the next run stops. Task
   branches are named after the run's date and the task alone, with no `night`
   in them: `<YYYY-MM-DD>-t<N>-<slug>`, and likewise `-c<N>-checkpoint`,
   `-e<n>-<slug>` (§2.2), `-t0-baseline` (§1.5) and `-t<N>-report` (§7). The state directory keeps its dated name,
@@ -305,7 +301,7 @@ git ls-remote --heads origin Nightrun "<YYYY-MM-DD>-*"
 | No remote | Local-only run: record it, skip every push and poll. Not a failure. |
 | Reachable, no matching branch | Normal. |
 | Matching branch, **resuming** | Expected. Confirm with `git fetch origin && git merge-base --is-ancestor origin/Nightrun Nightrun`, then continue. |
-| `Nightrun`, **new run** | An earlier run's. Continue only if the commit it names is the one `main` and `dev` are at (`git rev-parse main dev`), as §1 requires of the local branch; the run's pushes then move it forward. Ahead, behind or diverged: **stop**, as §1 does, quoting both commits. |
+| `Nightrun`, **new run** | An earlier run's. Continue only if `main` holds the commit it names (`git merge-base --is-ancestor <that SHA> main`; a SHA this clone lacks fails too): the run's first push then fast-forwards it. Otherwise **stop**, as §1 does for unmerged work, quoting the SHA. |
 | A branch of this run's date, **new run** | **Stop.** Someone else owns the date's names. |
 | Unreachable | Continue local-only, record why. |
 
@@ -791,7 +787,7 @@ Never, unattended:
 - `git push --force` / `--force-with-lease`, `--delete`, `--tags`, or a push to
   anything but `Nightrun` and this run's own `<YYYY-MM-DD>-…` task branches:
   never `main`, never a ref this run did not create (`Nightrun` aside, which
-  §1.2 creates or reuses level with `main` and `dev`). Check the name before
+  §1.2 creates, or reuses by fast-forwarding it to `main`). Check the name before
   every push.
 - Opening a pull request.
 - Rewriting history (`rebase`, `commit --amend`, `reset --hard`) except over
