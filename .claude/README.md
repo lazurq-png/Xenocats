@@ -88,8 +88,9 @@ diff.
 ## Setting this up in a new repo
 
 1. Copy `AGENTS.md`, `CLAUDE.md`, and this `.claude/` folder into the repo root.
-2. Give the repo a real verification command and name it in `CLAUDE.md` §9 —
-   that table is what `AGENTS.md` §13 expects agents to run for "verification."
+2. Give the repo a real verification command and name it in the `README.md`
+   "Checks" table, which `CLAUDE.md` §9 points to — that table is what
+   `AGENTS.md` §13 expects agents to run for "verification."
    Whether it is one script or two commands matters less than that every stage
    runs a real check. A stage that echoes a heading and prints success without
    checking anything is worse than no stage at all: it manufactures the evidence

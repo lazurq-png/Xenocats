@@ -170,3 +170,16 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `FULL`, `package.json` and `instrumentation.ts` changed): prettier on the changed files: clean; lint: 0 errors, 0 warnings; tsc: clean. The warning seen on a real `next start` after a build (D54). `npm test`: 53 files passed, 1 skipped; 1137 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. (a)–(d) checked by command.
 - **Reviewer:** approved, no defects; its note on `playwright.config.ts` is D55.
 - **T9's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41543017299 (Nightrun at 9bbc934): the new concurrency group, formatting step and database-test guard ran green on GitHub.
+
+## T11 — First run in the README (completed)
+
+- Branch `2026-11-02-t11-first-run-readme`, base 00dd2b8. Started 2026-11-03 00:17, completed 00:23.
+- **What the code does:**
+  - `README.md`: "First run" (Node and npm; PostgreSQL 17 with TLS and a role that may create schemas; `.env` from `.env.example`; `db:migrate`, `db:seed`; `npm run dev` and the demo login), "Checks" (the table of checks, with the opt-in database tests, and what CI runs when), and "Design tool context" (what `.superdesign/init/*.md` are).
+  - `.env.example` (new): every key the app reads, commented, with no values.
+  - `CLAUDE.md` §9: points to the README's table instead of holding its own; §18's reference follows. `.claude/README.md`: its pointer to the table follows too.
+- **What it brings:** a new contributor can go from a clone to a running app, logged in, from the README alone, with a template for `.env` that names every setting; the list of checks lives in one place, where a human looks first.
+- Decisions: D57–D63.
+- **Verification:** documentation only: `test:affected` selects nothing (0 unit files, 0 specs); `npx prettier --check .`: clean (Markdown is not checked; `.env.example` has no parser); lint: 0 errors, 0 warnings; build: exit 0. `.env.example` parses with `node --env-file` (all keys empty). The first-run steps checked by reading against `scripts/db.mjs`, `app/lib/db.ts` and the seed; not run from a fresh clone.
+- **Reviewer:** Request Changes, three Low (a false claim that `.superdesign` is regenerated; an inaccurate CI sentence; a stale pointer in `.claude/README.md`), all fixed (D63); re-review: approved.
+- **T10's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41544149321 (Nightrun at 00dd2b8).

@@ -240,18 +240,8 @@ reasoning, and let it find the diff itself.
 
 Verification is mandatory for meaningful code changes.
 
-In this repository the checks that exist are:
-
-| Check      | Command                                          |
-| ---------- | ------------------------------------------------ |
-| Lint       | `npm run lint` (ESLint 9, `eslint-config-next` core-web-vitals) |
-| Type check | `npx next typegen && npx tsc --noEmit`           |
-| Unit tests | `npm test` (Vitest, `tests/unit/`)               |
-| Browser tests | `npm run test:e2e` (Playwright + Chromium, `tests/e2e/`) |
-| Affected tests | `npm run test:affected -- --base <ref> [--run]` (the unit and browser tests a change can reach) |
-| Build      | `npm run build`                                  |
-| Format     | `npx prettier --check <the files you changed>`   |
-| Browser    | `npm run dev`, then open `http://localhost:3000` |
+The checks that exist, and their commands, are the table in `README.md`
+("Checks"); what follows is how to run them here.
 
 Use **npm**: the lockfile is `package-lock.json`. Node 24 is installed
 system-wide and on `PATH`; no prefix is needed. Every check needs `node_modules`,
@@ -557,8 +547,8 @@ This repository's `.claude/` directory is structured as follows:
 └── settings.example.json — inert template; no settings.json is defined here
 ```
 
-There is no single validation command. Verification is the commands in §9's
-table, run separately.
+There is no single validation command. Verification is the commands in the
+README's "Checks" table (§9), run separately.
 
 Use `.claude/skills/code-review/` for an adversarial review pass over a diff —
 see §13 for when to run it.
