@@ -16,6 +16,7 @@ import {
   loginLimits,
 } from '@/app/lib/login-limit';
 import { claimSignUp, clientAddress, clientKey, signUpLimit } from '@/app/lib/sign-up-limit';
+import { mostSentHome } from '@/app/ui/xenocats/arena';
 import { headers } from 'next/headers';
 import {
   ChangePasswordForm,
@@ -530,8 +531,9 @@ const MAX_RUNS_PER_HOUR = 60;
  * on the leaderboard from now on. Only the signed-in player's own run in progress,
  * once; never with a time longer than its length (an endless run, minutes 0, has
  * none), or than the time since it started (give or take the start's round trip);
- * and at most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes
- * nothing.
+ * never with more cats sent home than the game could send home in that time
+ * (mostSentHome, from the game's own numbers); and at most MAX_RUNS_PER_HOUR an
+ * hour. Anything else is 'invalid', and changes nothing.
  */
 export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult> {
   const owner = await signedInUser();
@@ -540,10 +542,29 @@ export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult
   if (!validated.success) return 'invalid';
   const { runId, name, timeMs, sentHome } = validated.data;
   try {
+    // The run's length, the server's, and how long ago it started: its cats are
+    // bounded by what could have come in its time. A timed run that reached its goal
+    // reports its time stopped there, while its cats go on going home until the
+    // Matriarch reaches him: that one by the time since it started, which the game's
+    // clock never runs ahead of.
+    const [started] = await sql<{ run_minutes: number; elapsed_ms: number }[]>`
+      SELECT run_minutes, EXTRACT(EPOCH FROM now() - started_at) * 1000 AS elapsed_ms
+      FROM survival_runs
+      WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL`;
+    if (!started) return 'invalid';
+    // Only a timed run at its goal reports less than its clock; any other reports
+    // its own time, after which no cat went home.
+    const atGoal = started.run_minutes !== 0 && timeMs >= started.run_minutes * 60_000;
+    const played = atGoal
+      ? Math.max(timeMs, Number(started.elapsed_ms) + START_ALLOWANCE_MS)
+      : timeMs;
+    if (sentHome > mostSentHome(played, started.run_minutes)) return 'invalid';
     const finished = await sql`
       UPDATE survival_runs SET
         name = ${name}, time_ms = ${timeMs}, sent_home = ${sentHome}, finished_at = now()
       WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL
+        -- The length the bound was worked out for, should the run restart meanwhile.
+        AND run_minutes = ${started.run_minutes}
         AND (run_minutes = 0 OR ${timeMs}::int <= run_minutes * 60000)
         AND ${timeMs}::int <= EXTRACT(EPOCH FROM now() - started_at) * 1000 + ${START_ALLOWANCE_MS}
         AND (

@@ -501,6 +501,58 @@ export function catsWanted(ms: number, escalation = ARENA_CONFIG.escalation): nu
   return escalation[escalation.length - 1][1];
 }
 
+/**
+ * The most cats a Survival run of `minutes` (0: endless) can have sent home `ms`
+ * into it: every cat that can have come by then, since none goes home twice. From
+ * the config's own numbers, each source at its most: the arrivals at the rate
+ * `step` adds them with the horde at none of what it wants, every kitten swarm at
+ * its largest, a xenocat's visit at the shortest gap, every Mega Cat due, the
+ * secret cat and the Matriarch's kittens. So a run played in this config never
+ * passes it, and one that claims more was not played (the leaderboard refuses it,
+ * recordSurvivalRun). Test hooks that change the config keep their runs off the
+ * board anyway (leaderboard-entry.tsx). `ms` is the arena's clock, not the time
+ * a run reports: a timed run's results stop at its goal, while cats go on going home
+ * until the Matriarch reaches him, so the leaderboard passes the time since the run
+ * really started.
+ */
+export function mostSentHome(
+  ms: number,
+  minutes: number,
+  base: ArenaConfig = ARENA_CONFIG
+): number {
+  const config: ArenaConfig = { ...base, ...runLengthConfig(minutes) };
+  // A step's time is up to a step past the time the run reports.
+  const t = Math.max(0, ms) + config.stepMs;
+  const { swarms, xenocats, bosses } = config.schedule;
+  // Arrivals: each step adds max(wanted - cats, 1) × share × dt + dt, so at most
+  // (wanted × share + 1) a second; wanted only grows, so a whole second at its end's.
+  // Past the escalation's last point it wants the same, so those seconds are one sum.
+  let cats = 1;
+  const seconds = Math.ceil(t / 1000);
+  const rising = Math.min(
+    seconds,
+    Math.ceil(config.escalation[config.escalation.length - 1][0] / 1000)
+  );
+  const perSecond = (ms: number) =>
+    Math.max(Math.min(catsWanted(ms, config.escalation), config.cats.hardCap), 1) *
+      config.arrivalShare +
+    1;
+  for (let second = 1; second <= rising; second++) cats += perSecond(second * 1000);
+  cats += (seconds - rising) * perSecond(Infinity);
+  if (t >= swarms.from)
+    cats += (Math.floor((t - swarms.from) / swarms.everyMs) + 1) * swarms.size[1];
+  if (xenocats && t >= xenocats.from) {
+    cats += Math.floor((t - xenocats.from) / xenocats.everyMs[0]) + 1;
+  }
+  cats += bosses.filter((at) => at <= t).length;
+  // The secret cat, once.
+  cats += 1;
+  const call = config.bossAttack.summon;
+  const calling = config.timeGoalMs + call.firstMs;
+  if (t >= calling) cats += (Math.floor((t - calling) / call.everyMs) + 1) * call.kittens;
+  return Math.ceil(cats);
+}
+
 /** What an elite's xenocat effect does to the hero. */
 export type HeroEffect =
   | { kind: 'freeze' }

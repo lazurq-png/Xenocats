@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { percentChange } from '@/app/lib/dashboard';
 import { customers, invoices, users } from '@/app/lib/placeholder-data';
 import { formatCurrency } from '@/app/lib/utils';
+import { mostSentHome } from '@/app/ui/xenocats/arena';
 
 // Every query in app/lib/data.ts (and the login lockout's statements) against a
 // real database: its own schema,
@@ -820,14 +821,58 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
       await actions.recordSurvivalRun({ runId: fresh, name: 'Fast', timeMs: 60_000, sentHome: 1 })
     ).toBe('invalid');
 
-    const runId = await started(player, 5);
+    // Six minutes ago: its bound (below) stays under the schema's 1,000,000 cats.
+    const runId = await started(player, 5, 6 * 60_000);
     // Longer than the run's length (the server's 5 minutes, whatever the game says).
     expect(
       await actions.recordSurvivalRun({ runId, name: 'Long', timeMs: 300_001, sentHome: 1 })
     ).toBe('invalid');
-    // However many cats it sent home: a strong run sends home thousands a second.
+    // More cats sent home than could have come in the time since it started (6
+    // minutes ago, `started`; mostSentHome, the game's own numbers, with the start's
+    // 2 s allowance and some seconds for this test): refused, and the run is still open.
+    const most = (ms: number) => mostSentHome(6 * 60_000 + 2000 + ms, 5);
     expect(
-      await actions.recordSurvivalRun({ runId, name: 'Short', timeMs: 60_000, sentHome: 100_000 })
+      await actions.recordSurvivalRun({
+        runId,
+        name: 'Many',
+        timeMs: 300_000,
+        sentHome: most(10_000) + 1,
+      })
+    ).toBe('invalid');
+    // A run that ended before its goal is held to the time it reports, however long
+    // ago it started.
+    expect(
+      await actions.recordSurvivalRun({
+        runId,
+        name: 'Early',
+        timeMs: 60_000,
+        sentHome: mostSentHome(60_000, 5) + 1,
+      })
+    ).toBe('invalid');
+    // At its goal, up to the limit: saved, though more than five minutes could hold
+    // (a timed run reports its time stopped at the goal; its cats go on). A player of
+    // its own, whose run comes off again: the board's test below counts the board.
+    const keeper = await addUser(`goal${stamp}`);
+    const atGoal = await started(keeper, 5, 6 * 60_000);
+    expect(mostSentHome(300_000, 5)).toBeLessThan(most(0));
+    expect(
+      await actions.recordSurvivalRun({
+        runId: atGoal,
+        name: 'Goal',
+        timeMs: 300_000,
+        sentHome: most(0),
+      })
+    ).toBe('saved');
+    await sql`DELETE FROM survival_runs WHERE user_id = ${keeper}`;
+    // Its own time's limit, before its goal: saved.
+    auth.mockResolvedValue({ user: { id: player } });
+    expect(
+      await actions.recordSurvivalRun({
+        runId,
+        name: 'Short',
+        timeMs: 60_000,
+        sentHome: mostSentHome(60_000, 5),
+      })
     ).toBe('saved');
     // Once.
     expect(
@@ -882,6 +927,20 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
   });
 
   it('an endless run (minutes 0) is held to the time since it started alone, on a board of its own', async () => {
+    // Its cats held to what an endless run could send home in the time it reports
+    // (it has no goal to stop at): one started three minutes ago, its bound under the
+    // schema's 1,000,000. First, since starting a run replaces the player's run in progress.
+    const recent = await started(player, 0, 3 * 60_000);
+    const most = mostSentHome(3 * 60_000 + 2000 + 10_000, 0);
+    expect(most).toBeLessThan(1_000_000);
+    expect(
+      await actions.recordSurvivalRun({
+        runId: recent,
+        name: 'Endless',
+        timeMs: 120_000,
+        sentHome: most + 1,
+      })
+    ).toBe('invalid');
     // Started two hours ago: an hour and a half is longer than any timed run, and allowed.
     const runId = await started(player, 0, 2 * 3_600_000);
     expect(

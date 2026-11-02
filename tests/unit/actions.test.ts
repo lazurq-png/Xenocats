@@ -1,5 +1,6 @@
 import bcryptjs from 'bcryptjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mostSentHome } from '@/app/ui/xenocats/arena';
 
 // Nothing here reaches a database or a real session: `postgres`, `@/auth` and the
 // Next.js runtime helpers the actions call are all replaced with fakes.
@@ -704,9 +705,16 @@ describe('recordSurvivalRun', () => {
 
   it('finishes the player’s own run, under the typed name tidied, and only once', async () => {
     auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce([{ run_minutes: 5, elapsed_ms: '320000' }]);
     sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
     expect(await recordSurvivalRun(run)).toBe('saved');
-    const [strings, ...values] = sql.mock.calls[0] as [string[], ...unknown[]];
+    // First the run's length, the server's, from its own unfinished row.
+    const [lookup, ...keys] = sql.mock.calls[0] as [string[], ...unknown[]];
+    expect(lookup.join('?')).toMatch(
+      /SELECT run_minutes, [^]*now\(\) - started_at[^]* FROM survival_runs/
+    );
+    expect(keys).toEqual([runId, 'u1']);
+    const [strings, ...values] = sql.mock.calls[1] as [string[], ...unknown[]];
     const text = strings.join('?');
     expect(text).toContain('UPDATE survival_runs');
     // Its own, unfinished, within its length and the time since it started.
@@ -715,15 +723,60 @@ describe('recordSurvivalRun', () => {
     // An endless run (minutes 0) is held to the time since it started alone.
     expect(text).toContain('run_minutes = 0 OR');
     expect(text).toContain('now() - started_at');
+    // Under the length its cats were bounded for.
+    expect(text).toContain('AND run_minutes = ?');
     expect(values.slice(0, 5)).toEqual(['Comet Tail', 312_000, 87, runId, 'u1']);
     expect(revalidatePath).toHaveBeenCalledWith('/cats');
   });
 
   it('sends an endless run longer than any timed one on to the database to judge', async () => {
     auth.mockResolvedValue(signedIn);
+    sql.mockResolvedValueOnce([{ run_minutes: 0, elapsed_ms: '7300000' }]);
     sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
     expect(await recordSurvivalRun({ ...run, timeMs: 2 * 3_600_000 })).toBe('saved');
+    expect(sql).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses more cats sent home than the game could send home in the time, and writes nothing', async () => {
+    auth.mockResolvedValue(signedIn);
+    // Started a moment before the time it reports (the start's allowance is 2 s).
+    const elapsed = run.timeMs - 2000;
+    sql.mockResolvedValueOnce([{ run_minutes: 5, elapsed_ms: String(elapsed) }]);
+    const most = mostSentHome(run.timeMs, 5);
+    expect(await recordSurvivalRun({ ...run, sentHome: most + 1 })).toBe('invalid');
     expect(sql).toHaveBeenCalledTimes(1);
+    expect(revalidatePath).not.toHaveBeenCalled();
+    // At the limit, it goes on to the database.
+    sql.mockResolvedValueOnce([{ run_minutes: 5, elapsed_ms: String(elapsed) }]);
+    sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
+    expect(await recordSurvivalRun({ ...run, sentHome: most })).toBe('saved');
+  });
+
+  it('bounds the cats by the time since the run started: a timed run reports its time stopped at the goal', async () => {
+    auth.mockResolvedValue(signedIn);
+    // Five minutes reported, seven since it started: the Keeper kept ahead of the
+    // Matriarch for two, sending the horde home all the while.
+    const atGoal = { ...run, timeMs: 300_000, sentHome: mostSentHome(300_000, 5) + 1 };
+    expect(atGoal.sentHome).toBeLessThanOrEqual(mostSentHome(420_000 + 2000, 5));
+    sql.mockResolvedValueOnce([{ run_minutes: 5, elapsed_ms: '420000' }]);
+    sql.mockResolvedValueOnce(Object.assign([], { count: 1 }));
+    expect(await recordSurvivalRun(atGoal)).toBe('saved');
+    // A run that ended before its goal reports its own time: held to it, however
+    // long ago it started.
+    sql.mockResolvedValueOnce([{ run_minutes: 5, elapsed_ms: '420000' }]);
+    expect(
+      await recordSurvivalRun({ ...run, timeMs: 200_000, sentHome: mostSentHome(200_000, 5) + 1 })
+    ).toBe('invalid');
+    // An endless run has no goal: held to the time it reports, too.
+    sql.mockResolvedValueOnce([{ run_minutes: 0, elapsed_ms: '7300000' }]);
+    expect(
+      await recordSurvivalRun({ ...run, timeMs: 600_000, sentHome: mostSentHome(600_000, 0) + 1 })
+    ).toBe('invalid');
+    // Past what seven minutes could hold: refused.
+    sql.mockResolvedValueOnce([{ run_minutes: 5, elapsed_ms: '420000' }]);
+    expect(
+      await recordSurvivalRun({ ...atGoal, sentHome: mostSentHome(420_000 + 2000, 5) + 1 })
+    ).toBe('invalid');
   });
 
   it('says invalid when the database finds no such run to finish', async () => {
