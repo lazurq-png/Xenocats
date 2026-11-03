@@ -791,3 +791,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** an operator deploying behind a CDN and a load balancer learns before going live that the per-address limits would then count everyone as one client, and how to avoid it. Decisions: D198.
 - **Verification:** reading only (`clientAddress` takes the right-most entry, D184). Markdown only: prettier does not check it; `test:affected` selects nothing. Reviewer: none, a documentation change.
 - **Previous items' CI:** E42 (`7f22056`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41661621023; E43 (`37c6070`) pending at this entry; its outcome goes in E45's entry.
+
+## E45 — started 16:24: the arrivals open now, kept until the next one opens (kind: speed)
+
+## E45 — the arrivals open now, kept until the next one opens, measured (completed)
+
+- Branch `2026-11-02-e45-open-arrivals`, base `2b2b74f`; started 16:24, completed 16:25.
+- **What the code does:** nothing changes in the code: the change this item measured gained nothing and was not kept (D199).
+- **What it brings:** the arrivals ruled out as a cost of the step's own body, by measurement. Decisions: D199.
+- **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, overlapping at every size (D199). `git diff 2b2b74f -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E43 (`37c6070`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41662543463; E44 (`2b2b74f`) pending at this entry; its outcome goes in E46's entry.
