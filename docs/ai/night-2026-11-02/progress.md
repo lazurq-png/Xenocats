@@ -557,3 +557,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed work knows that E19's in-place read pays off only where a search reads a crowded cell for a few ids (as `separate` does), not for `within`'s small searches. Decisions: D168.
 - **Verification:** with the change, E20's fingerprints unchanged (`0f741d43bd8015d9`, `0cfdc9b1adbc2ecb`, `ab3b9f378e0e8819`); three interleaved timing pairs of the step benchmark, no gain (D168). `git diff 82b9d09 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E19 (`f902d94`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41614870251; E20 (`82b9d09`) pending at this entry; its outcome goes in E22's entry.
+
+## E22 — started 11:06: a test that no shared cache may keep a page behind the login (kind: security and quality)
+
+## E22 — a test that no shared cache may keep a page behind the login (completed)
+
+- Branch `2026-11-02-e22-private-cache`, base `008ee79`; started 11:05, completed 11:13.
+- **What the code does:** `tests/e2e/security-headers.spec.ts` gains a test, signed in as the demo user, that each of the nine pages under `app/dashboard/` (a seeded customer's invoice and the customer among them) answers 200 and says `Cache-Control: no-store`.
+- **What it brings:** a page behind the login made static, given a revalidation time, or sent a cache header in `next.config.ts` would let a CDN (Vercel's) keep one account's invoices and serve them to someone else; CI's *build* job (`next start`) now fails on it. Before, only the CSV export's header was tested. Decisions: D169–D170.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0. Shown able to fail: with a cacheable static file in its list (under `next dev`), and with a `Cache-Control: public, max-age=3600` for `/dashboard/settings` planted in `next.config.ts`, built and run under `next start` (`Received: "public, max-age=3600"`); both put back byte for byte, and rebuilt. `test:affected --base Nightrun`: unit, no test file; e2e `security-headers.spec.ts`; on the final state, build 0, the spec under `next dev` 10 passed, under `E2E_SERVER=start` 10 passed. Reviewer: approved; two Low findings acted on (D170), the spec rerun on both servers after.
+- **Previous items' CI:** E20 (`82b9d09`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41615589626; E21 (`008ee79`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41616345032.

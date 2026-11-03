@@ -102,6 +102,47 @@ test.describe('logged in', () => {
     await expect(page).toHaveURL(/query=Amy/);
     expect(violations).toEqual([]);
   });
+
+  // Every page behind the login shows the account's own data: no cache between the
+  // visitor and the site (a CDN's, a proxy's) may keep one to hand to someone else. They
+  // say so because they are rendered for each request; a page made static, or cached
+  // for a while, would lose it. (The CSV export's own header: export-route.test.ts.)
+  // It proves that under `next start` only (CI's build job, E2E_SERVER=start): `next dev`
+  // sends no-store on every page, whatever the page is.
+  test('no page behind the login may be kept by a cache', async ({ request }) => {
+    const list = async (path: string, link: RegExp) => {
+      const html = await (await request.get(path)).text();
+      const found = html.match(link)?.[0];
+      expect(found, `a link in ${path}`).toBeTruthy();
+      return found!;
+    };
+    const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+    // A seeded customer's, which no other test deletes (the invoice tests delete their own).
+    const invoice = await list(
+      '/dashboard/invoices?query=Evil%20Rabbit',
+      new RegExp(`/dashboard/invoices/${uuid}`)
+    );
+    const customer = await list(
+      '/dashboard/customers?query=Evil%20Rabbit',
+      new RegExp(`/dashboard/customers/${uuid}/edit`)
+    );
+    for (const path of [
+      '/dashboard',
+      '/dashboard/invoices',
+      '/dashboard/invoices/create',
+      invoice,
+      `${invoice}/edit`,
+      '/dashboard/customers',
+      '/dashboard/customers/create',
+      customer,
+      '/dashboard/settings',
+    ]) {
+      const response = await request.get(path, { maxRedirects: 0 });
+      // The page itself, signed in: not a redirect to the login, which proves nothing.
+      expect(response.status(), path).toBe(200);
+      expect(response.headers()['cache-control'], path).toMatch(/\bno-store\b/);
+    }
+  });
 });
 
 test('the cats run under the policy: a summoned cat appears, drawn with inline styles', async ({
