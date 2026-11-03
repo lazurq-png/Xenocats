@@ -9,8 +9,13 @@ export function createArenaGrid(cellSize: number) {
   const cells = new Map<number, number[]>();
   /** The lists in use this step; emptied (not dropped) by `clear`. */
   const used: number[][] = [];
-  // Cell coordinates packed into one number: room for ±2^20 cells each way.
-  const key = (cx: number, cy: number) => (cx + 1_048_576) * 2_097_152 + (cy + 1_048_576);
+  // Cell coordinates packed into one small integer (under 2^30, which V8 keeps
+  // unboxed: a Map hashes it far faster than the double it was), 15 bits each. Cells
+  // 32,768 apart share a key, so a list may hold ids from a far cell too: harmless,
+  // since a query's answer is a superset its caller checks by distance anyway, and
+  // never the case for two points less than about two million px apart (so not
+  // within about a million px of where the run began).
+  const key = (cx: number, cy: number) => ((cx & 0x7fff) << 15) | (cy & 0x7fff);
 
   return {
     cellSize,

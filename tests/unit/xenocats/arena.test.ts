@@ -475,6 +475,32 @@ describe('the spatial grid', () => {
     grid.clear();
     expect(grid.query(0, 0, 2000, out)).toEqual([]);
   });
+
+  it('finds the same far from where the run began, where cells far apart share a key', () => {
+    // 32,768 cells of 64 px apart share a key: points on both sides of that, and in the
+    // negative, after hours of walking one way.
+    const random = createRandom(11);
+    const far = 32_768 * 64;
+    const points = Array.from({ length: 400 }, (_, i) => ({
+      x: random.range(-500, 500) + (i % 2 === 0 ? far * 1.5 : -far * 2),
+      y: random.range(-500, 500) + (i % 3 === 0 ? far : 0),
+    }));
+    const grid = createArenaGrid(64);
+    points.forEach((p, i) => grid.insert(i, p.x, p.y));
+    const out: number[] = [];
+    for (const at of points.slice(0, 40)) {
+      const radius = random.range(10, 300);
+      const found = grid
+        .query(at.x, at.y, radius, out)
+        .filter((i) => Math.hypot(points[i].x - at.x, points[i].y - at.y) <= radius)
+        .sort((a, b) => a - b);
+      const brute = points
+        .map((p, i) => ({ p, i }))
+        .filter(({ p }) => Math.hypot(p.x - at.x, p.y - at.y) <= radius)
+        .map(({ i }) => i);
+      expect(found).toEqual(brute);
+    }
+  });
 });
 
 describe('the frame-rate guard', () => {

@@ -325,3 +325,17 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (on the final state): prettier, lint (0 errors, 0 warnings), tsc (with unused names checked too): clean; no test file changed; `npm test`: 56 files passed, 1 skipped; 1,153 passed, 52 skipped; build: exit 0; the selection (benchmark, leaderboard, phone, security headers, survival) under `next dev`: 54 passed, 2 skipped; the same specs but the benchmark under `next start`: 54 passed; the benchmark twice before and after (D126). (b)–(d) checked by command; (a) in part (D124).
 - **Reviewer:** approved, no defects; one Low on scope (the closures not split), which is D124 and Q10.
 - **T21's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41575403748 (Nightrun at 723ffb5).
+
+## E1 — started 05:11: where a crowded simulation step spends its time, and its grid's keys (kind: speed)
+
+## E1 — where a crowded simulation step spends its time, and its grid's keys (completed)
+
+- Branch `2026-11-02-e1-grid-keys`, base 88c44a5. Started 2026-11-03 05:11, completed 05:19.
+- **What the code does:**
+  - `app/ui/xenocats/arena-grid.ts`: a cell's key is packed into 15 bits per coordinate, a small integer, instead of a number near 2^41.
+  - `tests/unit/xenocats/arena.test.ts`: the grid finds exactly what checking every point finds, also millions of px from the start, where cells share keys.
+- **What it brings:** each simulation step of a crowded run is 4–8% faster (D128), on any machine, with every result the same; and the profile (D127) says where the rest of a step goes, for the next speed item.
+- Decisions: D127–D129.
+- **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D128); selection: `vitest related` → 10 files, 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped. After the review, a comment's wording only; the grid tests rerun: 2 passed.
+- **Reviewer:** approved, no findings; its note on the comment's range applied.
+- **T22's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41576513827 (Nightrun at 88c44a5).
