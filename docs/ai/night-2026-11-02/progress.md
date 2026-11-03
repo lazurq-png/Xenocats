@@ -691,3 +691,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** after E32's fix to the address key, the rest of what the limits count is known to be sound; and a human can decide Q14 (a sign-in quirk, and its migration) with the options laid out. Decisions: D188; Q14.
 - **Verification:** reading only (the code and the test lines named in D188). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E32 (`a8a7680`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41652083696; E33 (`8ecb119`) pending at this entry; its outcome goes in E35's entry.
+
+## E35 — started 15:28: where the run's speed work leaves a crowded step, measured (kind: speed)
+
+## E35 — where the run's speed work leaves a crowded step, measured (completed)
+
+- Branch `2026-11-02-e35-speed-record`, base `aaba75d`; started 15:28, completed 15:29.
+- **What the code does:** nothing changes in the code. `decisions.md` records the step benchmark on the run's latest code against its figures before any speed change, and which item gave what (D189).
+- **What it brings:** one place that says what this run's speed work bought (a crowded step about a third less: 6,000 cats 2.7 → 1.76 ms), what was tried and dropped, and where the next speed task should start. Decisions: D189.
+- **Verification:** the step benchmark run three times (2 passed each; the figures in D189). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E33 (`8ecb119`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41652961597; E34 (`aaba75d`) pending at this entry; its outcome goes in E36's entry.
