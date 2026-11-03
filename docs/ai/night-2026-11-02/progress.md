@@ -578,3 +578,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** with the change, E20's fingerprints unchanged (`0f741d43bd8015d9`, `0cfdc9b1adbc2ecb`, `ab3b9f378e0e8819`); three interleaved timing pairs of the step benchmark, slower at every size (D171). `git diff 4f4f877 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **A correction to E22's entry:** it says E22 started at 11:05; its heading, written when it started, says 11:06, which is right.
 - **Previous item's CI:** E22 (`4f4f877`) pending at this entry; its outcome goes in E24's entry.
+
+## E24 — started 11:23: lint rules for comparisons and loops that cannot be right (kind: security and quality)
+
+## E24 — lint rules for comparisons and loops that cannot be right (completed)
+
+- Branch `2026-11-02-e24-lint-rules`, base `c6e22bb`; started 11:23, completed 14:23.
+- **A gap:** the account's usage limit stopped the run from about 11:25 to 14:21 (the reviewer was cut off; the full suites, already running, finished in it). Nothing from before it was trusted: the suites' output files were read, and the reviewer resumed.
+- **What the code does:** `eslint.config.mjs` turns on, for every linted file, six rules that catch comparisons and loops that cannot be what was meant: `eqeqeq` (allowing `== null`), `no-self-compare`, `no-constant-binary-expression`, `no-unmodified-loop-condition`, `no-unreachable-loop`, `no-template-curly-in-string`. The tree already keeps them: no code changed.
+- **What it brings:** a later change (a human's or a night run's) that compares a value with itself, writes `==`, writes a condition whose result is fixed, a loop that cannot end or cannot repeat, or `${}` in a plain string now fails `npm run lint` and CI, instead of reaching review. Decisions: D172–D173.
+- **Verification:** `npm run lint` 0, 0 warnings (baseline 0); `eslint . --max-warnings 0` 0; each rule shown to fire on a probe file (deleted); prettier 0; `next typegen` + `tsc` 0. `test:affected --base Nightrun` printed `FULL` (`eslint.config.mjs`), so the full suites ran: `npm test` 57 files passed, 1 skipped; 1163 passed, 52 skipped (E16: 1161; two more since, E17's and E19's grid tests); database tests 52 passed (52); build 0; `test:e2e` 168 passed, 2 skipped; `E2E_SERVER=start` 168 passed, 2 skipped (E16: 167; one more since, E22's). Reviewer: approved; its nit acted on (D173), lint rerun after.
+- **Previous items' CI:** E22 (`4f4f877`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41617490339; E23 (`c6e22bb`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41618262176.
