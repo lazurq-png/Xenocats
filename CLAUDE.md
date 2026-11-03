@@ -73,7 +73,7 @@ If the task touches a specific domain, follow the matching reference in `.claude
 * `.claude/rules/debugging.md` — evidence-driven failure diagnosis
 * `.claude/rules/security-review.md` — authn/authz, secrets, payments, external input
 
-Claude Code loads all of them at the start of every session (a rule file without `paths:` frontmatter loads at launch, and none of these has one), so they need no opening.
+`architecture.md` and `debugging.md` load at the start of every session (no `paths:` frontmatter). The other five carry `paths:` globs for the files they govern, and Claude Code loads one when it reads or edits a matching file: so a task in their area has them without opening them, and a session that never touches it does not carry them. A task that falls under one before it has read such a file (planning a schema change from the plan alone, say) opens it.
 
 ---
 
@@ -540,7 +540,8 @@ This repository's `.claude/` directory is structured as follows:
 .claude/
 ├── README.md   — how these files fit together, and how to copy them to a new repo
 ├── agents/     — specialized subagents dispatched by name (reviewer)
-├── rules/      — domain-specific reference docs (see §2), loaded every session
+├── rules/      — domain-specific reference docs (see §2): two loaded every session,
+│                 five when a file they govern is read (their paths: frontmatter)
 ├── skills/     — reusable procedural workflows, invoked as slash commands
 │                 (code-review; night-run, with its CI poll ci-poll.mjs)
 ├── docs/       — supporting human-readable process docs (workflow, task

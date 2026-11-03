@@ -12,8 +12,9 @@ CLAUDE.md               Claude Code operating model — always loaded by the ext
 ├── README.md           this file
 ├── agents/             subagents dispatched by name (reviewer: independent review,
 │                        no Edit or Write tool)
-├── rules/              domain reference docs — loaded in every session (none has
-│                        `paths:` frontmatter); CLAUDE.md §2 maps tasks to them
+├── rules/              domain reference docs — architecture and debugging in every
+│                        session, the rest by their `paths:` globs; CLAUDE.md §2 maps
+│                        tasks to them
 ├── skills/              reusable procedures invoked as slash commands
 │                        (/code-review; /night-run, with its CI poll ci-poll.mjs)
 ├── docs/                 supporting human-readable process docs — workflow narrative,
@@ -53,13 +54,22 @@ runner's own PostgreSQL, so CI uses no outside database and no secret.
 
 Claude Code loads a rule file in `.claude/rules/` at launch, alongside
 `CLAUDE.md`, unless the file has `paths:` frontmatter (a list of globs); one
-with `paths:` loads only when Claude reads or edits a file that matches. None
-of these rules has `paths:`, so all of them are in context in every session,
-and `CLAUDE.md` §2 says which applies to which kind of task (frontend, backend,
-database, testing, debugging, architecture, security-review). Reviewing a diff
-is the `code-review` skill.
+with `paths:` loads only when Claude reads or edits a file that matches.
 
-To keep a rule out of sessions that never touch its area, give it `paths:`.
+| Rule | Loads |
+| ---- | ----- |
+| `architecture.md`, `debugging.md` | every session |
+| `frontend.md` | `app/**/*.tsx`, `app/ui/**`, `public/**`, `tests/e2e/**` |
+| `backend.md` | `app/lib/**`, route handlers, `auth*.ts`, `proxy.ts`, `instrumentation.ts`, `next.config.ts` |
+| `database.md` | `db/**`, the database scripts, the modules that run SQL, `tests/unit/data.test.ts`, the browser tests' setup |
+| `testing.md` | `tests/**`, the Vitest and Playwright configs, the test scripts, `.github/workflows/**` |
+| `security-review.md` | auth, the proxy, the Server Actions and their input schemas, the session, password and limit modules, the CSV export, the CSP and the security headers (`app/lib/csp.ts`, `next.config.ts`), the TLS choice, `instrumentation.ts`, route handlers, `.env.example`, `.github/**` |
+
+`CLAUDE.md` §2 says which applies to which kind of task; a task that falls under a
+scoped rule before it has read one of its files opens it. Reviewing a diff is the
+`code-review` skill. A rule's globs are in its own frontmatter: a new area of code
+is added there.
+
 A nested `CLAUDE.md` scopes guidance by location the same way: Claude Code
 loads one when it works with files in that directory.
 
@@ -105,7 +115,10 @@ diff.
    forbidden operations are held by instruction alone.
 4. Trim `.claude/rules/*.md` and `.claude/docs/*.md` down to what the project
    actually needs — delete the domains that don't apply (e.g. `database.md` for
-   a repo with no persistence layer).
+   a repo with no persistence layer). Five rules carry `paths:` globs naming this
+   repository's files: rewrite each for the new project's, or remove `paths:` to
+   load it in every session. A rule whose globs match nothing never loads, and
+   nothing says so.
 5. Update the curated list in `CLAUDE.md`'s "Start With Repository Context"
    section if you remove or rename any rule file.
 6. Rewrite `.claude/skills/night-run/SKILL.md` for the new project: its

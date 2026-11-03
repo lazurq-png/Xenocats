@@ -1,3 +1,14 @@
+---
+paths:
+  - "app/lib/**"
+  - "app/**/route.ts"
+  - "auth.ts"
+  - "auth.config.ts"
+  - "proxy.ts"
+  - "instrumentation.ts"
+  - "next.config.ts"
+---
+
 # Backend Engineering Rules
 
 Open this for API, service, and server-side implementation work.

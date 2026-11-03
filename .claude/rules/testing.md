@@ -1,3 +1,15 @@
+---
+paths:
+  - "tests/**"
+  - "vitest.config.mts"
+  - "vitest.bench.config.mts"
+  - "playwright.config.ts"
+  - "scripts/affected-tests.mjs"
+  - "scripts/unit-projects.mjs"
+  - "scripts/ci-passed.mjs"
+  - ".github/workflows/**"
+---
+
 # Testing Rules
 
 Tests provide the feedback loop that allows coding agents to work autonomously. Open this when planning coverage or triaging test failures.

@@ -260,3 +260,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: the root layout and `proxy.ts` changed; on the final state): prettier, lint (0 errors, 0 warnings), tsc: clean; `npm test`: 55 files passed, 1 skipped; 1,147 passed, 52 skipped; database tests: 52 passed (before the last, proxy-only, edit); build: exit 0, only the icon and the global error page prerendered; e2e under `next dev`: 165 passed, 2 skipped; under `next start`: 165 passed, 2 skipped. (a)–(e) checked by command.
 - **Reviewer:** approved; two Low (a re-check stricter than next-auth's; no CSP on responses the matcher skips), acted on (D100).
 - **T16's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41551587948 (Nightrun at 26c0663).
+
+## T18 — Rules load where they apply (completed)
+
+- Branch `2026-11-02-t18-rules-paths`, base 61c45e6. Started 2026-11-03 04:34, completed 04:40.
+- **What the code does:**
+  - `.claude/rules/frontend.md`, `backend.md`, `database.md`, `testing.md`, `security-review.md`: `paths:` frontmatter naming the files each governs (D102, D104); `architecture.md` and `debugging.md` unchanged, loaded in every session.
+  - `CLAUDE.md` §2 (which load when, and to open a scoped rule a task needs before it has read one of its files) and §18's tree; `.claude/README.md` ("How rules load", with a table of what loads each rule; the tree; the new-repo steps).
+- **What it brings:** a session carries only the rules for what it touches, instead of all seven (about 31 KB) every time: a task on the cats no longer brings the database and security rules into its context, and one on the schema still gets them.
+- Decisions: D101–D104.
+- **Verification:** documentation only: `test:affected` selects nothing; each frontmatter checked to be a `paths:` list of quoted globs, and every glob to match at least one file today. That Claude Code loads a scoped rule on reading a matching file is checked by reading its documentation, not by a session.
+- **Reviewer:** approved; three Low (the new-repo steps, two security files, the README's table), all acted on (D104).
+- **T17's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41573002396 (Nightrun at 61c45e6): the nonce and every browser spec green on GitHub too.
