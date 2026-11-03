@@ -49,7 +49,13 @@ same for one client address, across every name it tries, for the same minutes.
 `X-Real-IP`; elsewhere set `TRUSTED_PROXY_HEADER` to `x-real-ip` or
 `x-forwarded-for` (the last entry), and only if the proxy in front of the app
 overwrites that header. Without one, every client shares the one daily sign-up
-limit, and failed logins are counted per login name only.
+limit, and failed logins are counted per login name only. The last entry of
+`X-Forwarded-For` is the address the proxy nearest the app saw: behind two (a CDN,
+then a load balancer) it is the CDN's, every client shares one count again, and one
+client can spend everyone's sign-ups; there, have the outer proxy (the one the client
+connects to) overwrite `X-Real-IP` with the client's address, the next pass it on, and
+trust `x-real-ip`. A port written with the address
+(`203.0.113.7:51234`) is dropped.
 
 ## Checks
 

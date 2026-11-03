@@ -781,3 +781,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** a suspicion about the projectile step settled by counting, so no later item rewrites it for nothing. Decisions: D197.
 - **Verification:** a throwaway counter over the step benchmark (removed; `git diff 7f22056 -- app/` empty). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E41 (`c59d647`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41660688578; E42 (`7f22056`) pending at this entry; its outcome goes in E44's entry.
+
+## E44 — started 16:18: the README says what the proxy header counts behind two proxies, and with a port (kind: security and quality)
+
+## E44 — the README says what the proxy header counts behind two proxies, and with a port (completed)
+
+- Branch `2026-11-02-e44-readme-proxy`, base `37c6070`; started 16:18, completed 16:19.
+- **What the code does:** nothing changes in the code. `README.md`'s paragraph on the login and sign-up limits says that behind two proxies the last `X-Forwarded-For` entry is the outer proxy's address (every client one count), what to set up instead, and that a port is dropped.
+- **What it brings:** an operator deploying behind a CDN and a load balancer learns before going live that the per-address limits would then count everyone as one client, and how to avoid it. Decisions: D198.
+- **Verification:** reading only (`clientAddress` takes the right-most entry, D184). Markdown only: prettier does not check it; `test:affected` selects nothing. Reviewer: none, a documentation change.
+- **Previous items' CI:** E42 (`7f22056`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41661621023; E43 (`37c6070`) pending at this entry; its outcome goes in E45's entry.
