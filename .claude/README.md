@@ -16,7 +16,8 @@ CLAUDE.md               Claude Code operating model — always loaded by the ext
 │                        session, the rest by their `paths:` globs; CLAUDE.md §2 maps
 │                        tasks to them
 ├── skills/              reusable procedures invoked as slash commands
-│                        (/code-review; /night-run, with its CI poll ci-poll.mjs)
+│                        (/verify; /code-review; /night-run, with its CI poll
+│                        ci-poll.mjs)
 ├── docs/                 supporting human-readable process docs — workflow narrative,
 │                          a task-request template, ready-to-paste prompt patterns,
 │                          and working practices (CLAUDE.md's general sections)
@@ -96,6 +97,14 @@ tools: no reading or editing `.env`) and a PreToolUse hook
 `db:seed` and `db:reset` against a host outside the private ranges. The same
 operations by another route (the PowerShell tool, `head .env`) are held by
 instruction only.
+
+### Verify
+
+`.claude/skills/verify/SKILL.md` runs `CLAUDE.md` §9's checks on a change in
+the order that finds a problem soonest: Prettier on the changed files, lint, the
+type check, then `npm run test:affected`; it stops at the first failure and says
+what it does not cover (the build, `next start`, a look in a browser). Invoke it
+with `/verify`, or by asking Claude to verify the change.
 
 ### Code review
 

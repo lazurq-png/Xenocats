@@ -299,3 +299,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; `tests/unit/guard-db.test.ts`: 6 passed; build: exit 0; no spec selected (`test:affected`); a dry-run push in the run's own form passed the rules, and `test -f .env` still works; the hook was seen refusing live, twice (D116). That the harness matches the deny patterns as documented is checked by reading only.
 - **Reviewer:** Request Changes (two Medium: PowerShell not covered, push forms missed; three Low), all acted on (D115); re-review: approved.
 - **T19's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41574133723 (Nightrun at ca6767e).
+
+## T21 — A `verify` skill (completed)
+
+- Branch `2026-11-02-t21-verify-skill`, base 88141ee. Started 2026-11-03 04:54, completed 04:57. (T20's entry above says it completed at 05:02; the clock read 04:53. The entry is left as written.)
+- **What the code does:**
+  - `.claude/skills/verify/SKILL.md` (new; `/verify`): the changed files, as the selector finds them; then Prettier on them, lint, the type check, the test groups when tests moved, and `npm run test:affected --run`, cheapest first, stopping at the first failure; how to repair (rerun what failed, then everything once on the final state); what it leaves out (the build, `next start`, a browser, actionlint, each with its command); how to report.
+  - `CLAUDE.md` §9 and §18, `.claude/README.md`: the skill listed.
+- **What it brings:** one command, `/verify`, runs a change's checks in this repository's order with its rules (changed files only, the selector, never in parallel, the final state reported), instead of each session assembling them from §9.
+- Decisions: D117–D121.
+- **Verification:** documentation only (no tests select); the skill's steps were run on this change and passed (prettier, lint 0 warnings, tsc, a selection of nothing); the harness listed the skill as soon as the file existed. Every command in it checked against `package.json` and `scripts/affected-tests.mjs` (the reviewer's).
+- **Reviewer:** Request Changes (one Medium: a repair would not recheck the earlier steps; four Low), all applied (D120); re-review approved with two Low, applied (D121).
+- **T20's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41574901154 (Nightrun at 88141ee).

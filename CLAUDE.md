@@ -442,7 +442,7 @@ This repository's `.claude/` directory is structured as follows:
 ├── rules/      — domain-specific reference docs (see §2): two loaded every session,
 │                 five when a file they govern is read (their paths: frontmatter)
 ├── skills/     — reusable procedural workflows, invoked as slash commands
-│                 (code-review; night-run, with its CI poll ci-poll.mjs)
+│                 (verify; code-review; night-run, with its CI poll ci-poll.mjs)
 ├── docs/       — supporting process docs (workflow, task template, prompt
 │                 patterns, and working practices: the general sections of
 │                 this file, §§3, 5, 7, 10, 12–14) — not auto-loaded
@@ -451,7 +451,8 @@ This repository's `.claude/` directory is structured as follows:
 ```
 
 There is no single validation command. Verification is the commands in the
-README's "Checks" table (§9), run separately.
+README's "Checks" table (§9), run separately. `.claude/skills/verify/` (`/verify`)
+runs the ones a change needs, cheapest first, stopping at the first failure.
 
 Use `.claude/skills/code-review/` for an adversarial review pass over a diff —
 see §13 for when to run it.
