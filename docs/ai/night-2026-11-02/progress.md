@@ -841,3 +841,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed task has a known, sized gain to weigh (about 1.5% of a crowded step) and what it would cost to take. Decisions: D204.
 - **Verification:** a micro-benchmark in the scratchpad (three runs each way, the same results both ways); the arena's figure scaled from E47's profile, not measured in the arena. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous item's CI:** E47 (`dc4055d`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41666590552; E48 (`045d794`) pending at this entry; its outcome goes in E50's entry, or the morning report.
+
+## E50 — started 16:52: Q15 gets what E47 and E49 left for the next plan (kind: security and quality)
+
+## E50 — Q15 gets what E47 and E49 left for the next plan (completed)
+
+- Branch `2026-11-02-e50-q15-additions`, base `3f085d2`; started 16:52, completed 16:52.
+- **What the code does:** nothing changes in the code. `questions.md` gains "Q15, additions": the speed candidates found after E38, which D204 said had been added and had not.
+- **What it brings:** the next plan's list of speed work is complete, and the run's records no longer claim an addition that was not made. Decisions: D205.
+- **Verification:** reading only (each addition's D-entry). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous item's CI:** E48 (`045d794`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41667486936; E49 (`3f085d2`) pending at this entry; its outcome goes in the morning report.

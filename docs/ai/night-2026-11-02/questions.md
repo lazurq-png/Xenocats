@@ -76,3 +76,14 @@ What this run found worth doing and did not build, each a plan's task, none need
 6. **The run's skill and rules**: the suggested rule changes in the morning report (the run does not edit `.claude/`).
 
 Read this run and found sound, not to be read again without a reason (D148, D153, D163, D169, D172, D176, D184, D188, D190): the Server Actions (sessions, ownership, validation), the CSV export, passwords and their limits, logs, searches, sessions and their revocation, the CSP and headers, redirects, error pages, `localStorage`, the client address (after E32), page numbers, the workflows and Dependabot.
+
+## Q15, additions (E50)
+
+To item 3 (speed, structural), from the items after E38:
+
+- **Start with the line-level profile:** `node tests/bench/profile-step.mjs` (E47), which shows each function's share and the hottest lines; today the first read of each cat costs most, pointing at memory (cats as scattered objects) over arithmetic (D202).
+- **The grid's cell lists, kept with counts** (D204): emptying them with `length = 0` makes each grow again every step; kept with a count of their own they refill at half the cost, about 1.5% of a crowded step, at the price of every cell reader taking a list and its count.
+- **`separate`'s cells** (D193): a call reads 14 neighbours of a 17-cat cell for its few pushes; a smaller cell, or the near cats first, cuts that, and changes which cats are pushed (E20's fingerprints change on purpose).
+- **Cats' hot fields in arrays** (D202): the structural change the profile points at, the largest and the riskiest.
+
+To the security items: none; E40 (D194) and E42 (D196) left a test that asks for a review when a route ending in a dynamic segment is added, nothing to plan.
