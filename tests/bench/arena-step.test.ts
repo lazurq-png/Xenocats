@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ARENA_CONFIG, createArena } from '@/app/ui/xenocats/arena';
-import { MAX_WEAPON_LEVEL } from '@/app/ui/xenocats/arsenal';
+import { MAX_WEAPON_LEVEL, type WeaponId } from '@/app/ui/xenocats/arsenal';
 import { CAT_TYPES } from '@/app/ui/xenocats/cat-types';
 import { createRandom } from '@/app/ui/xenocats/random';
 import { CROWD_ARSENAL } from '@/app/ui/xenocats/test-hooks';
@@ -14,6 +14,7 @@ import { CROWD_ARSENAL } from '@/app/ui/xenocats/test-hooks';
 // Each size: warm up until the crowd has arrived (the arena adds a share a second at
 // most), then time `MEASURED` steps with the Keeper walking in a circle, so the cats
 // keep closing on him and the weapons keep firing.
+// The second table: the same, with weapons that call the cats to toys and scatter them.
 
 const SIZES = [500, 2000, 6000];
 const WARMUP_STEPS = 900;
@@ -23,14 +24,23 @@ const viewport = { width: 1280, height: 800 };
 const at = (sorted: number[], q: number) =>
   sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 
-function bench(size: number) {
+// Weapons that call cats away from their own walk, which the crowd arsenal never
+// does: toys every cat nearby comes to (the lure step), and the Cucumber they run from.
+const LURE_ARSENAL: readonly WeaponId[] = [
+  'squeak-symphony',
+  'squeaky-toy',
+  'cucumber',
+  'infinite-laser',
+];
+
+function bench(size: number, arsenal: readonly WeaponId[] = CROWD_ARSENAL) {
   const arena = createArena({
     random: createRandom(7),
     types: CAT_TYPES,
     viewport,
     config: {
       escalation: [[0, size]],
-      startingWeapons: CROWD_ARSENAL,
+      startingWeapons: arsenal,
       startingLevel: MAX_WEAPON_LEVEL,
       hero: { ...ARENA_CONFIG.hero, resolve: 1e9 },
       // The arsenal sends cats home as fast as they come; new ones arrive fast enough
@@ -62,7 +72,15 @@ function bench(size: number) {
 
 describe('the arena step', () => {
   it('step cost with 500, 2000 and 6000 cats and a full late-game arsenal', () => {
-    const rows = SIZES.map(bench);
+    const rows = SIZES.map((size) => bench(size));
+    console.table(rows);
+    for (const row of rows) {
+      expect(row.cats, `${row.wanted} wanted`).toBeGreaterThan(row.wanted * 0.5);
+    }
+  });
+
+  it('step cost with 2000 and 6000 cats called to toys and scattered by Cucumbers', () => {
+    const rows = [2000, 6000].map((size) => bench(size, LURE_ARSENAL));
     console.table(rows);
     for (const row of rows) {
       expect(row.cats, `${row.wanted} wanted`).toBeGreaterThan(row.wanted * 0.5);

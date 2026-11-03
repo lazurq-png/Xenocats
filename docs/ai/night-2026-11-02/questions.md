@@ -51,3 +51,7 @@ Profiled tonight: a crowded simulation step (E1, D127) and a crowded frame in he
 ## Q12 — The login's open redirect, found and fixed (E8)
 
 For a human to know: before E8, a link to `/login?callbackUrl=//evil.example/...` made the login try to send the visitor to `evil.example`; the browser's `pushState` refused, so the visitor was left on the login page instead (D140). Production (`main`) has the same default; the fix (D141, a `redirect` callback) reaches it with the next merge. Nothing for a human to decide; worth knowing for the release notes.
+
+## Q13 — Proposed task: the test selector and `tests/bench/` (E11)
+
+`scripts/affected-tests.mjs` prints `FULL` for a change to `tests/bench/` (D147), so a benchmark edit costs the whole of every suite, though neither `npm test` nor `npm run test:e2e` runs those files. **Proposal for the next plan:** select nothing for `tests/bench/` (as for `docs/`), with a case in `tests/unit/affected-tests.test.ts`. A change to the selector runs the full suites at its own gate (§2.1). Needs no decision beyond putting it in a plan.
