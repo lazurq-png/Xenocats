@@ -476,3 +476,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed work skips a dead end (an index for the gems costs more than the scan it would replace) and starts from a current profile of where a crowded step goes. Decisions: D151–D152.
 - **Verification:** a fingerprint of every gem and cat over 2,400 seeded steps, old code against new, matched in three runs (so the tried change kept the game's choices); three interleaved timing pairs of the step benchmark showed it slower at every size (D152). `arena.ts` restored to its base: `git diff a22c179 -- app/` is empty. Only `docs/ai/` changes: prettier does not check Markdown; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous item's CI:** E12 (`a22c179`) pending at this entry; its outcome goes in E14's entry.
+
+## E14 — started 10:16: checkouts that leave no token behind (kind: security and quality)
+
+## E14 — checkouts that leave no token behind (completed)
+
+- Branch `2026-11-02-e14-checkout-credentials`, base `c2507a0`; started 10:16, completed 10:18.
+- **What the code does:** every `actions/checkout` step in `.github/workflows/ci.yml` (five) and `codeql.yml` (one) sets `persist-credentials: false`, so the job's GitHub token is no longer written into `.git/config` for the steps after it; a comment beside `ci.yml`'s `permissions:` says why.
+- **What it brings:** the code CI runs after checkout (npm packages' install scripts, the build, the tests, and the change under test itself) can no longer read the workflow's token from disk, which narrows what a compromised dependency or a hostile pull request could do with it. Decisions: D153–D155.
+- **Verification:** actionlint with shellcheck and pyflakes 0; prettier on both workflows 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; `test:affected --base Nightrun` selects no test (unit 0, e2e 0). The *checks*, *build* and *e2e* jobs' checkouts are exercised by CI's run of this push; *migrations*, *dependency-review* and CodeQL's are checked by reading only until a pull request (D154). Reviewer: approved; its one Low did not hold (D155).
+- **Previous items' CI:** E12 (`a22c179`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41608886766; E13 (`c2507a0`) pending at this entry; its outcome goes in E15's entry.

@@ -16,6 +16,8 @@ on:
 
 permissions:
   contents: read
+# Every checkout leaves no token behind in .git/config (persist-credentials: false):
+# no step pushes or fetches, and the steps after it run code from npm and the change.
 
 # A newer push to the same branch, or to the same pull request, cancels the run it
 # supersedes: only the newest commit's result is wanted.
@@ -71,6 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: List the migrations this pull request adds
         env:
@@ -101,6 +104,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/dependency-review-action@v4
 
   checks:
@@ -111,6 +116,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           # jsdom 30 requires ^22.22.2 || ^24.15.0 || >=26.
@@ -185,6 +192,8 @@ jobs:
       # rebuild their xenocats_test schema from it.
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -260,6 +269,8 @@ jobs:
       AUTH_TRUST_HOST: 'true'
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 24
