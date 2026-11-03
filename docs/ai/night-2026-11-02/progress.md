@@ -660,3 +660,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** one more candidate in `moveCat` ruled out by measurement. Decisions: D183.
 - **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, overlapping at every size (D183). `git diff e353a4c -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous item's CI:** E30 (`e353a4c`) pending at this entry; its outcome goes in E32's entry.
+
+## E32 — started 15:08: an address with a port counts as the address (kind: security and quality)
+
+## E32 — an address with a port counts as the address (completed)
+
+- Branch `2026-11-02-e32-address-port`, base `036c53e`; started 15:08, completed 15:16.
+- **What the code does:** `clientAddress` in `app/lib/sign-up-limit.ts`, which reads the client's address from the trusted proxy's header for the sign-up limit and the per-address login limit, now drops a port the proxy wrote with it (`203.0.113.7:51234`, `[2001:db8::1]:51234`, `::ffff:203.0.113.7:51234`) and an IPv6 address's brackets; a bare address passes unchanged. `tests/unit/input-safeguards.test.ts` checks each form, and that two ports of one client are one count.
+- **What it brings:** behind a proxy that writes the client's port into `X-Forwarded-For` (Azure's Application Gateway does), each connection had counted as a new client, so the sign-up limit and the login lockout by address (T3) could never be reached; now they count the client. Decisions: D184–D185.
+- **A slip, recorded:** while probing `addressBlock`, a stray `cat > /tmp/ab.test.ts` with no input created an empty file outside the repository and hung the command (§3: nothing outside the repository). The command was stopped and the file, made by this run moments before, removed. Nothing else outside the repository was touched.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; the new test fails on the code before (D184) and on the first version of the fix (D185). `test:affected --base Nightrun` printed `FULL` (`sign-up-limit.ts` reaches `auth.ts`), so the full suites ran: `npm test` 58 files passed, 1 skipped; 1166 passed, 52 skipped (E24: 1163; three more since, E25's, E28's and this one); database tests 52 passed (52); build 0; `test:e2e` 169 passed, 2 skipped; `E2E_SERVER=start` 169 passed, 2 skipped (E24: 168; one more since, E30's). After the reviewer's two Low findings (D185): `npm test` 1166 passed, 52 skipped; `login-limit` and `signup` specs 5 passed. Reviewer: approved; both findings acted on.
+- **Previous items' CI:** E30 (`e353a4c`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41649166879; E31 (`036c53e`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41650058945.

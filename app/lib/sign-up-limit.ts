@@ -46,7 +46,9 @@ export function proxyWarning(env: Record<string, string | undefined> = process.e
 /**
  * The client's address, from the trusted proxy's header. With no trusted proxy (or
  * no address in its header), 'unknown': every such client shares one count, so the
- * limit holds for all of them together rather than not at all.
+ * limit holds for all of them together rather than not at all. Some proxies write the
+ * client's port too (`203.0.113.7:51234`, `[2001:db8::1]:51234`): the port is
+ * dropped, since it changes with every connection and would make each a new client.
  */
 export function clientAddress(
   headers: Headers,
@@ -58,7 +60,17 @@ export function clientAddress(
       : trusted === 'x-forwarded-for'
         ? headers.get('x-forwarded-for')?.split(',').at(-1)
         : null;
-  return address?.trim() || 'unknown';
+  return withoutPort(address?.trim() ?? '') || 'unknown';
+}
+
+/** An address as a proxy may write it, without its port or an IPv6 one's brackets. */
+function withoutPort(address: string): string {
+  const bracketed = /^\[([^\]]*)\](?::\d+)?$/.exec(address);
+  if (bracketed) return bracketed[1];
+  // An IPv4 address with its port, also as IPv4-mapped IPv6 written without brackets
+  // (`::ffff:1.2.3.4:51234`, as a dual-stack listener's address and port side by side).
+  const v4 = /^(?:::ffff:)?(\d+\.\d+\.\d+\.\d+):\d+$/i.exec(address);
+  return v4 ? v4[1] : address;
 }
 
 /**
