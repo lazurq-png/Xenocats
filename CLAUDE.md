@@ -446,7 +446,8 @@ This repository's `.claude/` directory is structured as follows:
 ├── docs/       — supporting process docs (workflow, task template, prompt
 │                 patterns, and working practices: the general sections of
 │                 this file, §§3, 5, 7, 10, 12–14) — not auto-loaded
-└── settings.example.json — inert template; no settings.json is defined here
+├── settings.json — deny rules and a database hook, held in every mode (hooks/)
+└── settings.example.json — inert template of allow rules
 ```
 
 There is no single validation command. Verification is the commands in the

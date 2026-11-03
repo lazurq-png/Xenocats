@@ -39,7 +39,7 @@ reviewing: a second build would write the same `.next` directory, and the load
 makes the timing-sensitive browser tests fail.
 
 Never use Bash to edit, create, move, or delete a file, and never to commit,
-stash, checkout, or reset. Never run SQL or `npm run db:*`: the development
+push, stash, checkout, or reset: you report, the implementer commits and pushes. Never run SQL or `npm run db:*`: the development
 database is shared, and only the tests' own schemas are for writing. If a fix is
 obvious, describe it — the implementer applies it. Your withheld Edit/Write
 tools are a guardrail; do not route around them.

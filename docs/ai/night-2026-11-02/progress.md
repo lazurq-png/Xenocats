@@ -286,3 +286,16 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** documentation only (no tests select); every moved section compared with its copy (the reviewer, line by line); every outside reference to a `CLAUDE.md` section number checked to still resolve.
 - **Reviewer:** approved; two Low (the new doc unlisted; a leftover heading), both fixed (D110).
 - **T18's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41573526298 (Nightrun at a8645d6).
+
+## T20 — A real `.claude/settings.json` (completed)
+
+- Branch `2026-11-02-t20-settings`, base ca6767e. Started 2026-11-03 04:48, completed 05:02.
+- **What the code does:**
+  - `.claude/settings.json` (new): deny rules, through the Bash tool, for force-pushing and deleting branches in their several spellings, `npm install`/`i`/`add`/`uninstall`/`update`, and `cat .env`; through the file tools, for reading or editing `.env`, `.env.local`, `.env.production`. A PreToolUse hook for the Bash and PowerShell tools.
+  - `.claude/hooks/guard-db.mjs` (new): refuses a command that seeds or resets when the URL it would use (inline, the environment's or `.env`'s) names a host outside the private ranges; `tests/unit/guard-db.test.ts` (new) tests it as functions and as the hook.
+  - `.claude/README.md`, `.claude/docs/ai-workflow.md`, the night-run skill's "Read this first" and `CLAUDE.md` §18: what is enforced, by which route, and what remains instruction; `.claude/agents/reviewer.md`: it never commits or pushes.
+- **What it brings:** a run with permissions bypassed can no longer force-push, delete a branch, change dependencies or read `.env` through the shell tool it uses most, nor seed or reset a database on the internet, by mistake or by a bad instruction: these hold even when no one is there to say no.
+- Decisions: D111–D116 (D116: the hook's false positive on commands that only quote the words).
+- **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; `tests/unit/guard-db.test.ts`: 6 passed; build: exit 0; no spec selected (`test:affected`); a dry-run push in the run's own form passed the rules, and `test -f .env` still works; the hook was seen refusing live, twice (D116). That the harness matches the deny patterns as documented is checked by reading only.
+- **Reviewer:** Request Changes (two Medium: PowerShell not covered, push forms missed; three Low), all acted on (D115); re-review: approved.
+- **T19's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41574133723 (Nightrun at ca6767e).

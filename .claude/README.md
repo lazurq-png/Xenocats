@@ -20,8 +20,10 @@ CLAUDE.md               Claude Code operating model — always loaded by the ext
 ├── docs/                 supporting human-readable process docs — workflow narrative,
 │                          a task-request template, ready-to-paste prompt patterns,
 │                          and working practices (CLAUDE.md's general sections)
-└── settings.example.json       copy to settings.json and adjust permissions/hooks
-                                 (not yet done here — settings.json does not exist)
+├── settings.json        deny rules (force-push, branch deletion, .env, npm install)
+│                        and a hook refusing db:seed/db:reset off the private network
+├── hooks/               the hooks settings.json runs (guard-db.mjs)
+└── settings.example.json       an inert template of allow rules, for another repo
 ```
 
 This repository has **no single validation entry point.** Verification is
@@ -85,9 +87,15 @@ is missing. It covers
 preflight, a branch per task merged onto a run branch and pushed as each one
 finishes, durable state under `docs/ai/night-<date>/`, forbidden operations, and
 stop conditions. It is invoked by the `/loop 20m` prompt in `docs/ai/README.md`
-rather than auto-loaded, so it costs nothing during ordinary supervised work. Unattended sessions run with permission prompts bypassed, and
-this repository has no `settings.json` deny rules or hooks, so its guardrails
-are honoured by instruction, not enforced by the harness.
+rather than auto-loaded, so it costs nothing during ordinary supervised work. Unattended sessions run with permission prompts bypassed. Most of its guardrails
+are honoured by instruction; `.claude/settings.json` enforces a few in every mode:
+its deny rules (through the Bash tool: no force-push or branch deletion, no
+`npm install`, `add`, `uninstall` or `update`, no `cat .env`; through the file
+tools: no reading or editing `.env`) and a PreToolUse hook
+(`.claude/hooks/guard-db.mjs`, for the Bash and PowerShell tools) that refuses
+`db:seed` and `db:reset` against a host outside the private ranges. The same
+operations by another route (the PowerShell tool, `head .env`) are held by
+instruction only.
 
 ### Code review
 
@@ -108,12 +116,12 @@ diff.
    those sections exist to require. (The project these files came from learned
    that the other way round too — a `validate` wrapper was removed and three
    documents went on citing it for weeks.)
-3. Copy `.claude/settings.example.json` to `.claude/settings.json` only if you
-   want to pre-approve specific commands/permissions; otherwise omit it and let
-   the extension prompt as usual. In a run started with permissions bypassed
-   its `allow` list has no effect, but its `deny` list still blocks: deny rules
-   hold in every permission mode. This repository has none, so `night-run`'s
-   forbidden operations are held by instruction alone.
+3. Adapt `.claude/settings.json`: its deny rules and its hook name this
+   repository's commands and database scripts. In a run started with permissions
+   bypassed an `allow` list has no effect, but `deny` rules and hooks still hold:
+   they are the guardrails that do not depend on instruction.
+   `settings.example.json` is an inert template of `allow` rules, should you want
+   to pre-approve commands.
 4. Trim `.claude/rules/*.md` and `.claude/docs/*.md` down to what the project
    actually needs — delete the domains that don't apply (e.g. `database.md` for
    a repo with no persistence layer). Five rules carry `paths:` globs naming this
