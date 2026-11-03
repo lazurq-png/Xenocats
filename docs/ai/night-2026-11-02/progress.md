@@ -2,6 +2,150 @@
 
 Append-only log of the night run of 2026-11-02; the morning report, once written, sits at the top.
 
+## Morning report
+
+### Goal
+
+- The plan's goal, verbatim: "Tuesday 18:00" → deadline 2026-11-03 18:00. The plan named the exploration kinds: speed on a weak machine (where a step of the simulation's cat loop goes, Q9 of the 2026-10-17 run), and security and quality.
+- Report started 2026-11-03 17:03, finished 19:21 (a usage-limit gap between; see Clock).
+- **What ended the run:** the human, back early, at 17:02 ("home early finish up current work and write the report"), about an hour before the goal time. The item in flight (E51) was finished through its gate and pushed; no item was started after.
+- In all: the plan's 22 tasks (T22 in part), then 51 exploration items, alternating the two kinds. 24 items changed code or tests; the other 27 are measurements and readings recorded in `decisions.md` (a change measured and not kept, or a check that found nothing to change), each with its own commit.
+- What it brought, in short: a crowded Survival step about a third faster (6,000 cats 2.7 → 1.76 ms; E35, D189) and, on a throttled browser, about 40 → 45 fps at 2,000 cats (E41); two security holes found and fixed (the login's open redirect, E8, Q12; per-address limits defeated by a proxy that writes ports, E32); a Cross-Origin-Opener-Policy (E12); CI checkouts that leave no token (E14); tests that no private page may be cached (E22) and that every page behind the login turns a visitor away (E30), among others (E10, E28, E42, E46); tools for the next speed work (E20's fingerprints, E47's line-level profiler).
+
+### Index
+
+| Task | Outcome | Branch | Base → tip | CI | What it brings |
+| ---- | ------- | ------ | ---------- | -- | -------------- |
+| T1 | completed | `2026-11-02-t1-verify-db-cert` | a207ca9 → 61c6fc7 | CI passed | on Vercel the app now refuses a database server whose certificate is not Neon's, so someone able to intercept the connection can no longer read or alter the data in transit; |
+| T2 | completed | `2026-11-02-t2-session-once` | 61c6fc7 → d3578ca | CI passed | the dashboard overview now checks the session against the database once per page instead of three times (plus the proxy's), so each overview load makes two fewer queries, and a revoked session is still refused on the… |
+| T3 | completed | `2026-11-02-t3-login-address-limit` | d3578ca → 74aaac6 | CI passed | one client address can no longer try password after password across many login names, nor lock name after name: on Vercel it gets 20 failed logins per 15 minutes in all. |
+| T4 | completed | `2026-11-02-t4-drop-image-url` | 74aaac6 → 6852499 | CI passed | the schema no longer carries a column nothing uses, so a reader of the database or a future query cannot mistake the course's leftover image paths for live data. |
+| T5 | completed | `2026-11-02-t5-unpaid-label` | 6852499 → 02d44a1 | CI passed | a user reading the dashboard no longer sees a Pending total that includes overdue invoices while the invoice list's Pending filter (not yet due) shows none of them; |
+| T6 | completed | `2026-11-02-t6-utc-timezone` | 02d44a1 → ffd90d0 | CI passed | on a database server not on UTC, an invoice made in the hours around midnight is no longer "due in 29 (or 31) days", and an invoice due today is no longer counted overdue (or not) by the server's clock rather than… |
+| T7 | completed | `2026-11-02-t7-run-plausibility` | ffd90d0 → ca4a668 | CI passed | a forged leaderboard run claiming far more cats sent home than could ever have come in its time is now refused by the server, while no run the game can play is (D34: the strongest run measured is a third to a fifth… |
+| T8 | completed | `2026-11-02-t8-coop-owners` | ca4a668 → d3cb6bc | CI passed | in co-op, player 2's toys, boxes, puddles and swatted cats now use his own passives, and his weapon report credits his fused weapons with their work; |
+| T9 | completed | `2026-11-02-t9-ci-concurrency` | d3cb6bc → 9bbc934 | CI passed | CI stops spending runners on commits a newer push replaced, catches unformatted files and a database-test step that silently tested nothing, and a release to production now says in its pull request which migrations… |
+| T10 | completed | `2026-11-02-t10-small-cleanups` | 9bbc934 → 00dd2b8 | CI passed | someone deploying off Vercel without a proxy header now learns at startup that the sign-up and login address limits have fallen back, instead of finding out from abuse; |
+| T11 | completed | `2026-11-02-t11-first-run-readme` | 00dd2b8 → dfc823f | CI passed | a new contributor can go from a clone to a running app, logged in, from the README alone, with a template for `.env` that names every setting; |
+| T12 | completed | `2026-11-02-t12-ci-more` | dfc823f → 1ab6978 | CI passed | a pull request that brings in a vulnerable dependency, or code CodeQL flags (injection, unsafe redirects and the like), now says so before it is merged; |
+| T13 | completed | `2026-11-02-t13-survival-clock` | 1ab6978 → 9d249f2 | CI passed | the Survival specs no longer depend on how busy the machine is: the run gets exactly the page time a test asks for, at a steady 60 frames a second, so a slow CI runner or a crowded local run cannot starve them, and a… |
+| T14 | completed | `2026-11-02-t14-unit-groups` | 9d249f2 → 890d1e3 | CI passed | a new unit test file runs in CI with no edit anywhere, a new folder of them too; |
+| T15 | completed | `2026-11-02-t15-cache-leaderboard` | 890d1e3 → ab2ca6d | CI passed | `/cats` no longer ranks every finished run for every visitor: the board is read from the database about once a minute, or at once after a save, and a visitor who is not signed in costs no board query at all; |
+| T16 | completed | `2026-11-02-t16-session-max-age` | ab2ca6d → 26c0663 | CI passed | a stolen session cookie now works for at most a week after its login, however often it is used, where before a cookie in use could last indefinitely and an idle one thirty days. |
+| T17 | completed | `2026-11-02-t17-csp-nonce` | 26c0663 → 61c45e6 | CI passed | script injected into a page (an attribute handler, a `<script>` in markup) no longer runs, where `'unsafe-inline'` let it: React's escaping is no longer the only defence against cross-site scripting. |
+| T18 | completed | `2026-11-02-t18-rules-paths` | 61c45e6 → a8645d6 | CI passed | a session carries only the rules for what it touches, instead of all seven (about 31 KB) every time: a task on the cats no longer brings the database and security rules into its context, and one on the schema still… |
+| T19 | completed | `2026-11-02-t19-shorter-claude-md` | a8645d6 → ca6767e | CI passed | `AGENTS.md` is now loaded into every Claude session as it was meant to be read, instead of relying on each session to open it; |
+| T20 | completed | `2026-11-02-t20-settings` | ca6767e → 88141ee | CI passed | a run with permissions bypassed can no longer force-push, delete a branch, change dependencies or read `.env` through the shell tool it uses most, nor seed or reset a database on the internet, by mistake or by a bad… |
+| T21 | completed | `2026-11-02-t21-verify-skill` | 88141ee → 723ffb5 | CI passed | one command, `/verify`, runs a change's checks in this repository's order with its rules (changed files only, the selector, never in parallel, the final state reported), instead of each session assembling them from §9. |
+| T22 | completed, in part (Q10) | `2026-11-02-t22-split-arena` | 723ffb5 → 88c44a5 | CI passed | the arsenal's table, rules and words, and the arena's configuration and model, can each be read and changed in a file of its own; |
+| E1 | completed | `2026-11-02-e1-grid-keys` | 88c44a5 → dc75dd8 | CI passed | each simulation step of a crowded run is 4–8% faster (D128), on any machine, with every result the same; |
+| E2 | completed | `2026-11-02-e2-backlog-lockout` | dc75dd8 → 64e365d | CI passed | the backlog no longer proposes work already done, and says plainly what a determined attacker can still do to a known name. |
+| E3 | completed | `2026-11-02-e3-frame-profile` | 64e365d → b460ded | CI passed | the next speed work aims where a crowded frame actually spends its time, and knows the render benchmark may be measuring a software canvas no player has. |
+| E4 | completed | `2026-11-02-e4-no-unused-locals` | b460ded → 2130b74 | CI passed | a refactor that leaves an import behind, as T22's first attempt did unseen, now fails the type check in the gate and in CI instead of staying in the code. |
+| E5 | completed | `2026-11-02-e5-walkcat-sqrt` | 2130b74 → 9fd5b2a | CI passed | a crowded simulation step is about 4% faster at 2,000 cats and 6% at 6,000 (D135), on top of E1's, with play the same. |
+| E6 | completed | `2026-11-02-e6-claude-ci-facts` | 9fd5b2a → 6b8fb47 | CI passed | an agent reading §9 to know what CI will check (and what it will not) reads what the workflows do now, not what they did yesterday. |
+| E7 | completed | `2026-11-02-e7-bringback-squared` | 6b8fb47 → bf9bb25 | CI passed | a crowded simulation step is another 5–6% faster at 2,000 and 6,000 cats (D138); |
+| E8 | completed | `2026-11-02-e8-callback-redirect-test` | bf9bb25 → fb2866b | CI passed | a link carrying `/login?callbackUrl=//evil.example/...` no longer makes the login try to send the visitor to that site (D140): it was one step from an open redirect, held back only by the browser's `pushState` rule,… |
+| E9 | completed | `2026-11-02-e9-gems-sqrt` | fb2866b → 3bcb5d9 | CI passed | a step is about 5% faster at 500 cats and 2–3% at 2,000, where many gems lie about (D143); |
+| E10 | completed | `2026-11-02-e10-instrumentation-test` | 3bcb5d9 → fa9b9b9 | CI passed | the warning that the login address limit is off (T10) can no longer be dropped by a refactor without a test failing, so an operator deploying behind no trusted proxy keeps being told. |
+| E11 | completed | `2026-11-02-e11-hypot-lure-flee` | fa9b9b9 → d9aafa8 | CI passed | the next speed change to how cats follow toys or flee can be measured, which the benchmark could not do before; |
+| E12 | completed | `2026-11-02-e12-opener-policy` | d9aafa8 → a22c179 | CI passed | a page of another site that opens this one (a popup, a link with a target) can no longer reach into its window or be reached from it, closing a route to cross-window leaks and to steering a visitor's other tab. |
+| E13 | completed | `2026-11-02-e13-gem-grid` | a22c179 → c2507a0 | CI passed | the next speed work skips a dead end (an index for the gems costs more than the scan it would replace) and starts from a current profile of where a crowded step goes. |
+| E14 | completed | `2026-11-02-e14-checkout-credentials` | c2507a0 → ff6f9c3 | CI passed | the code CI runs after checkout (npm packages' install scripts, the build, the tests, and the change under test itself) can no longer read the workflow's token from disk, which narrows what a compromised dependency… |
+| E15 | completed | `2026-11-02-e15-step-shapes` | ff6f9c3 → 77536f6 | CI passed | the next speed work need not look again at cat shapes, per-frame copies or off-screen drawing, and knows a line-level profile needs source maps; |
+| E16 | completed | `2026-11-02-e16-selector-bench` | 77536f6 → 3d6bab0 | CI passed | a change to the speed benchmarks no longer costs a run of every suite (E11's did: about six minutes for files no suite runs), so the next speed work can change its benchmark at the price of the benchmark alone. |
+| E17 | completed | `2026-11-02-e17-dense-grid` | 3d6bab0 → 7768d7f | CI passed | a crowded Survival step is 6–8% faster at every crowd size (2,000 cats about 0.93 → 0.86 ms), for the same game: seeded runs are unchanged. |
+| E18 | completed | `2026-11-02-e18-readme-benchmarks` | 7768d7f → d503de9 | CI passed | whoever takes up the speed work next (Q11, D157) finds how to measure it where the other checks are listed, not only by reading the test folders. |
+| E19 | completed | `2026-11-02-e19-separate-cell` | d503de9 → f902d94 | CI passed | a crowded Survival step 5–9% faster again on top of E17 (2,000 cats about 0.85 → 0.80 ms, 6,000 about 2.17 → 1.98), with seeded runs unchanged. |
+| E20 | completed | `2026-11-02-e20-run-fingerprint` | f902d94 → 82b9d09 | CI passed | the next speed change or refactor of the simulation can show in one command that it left the game as it was (the same three lines before and after), instead of a script written again each time, as E13, E17 and E19 did. |
+| E21 | completed | `2026-11-02-e21-within-lists` | 82b9d09 → 008ee79 | CI passed | the next speed work knows that E19's in-place read pays off only where a search reads a crowded cell for a few ids (as `separate` does), not for `within`'s small searches. |
+| E22 | completed | `2026-11-02-e22-private-cache` | 008ee79 → 4f4f877 | CI passed | a page behind the login made static, given a revalidation time, or sent a cache header in `next.config.ts` would let a CDN (Vercel's) keep one account's invoices and serve them to someone else; |
+| E23 | completed | `2026-11-02-e23-gem-grid-window` | 4f4f877 → c6e22bb | CI passed | E13's dead end is now settled with its one excuse removed, so no later speed work spends an item on an index for the gems. |
+| E24 | completed | `2026-11-02-e24-lint-rules` | c6e22bb → 632ede0 | CI passed | a later change (a human's or a night run's) that compares a value with itself, writes `==`, writes a condition whose result is fixed, a loop that cannot end or cannot repeat, or `${}` in a plain string now fails `npm… |
+| E25 | completed | `2026-11-02-e25-cat-gait` | 632ede0 → 7df6752 | CI passed | a crowded Survival step 3–11% faster again, most at the largest crowds (6,000 cats about 2.00 → 1.79 ms), with seeded runs unchanged: after E17, E19 and this, a 6,000-cat step is about a quarter faster than at E9. |
+| E26 | completed | `2026-11-02-e26-security-reading` | 7df6752 → c89945b | CI passed | the next run's security exploration starts from what this one has read, instead of reading it again; |
+| E27 | completed | `2026-11-02-e27-cat-immunity` | c89945b → 2eaa8e4 | CI passed | the next speed work knows the cached-field pattern of E25 pays only for what is read for every cat every step, not per hit. |
+| E28 | completed | `2026-11-02-e28-playwright-image` | 2eaa8e4 → cb1cc7c | CI passed | Dependabot's weekly update of Playwright, which moves the lockfile but not CI's image, now fails a unit test on its own pull request, saying what to change, instead of leaving CI's browser jobs on a mismatched… |
+| E29 | completed | `2026-11-02-e29-gem-scan` | cb1cc7c → 9ae43b5 | CI passed | a current profile of a crowded step after E25, and a third dead end on `dropGem` recorded (an early rejection costs more than it skips), so the scan is left as it is. |
+| E30 | completed | `2026-11-02-e30-signed-out-pages` | 9ae43b5 → e353a4c | CI passed | a gap in either lock on the pages behind the login (a page left out of the proxy's reach, or a page that stops checking its user where the proxy does not) now fails a test in both CI browser jobs, where before only… |
+| E31 | completed | `2026-11-02-e31-movecat-speed` | e353a4c → 036c53e | CI passed | one more candidate in `moveCat` ruled out by measurement. |
+| E32 | completed | `2026-11-02-e32-address-port` | 036c53e → a8a7680 | CI passed | behind a proxy that writes the client's port into `X-Forwarded-For` (Azure's Application Gateway does), each connection had counted as a new client, so the sign-up limit and the login lockout by address (T3) could… |
+| E33 | completed | `2026-11-02-e33-cat-soothes` | a8a7680 → 8ecb119 | CI passed | a late, crowded Survival step about 3% faster at 6,000 cats, where Purring Cats come in hundreds, with seeded runs unchanged. |
+| E34 | completed | `2026-11-02-e34-login-key-reading` | 8ecb119 → aaba75d | CI passed | after E32's fix to the address key, the rest of what the limits count is known to be sound; |
+| E35 | completed | `2026-11-02-e35-speed-record` | aaba75d → 7f46a77 | CI passed | one place that says what this run's speed work bought (a crowded step about a third less: 6,000 cats 2.7 → 1.76 ms), what was tried and dropped, and where the next speed task should start. |
+| E36 | completed | `2026-11-02-e36-backlog-ports` | 7f46a77 → e6bc313 | CI passed | the backlog, which the next plans are written from, matches what the address limit now does. |
+| E37 | completed | `2026-11-02-e37-one-keeper` | e6bc313 → c527f59 | CI passed | one more per-cat call ruled out by measurement. |
+| E38 | completed | `2026-11-02-e38-next-plan` | c527f59 → c4c4ea0 | CI passed | whoever writes the next plan has one list to choose from, instead of forty decisions to read. |
+| E39 | completed | `2026-11-02-e39-separate-measure` | c4c4ea0 → 86eed62 | CI passed | the next speed task knows where `separate`'s time goes (cells too large for its reach) and that the gain there changes the game, so it is a plan's decision. |
+| E40 | completed | `2026-11-02-e40-png-csp-reading` | 86eed62 → 8d765e2 | CI passed | the gap E30's test exposed is known to be harmless today, with the condition that would make it matter, so nobody needs to chase it, and someone adding such a route knows. |
+| E41 | completed | `2026-11-02-e41-frame-record` | 8d765e2 → c59d647 | CI passed | what the player of a crowded run gets from the speed work: with 2,000 cats on a throttled browser, about 10–14% more frames (about 40 → 45 fps) and fewer slow ones. |
+| E42 | completed | `2026-11-02-e42-dynamic-routes` | c59d647 → 7f22056 | CI passed | the one way E40's gap could become a hole (a new route that a path ending in `.png` reaches past the proxy and its security headers) now stops at a test with instructions, instead of shipping unnoticed. |
+| E43 | completed | `2026-11-02-e43-touched-set` | 7f22056 → 37c6070 | CI passed | a suspicion about the projectile step settled by counting, so no later item rewrites it for nothing. |
+| E44 | completed | `2026-11-02-e44-readme-proxy` | 37c6070 → 2b2b74f | CI passed | an operator deploying behind a CDN and a load balancer learns before going live that the per-address limits would then count everyone as one client, and how to avoid it. |
+| E45 | completed | `2026-11-02-e45-open-arrivals` | 2b2b74f → fbfb0e0 | CI passed | the arrivals ruled out as a cost of the step's own body, by measurement. |
+| E46 | completed | `2026-11-02-e46-missing-header` | fbfb0e0 → 36c5dd5 | CI passed | a proxy that does not set the header the app trusts (a misconfiguration that silently makes every client share one sign-up limit and one failed-login count) is now said in the server's log, where before only the case… |
+| E47 | completed | `2026-11-02-e47-step-lines` | 36c5dd5 → dc4055d | CI passed | the next speed task can see which lines a crowded step spends its time on, which no profile this run could show until now; |
+| E48 | completed | `2026-11-02-e48-readme-profile` | dc4055d → 045d794 | CI passed | the next speed task finds the line-level profiler where the other checks are listed. |
+| E49 | completed | `2026-11-02-e49-cell-refill` | 045d794 → 3f085d2 | CI passed | the next speed task has a known, sized gain to weigh (about 1.5% of a crowded step) and what it would cost to take. |
+| E50 | completed | `2026-11-02-e50-q15-additions` | 3f085d2 → 592dc62 | CI passed | the next plan's list of speed work is complete, and the run's records no longer claim an addition that was not made. |
+| E51 | completed | `2026-11-02-e51-profile-6000` | 592dc62 → 1c67002 | CI passed | the next speed task knows that for the largest crowds `separate` is a quarter of a step and growing fastest, so which of Q15's speed items to take first. |
+
+`git diff <base> <tip> -- . ':(exclude)docs/ai/'` shows a task's code. Every CI result above is the run of `Nightrun` at the task's tip, observed by the poll; its URL is in the task's entry or the next one's (E51's: https://github.com/lazurq-png/Xenocats/actions/runs/41670170408).
+
+### Questions
+
+Most consequential first (`questions.md` holds each in full).
+
+1. **Q4: apply migration 0013 to Neon before deploying T3.** Every login names `login_failures.last_attempt`; a deployment ahead of the migration fails every login.
+2. **Q5: apply migration 0014 to Neon** (it drops `customers.image_url`) once no deployment on Neon names the column.
+3. **Q9: everyone logs in again once when T16 deploys** (sessions from before it carry no login time). Accepted as the safer side; worth a line in the release notes.
+4. **Q1: check that a Vercel preview still reaches Neon** after T1's `verify-full`: nothing here can connect to Neon.
+5. **Q14: an email logs in only as it was stored, case and all** (E34): an authentication change and a migration; options and a recommendation in the question.
+6. **Q3: the login address limit is off without a trusted proxy** (T3): as built, with a startup warning (E10) and, since E46, a warning when the named header is missing on requests; the README (E44) now says what to set behind two proxies.
+7. **For a human to know, fixed:** Q12, the login's open redirect (E8); and E32, the address limits counting every connection as a new client behind a proxy that writes the client's port. Both reach production with the next merge.
+8. **Q2: check the certificate in `scripts/db.mjs` too** (a proposed task).
+9. **Q7: `engines.node` `>=24` or `24.x` on Vercel**, and **Q8: the lockfile does not repeat `engines`** (a human's `npm install --package-lock-only`).
+10. **Q10: split `createArena` and the view's drawing** (T22's rest), and **Q11: profile a crowded frame on a real weak machine** before more drawing work.
+11. **Q15 and its additions (E38, E50): the next plan's proposed tasks in one list**, with what this run read and found sound so the next one starts past it. For speed, start with `node tests/bench/profile-step.mjs`; for large crowds `separate` comes first (D206).
+12. Q6 and Q13 are answered (E2; E16).
+
+No provisional branches: every item was merged.
+
+### Clock
+
+- Start: 2026-11-02 22:34. Report started 2026-11-03 17:03, before the deadline (the human's call), so no task ran past it; the report itself was finished after a gap, at 19:21.
+- Gaps, each the account's usage limit, each recorded: about 01:20–04:21 (in T17), 05:41–09:21 (in E6), 11:25–14:21 (in E24), and 17:05–19:21 (while this report was being written). Nothing from before a gap was trusted: outputs were read from files, a cut-off reviewer was resumed, CI polls read from their output.
+- No waits for a human's dev server; no leftover test processes found or ended; no job stopped for low memory. One command of the run's own hung (E32: a stray `cat > /tmp/ab.test.ts` reading no input) and was stopped with its tool; the empty file it made outside the repository was removed (recorded in E32's entry).
+
+### State
+
+- Run branch `Nightrun` at this report's commit; every task branch and `Nightrun` pushed to `origin`. Nothing uncommitted. `test-results/profile-step/` (E47's tool output, ignored by git) holds a bundle and a profile.
+- The build was in the gate throughout.
+- Lint: 0 errors, 0 warnings, as at the baseline (with six correctness rules more since E24).
+- Tests, baseline → last full-suite point (E46): `npm test` 1113 passed, 42 skipped → 1169 passed, 52 skipped (1170 after E46's last fix); database tests 42 → 52 passed; browser tests 162 → 169 passed, 2 skipped, under `next dev` and under `next start`.
+
+### What nothing has checked
+
+- **Neon**, the production database: no change was exercised against it (a run never touches it). Migrations 0013 and 0014 are not applied there (Q4, Q5); T1's certificate check on Vercel is unchecked (Q1).
+- **Nobody looked at the pages.** UI changes were tested in a browser, not seen: T5's "Unpaid" wording, T17's policy on every page, E12's opener policy (a link from another site opening this one).
+- **CI jobs that run only on pull requests** (*migrations*, *dependency-review*) and CodeQL have not yet run a checkout with E14's `persist-credentials: false`: checked by reading only until the first pull request.
+- **E32 and E46 behind a real proxy:** the port handling and the missing-header warning are unit-tested only; no request went through Azure's gateway or a CDN.
+- **Speed on a real weak machine:** every figure is this PC's, the render ones under headless Chromium's CPU throttling with software raster (Q11).
+- What each task checked by reading only is in its entry's verification and its D-entries (for instance D148, D176 and D188, the security readings).
+
+### Suggested rule changes
+
+From this run's evidence only; the run edits none of these files.
+
+1. **`.claude/skills/night-run/SKILL.md` §2 step 4, an entry's times.** Proposed: "Copy the start time from the item's heading (`grep`), and take the completion time from `date` as the entry is written; never from memory." Evidence: E18's, E22's and E25's entries were corrected in the next one (E19, E23, E26); E21's and E23's were caught before commit. A tool would do better: a script that writes an entry's first line from the heading and `date`.
+2. **The same skill, §2 step 1, a "shown able to fail" run.** Proposed: "A planted change counts only once its diff is seen; a mutation that did not apply proves nothing." Evidence: in E30 a `sed` that matched nothing left the code unchanged and the test "passed" against it; the missing diff caught it and the mutation was redone. In E32 and E46 scripted edits lost their backslashes (caught by `tsc`). Prefer the file tools for text with regular expressions.
+3. **`.claude/docs/working-practices.md`, shell commands.** Proposed: "A Bash command must not wait on standard input." Evidence: E32's stray `cat > /tmp/…` hung its command and wrote outside the repository.
+4. **`ci-poll.mjs` should wait for the CI workflow by name** (D66): it takes the first completed run on the branch for the commit, whichever workflow it is. Safe today only because CodeQL does not run on `Nightrun`.
+5. **Keep a gate's whole test output** (D31: a failure in T6's gate was lost because only summary lines were kept; done from T7 on, worth writing into §2 step 1).
+6. **`CLAUDE.md` under 200 lines** needs §9's environment facts moved out (D107), and **`playwright.config.ts`'s `--turbopack`** is redundant (D55): both for a plan.
+7. **The database hook's false positive** (D116): it refuses a command that only quotes `db:seed` beside `POSTGRES_URL=`. Accepted as the safer side; a note in the hook's comment would save the next run a rewrite.
+8. **Pin GitHub Actions to commit SHAs**, with Dependabot keeping them current (a proposal, not from a failure).
+
 ## Run start
 
 - Goal: "Tuesday 18:00" → Deadline: 2026-11-03 18:00
