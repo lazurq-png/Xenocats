@@ -5,7 +5,7 @@
 import { type Modifiers, type PassiveId, type WeaponId, FUSIONS } from './arsenal';
 import type { AttackShape, MegaPattern } from './cat-attacks';
 import type { Vec } from './effects';
-import type { VarietyId } from './varieties';
+import type { Gait, VarietyId } from './varieties';
 
 export type HeroEffect =
   | { kind: 'freeze' }
@@ -111,6 +111,8 @@ export type ArenaCat = {
   id: number;
   /** A variety (varieties.ts), or null for one of the twenty xenocat types. */
   variety: VarietyId | null;
+  /** How it moves: its variety's gait, a xenocat's 'walk'. Kept, not looked up each step. */
+  gait: Gait;
   /** For a xenocat, its index into the run's types; -1 for a variety. */
   type: number;
   /** Touched within this of its centre, px. */

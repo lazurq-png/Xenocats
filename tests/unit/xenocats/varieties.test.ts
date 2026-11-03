@@ -321,6 +321,22 @@ describe('the schedule', () => {
     );
   });
 
+  it("keeps on each cat the gait of its variety ('walk' for a xenocat), every step", () => {
+    // The run below, in which every variety comes: the gait a cat keeps is its
+    // variety's, read once when it came (arena.ts), instead of looked up every step.
+    const a = arena({ stepMs: 50 }, 3);
+    const gaits = new Set<string>();
+    stepTo(a, 260_000, () => {
+      a.step(still);
+      for (const cat of a.cats()) {
+        const want = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
+        if (cat.gait !== want) expect(cat.gait, cat.variety ?? 'a xenocat').toBe(want);
+        gaits.add(cat.gait);
+      }
+    });
+    expect([...gaits].sort()).toEqual(['charge', 'sit', 'snipe', 'walk', 'zoom']);
+  }, 60_000);
+
   it('in a seeded run, each variety first appears in its window, and not before', () => {
     const a = arena({ stepMs: 50 }, 3);
     const first = new Map<string, number>();

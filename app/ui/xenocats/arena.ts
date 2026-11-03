@@ -501,6 +501,7 @@ export function createArena(options: {
     const type = random.int(0, types.length - 1);
     const cat = newCat(at);
     cat.variety = null;
+    cat.gait = 'walk';
     cat.type = type;
     cat.radius = config.cats.radius;
     cat.speed = byType(type, config.cats.speed, 7);
@@ -516,6 +517,7 @@ export function createArena(options: {
     const variety = VARIETIES[id];
     const cat = newCat(at);
     cat.variety = id;
+    cat.gait = variety.gait;
     cat.type = -1;
     cat.radius = variety.radius;
     cat.speed = variety.speed;
@@ -573,7 +575,7 @@ export function createArena(options: {
     const dy = cat.y - cam.y;
     const limit = far + cat.radius;
     if (dx * dx + dy * dy <= limit * limit) return;
-    const sits = cat.variety !== null && VARIETIES[cat.variety].gait === 'sit';
+    const sits = cat.gait === 'sit';
     const at = sits ? onScreen(200) : offScreen(random.next() * 2 * Math.PI, cat.radius);
     cat.x = at.x;
     cat.y = at.y;
@@ -1037,7 +1039,7 @@ export function createArena(options: {
     // Not Math.hypot, which guards against an overflow no arena distance comes near,
     // and is several times slower: this runs for every cat, every step.
     const d = Math.sqrt(dx * dx + dy * dy) || 1;
-    const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
+    const gait = cat.gait;
     if (gait === 'sit') return;
     if (cat.elite && eliteAttacks(cat, target, d)) return;
     if (cat.variety === 'mega' && megaAttacks(cat, target, d)) return;
@@ -1106,7 +1108,7 @@ export function createArena(options: {
         time < cat.stunUntil ||
         time < cat.flungUntil ||
         time < cat.dashUntil ||
-        (cat.variety !== null && VARIETIES[cat.variety].gait === 'sit')
+        cat.gait === 'sit'
       ) {
         continue;
       }
