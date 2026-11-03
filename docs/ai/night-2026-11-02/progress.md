@@ -821,3 +821,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed task can see which lines a crowded step spends its time on, which no profile this run could show until now; and `decisions.md` records what it shows today (D202). Decisions: D202.
 - **Verification:** prettier 0; lint 0 on it (and the tree, 0 warnings); the tool run: 1,949 cats, 0.706 ms a step, the tables printed (D202); its output ignored by git (`git check-ignore`). `tests/bench/` selects nothing (E16). Reviewer: none, a tool run on demand (D202).
 - **Previous item's CI:** E46 (`36c5dd5`) pending at this entry; its outcome goes in E48's entry.
+
+## E48 — started 16:42: the README names the step profiler (kind: security and quality)
+
+## E48 — the README names the step profiler (completed)
+
+- Branch `2026-11-02-e48-readme-profile`, base `dc4055d`; started 16:42, completed 16:42.
+- **What the code does:** nothing changes in the code. `README.md`'s benchmark row names `node tests/bench/profile-step.mjs` (E47).
+- **What it brings:** the next speed task finds the line-level profiler where the other checks are listed. Decisions: D203.
+- **Verification:** the command as written was run in E47 (the tables printed). Markdown only: prettier does not check it; `test:affected` selects nothing. Reviewer: none, a one-line documentation change.
+- **Previous item's CI:** E46 (`36c5dd5`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41665694030; E47 (`dc4055d`) pending at this entry; its outcome goes in E49's entry.
