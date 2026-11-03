@@ -567,3 +567,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** a page behind the login made static, given a revalidation time, or sent a cache header in `next.config.ts` would let a CDN (Vercel's) keep one account's invoices and serve them to someone else; CI's *build* job (`next start`) now fails on it. Before, only the CSV export's header was tested. Decisions: D169–D170.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0. Shown able to fail: with a cacheable static file in its list (under `next dev`), and with a `Cache-Control: public, max-age=3600` for `/dashboard/settings` planted in `next.config.ts`, built and run under `next start` (`Received: "public, max-age=3600"`); both put back byte for byte, and rebuilt. `test:affected --base Nightrun`: unit, no test file; e2e `security-headers.spec.ts`; on the final state, build 0, the spec under `next dev` 10 passed, under `E2E_SERVER=start` 10 passed. Reviewer: approved; two Low findings acted on (D170), the spec rerun on both servers after.
 - **Previous items' CI:** E20 (`82b9d09`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41615589626; E21 (`008ee79`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41616345032.
+
+## E23 — started 11:14: the gem grid again, now the grid has its window (kind: speed)
+
+## E23 — the gem grid again, now the grid has its window, measured (completed)
+
+- Branch `2026-11-02-e23-gem-grid-window`, base `4f4f877`; started 11:14, completed 11:15.
+- **What the code does:** nothing changes in the code: the change this item measured made the step slower again and was not kept (D171).
+- **What it brings:** E13's dead end is now settled with its one excuse removed, so no later speed work spends an item on an index for the gems. Decisions: D171.
+- **Verification:** with the change, E20's fingerprints unchanged (`0f741d43bd8015d9`, `0cfdc9b1adbc2ecb`, `ab3b9f378e0e8819`); three interleaved timing pairs of the step benchmark, slower at every size (D171). `git diff 4f4f877 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **A correction to E22's entry:** it says E22 started at 11:05; its heading, written when it started, says 11:06, which is right.
+- **Previous item's CI:** E22 (`4f4f877`) pending at this entry; its outcome goes in E24's entry.
