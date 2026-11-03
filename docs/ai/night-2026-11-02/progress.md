@@ -681,3 +681,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** a late, crowded Survival step about 3% faster at 6,000 cats, where Purring Cats come in hundreds, with seeded runs unchanged. Decisions: D186–D187.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; E20's fingerprints unchanged; the step benchmark, three interleaved pairs (D186); the extended test shown able to fail (D186). `test:affected --base Nightrun`: unit `vitest related` over the three files → 10 files, 602 passed, 52 skipped (again after D187's type); the cats project 717 passed (717); build 0; e2e 5 specs → 56 passed, 2 skipped. Reviewer: approved, no findings; its optional hardening taken (D187).
 - **Previous item's CI:** E32 (`a8a7680`) pending at this entry; its outcome goes in E34's entry.
+
+## E34 — started 15:22: the login limits' keys, read; email case parked as Q14 (kind: security and quality)
+
+## E34 — the login limits' keys, read; email case parked as Q14 (completed)
+
+- Branch `2026-11-02-e34-login-key-reading`, base `8ecb119`; started 15:22, completed 15:22.
+- **What the code does:** nothing changes in the code. `decisions.md` records that the login limits' other keys hold (the trusted header's name, the per-name key: no spelling of a login escapes its account's lock; D188); `questions.md` asks Q14: an email logs in only as stored, case and all.
+- **What it brings:** after E32's fix to the address key, the rest of what the limits count is known to be sound; and a human can decide Q14 (a sign-in quirk, and its migration) with the options laid out. Decisions: D188; Q14.
+- **Verification:** reading only (the code and the test lines named in D188). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E32 (`a8a7680`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41652083696; E33 (`8ecb119`) pending at this entry; its outcome goes in E35's entry.

@@ -59,3 +59,7 @@ For a human to know: before E8, a link to `/login?callbackUrl=//evil.example/...
 ## Q13, closed (E16)
 
 E16 made the selector select nothing for `tests/bench/` and `vitest.bench.config.mts`, with a test (D158). Nothing left for a plan.
+
+## Q14 — An email logs in only as it was stored, case and all (E34)
+
+`findUser` (`app/lib/credentials.ts`) looks an email up with `email = ${login}`, so a user who types `User@Example.com` for an account stored as `user@example.com` is told the credentials are invalid; a username is looked up case-insensitively. The lockout is not affected (D188). **Options:** (a) leave it (accounts made by sign-up have usernames; emails are the seeded and older accounts only); (b) look emails up by `lower(email) = lower(login)`, after checking no two stored emails differ only by case (on Neon too), with a unique index on `lower(email)` in a migration so none can; (c) lower-case emails when stored, a migration rewriting existing rows. **Recommendation:** (b), with the check first, as a planned task: it is an authentication change and a migration. Nothing was built.
