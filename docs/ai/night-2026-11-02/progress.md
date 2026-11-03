@@ -350,3 +350,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - Decisions: D130.
 - **Verification:** documentation only: no tests select; read against `app/lib/login-limit.ts`, `credentials.ts` and T3's decisions (D8–D18). No reviewer (D130).
 - **E1's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41577223422 (Nightrun at dc75dd8).
+
+## E3 — started 05:20: where a crowded frame goes in the browser (kind: speed)
+
+## E3 — where a crowded frame goes in the browser (completed)
+
+- Branch `2026-11-02-e3-frame-profile`, base 64e365d. Started 2026-11-03 05:20, completed 05:28.
+- **What the code does:** nothing in the app: a measurement, recorded (D131, D132) and turned into a proposed next speed task (Q11).
+- **What it brings:** the next speed work aims where a crowded frame actually spends its time, and knows the render benchmark may be measuring a software canvas no player has.
+- Decisions: D131–D132. Questions: Q11.
+- **Verification:** the profiles themselves (D131). The two throwaway servers ran under `timeout` on ports 3201 and 3202 and ended by themselves (checked: no `next` process on either left). No tests select a documentation change.
+- **E2's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41577753007 (Nightrun at 64e365d).

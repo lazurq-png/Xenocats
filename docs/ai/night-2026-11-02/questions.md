@@ -43,3 +43,7 @@ T16 signs out any session made before it (its token has no login time; D92), so 
 ## Q10 — Proposed task: split `createArena` and the view's drawing (T22)
 
 T22 moved what stands outside the two closures; `createArena` is still about 3,000 lines (spawning, weapons, collision, the step) and `arena-view.tsx`'s `draw` about 470. Splitting them means turning the closure's shared state into an object the parts take: a rewrite. Recommendation: a supervised task, done one concern at a time (spawning first: `spawnCat`, `spawnEvents`, the arrivals), with the arena's tests and a seeded run's full state compared before and after each; the drawing only with someone to look at the canvas. Meanwhile: nothing.
+
+## Q11 — Where a crowded frame goes (E1, E3; for the next speed task)
+
+Profiled tonight: a crowded simulation step (E1, D127) and a crowded frame in headless Chromium with ×4 CPU throttling (E3, D131). Over half the frame is the browser's own work, likely software raster of the canvas, which a GPU would change; of the JavaScript, the simulation is about twice the drawing. E1 made the step 4–8% faster (the grid's keys). **Recommendation:** profile one crowded run on a real weak machine with Chrome's Performance panel, headed, GPU on, before the next drawing change; if the simulation dominates there too, `separate`, `walkCat` and `moveCat` are where its time goes.
