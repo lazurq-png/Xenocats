@@ -516,3 +516,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** a crowded Survival step is 6–8% faster at every crowd size (2,000 cats about 0.93 → 0.86 ms), for the same game: seeded runs are unchanged. The largest single gain of the run's speed work. Decisions: D160–D162.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; seeded fingerprints old against new, three runs, identical (D161); the step benchmark, three interleaved pairs (D161). `test:affected --base Nightrun`: unit `vitest related` over the three files → 10 files, 600 passed, 52 skipped (on the final test); the cats project 715 passed (715); build 0; e2e 5 specs (benchmark, leaderboard, phone, security-headers, survival) → 55 passed, 2 skipped. The grid test shown able to fail by three planted bugs (D162). Reviewer: approved; its two Low findings acted on (D162); after that change (the test file only) the unit selection and the cats project were rerun, passing as above; the build and specs read no test file.
 - **Previous items' CI:** E16 (`3d6bab0`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41611939580.
+
+## E18 — started 10:47: the README names the speed benchmarks (kind: security and quality)
+
+## E18 — the README names the speed benchmarks (completed)
+
+- Branch `2026-11-02-e18-readme-benchmarks`, base `7768d7f`; started 10:49, completed 10:49.
+- **What the code does:** `README.md`'s Checks table gains a row for the two speed benchmarks, run by hand and never in CI: the Survival step (`npx vitest run -c vitest.bench.config.mts`) and its drawing in throttled Chromium (`BENCH=1 E2E_NO_CAT_DEPS=1 npx playwright test tests/e2e/benchmark.spec.ts`). No code changes.
+- **What it brings:** whoever takes up the speed work next (Q11, D157) finds how to measure it where the other checks are listed, not only by reading the test folders. Decisions: D163.
+- **Verification:** both commands run as the README now writes them: the step benchmark 2 passed; the render benchmark 3 passed (48.1 s). `test:affected --base Nightrun` selects nothing (a Markdown file; prettier does not check Markdown). Reviewer: none, a one-line documentation change.
+- **Previous item's CI:** E17 (`7768d7f`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41613112778.
