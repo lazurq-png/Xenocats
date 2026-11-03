@@ -16,11 +16,18 @@ None open.
 
 ### Login lockout: what it does not cover
 
-`app/lib/login-limit.ts` locks an email after repeated failures. Not built:
+`app/lib/login-limit.ts` locks a login name after repeated failures, and (since
+the night run of 2026-11-02) a client address after 20 across all names, where a
+trusted proxy names the address; spent rows are pruned. Still not covered:
 
-- a limit per client address, so one source cannot try many emails;
-- pruning `login_failures` rows of emails that never log in (an attacker adds
-  one row per address they try).
+- **Many addresses against one name.** The per-name lock is what stops guessing,
+  so anyone with enough addresses can keep a known name locked. Options: a
+  growing delay instead of a hard lock, or a lock the account's owner can clear
+  (an emailed link: no email is sent today).
+- **One address against a few names.** Within its 20, one address can still lock
+  four names (5 each) every 15 minutes.
+- **No trusted proxy.** Off Vercel without `TRUSTED_PROXY_HEADER` the address
+  limit is off (a startup warning says so).
 
 ### An index for the searches
 

@@ -339,3 +339,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D128); selection: `vitest related` → 10 files, 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped. After the review, a comment's wording only; the grid tests rerun: 2 passed.
 - **Reviewer:** approved, no findings; its note on the comment's range applied.
 - **T22's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41576513827 (Nightrun at 88c44a5).
+
+## E2 — started 05:18: the backlog's login-lockout entry, after T3 (kind: security and quality)
+
+## E2 — the backlog's login-lockout entry, after T3 (completed)
+
+- Branch `2026-11-02-e2-backlog-lockout`, base dc75dd8. Started 2026-11-03 05:18, completed 05:22. (E1's entry above says it completed at 05:19; the clock read 05:17.)
+- **What the code does:** `docs/backlog.md`: "Login lockout: what it does not cover" names what T3 built and what still is not covered (many addresses against one name, one address against four, no proxy header).
+- **What it brings:** the backlog no longer proposes work already done, and says plainly what a determined attacker can still do to a known name.
+- Decisions: D130.
+- **Verification:** documentation only: no tests select; read against `app/lib/login-limit.ts`, `credentials.ts` and T3's decisions (D8–D18). No reviewer (D130).
+- **E1's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41577223422 (Nightrun at dc75dd8).
