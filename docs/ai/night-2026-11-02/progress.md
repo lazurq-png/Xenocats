@@ -496,3 +496,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed work need not look again at cat shapes, per-frame copies or off-screen drawing, and knows a line-level profile needs source maps; the remaining gain is structural, for a plan (D157). Decisions: D156–D157.
 - **Verification:** reading only, and the listing of every assigned cat field against what creation sets (no field outside it). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E13 (`c2507a0`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41609614907; E14 (`ff6f9c3`) pending at this entry; its outcome goes in E16's entry.
+
+## E16 — started 10:27: the test selector skips the on-demand benchmarks (kind: security and quality)
+
+## E16 — the test selector skips the on-demand benchmarks (completed)
+
+- Branch `2026-11-02-e16-selector-bench`, base `77536f6`; started 10:27, completed 10:32.
+- **What the code does:** `scripts/affected-tests.mjs` (`npm run test:affected`) counts `tests/bench/` and `vitest.bench.config.mts` among the changes that need no test run, beside the artwork scripts; `tests/unit/affected-tests.test.ts` checks that a change to either selects no unit test and no spec.
+- **What it brings:** a change to the speed benchmarks no longer costs a run of every suite (E11's did: about six minutes for files no suite runs), so the next speed work can change its benchmark at the price of the benchmark alone. Decisions: D158–D159; it answers Q13.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; the selector's tests 41 passed (41), the new one shown able to fail (the entries removed for one run: 1 failed, 40 passed; restored, no diff). The selector printed `FULL` for itself (§2.1), so the full suites ran: `npm test` 57 files passed, 1 skipped; 1161 passed, 52 skipped (E12: 1160, the one more is the new test); database tests 52 passed (52); build 0; `test:e2e` 167 passed, 2 skipped; `E2E_SERVER=start` 167 passed, 2 skipped (as at E12). Reviewer: approved, no findings (D159).
+- **Previous items' CI:** E14 (`ff6f9c3`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41610335444; E15 (`77536f6`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41611061607.
