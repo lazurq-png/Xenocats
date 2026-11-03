@@ -620,3 +620,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed work knows the cached-field pattern of E25 pays only for what is read for every cat every step, not per hit. Decisions: D178.
 - **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs of the step benchmark, no gain at 500 or 6,000 cats (D178). `git diff c89945b -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous item's CI:** E25 (`7df6752`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41644987876; E26 (`c89945b`) pending at this entry; its outcome goes in E28's entry.
+
+## E28 — started 14:42: a test that CI's Playwright image matches the locked Playwright (kind: security and quality)
+
+## E28 — a test that CI's Playwright image matches the locked Playwright (completed)
+
+- Branch `2026-11-02-e28-playwright-image`, base `2eaa8e4`; started 14:42, completed 14:43.
+- **What the code does:** `tests/unit/ci-playwright-image.test.ts` (new) checks that every Playwright container image named in `.github/workflows/ci.yml` has the tag of the `@playwright/test` version locked in `package-lock.json`, and says which tag to move when not.
+- **What it brings:** Dependabot's weekly update of Playwright, which moves the lockfile but not CI's image, now fails a unit test on its own pull request, saying what to change, instead of leaving CI's browser jobs on a mismatched browser image. Decisions: D179.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0; the test 1 passed, and shown able to fail (D179); `node scripts/unit-projects.mjs`: 59 files, each in one project (dashboard 23). `test:affected --base Nightrun`: unit `vitest related tests/unit/ci-playwright-image.test.ts` → 1 passed (1); e2e 0 specs. Reviewer: none, a test-only change (D179).
+- **Previous items' CI:** E26 (`c89945b`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41645822623; E27 (`2eaa8e4`) pending at this entry; its outcome goes in E29's entry.
