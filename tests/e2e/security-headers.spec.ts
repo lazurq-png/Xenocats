@@ -112,3 +112,49 @@ test('the policy blocks an outside image, and the watcher above sees it', async 
   });
   await expect.poll(() => violations.join('\n')).toContain('CSP violation: img-src');
 });
+
+// The policy's scripts are allowed by a nonce, new on every request (proxy.ts,
+// app/lib/csp.ts), not by 'unsafe-inline': every script the page itself sends
+// carries it, and one injected without it does not run.
+test('scripts run by a nonce of their own, new on every request, on every script the page sends', async ({
+  request,
+}) => {
+  const nonceOf = (csp: string) => /'nonce-([A-Za-z0-9+/=]+)'/.exec(csp)?.[1];
+  const seen = new Set<string>();
+  for (const path of ['/', '/login', '/cats', '/cats/survival']) {
+    const response = await request.get(path);
+    const csp = response.headers()['content-security-policy'] ?? '';
+    const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src ')) ?? '';
+    expect(scriptSrc, path).toContain("'strict-dynamic'");
+    expect(scriptSrc, path).not.toContain("'unsafe-inline'");
+    const nonce = nonceOf(csp);
+    expect(nonce, path).toBeTruthy();
+    seen.add(nonce!);
+    // Every <script> in the page, inline or not, carries this response's nonce.
+    const html = await response.text();
+    const scripts = html.match(/<script\b[^>]*>/g) ?? [];
+    expect(scripts.length, path).toBeGreaterThan(0);
+    for (const tag of scripts) expect(tag, path).toContain(`nonce="${nonce}"`);
+  }
+  // A new nonce each time.
+  expect(seen.size).toBe(4);
+});
+
+// What an injection looks like: markup with a script in an attribute. Without
+// 'unsafe-inline' it does not run. ('strict-dynamic' does let a script that page code
+// creates with createElement run, by design: that is code already running.)
+test('an injected inline handler does not run, and the watcher above sees it', async ({ page }) => {
+  const violations = await watchForViolations(page);
+  await page.goto('/login');
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<img src="/no-such-image.png" onerror="window.__injected = true">'
+    );
+  });
+  await expect.poll(() => violations.join(' ')).toMatch(/CSP violation: script-src/);
+  expect(
+    await page.evaluate(() => (window as { __injected?: boolean }).__injected)
+  ).toBeUndefined();
+});

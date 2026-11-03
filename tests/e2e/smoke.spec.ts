@@ -51,5 +51,6 @@ for (const [width, height] of [
 
 test('the dashboard sends a visitor without a session to the login page', async ({ page }) => {
   await page.goto('/dashboard');
-  await expect(page).toHaveURL(/\/login/);
+  // Back to where they were going once they log in.
+  await expect(page).toHaveURL(/\/login\?callbackUrl=.*%2Fdashboard/);
 });

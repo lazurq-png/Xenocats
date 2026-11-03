@@ -245,3 +245,18 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `auth.config.ts` changed; on the final state): prettier, lint (0 errors, 0 warnings), tsc: clean; `npm test`: 54 files passed, 1 skipped; 1,143 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each (every logged-in spec signs in afresh, so its token has a login time). (a)–(c) checked by command; that Auth.js re-issues the cookie on use and clears it on `null` is checked by reading `@auth/core` (the reviewer's).
 - **Reviewer:** approved, one Low (the grace week for old tokens let a stolen pre-deploy cookie live 30 days and outlive a sign-out), fixed (D92); re-review: approved.
 - **T15's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41550169634 (Nightrun at ab2ca6d).
+
+## T17 — A Content-Security-Policy with a nonce (completed)
+
+- Branch `2026-11-02-t17-csp-nonce`, base 26c0663. Started 2026-11-03 01:16, completed 04:34. **Gap:** the account's usage limit stopped the run from about 01:20 to 04:21; the task was in flight (uncommitted), and was resumed from its notes, every check re-run.
+- **What the code does:**
+  - `app/lib/csp.ts` (new): the policy, and a fresh 128-bit nonce; `script-src 'self' 'nonce-…' 'strict-dynamic'`, no `'unsafe-inline'` for scripts; `next dev` keeps `'unsafe-eval'` and `ws:`/`wss:`.
+  - `proxy.ts`: builds the policy for each request and puts it on the response and on the request Next renders from (which puts the nonce on its scripts); re-asks `authorized` and redirects to the login as next-auth would (D97).
+  - `app/layout.tsx`: every page renders per request (`connection()`), so every page gets the nonce.
+  - `next.config.ts`: keeps the other security headers; the CSP is gone from it.
+  - Tests: `tests/unit/csp.test.ts` (new); `security-headers.spec.ts`: every page's scripts carry that response's nonce, new each time, and an injected inline handler is blocked; `smoke.spec.ts`: the login redirect keeps its `callbackUrl`.
+- **What it brings:** script injected into a page (an attribute handler, a `<script>` in markup) no longer runs, where `'unsafe-inline'` let it: React's escaping is no longer the only defence against cross-site scripting.
+- Decisions: D93–D100.
+- **Verification** (full-suite point: the root layout and `proxy.ts` changed; on the final state): prettier, lint (0 errors, 0 warnings), tsc: clean; `npm test`: 55 files passed, 1 skipped; 1,147 passed, 52 skipped; database tests: 52 passed (before the last, proxy-only, edit); build: exit 0, only the icon and the global error page prerendered; e2e under `next dev`: 165 passed, 2 skipped; under `next start`: 165 passed, 2 skipped. (a)–(e) checked by command.
+- **Reviewer:** approved; two Low (a re-check stricter than next-auth's; no CSP on responses the matcher skips), acted on (D100).
+- **T16's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41551587948 (Nightrun at 26c0663).
