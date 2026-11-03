@@ -422,3 +422,7 @@ Numbered non-obvious choices, with their reasons.
 ## E48 — the README names the step profiler (kind: security and quality)
 
 - **D203** E47's profiler (`tests/bench/profile-step.mjs`) was named only in its own file and this run's records; the README's benchmark row (E18, E20), where the checks are listed, now names it beside the step benchmark and the fingerprints. Documentation only.
+
+## E49 — whether emptying a cell list costs its refill, measured (kind: speed)
+
+- **D204** E47's profile shows the grid's `insert` (`list.push`) and `clear` (`list.length = 0` on every list used) at about 5% of a crowded step. The hypothesis: emptying a JavaScript array with `length = 0` gives up its storage, so every cell list grows again (four or five reallocations to some 18 ids) every step. A micro-benchmark (400 lists of 18 ids, refilled 20,000 times; same contents both ways): emptied with `length = 0`, 65.2–65.9 µs a refill; kept with a count of their own (an `Int32Array`, the lists never shrunk), 30.7–30.9 µs. So the cost is real, about 4.8 ns an insert. Scaled to the arena (some 2,000 inserts a step at 2,000 cats, both grids), about 10 µs of a 0.71 ms step: 1.4%, near 1.7% at 6,000 cats. Not built here: every reader of a cell (`query`, `cellAt` for `separate`, the tests) would then read a list with its count instead of `length`, a change of the grid's contract for under 2%, an hour before the run's end. Added to Q15's speed item for the next plan, with the numbers.

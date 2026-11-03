@@ -831,3 +831,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed task finds the line-level profiler where the other checks are listed. Decisions: D203.
 - **Verification:** the command as written was run in E47 (the tables printed). Markdown only: prettier does not check it; `test:affected` selects nothing. Reviewer: none, a one-line documentation change.
 - **Previous item's CI:** E46 (`36c5dd5`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41665694030; E47 (`dc4055d`) pending at this entry; its outcome goes in E49's entry.
+
+## E49 — started 16:47: whether emptying a cell list costs its refill, measured (kind: speed)
+
+## E49 — whether emptying a cell list costs its refill, measured (completed)
+
+- Branch `2026-11-02-e49-cell-refill`, base `045d794`; started 16:47, completed 16:48.
+- **What the code does:** nothing changes in the code. `decisions.md` records a measured cost in the grid (emptying its cell lists makes them grow again each step) and why it was not built now (D204).
+- **What it brings:** the next speed task has a known, sized gain to weigh (about 1.5% of a crowded step) and what it would cost to take. Decisions: D204.
+- **Verification:** a micro-benchmark in the scratchpad (three runs each way, the same results both ways); the arena's figure scaled from E47's profile, not measured in the arena. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous item's CI:** E47 (`dc4055d`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41666590552; E48 (`045d794`) pending at this entry; its outcome goes in E50's entry, or the morning report.
