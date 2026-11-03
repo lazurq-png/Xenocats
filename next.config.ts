@@ -14,6 +14,10 @@ const securityHeaders = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   },
+  // A page of another site that opens this one (a link with a target, a popup) gets
+  // no handle on its window, nor this one on its opener: nothing to steer or watch
+  // across them. The site opens no popups of its own, and signs in with no provider's.
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ];
 
 const nextConfig: NextConfig = {

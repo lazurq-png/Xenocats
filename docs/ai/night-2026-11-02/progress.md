@@ -455,3 +455,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed change to how cats follow toys or flee can be measured, which the benchmark could not do before; and the run knows that the remaining `hypot` calls are not where a crowded step's time goes. Decisions: D145–D147; Q13.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0 (after one fix: `SIZES.map(bench)` passed `map`'s index as the arsenal, D146); the benchmark: 2 passed (first table 500/2,000/6,000 cats at 0.439/0.905/2.274 ms, as at E9). `test:affected --base Nightrun` printed `FULL` (a file under `tests/bench/`, D147), so the full suites ran: `npm test` 57 files passed, 1 skipped; 1160 passed, 52 skipped (E8's full point: 1153 more tests since, from E8 and E10, none fewer); database tests 52 passed (52); build 0; `test:e2e` 166 passed, 2 skipped; `E2E_SERVER=start` 166 passed, 2 skipped (as at E8). `node scripts/unit-projects.mjs`: 58 files, each in one project. Reviewer: none, a benchmark-only change (D146).
 - **Previous items' CI:** E9 (`3bcb5d9`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41605927695; E10 (`fa9b9b9`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41606600438.
+
+## E12 — started 10:04: a Cross-Origin-Opener-Policy header (kind: security and quality)
+
+## E12 — a Cross-Origin-Opener-Policy header (completed)
+
+- Branch `2026-11-02-e12-opener-policy`, base `d9aafa8`; started 10:04, completed 10:10.
+- **What the code does:** `next.config.ts` sends `Cross-Origin-Opener-Policy: same-origin` on every response, beside the other security headers. `tests/e2e/security-headers.spec.ts` checks it on `/`, `/login`, `/cats` and `/dashboard`, and a new test opens `/login` as a popup from `about:blank` and finds that the popup has no `window.opener`.
+- **What it brings:** a page of another site that opens this one (a popup, a link with a target) can no longer reach into its window or be reached from it, closing a route to cross-window leaks and to steering a visitor's other tab. Decisions: D148–D150.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0. Both tests shown able to fail (header removed for one run: 2 failed, the header undefined and the opener present; restored, no diff). `test:affected --base Nightrun` printed `FULL` (`next.config.ts`), so the full suites ran: `npm test` 57 files passed, 1 skipped; 1160 passed, 52 skipped (as at E11); database tests 52 passed (52); build 0; `test:e2e` 167 passed, 2 skipped; `E2E_SERVER=start` 167 passed, 2 skipped (E11: 166; the one more is the popup test). Reviewer: approved, no findings (D150).
+- **Previous item's CI:** E11 (`d9aafa8`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41607862096.
+- Built and tested in a browser, not seen: a human may open the site from a link on another site and check nothing changed.

@@ -19,9 +19,27 @@ test('every page response carries the security headers', async ({ request }) => 
     expect(headers['referrer-policy'], path).toBe('strict-origin-when-cross-origin');
     expect(headers['strict-transport-security'], path).toMatch(/max-age=\d+/);
     expect(headers['permissions-policy'], path).toContain('camera=()');
+    expect(headers['cross-origin-opener-policy'], path).toBe('same-origin');
     // And none saying what serves it.
     expect(headers['x-powered-by'], path).toBeUndefined();
   }
+});
+
+// The opener policy as the browser applies it: a page of no site (about:blank, which
+// sets no policy of its own, so only this site's can cut the link) opens the login
+// page in a popup, and the two get no handle on each other.
+test('a page of another site that opens this one gets no handle on its window', async ({
+  page,
+  baseURL,
+}) => {
+  await page.goto('about:blank');
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.evaluate((url) => void window.open(url), new URL('/login', baseURL).href),
+  ]);
+  await popup.waitForLoadState('domcontentloaded');
+  await expect(popup).toHaveURL(/\/login/);
+  expect(await popup.evaluate(() => window.opener === null)).toBe(true);
 });
 
 /**
