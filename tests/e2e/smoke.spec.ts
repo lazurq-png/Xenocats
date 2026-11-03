@@ -54,3 +54,34 @@ test('the dashboard sends a visitor without a session to the login page', async 
   // Back to where they were going once they log in.
   await expect(page).toHaveURL(/\/login\?callbackUrl=.*%2Fdashboard/);
 });
+
+// Two locks on the pages behind the login: proxy.ts sends a visitor without a session
+// to the login (with a callbackUrl, to come back to), and every page that reads the
+// account's data asks for its user itself (currentUserId, a plain redirect). The
+// proxy's matcher leaves out paths ending in an image's extension, and the invoice
+// page's [id] serves one: there the page's own check is the only lock, and the redirect
+// without a callbackUrl shows it was the page that answered.
+test('every page behind the login turns a visitor without a session away', async ({ request }) => {
+  const id = '00000000-0000-4000-8000-000000000000';
+  for (const [path, by] of [
+    ['/dashboard', 'proxy'],
+    ['/dashboard/invoices', 'proxy'],
+    ['/dashboard/invoices/create', 'proxy'],
+    [`/dashboard/invoices/${id}`, 'proxy'],
+    [`/dashboard/invoices/${id}/edit`, 'proxy'],
+    ['/dashboard/customers', 'proxy'],
+    ['/dashboard/customers/create', 'proxy'],
+    [`/dashboard/customers/${id}/edit`, 'proxy'],
+    ['/dashboard/settings', 'proxy'],
+    ['/dashboard/invoices/look.png', 'page'],
+  ] as const) {
+    const response = await request.get(path, { maxRedirects: 0 });
+    // A temporary redirect, from either lock: a permanent one a browser would keep.
+    expect(response.status(), path).toBe(307);
+    const to = new URL(response.headers().location ?? '', 'http://x');
+    expect(to.pathname, path).toBe('/login');
+    expect(to.searchParams.has('callbackUrl'), `${path}: answered by the ${by}`).toBe(
+      by === 'proxy'
+    );
+  }
+});

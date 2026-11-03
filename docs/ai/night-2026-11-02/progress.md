@@ -640,3 +640,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** a current profile of a crowded step after E25, and a third dead end on `dropGem` recorded (an early rejection costs more than it skips), so the scan is left as it is. Decisions: D180.
 - **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, slower at every size (D180). `git diff cb1cc7c -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E27 (`2eaa8e4`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41646616015; E28 (`cb1cc7c`) pending at this entry; its outcome goes in E30's entry.
+
+## E30 — started 14:53: a test that every page behind the login turns a visitor without a session away (kind: security and quality)
+
+## E30 — a test that every page behind the login turns a visitor without a session away (completed)
+
+- Branch `2026-11-02-e30-signed-out-pages`, base `9ae43b5`; started 14:53, completed 14:58.
+- **What the code does:** `tests/e2e/smoke.spec.ts` gains a test that each of the nine pages under `app/dashboard/`, and an invoice path ending in `.png` that the proxy's matcher skips, answers a visitor without a session with a temporary redirect (307) to `/login`, and that it was the proxy (a `callbackUrl`) or, for the `.png` path, the page's own check (none) that answered.
+- **What it brings:** a gap in either lock on the pages behind the login (a page left out of the proxy's reach, or a page that stops checking its user where the proxy does not) now fails a test in both CI browser jobs, where before only `/dashboard` itself was tested. Decisions: D181–D182.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0. Shown able to fail twice: the invoice page's own check removed (`look.png` answered 404), and `.png` taken out of the matcher's exclusions (`answered by the page`); both put back byte for byte. `test:affected --base Nightrun`: unit, no test file; e2e `smoke.spec.ts`; build 0; on the final state the spec under `next dev` 8 passed, under `E2E_SERVER=start` 8 passed. Reviewer: approved; three Low findings acted on (D182), the spec rerun on both servers after.
+- **Previous items' CI:** E28 (`cb1cc7c`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41647431543; E29 (`9ae43b5`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41648242954.
