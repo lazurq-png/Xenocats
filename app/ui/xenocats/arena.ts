@@ -2387,7 +2387,9 @@ export function createArena(options: {
       const reach = time < magnetUntil ? Infinity : config.gems.pickup * k.mods.pickup;
       const dx = k.x - gem.x;
       const dy = k.y - gem.y;
-      const d = Math.hypot(dx, dy);
+      // Not Math.hypot (slow, for an overflow no arena distance comes near): this runs
+      // for every gem, every step.
+      const d = Math.sqrt(dx * dx + dy * dy);
       if (d <= 14) {
         xp += gem.value * k.mods.xp;
         gems[i] = gems[gems.length - 1];

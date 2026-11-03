@@ -423,3 +423,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `auth.config.ts` changed): lint (0 errors, 0 warnings), tsc: clean; the e2e test failed before the fix (the `pushState` `SecurityError`, D140) and passes after; `npm test`: 1,157 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 166 passed, 2 skipped each. After the re-review, test-only edits: `auth-config.test.ts` 17 passed, `dashboard.spec.ts` 6 passed.
 - **Reviewer:** Request Changes (High: the first test could not fail), fixed, which exposed the bug, fixed too; re-review approved with two Low, applied (D142).
 - **E7's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41603550693 (Nightrun at bf9bb25).
+
+## E9 — started 09:42: gathering gems without Math.hypot (kind: speed)
+
+## E9 — gathering gems without Math.hypot (completed)
+
+- Branch `2026-11-02-e9-gems-sqrt`, base fb2866b. Started 2026-11-03 09:42, completed 09:47.
+- **What the code does:** `app/ui/xenocats/arena.ts`: `gatherGems` takes a gem's distance to the nearest Keeper as `Math.sqrt(dx*dx + dy*dy)` instead of `Math.hypot`.
+- **What it brings:** a step is about 5% faster at 500 cats and 2–3% at 2,000, where many gems lie about (D143); with E1, E5 and E7, a 2,000-cat step tonight went from about 1.10 ms to about 0.90 on this machine.
+- Decisions: D143.
+- **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D143); the cats project: 714 passed; selection: `vitest related` → 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped.
+- **Reviewer:** none: the change E5's reviewer examined, repeated (D143).
+- **E8's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41605256495 (Nightrun at fb2866b).
