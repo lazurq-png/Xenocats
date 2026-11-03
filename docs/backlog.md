@@ -27,7 +27,10 @@ trusted proxy names the address; spent rows are pruned. Still not covered:
 - **One address against a few names.** Within its 20, one address can still lock
   four names (5 each) every 15 minutes.
 - **No trusted proxy.** Off Vercel without `TRUSTED_PROXY_HEADER` the address
-  limit is off (a startup warning says so).
+  limit is off (a startup warning says so). Behind a proxy that writes the client's
+  port with its address (`203.0.113.7:51234`; Azure's Application Gateway does), the
+  address alone is counted (since the night run of 2026-11-02, E32), so the limit holds
+  there too.
 
 ### An index for the searches
 

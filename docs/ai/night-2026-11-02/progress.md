@@ -701,3 +701,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** one place that says what this run's speed work bought (a crowded step about a third less: 6,000 cats 2.7 → 1.76 ms), what was tried and dropped, and where the next speed task should start. Decisions: D189.
 - **Verification:** the step benchmark run three times (2 passed each; the figures in D189). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E33 (`8ecb119`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41652961597; E34 (`aaba75d`) pending at this entry; its outcome goes in E36's entry.
+
+## E36 — started 15:33: the backlog says how a proxy's port is counted (kind: security and quality)
+
+## E36 — the backlog says how a proxy's port is counted (completed)
+
+- Branch `2026-11-02-e36-backlog-ports`, base `7f46a77`; started 15:33, completed 15:33.
+- **What the code does:** nothing changes in the code. `docs/backlog.md`'s login-lockout entry says that behind a proxy writing the client's port with its address, the address alone is counted (E32).
+- **What it brings:** the backlog, which the next plans are written from, matches what the address limit now does. Decisions: D190.
+- **Verification:** reading only (the export's search, D190). Markdown only: prettier does not check it; `test:affected` selects nothing. Reviewer: none, a one-sentence documentation change.
+- **Previous items' CI:** E34 (`aaba75d`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41653841138; E35 (`7f46a77`) pending at this entry; its outcome goes in E37's entry.
