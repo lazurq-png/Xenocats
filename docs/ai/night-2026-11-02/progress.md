@@ -610,3 +610,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** reading only (the test lines named in D176 were found by search and read). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **A correction to E25's entry:** it says a 6,000-cat step is "about a quarter faster than at E9"; its own figures (E9 2.27–2.32 ms, E25 about 1.79) give about a fifth.
 - **Previous item's CI:** E25 (`7df6752`) pending at this entry; its outcome goes in E27's entry.
+
+## E27 — started 14:36: a cat keeps what it is immune to, not looked up at every hit (kind: speed)
+
+## E27 — a cat keeps what it is immune to, measured (completed)
+
+- Branch `2026-11-02-e27-cat-immunity`, base `c89945b`; started 14:36, completed 14:38.
+- **What the code does:** nothing changes in the code: the change this item measured gained too little to keep (D178).
+- **What it brings:** the next speed work knows the cached-field pattern of E25 pays only for what is read for every cat every step, not per hit. Decisions: D178.
+- **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs of the step benchmark, no gain at 500 or 6,000 cats (D178). `git diff c89945b -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous item's CI:** E25 (`7df6752`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41644987876; E26 (`c89945b`) pending at this entry; its outcome goes in E28's entry.
