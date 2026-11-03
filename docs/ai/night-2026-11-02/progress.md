@@ -731,3 +731,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** whoever writes the next plan has one list to choose from, instead of forty decisions to read. Decisions: D192; Q15.
 - **Verification:** reading only (each item's source named in Q15). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E36 (`e6bc313`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41655687657; E37 (`c527f59`) pending at this entry; its outcome goes in E39's entry.
+
+## E39 — started 15:49: what a call of separate reads, counted (kind: speed)
+
+## E39 — what a call of separate reads, counted (completed)
+
+- Branch `2026-11-02-e39-separate-measure`, base `c4c4ea0`; started 15:49, completed 15:50.
+- **What the code does:** nothing changes in the code. `decisions.md` records what one call of `separate` reads (14.2 neighbours of a 17.6-cat cell; a quarter stop early) and a change measured and dropped (D193).
+- **What it brings:** the next speed task knows where `separate`'s time goes (cells too large for its reach) and that the gain there changes the game, so it is a plan's decision. Decisions: D193.
+- **Verification:** a throwaway counter over the crowd benchmark (removed); with the dropped change, E20's fingerprints unchanged and three interleaved timing pairs overlapping (D193). `git diff c4c4ea0 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E37 (`c527f59`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41656593664; E38 (`c4c4ea0`) pending at this entry; its outcome goes in E40's entry.
