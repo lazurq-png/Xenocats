@@ -476,6 +476,49 @@ describe('the spatial grid', () => {
     expect(grid.query(0, 0, 2000, out)).toEqual([]);
   });
 
+  it('answers the same, in the same order, with a window as without, inside it or not', () => {
+    // The arena gives the grid a window round the camera (its cells in an array) each
+    // step; the window moves, grows and shrinks (the zoom), most points lie in it and a
+    // few beyond. Last, windows the array does not keep (too many cells, not a number):
+    // the Map alone, which bounds the array's size and must answer the same too.
+    const random = createRandom(13);
+    const plain = createArenaGrid(64);
+    const windowed = createArenaGrid(64);
+    const a: number[] = [];
+    const b: number[] = [];
+    for (const [x, y, half] of [
+      [0, 0, 1300],
+      [900, -350, 1300],
+      [-2000, 4100, 2600],
+      [-2100, 4000, 300],
+      [130, 70, 1700],
+      [0, 0, 1e9],
+      [Number.NaN, 0, 1300],
+    ]) {
+      const centre = { x: Number.isNaN(x) ? 0 : x, y };
+      // Across the whole window, its edge cells included, and a tenth beyond it.
+      const reach = Number.isFinite(half) && half < 5000 ? half : 1300;
+      const points = Array.from({ length: 1500 }, (_, i) => ({
+        x: centre.x + random.range(-1, 1) * (i % 10 === 0 ? reach * 2 : reach),
+        y: centre.y + random.range(-1, 1) * (i % 10 === 0 ? reach * 2 : reach),
+      }));
+      plain.clear();
+      windowed.clear({ x, y, half });
+      points.forEach((p, i) => {
+        plain.insert(i, p.x, p.y);
+        windowed.insert(i, p.x, p.y);
+      });
+      for (let q = 0; q < 150; q++) {
+        const qx = centre.x + random.range(-2.5, 2.5) * reach;
+        const qy = centre.y + random.range(-2.5, 2.5) * reach;
+        const radius = random.range(0, 400);
+        expect(windowed.query(qx, qy, radius, b), `window ${x},${y} ±${half}`).toEqual(
+          plain.query(qx, qy, radius, a)
+        );
+      }
+    }
+  });
+
   it('finds the same far from where the run began, where cells far apart share a key', () => {
     // 32,768 cells of 64 px apart share a key: points on both sides of that, and in the
     // negative, after hours of walking one way.

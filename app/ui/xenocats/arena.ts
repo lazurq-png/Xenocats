@@ -2607,15 +2607,18 @@ export function createArena(options: {
       // The cats walk at the nearest Keeper; the grid is rebuilt from where they stand.
       toys.length = 0;
       for (const p of patches) if (p.kind === 'toy') toys.push(p);
-      grid.clear();
-      bigGrid.clear();
-      bigCount = 0;
-      bigReach = 0;
       // How far is too far behind: once a step, not once a cat.
       const cam = camera();
       const far =
         ((Math.hypot(viewport.width, viewport.height) / 2) * cam.zoom + config.cats.spawnMargin) *
         2;
+      // Every cat ends this loop within `far` of the camera, and its edge (bringBack): the
+      // grids keep the cells there in an array (two cells further, to spare).
+      const around = { x: cam.x, y: cam.y, half: far + config.cellSize * 2 };
+      grid.clear(around);
+      bigGrid.clear(around);
+      bigCount = 0;
+      bigReach = 0;
       flying.length = 0;
       for (let i = 0; i < cats.length; i++) {
         const cat = cats[i];
