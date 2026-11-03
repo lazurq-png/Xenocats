@@ -599,3 +599,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** a crowded Survival step 3–11% faster again, most at the largest crowds (6,000 cats about 2.00 → 1.79 ms), with seeded runs unchanged: after E17, E19 and this, a 6,000-cat step is about a quarter faster than at E9. Decisions: D174–D175.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; E20's fingerprints unchanged; the step benchmark, three interleaved pairs (D174); the new test shown able to fail (D174). `test:affected --base Nightrun`: unit `vitest related` over the three files → 10 files, 602 passed, 52 skipped (on the final test); the cats project 717 passed (717); build 0; e2e 5 specs (benchmark, leaderboard, phone, security-headers, survival) → 56 passed, 2 skipped. Reviewer: request changes, one Medium (a timeout), acted on (D175); the unit selection and cats project rerun after.
 - **Previous item's CI:** E24 (`632ede0`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41643902854.
+
+## E26 — started 14:32: what the afternoon's security reading found sound, recorded; Q13 closed (kind: security and quality)
+
+## E26 — what the afternoon's security reading found sound, recorded; Q13 closed (completed)
+
+- Branch `2026-11-02-e26-security-reading`, base `7df6752`; started 14:32, completed 14:32.
+- **What the code does:** nothing changes in the code. `decisions.md` records what was read and found sound (every data-changing Server Action refuses a caller without a session, by a test; the bcrypt cost; E24's two leftover lint rules, not worth turning on), and lists where this run's other security readings are (D176); `questions.md` closes Q13, answered by E16 (D177).
+- **What it brings:** the next run's security exploration starts from what this one has read, instead of reading it again; and the next plan does not take up a proposal already done. Decisions: D176–D177.
+- **Verification:** reading only (the test lines named in D176 were found by search and read). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **A correction to E25's entry:** it says a 6,000-cat step is "about a quarter faster than at E9"; its own figures (E9 2.27–2.32 ms, E25 about 1.79) give about a fifth.
+- **Previous item's CI:** E25 (`7df6752`) pending at this entry; its outcome goes in E27's entry.

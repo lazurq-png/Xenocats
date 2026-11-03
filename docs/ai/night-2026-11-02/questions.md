@@ -55,3 +55,7 @@ For a human to know: before E8, a link to `/login?callbackUrl=//evil.example/...
 ## Q13 — Proposed task: the test selector and `tests/bench/` (E11)
 
 `scripts/affected-tests.mjs` prints `FULL` for a change to `tests/bench/` (D147), so a benchmark edit costs the whole of every suite, though neither `npm test` nor `npm run test:e2e` runs those files. **Proposal for the next plan:** select nothing for `tests/bench/` (as for `docs/`), with a case in `tests/unit/affected-tests.test.ts`. A change to the selector runs the full suites at its own gate (§2.1). Needs no decision beyond putting it in a plan.
+
+## Q13, closed (E16)
+
+E16 made the selector select nothing for `tests/bench/` and `vitest.bench.config.mts`, with a test (D158). Nothing left for a plan.
