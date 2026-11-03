@@ -435,3 +435,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D143); the cats project: 714 passed; selection: `vitest related` → 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped.
 - **Reviewer:** none: the change E5's reviewer examined, repeated (D143).
 - **E8's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41605256495 (Nightrun at fb2866b).
+
+## E10 — started 09:47: a test for the startup warning (kind: security and quality)
+
+## E10 — a test for the startup warning (completed)
+
+- Branch `2026-11-02-e10-instrumentation-test`, base `3bcb5d9`; started 09:4x, completed 09:51.
+- **What the code does:** `tests/unit/instrumentation.test.ts` (new) calls the server's startup hook, `register()` in `instrumentation.ts`, with the environment stubbed, and checks that it warns once in production on Node.js with no trusted proxy header, says nothing with `VERCEL=1`, `TRUSTED_PROXY_HEADER` set or in development, and does nothing in the edge runtime. No application code changed.
+- **What it brings:** the warning that the login address limit is off (T10) can no longer be dropped by a refactor without a test failing, so an operator deploying behind no trusted proxy keeps being told. Decisions: D144.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; `test:affected --base Nightrun`: unit `vitest related tests/unit/instrumentation.test.ts`, e2e 0 specs; that ran 1 file, 3 passed (3), exit 0. The test was shown able to fail (the runtime guard removed for one run: 1 failed, 2 passed; restored, no diff). The file lands in the `dashboard` project with no config edit (unit-projects: 58 files, each in one project). Reviewer: none, a test-only change (D144).
+- **Previous item's CI:** E9 (`3bcb5d9`) pending at this entry; its outcome goes in E11's entry.
