@@ -771,3 +771,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the one way E40's gap could become a hole (a new route that a path ending in `.png` reaches past the proxy and its security headers) now stops at a test with instructions, instead of shipping unnoticed. Decisions: D196.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0; the test 1 passed, and shown able to fail (a planted route, deleted after); `node scripts/unit-projects.mjs`: 60 files, each in one project (dashboard 24). `test:affected --base Nightrun`: unit `vitest related tests/unit/dynamic-routes.test.ts` → 1 passed; e2e 0 specs. Reviewer: none, a test-only change (D196).
 - **Previous items' CI:** E40 (`8d765e2`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41659773111; E41 (`c59d647`) pending at this entry; its outcome goes in E43's entry.
+
+## E43 — started 16:13: how long the lists of cats a projectile touched get, counted (kind: speed)
+
+## E43 — how long the lists of cats a projectile touched get, counted (completed)
+
+- Branch `2026-11-02-e43-touched-set`, base `7f22056`; started 16:13, completed 16:14.
+- **What the code does:** nothing changes in the code. `decisions.md` records that the one possibly quadratic check in `moveProjectiles` is small in practice (D197).
+- **What it brings:** a suspicion about the projectile step settled by counting, so no later item rewrites it for nothing. Decisions: D197.
+- **Verification:** a throwaway counter over the step benchmark (removed; `git diff 7f22056 -- app/` empty). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E41 (`c59d647`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41660688578; E42 (`7f22056`) pending at this entry; its outcome goes in E44's entry.
