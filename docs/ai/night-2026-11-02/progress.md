@@ -466,3 +466,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0. Both tests shown able to fail (header removed for one run: 2 failed, the header undefined and the opener present; restored, no diff). `test:affected --base Nightrun` printed `FULL` (`next.config.ts`), so the full suites ran: `npm test` 57 files passed, 1 skipped; 1160 passed, 52 skipped (as at E11); database tests 52 passed (52); build 0; `test:e2e` 167 passed, 2 skipped; `E2E_SERVER=start` 167 passed, 2 skipped (E11: 166; the one more is the popup test). Reviewer: approved, no findings (D150).
 - **Previous item's CI:** E11 (`d9aafa8`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41607862096.
 - Built and tested in a browser, not seen: a human may open the site from a link on another site and check nothing changed.
+
+## E13 — started 10:12: a grid for the gems a cat sent home joins (kind: speed)
+
+## E13 — a grid for the gems a cat sent home joins, measured (completed)
+
+- Branch `2026-11-02-e13-gem-grid`, base `a22c179`; started 10:12, completed 10:14.
+- **What the code does:** nothing changes in the code: the change this item measured made the step slower and was not kept. The item is the record of the measurement (D151, D152).
+- **What it brings:** the next speed work skips a dead end (an index for the gems costs more than the scan it would replace) and starts from a current profile of where a crowded step goes. Decisions: D151–D152.
+- **Verification:** a fingerprint of every gem and cat over 2,400 seeded steps, old code against new, matched in three runs (so the tried change kept the game's choices); three interleaved timing pairs of the step benchmark showed it slower at every size (D152). `arena.ts` restored to its base: `git diff a22c179 -- app/` is empty. Only `docs/ai/` changes: prettier does not check Markdown; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous item's CI:** E12 (`a22c179`) pending at this entry; its outcome goes in E14's entry.
