@@ -761,3 +761,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** what the player of a crowded run gets from the speed work: with 2,000 cats on a throttled browser, about 10–14% more frames (about 40 → 45 fps) and fewer slow ones. Decisions: D195.
 - **Verification:** the render benchmark, two interleaved pairs (3 passed each run; figures in D195); the app's files copied in for the old side and restored (`git diff -- app/` empty after). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E39 (`86eed62`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41658865207; E40 (`8d765e2`) pending at this entry; its outcome goes in E42's entry.
+
+## E42 — started 16:08: a test that names every route ending in a dynamic segment (kind: security and quality)
+
+## E42 — a test that names every route ending in a dynamic segment (completed)
+
+- Branch `2026-11-02-e42-dynamic-routes`, base `c59d647`; started 16:08, completed 16:09.
+- **What the code does:** `tests/unit/dynamic-routes.test.ts` (new) finds every page and route handler under `app/` whose last path segment is dynamic and fails if there is one besides the invoice page, saying what to check before adding it.
+- **What it brings:** the one way E40's gap could become a hole (a new route that a path ending in `.png` reaches past the proxy and its security headers) now stops at a test with instructions, instead of shipping unnoticed. Decisions: D196.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0; the test 1 passed, and shown able to fail (a planted route, deleted after); `node scripts/unit-projects.mjs`: 60 files, each in one project (dashboard 24). `test:affected --base Nightrun`: unit `vitest related tests/unit/dynamic-routes.test.ts` → 1 passed; e2e 0 specs. Reviewer: none, a test-only change (D196).
+- **Previous items' CI:** E40 (`8d765e2`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41659773111; E41 (`c59d647`) pending at this entry; its outcome goes in E43's entry.
