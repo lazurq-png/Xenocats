@@ -547,3 +547,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed change or refactor of the simulation can show in one command that it left the game as it was (the same three lines before and after), instead of a script written again each time, as E13, E17 and E19 did. Decisions: D167.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0; the tool run: 1 passed, the fingerprints `0f741d43bd8015d9`, `0cfdc9b1adbc2ecb`, `ab3b9f378e0e8819` (E17's and E19's); with a one-line change to the game, three others (D167). `test:affected --base Nightrun` selects nothing (`tests/bench/` and Markdown; E16 working as meant). Reviewer: none, a tool run on demand (D167).
 - **Previous item's CI:** E18 (`d503de9`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41614146900; E19 (`f902d94`) pending at this entry; its outcome goes in E21's entry.
+
+## E21 — started 11:00: within reads the cells in place, not a copy of them (kind: speed)
+
+## E21 — within reads the cells in place, measured (completed)
+
+- Branch `2026-11-02-e21-within-lists`, base `82b9d09`; started 11:00, completed 11:02.
+- **What the code does:** nothing changes in the code: the change this item measured gained nothing and was not kept (D168).
+- **What it brings:** the next speed work knows that E19's in-place read pays off only where a search reads a crowded cell for a few ids (as `separate` does), not for `within`'s small searches. Decisions: D168.
+- **Verification:** with the change, E20's fingerprints unchanged (`0f741d43bd8015d9`, `0cfdc9b1adbc2ecb`, `ab3b9f378e0e8819`); three interleaved timing pairs of the step benchmark, no gain (D168). `git diff 82b9d09 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E19 (`f902d94`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41614870251; E20 (`82b9d09`) pending at this entry; its outcome goes in E22's entry.
