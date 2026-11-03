@@ -851,3 +851,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next plan's list of speed work is complete, and the run's records no longer claim an addition that was not made. Decisions: D205.
 - **Verification:** reading only (each addition's D-entry). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous item's CI:** E48 (`045d794`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41667486936; E49 (`3f085d2`) pending at this entry; its outcome goes in the morning report.
+
+## E51 — started 16:57: where a 6,000-cat step goes, by function and line (kind: speed)
+
+## E51 — where a 6,000-cat step goes, by function and line (completed)
+
+- Branch `2026-11-02-e51-profile-6000`, base `592dc62`; started 16:57, completed 16:58.
+- **What the code does:** nothing changes in the code. `decisions.md` records E47's profiler at 6,000 cats (D206).
+- **What it brings:** the next speed task knows that for the largest crowds `separate` is a quarter of a step and growing fastest, so which of Q15's speed items to take first. Decisions: D206.
+- **Verification:** `node tests/bench/profile-step.mjs 6000` run once (its tables in D206). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E49 (`3f085d2`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41668369578; E50 (`592dc62`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41669245511.

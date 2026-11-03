@@ -430,3 +430,7 @@ Numbered non-obvious choices, with their reasons.
 ## E50 — Q15 gets what E47 and E49 left for the next plan (kind: security and quality)
 
 - **D205** D204 said its finding was "added to Q15's speed item"; it had not been written there. Appended now as "Q15, additions": the profiler to start from (E47), the cell lists kept with counts (E49), `separate`'s cells (E39), cats' hot fields in arrays (E47), each with its D-entry. The record now says what it claims. Documentation only.
+
+## E51 — where a 6,000-cat step goes, by function and line (kind: speed)
+
+- **D206** E47's profiler at 6,000 cats (5,933 present, 1.925 ms a step profiled): `separate` 26.4% (13.8% at 2,000, D202), the step's own body 21.0%, `walkCat` 10.4%, `sweepHome` 10.0%, `moveCat` 9.7%, `within` 4.6%, `moveProjectiles` 3.3%, the grid (`listOf`, `clear`, `query`) 4.5%. By line: `walkCat` through `moveCat` 8.7%, `separate` reading each neighbour (`cat.x - other.x`) 8.5% and its `room` 2.7%, `dropGem`'s comparison 4.8%, the first reads of each cat in the step's loop (`flungUntil` 3.9%, `stunUntil` 2.1%) and in `sweepHome` (`homesickness < limit`, 2.6%). As a crowd grows, `separate` grows fastest (its cells hold more cats, D193) and its time is in reaching the neighbours: memory, as D202 found. So of Q15's speed items (its additions, E50), `separate`'s cells come first for the large crowds the plan's kind is about, and cats' hot fields in arrays second. Measured only; nothing changed.
