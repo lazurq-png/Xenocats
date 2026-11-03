@@ -2,11 +2,14 @@
 
 # Claude Code Operating Instructions
 
-This file contains Claude Code-specific instructions.
+This file contains Claude Code-specific instructions. The repository-wide
+engineering contract is `AGENTS.md`, imported here so it is in every session:
 
-The repository-wide engineering contract is defined in `AGENTS.md`. Read and follow it first.
+@AGENTS.md
 
-This file defines how Claude should operate within that contract.
+This file defines how Claude should operate within that contract. The general
+engineering practice behind §§3, 5, 7, 10 and 12–14 is in
+`.claude/docs/working-practices.md`; what is specific to this repository stays here.
 
 ---
 
@@ -32,7 +35,7 @@ Match investigation depth to task risk.
 
 Before implementing a significant task:
 
-1. Read `AGENTS.md`.
+1. `AGENTS.md` (imported above).
 2. Inspect the relevant project structure.
 3. Locate the existing implementation.
 4. Locate related tests.
@@ -79,23 +82,7 @@ If the task touches a specific domain, follow the matching reference in `.claude
 
 ## 3. Exploration
 
-Exploration should answer the questions necessary to make a good implementation decision.
-
-Prioritize:
-
-* relevant symbols
-* callers
-* implementations
-* tests
-* configuration
-* data flow
-* API boundaries
-* error handling
-* neighboring patterns
-
-Avoid reading large numbers of unrelated files.
-
-Do not start editing simply because you have found one plausible implementation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §3.
 
 ---
 
@@ -141,22 +128,7 @@ The plan should be actionable rather than descriptive.
 
 ## 5. Implementation
 
-Implement the smallest sufficient change.
-
-Prefer existing:
-
-* utilities
-* components
-* services
-* repositories
-* validation
-* error handling
-* state-management patterns
-* API conventions
-
-Avoid introducing a new abstraction unless the existing architecture cannot reasonably support the requested behavior.
-
-Do not mix unrelated cleanup into feature work.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §5.
 
 ---
 
@@ -181,26 +153,7 @@ it in the conversation and writes no task-state files (§11).
 
 ## 7. Context Management
 
-Prefer targeted context over indiscriminate context.
-
-Search for the exact:
-
-* function
-* class
-* component
-* endpoint
-* error
-* schema
-* test
-* configuration value
-
-that matters.
-
-Read surrounding code only when needed to understand behavior.
-
-Before making a large edit, confirm that the relevant implementation and its callers are understood.
-
-Do not repeatedly rediscover information already established in the conversation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §7.
 
 ---
 
@@ -366,19 +319,7 @@ Never report a verification result that was not actually observed.
 
 ## 10. Debugging
 
-When a test, command, or runtime behavior fails:
-
-1. reproduce it
-2. inspect the exact failure
-3. identify the relevant execution path
-4. form a hypothesis
-5. gather evidence
-6. make the smallest fix
-7. rerun verification
-
-Avoid random trial-and-error edits.
-
-If the same strategy fails repeatedly, stop and reassess the hypothesis.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §10.
 
 ---
 
@@ -406,61 +347,19 @@ Supervised work neither adds to it nor needs to read the night-run skill.
 
 ## 12. Parallelization
 
-Parallelize independent work when it reduces total task time.
-
-Examples:
-
-* one agent maps architecture
-* one agent investigates tests
-* one agent performs security review
-* one agent evaluates an isolated subsystem
-
-Do not have multiple agents modify the same files unless the workflow explicitly supports conflict resolution.
-
-For parallel implementation, use isolated worktrees or equivalent isolation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §12.
 
 ---
 
 ## 13. Code Review
 
-Before declaring substantial work complete, review the resulting diff.
-
-Ask:
-
-* Does this actually solve the requested problem?
-* Did the implementation follow existing architecture?
-* Did it introduce unnecessary complexity?
-* Are edge cases covered?
-* Are contracts preserved?
-* Are errors handled correctly?
-* Are security boundaries intact?
-* Are tests meaningful?
-* Did unrelated files change?
-* Is there anything a skeptical reviewer would question?
-
-Review the final state, not merely the edits made during implementation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §13.
 
 ---
 
 ## 14. Minimality
 
-Minimality means avoiding unnecessary complexity, not avoiding necessary code.
-
-Prefer:
-
-* direct solutions
-* established project patterns
-* small interfaces
-* localized changes
-* explicit behavior
-
-Avoid:
-
-* speculative extensibility
-* premature abstractions
-* unnecessary wrappers
-* broad refactors
-* unrelated dependency changes
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §14.
 
 ---
 
@@ -544,8 +443,9 @@ This repository's `.claude/` directory is structured as follows:
 │                 five when a file they govern is read (their paths: frontmatter)
 ├── skills/     — reusable procedural workflows, invoked as slash commands
 │                 (code-review; night-run, with its CI poll ci-poll.mjs)
-├── docs/       — supporting human-readable process docs (workflow, task
-│                 template, prompt patterns) — not auto-loaded
+├── docs/       — supporting process docs (workflow, task template, prompt
+│                 patterns, and working practices: the general sections of
+│                 this file, §§3, 5, 7, 10, 12–14) — not auto-loaded
 └── settings.example.json — inert template; no settings.json is defined here
 ```
 

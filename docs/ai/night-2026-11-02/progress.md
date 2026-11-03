@@ -272,3 +272,17 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** documentation only: `test:affected` selects nothing; each frontmatter checked to be a `paths:` list of quoted globs, and every glob to match at least one file today. That Claude Code loads a scoped rule on reading a matching file is checked by reading its documentation, not by a session.
 - **Reviewer:** approved; three Low (the new-repo steps, two security files, the README's table), all acted on (D104).
 - **T17's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41573002396 (Nightrun at 61c45e6): the nonce and every browser spec green on GitHub too.
+
+## T19 — A shorter `CLAUDE.md` (completed)
+
+- Branch `2026-11-02-t19-shorter-claude-md`, base a8645d6. Started 2026-11-03 04:40, completed 04:48.
+- **What the code does:**
+  - `CLAUDE.md`: imports `AGENTS.md` (`@AGENTS.md`) instead of telling a session to read it; §§3, 5, 7, 10, 12–14 (exploration, implementation, context, debugging, parallel work, review, minimality) are one-line pointers; the repository map, the checks, the environment and database facts and every other section stay. 487 lines, from 588.
+  - `.claude/docs/working-practices.md` (new): those seven sections, word for word, under their numbers.
+  - `.claude/docs/ai-workflow.md`: the closing diagram that drew the loop a third time is gone.
+  - `.claude/README.md`, `CLAUDE.md` §18: the new doc listed.
+- **What it brings:** `AGENTS.md` is now loaded into every Claude session as it was meant to be read, instead of relying on each session to open it; `CLAUDE.md` keeps what is about this repository in front, with the general practice a link away.
+- Decisions: D105–D110 (D107: the under-200 target is not reached; why, and what would reach it).
+- **Verification:** documentation only (no tests select); every moved section compared with its copy (the reviewer, line by line); every outside reference to a `CLAUDE.md` section number checked to still resolve.
+- **Reviewer:** approved; two Low (the new doc unlisted; a leftover heading), both fixed (D110).
+- **T18's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41573526298 (Nightrun at a8645d6).

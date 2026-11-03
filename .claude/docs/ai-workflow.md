@@ -638,45 +638,6 @@ Do not keep expanding prompts to compensate for failures that can be mechanicall
 
 ---
 
-# Operating Model
-
-The recommended loop is:
-
-```text
-                 ┌──────────────┐
-                 │     Task     │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │    Explore   │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │     Plan     │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │  Implement   │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │    Verify    │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────▼───────┐
-                 │   Passed?    │
-                 └───┬──────┬───┘
-                     │Yes   │No
-                     ↓      ↓
-                 ┌──────┐ ┌──────────────┐
-                 │Review│ │    Repair    │
-                 └──┬───┘ └──────┬───────┘
-                    │             │
-                    │             └──────→ Verify
-                    ↓
-                 Complete
-```
-
 ## Final Principle
 
 **Build an engineering system around the coding agent.**

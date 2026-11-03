@@ -18,7 +18,8 @@ CLAUDE.md               Claude Code operating model — always loaded by the ext
 ├── skills/              reusable procedures invoked as slash commands
 │                        (/code-review; /night-run, with its CI poll ci-poll.mjs)
 ├── docs/                 supporting human-readable process docs — workflow narrative,
-│                          a task-request template, and ready-to-paste prompt patterns
+│                          a task-request template, ready-to-paste prompt patterns,
+│                          and working practices (CLAUDE.md's general sections)
 └── settings.example.json       copy to settings.json and adjust permissions/hooks
                                  (not yet done here — settings.json does not exist)
 ```
