@@ -385,3 +385,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D135); the cats project: 714 passed; selection: `vitest related` → 10 files, 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped.
 - **Reviewer:** approved, no defects; one Low (D136 named the other calls wrongly; `bringBack` runs per cat per step too), corrected.
 - **E4's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41578892048 (Nightrun at 2130b74).
+
+## E6 — started 05:40: CLAUDE.md §9's account of CI, after T9, T12 and T14 (kind: security and quality)
+
+## E6 — CLAUDE.md §9's account of CI (completed)
+
+- Branch `2026-11-02-e6-claude-ci-facts`, base 9fd5b2a. Started 2026-11-03 05:40, completed 09:22. **Gap:** the account's usage limit stopped the run from about 05:41 to 09:21, with this item's edit made and uncommitted; resumed from the tree.
+- **What the code does:** `CLAUDE.md` §9: what CI runs, job by job, as it is after tonight's T9, T12 and T14.
+- **What it brings:** an agent reading §9 to know what CI will check (and what it will not) reads what the workflows do now, not what they did yesterday.
+- Decisions: D137.
+- **Verification:** documentation only: every claim checked against `.github/workflows/ci.yml` and `codeql.yml` (by `grep` of the jobs, steps and triggers it names). No tests select.
+- **E5's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41579397991 (Nightrun at 9fd5b2a).

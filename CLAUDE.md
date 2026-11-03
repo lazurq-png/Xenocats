@@ -268,11 +268,18 @@ tests when `main` changes no file `dev` lacks (its own commits are only the
 merges of earlier releases) and CI already passed on that exact `dev` commit (the
 workflow's *tested* job); any other pull request into `main` runs them. A push of any other
 branch, a night run's task branches included, runs nothing; those are checked
-locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
-over a migrated and seeded `xenocats` schema, then every browser test against
-`next start` (`E2E_SERVER=start`), in one `playwright test`; and *e2e* — the
-specs for what differs under `next dev` (smoke, security headers, the dashboard
-login) against it. The browser specs' groups are projects in
+locally. A newer push to the same branch or pull request cancels the run it
+supersedes. Its jobs: *checks* (lint, formatting, type check, the unit tests a
+Vitest project at a time); *build* — `npm run build` over a migrated and seeded
+`xenocats` schema, then every browser test against `next start`
+(`E2E_SERVER=start`), in one `playwright test`, then the database tests, which
+fail if none passed (`scripts/ci-passed.mjs`); *e2e* — the specs for what differs
+under `next dev` (smoke, security headers, the dashboard login) against it; and on
+pull requests only, *dependency-review* (fails on a vulnerability the pull request
+adds) and, into `main`, *migrations* (lists the migrations it adds, to apply to
+Neon first). A second workflow, `codeql.yml`, scans the code on pull requests,
+pushes to `dev` and weekly, not on pushes to `Nightrun` (whose runs a night run's
+CI poll reads). The browser specs' groups are projects in
 `playwright.config.ts` (`GROUPS`); a new spec goes in one. A new unit test file
 needs nothing: the Vitest projects in `vitest.config.mts` take it by folder and
 environment, and the *checks* job runs them a project at a time and verifies every
