@@ -35,3 +35,7 @@ T3 built it. The entry's first bullet is now out of date; the run left it, since
 ## Q8 — `package-lock.json` does not repeat the new `engines` (T12)
 
 npm copies the root package's `engines` into the lockfile's root entry; the run added it to `package.json` by hand, since any `npm install` is a human's (§3). `npm ci` does not mind, but the next `npm install` (a Dependabot pull request, say) will add those three lines, unexplained, to an unrelated change. **For a human:** `npm install --package-lock-only` adds just them, changing no dependency.
+
+## Q9 — Everyone logs in again once when T16 deploys
+
+T16 signs out any session made before it (its token has no login time; D92), so on the deploy to production every signed-in user is sent to the login once. The alternative, a week's grace for those sessions, left a stolen pre-deploy cookie usable for up to 30 days and could outlive a sign-out (the reviewer's finding). Recommendation: accept the one re-login; deploy when it bothers fewest. Nothing to do otherwise.

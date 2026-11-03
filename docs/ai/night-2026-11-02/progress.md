@@ -233,3 +233,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (on the final state): prettier, lint (0 errors, 0 warnings), tsc: clean; selection: `vitest related` → 5 files, 73 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e: 14 specs under `next dev`, 129 passed, 2 skipped; and `leaderboard.spec.ts` under `next start` (where the data cache is the production one): 5 passed. (a)–(e) checked by command; the expiry timing (60 s, stale-while-revalidate) is Next's, checked by reading.
 - **Reviewer:** Request Changes, two Medium (no time limit; a key not tied to the schema), both fixed (D87); re-review: approved.
 - **T14's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41548860797 (Nightrun at 890d1e3).
+
+## T16 — A shorter session (completed)
+
+- Branch `2026-11-02-t16-session-max-age`, base ab2ca6d. Started 2026-11-03 01:05, completed 01:16.
+- **What the code does:**
+  - `auth.config.ts`: the session lasts 7 days (`session.maxAge`, Auth.js's default 30); the token records when its login was made (`loginAt`), and the `jwt` callback signs out a token whose login is over 7 days old, or that has no login time (made before this change), before it asks the database.
+  - `tests/unit/auth-config.test.ts`: the setting; a login past its week signed out without a database query, one inside it checked and kept; a token from before signed out; the existing session tests carry a login time.
+- **What it brings:** a stolen session cookie now works for at most a week after its login, however often it is used, where before a cookie in use could last indefinitely and an idle one thirty days.
+- Decisions: D88–D92. Questions: Q9 (every signed-in user logs in again once at deploy).
+- **Verification** (full-suite point: `auth.config.ts` changed; on the final state): prettier, lint (0 errors, 0 warnings), tsc: clean; `npm test`: 54 files passed, 1 skipped; 1,143 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each (every logged-in spec signs in afresh, so its token has a login time). (a)–(c) checked by command; that Auth.js re-issues the cookie on use and clears it on `null` is checked by reading `@auth/core` (the reviewer's).
+- **Reviewer:** approved, one Low (the grace week for old tokens let a stolen pre-deploy cookie live 30 days and outlive a sign-out), fixed (D92); re-review: approved.
+- **T15's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41550169634 (Nightrun at ab2ca6d).
