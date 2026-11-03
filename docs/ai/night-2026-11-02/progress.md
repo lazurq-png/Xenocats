@@ -671,3 +671,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **A slip, recorded:** while probing `addressBlock`, a stray `cat > /tmp/ab.test.ts` with no input created an empty file outside the repository and hung the command (§3: nothing outside the repository). The command was stopped and the file, made by this run moments before, removed. Nothing else outside the repository was touched.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; the new test fails on the code before (D184) and on the first version of the fix (D185). `test:affected --base Nightrun` printed `FULL` (`sign-up-limit.ts` reaches `auth.ts`), so the full suites ran: `npm test` 58 files passed, 1 skipped; 1166 passed, 52 skipped (E24: 1163; three more since, E25's, E28's and this one); database tests 52 passed (52); build 0; `test:e2e` 169 passed, 2 skipped; `E2E_SERVER=start` 169 passed, 2 skipped (E24: 168; one more since, E30's). After the reviewer's two Low findings (D185): `npm test` 1166 passed, 52 skipped; `login-limit` and `signup` specs 5 passed. Reviewer: approved; both findings acted on.
 - **Previous items' CI:** E30 (`e353a4c`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41649166879; E31 (`036c53e`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41650058945.
+
+## E33 — started 15:17: a cat keeps whether it soothes, not looked up by soothe (kind: speed)
+
+## E33 — a cat keeps whether it soothes, not looked up by soothe (completed)
+
+- Branch `2026-11-02-e33-cat-soothes`, base `a8a7680`; started 15:17, completed 15:21.
+- **What the code does:** `ArenaCat` gains `soothes` (a Purring Cat's comfort, read-only, or `null`), set beside `gait` when a cat spawns; `soothe` in `arena.ts` reads it instead of looking up each cat's variety, for every cat and every cat near a Purring Cat. E25's every-step test in `varieties.test.ts` checks it too.
+- **What it brings:** a late, crowded Survival step about 3% faster at 6,000 cats, where Purring Cats come in hundreds, with seeded runs unchanged. Decisions: D186–D187.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; E20's fingerprints unchanged; the step benchmark, three interleaved pairs (D186); the extended test shown able to fail (D186). `test:affected --base Nightrun`: unit `vitest related` over the three files → 10 files, 602 passed, 52 skipped (again after D187's type); the cats project 717 passed (717); build 0; e2e 5 specs → 56 passed, 2 skipped. Reviewer: approved, no findings; its optional hardening taken (D187).
+- **Previous item's CI:** E32 (`a8a7680`) pending at this entry; its outcome goes in E34's entry.

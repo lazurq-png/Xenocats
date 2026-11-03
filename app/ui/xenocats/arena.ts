@@ -502,6 +502,7 @@ export function createArena(options: {
     const cat = newCat(at);
     cat.variety = null;
     cat.gait = 'walk';
+    cat.soothes = null;
     cat.type = type;
     cat.radius = config.cats.radius;
     cat.speed = byType(type, config.cats.speed, 7);
@@ -518,6 +519,7 @@ export function createArena(options: {
     const cat = newCat(at);
     cat.variety = id;
     cat.gait = variety.gait;
+    cat.soothes = variety.soothes ?? null;
     cat.type = -1;
     cat.radius = variety.radius;
     cat.speed = variety.speed;
@@ -1159,16 +1161,13 @@ export function createArena(options: {
    */
   function soothe(dt: number) {
     soothers.length = 0;
-    for (let i = 0; i < cats.length; i++) {
-      const variety = cats[i].variety;
-      if (variety !== null && VARIETIES[variety].soothes) soothers.push(i);
-    }
+    for (let i = 0; i < cats.length; i++) if (cats[i].soothes) soothers.push(i);
     for (const i of soothers) {
       const purring = cats[i];
-      const { radius, perSecond } = VARIETIES[purring.variety!].soothes!;
+      const { radius, perSecond } = purring.soothes!;
       for (const j of within(purring, radius)) {
         const cat = cats[j];
-        if (cat.variety !== null && VARIETIES[cat.variety].soothes) continue;
+        if (cat.soothes) continue;
         cat.homesickness = Math.max(cat.homesickness - perSecond * dt, 0);
       }
     }

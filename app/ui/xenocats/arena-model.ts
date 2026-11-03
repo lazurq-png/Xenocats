@@ -113,6 +113,8 @@ export type ArenaCat = {
   variety: VarietyId | null;
   /** How it moves: its variety's gait, a xenocat's 'walk'. Kept, not looked up each step. */
   gait: Gait;
+  /** How it comforts the cats round it (its variety's), or null: kept, not looked up. */
+  soothes: Readonly<{ radius: number; perSecond: number }> | null;
   /** For a xenocat, its index into the run's types; -1 for a variety. */
   type: number;
   /** Touched within this of its centre, px. */
