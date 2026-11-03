@@ -1028,7 +1028,9 @@ export function createArena(options: {
     const target = nearestKeeper(cat.x, cat.y);
     const dx = target.x - cat.x;
     const dy = target.y - cat.y;
-    const d = Math.hypot(dx, dy) || 1;
+    // Not Math.hypot, which guards against an overflow no arena distance comes near,
+    // and is several times slower: this runs for every cat, every step.
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
     const gait = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
     if (gait === 'sit') return;
     if (cat.elite && eliteAttacks(cat, target, d)) return;

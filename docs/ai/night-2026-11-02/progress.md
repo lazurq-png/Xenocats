@@ -373,3 +373,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `tsconfig.json` changed): lint 0 errors, 0 warnings; tsc clean, and a probe file with an unused import and variable refused (D133); `npm test`: 56 files passed, 1 skipped; 1,154 passed, 52 skipped; database tests: 52 passed; build: exit 0, `tsconfig.json` unchanged by it; e2e under `next dev` and `next start`: 165 passed, 2 skipped each.
 - **Reviewer:** approved, no findings (Next does not rewrite the option; `noUnusedParameters` would flag the actions' `prevState`, as D134 says).
 - **E3's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41578309130 (Nightrun at b460ded).
+
+## E5 — started 05:34: a cat's step without Math.hypot (kind: speed)
+
+## E5 — a cat's step without Math.hypot (completed)
+
+- Branch `2026-11-02-e5-walkcat-sqrt`, base 2130b74. Started 2026-11-03 05:34, completed 05:39.
+- **What the code does:** `app/ui/xenocats/arena.ts`: `walkCat` takes the distance to the nearest Keeper as `Math.sqrt(dx*dx + dy*dy)` instead of `Math.hypot`.
+- **What it brings:** a crowded simulation step is about 4% faster at 2,000 cats and 6% at 6,000 (D135), on top of E1's, with play the same.
+- Decisions: D135–D136.
+- **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D135); the cats project: 714 passed; selection: `vitest related` → 10 files, 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped.
+- **Reviewer:** approved, no defects; one Low (D136 named the other calls wrongly; `bringBack` runs per cat per step too), corrected.
+- **E4's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41578892048 (Nightrun at 2130b74).
