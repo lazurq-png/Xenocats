@@ -711,3 +711,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the backlog, which the next plans are written from, matches what the address limit now does. Decisions: D190.
 - **Verification:** reading only (the export's search, D190). Markdown only: prettier does not check it; `test:affected` selects nothing. Reviewer: none, a one-sentence documentation change.
 - **Previous items' CI:** E34 (`aaba75d`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41653841138; E35 (`7f46a77`) pending at this entry; its outcome goes in E37's entry.
+
+## E37 — started 15:38: the nearest Keeper, when there is one, without measuring (kind: speed)
+
+## E37 — the nearest Keeper, when there is one, without measuring, measured (completed)
+
+- Branch `2026-11-02-e37-one-keeper`, base `e6bc313`; started 15:38, completed 15:39.
+- **What the code does:** nothing changes in the code: the change this item measured did not clear the bar the run keeps (D191).
+- **What it brings:** one more per-cat call ruled out by measurement. Decisions: D191.
+- **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, about 2% at 2,000 cats, overlapping at 6,000 (D191). `git diff e6bc313 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E35 (`7f46a77`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41654774657; E36 (`e6bc313`) pending at this entry; its outcome goes in E38's entry.
