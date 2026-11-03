@@ -486,3 +486,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the code CI runs after checkout (npm packages' install scripts, the build, the tests, and the change under test itself) can no longer read the workflow's token from disk, which narrows what a compromised dependency or a hostile pull request could do with it. Decisions: D153–D155.
 - **Verification:** actionlint with shellcheck and pyflakes 0; prettier on both workflows 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; `test:affected --base Nightrun` selects no test (unit 0, e2e 0). The *checks*, *build* and *e2e* jobs' checkouts are exercised by CI's run of this push; *migrations*, *dependency-review* and CodeQL's are checked by reading only until a pull request (D154). Reviewer: approved; its one Low did not hold (D155).
 - **Previous items' CI:** E12 (`a22c179`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41608886766; E13 (`c2507a0`) pending at this entry; its outcome goes in E15's entry.
+
+## E15 — started 10:22: why a crowded step's own lines are slow: cat shapes, copies, culling (kind: speed)
+
+## E15 — why a crowded step's own lines are slow: cat shapes, copies, culling (completed)
+
+- Branch `2026-11-02-e15-step-shapes`, base `ff6f9c3`; started 10:22, completed 10:23.
+- **What the code does:** nothing changes in the code. The item checked, by reading and from E13's profile, the causes a change could remove from a crowded step's own time, and found none (D156).
+- **What it brings:** the next speed work need not look again at cat shapes, per-frame copies or off-screen drawing, and knows a line-level profile needs source maps; the remaining gain is structural, for a plan (D157). Decisions: D156–D157.
+- **Verification:** reading only, and the listing of every assigned cat field against what creation sets (no field outside it). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E13 (`c2507a0`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41609614907; E14 (`ff6f9c3`) pending at this entry; its outcome goes in E16's entry.
