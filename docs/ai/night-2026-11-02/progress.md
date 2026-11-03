@@ -537,3 +537,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; seeded fingerprints old against new, three runs, identical; the step benchmark, three interleaved pairs (D165); the new test shown able to fail (a planted off-by-one cell). `test:affected --base Nightrun`: unit `vitest related` over the three files → 10 files, 601 passed, 52 skipped; the cats project 716 passed (716); build 0; e2e 5 specs (benchmark, leaderboard, phone, security-headers, survival) → 55 passed, 2 skipped. Reviewer: approved, no findings (D166).
 - **A correction to E18's entry:** it says E18 started at 10:49; its heading, written when it started, says 10:47, which is right.
 - **Previous item's CI:** E18 (`d503de9`) pending at this entry; its outcome goes in E20's entry.
+
+## E20 — started 10:55: a fingerprint of seeded runs, to show a refactor changed no game (kind: security and quality)
+
+## E20 — a fingerprint of seeded runs, to show a refactor changed no game (completed)
+
+- Branch `2026-11-02-e20-run-fingerprint`, base `f902d94`; started 10:55, completed 10:56.
+- **What the code does:** `tests/bench/arena-fingerprint.test.ts` (new, run by hand with the step benchmark's config, never in CI) plays three seeded, crowded Survival runs and prints a fingerprint of each: every cat's position and homesickness every 100 steps, and every gem at the end. `README.md`'s benchmark row names it.
+- **What it brings:** the next speed change or refactor of the simulation can show in one command that it left the game as it was (the same three lines before and after), instead of a script written again each time, as E13, E17 and E19 did. Decisions: D167.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0; the tool run: 1 passed, the fingerprints `0f741d43bd8015d9`, `0cfdc9b1adbc2ecb`, `ab3b9f378e0e8819` (E17's and E19's); with a one-line change to the game, three others (D167). `test:affected --base Nightrun` selects nothing (`tests/bench/` and Markdown; E16 working as meant). Reviewer: none, a tool run on demand (D167).
+- **Previous item's CI:** E18 (`d503de9`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41614146900; E19 (`f902d94`) pending at this entry; its outcome goes in E21's entry.

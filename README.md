@@ -63,7 +63,7 @@ limit, and failed logins are counted per login name only.
 | Browser tests | `npm run test:e2e` (Playwright and Chromium, `tests/e2e/`; their own schema, `xenocats_test`) |
 | Affected tests | `npm run test:affected -- --base <ref> [--run]` (the unit and browser tests a change can reach) |
 | Build | `npm run build` |
-| Speed benchmarks | By hand, never in CI; they print timings and assert no speed. The Survival step: `npx vitest run -c vitest.bench.config.mts` (`tests/bench/`). Its drawing, in Chromium throttled as a weak machine: `BENCH=1 E2E_NO_CAT_DEPS=1 npx playwright test tests/e2e/benchmark.spec.ts` |
+| Speed benchmarks | By hand, never in CI; they print timings and assert no speed. The Survival step: `npx vitest run -c vitest.bench.config.mts` (`tests/bench/`), with fingerprints of three seeded runs that a change meant to leave the game as it was must print unchanged (`tests/bench/arena-fingerprint.test.ts`). Its drawing, in Chromium throttled as a weak machine: `BENCH=1 E2E_NO_CAT_DEPS=1 npx playwright test tests/e2e/benchmark.spec.ts` |
 | In a browser | `npm run dev`, then open http://localhost:3000 |
 
 CI (`.github/workflows/ci.yml`) runs lint, the format and type checks, the unit,
