@@ -47,3 +47,7 @@ T22 moved what stands outside the two closures; `createArena` is still about 3,0
 ## Q11 — Where a crowded frame goes (E1, E3; for the next speed task)
 
 Profiled tonight: a crowded simulation step (E1, D127) and a crowded frame in headless Chromium with ×4 CPU throttling (E3, D131). Over half the frame is the browser's own work, likely software raster of the canvas, which a GPU would change; of the JavaScript, the simulation is about twice the drawing. E1 made the step 4–8% faster (the grid's keys). **Recommendation:** profile one crowded run on a real weak machine with Chrome's Performance panel, headed, GPU on, before the next drawing change; if the simulation dominates there too, `separate`, `walkCat` and `moveCat` are where its time goes.
+
+## Q12 — The login's open redirect, found and fixed (E8)
+
+For a human to know: before E8, a link to `/login?callbackUrl=//evil.example/...` made the login try to send the visitor to `evil.example`; the browser's `pushState` refused, so the visitor was left on the login page instead (D140). Production (`main`) has the same default; the fix (D141, a `redirect` callback) reaches it with the next merge. Nothing for a human to decide; worth knowing for the release notes.

@@ -66,6 +66,26 @@ export const authConfig = {
       if (session.user && token.sub) session.user.id = token.sub;
       return session;
     },
+    /**
+     * Where a login or sign-out sends the visitor: only ever this site. The address
+     * (the login's `callbackUrl`, which anyone can write) is resolved as a browser
+     * would resolve it, so `//elsewhere` and `/\elsewhere` are another site, and
+     * refused for the home page; one on this site keeps its path with a single
+     * leading slash, which no browser reads as a host. (Auth.js's own default joins
+     * a path to the site's address as it is, and `//elsewhere` then reads as
+     * another host to the browser that follows it.)
+     */
+    redirect({ url, baseUrl }) {
+      const site = new URL(baseUrl);
+      let target: URL;
+      try {
+        target = new URL(url, site);
+      } catch {
+        return site.origin;
+      }
+      if (target.origin !== site.origin) return site.origin;
+      return `${site.origin}${target.pathname.replace(/^[/\\]+/, '/')}${target.search}${target.hash}`;
+    },
   },
   providers: [], // Add providers with an empty array for now
 } satisfies NextAuthConfig;

@@ -34,6 +34,38 @@ test('an unknown email is refused like a wrong password', async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
+// The login's `callbackUrl` comes from the address bar (the proxy sets it, but anyone
+// can write one): Auth.js's redirect callback keeps it on this site. Each address is
+// one a link from elsewhere could carry; after the login the visitor is still here.
+test('a login never sends the visitor to another site, whatever callbackUrl says', async ({
+  page,
+  baseURL,
+}) => {
+  const site = new URL(baseURL!);
+  for (const callbackUrl of [
+    'https://evil.example/phish',
+    '//evil.example/phish',
+    '/\\evil.example/phish',
+    // What a check by prefix ("starts with this site") would let through.
+    `${site.protocol}//${site.hostname}.evil.example:${site.port}/phish`,
+    `${site.protocol}//${site.host}@evil.example/phish`,
+  ]) {
+    await page.context().clearCookies();
+    await page.goto(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+    await page.getByLabel('Email').fill('user@nextmail.com');
+    await page.getByLabel('Password', { exact: true }).fill('123456');
+    await page.getByRole('button', { name: /log in/i }).click();
+    // Once the login page is left (its own heading also says welcome back, so a heading
+    // proves nothing), the visitor is on this site: the dashboard, or its home page
+    // where Auth.js falls back from an address it refuses.
+    // (A poll of the address: Next's navigation after the login may fire no load event.)
+    await expect
+      .poll(() => new URL(page.url()).pathname, { message: callbackUrl, timeout: 15_000 })
+      .not.toBe('/login');
+    expect(new URL(page.url()).origin, callbackUrl).toBe(site.origin);
+  }
+});
+
 // The browser tests' pause (fixtures.ts): this group's specs run with the cats paused.
 // Chaos always has a cat on screen within 9 s (intensity.spec.ts, which runs unpaused).
 test.describe('with the cats paused', () => {

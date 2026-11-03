@@ -408,3 +408,18 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D138); the cats project: 714 passed; selection: `vitest related` → 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped.
 - **Reviewer:** approved, nothing to fix (the limit is always well above zero, so the squared comparison is the same).
 - **E6's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41602813593 (Nightrun at 6b8fb47).
+
+## E8 — started 09:29: a test that the login never sends a visitor to another site (kind: security and quality)
+
+## E8 — the login never sends a visitor to another site: a test, and the open redirect it found (completed)
+
+- Branch `2026-11-02-e8-callback-redirect-test`, base bf9bb25. Started 2026-11-03 09:29, completed 09:42.
+- **What the code does:**
+  - `auth.config.ts`: a `redirect` callback: a login's or sign-out's address is resolved as a browser would, kept only if it is on this site, and given back with one leading slash; anything else goes to the home page.
+  - `tests/unit/auth-config.test.ts`: the callback, for same-site addresses and ten forms of another site.
+  - `tests/e2e/dashboard.spec.ts`: logging in with five forms of an outside `callbackUrl` leaves the visitor on this site.
+- **What it brings:** a link carrying `/login?callbackUrl=//evil.example/...` no longer makes the login try to send the visitor to that site (D140): it was one step from an open redirect, held back only by the browser's `pushState` rule, and it left the visitor stuck on the login page. Now they land on the site.
+- Decisions: D139–D142. Questions: Q12.
+- **Verification** (full-suite point: `auth.config.ts` changed): lint (0 errors, 0 warnings), tsc: clean; the e2e test failed before the fix (the `pushState` `SecurityError`, D140) and passes after; `npm test`: 1,157 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e under `next dev` and `next start`: 166 passed, 2 skipped each. After the re-review, test-only edits: `auth-config.test.ts` 17 passed, `dashboard.spec.ts` 6 passed.
+- **Reviewer:** Request Changes (High: the first test could not fail), fixed, which exposed the bug, fixed too; re-review approved with two Low, applied (D142).
+- **E7's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41603550693 (Nightrun at bf9bb25).

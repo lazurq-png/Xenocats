@@ -59,6 +59,50 @@ describe('authorized', () => {
   });
 });
 
+describe('redirect', () => {
+  type Redirect = (params: { url: string; baseUrl: string }) => string;
+  const redirect = authConfig.callbacks.redirect as unknown as Redirect;
+  const baseUrl = 'https://xenocats.example';
+  const to = (url: string) => redirect({ url, baseUrl });
+
+  it('keeps an address on this site, a path or an absolute one', () => {
+    expect(to('/dashboard')).toBe('https://xenocats.example/dashboard');
+    expect(to('/dashboard/invoices?page=2#top')).toBe(
+      'https://xenocats.example/dashboard/invoices?page=2#top'
+    );
+    expect(to('https://xenocats.example/cats')).toBe('https://xenocats.example/cats');
+  });
+
+  it('sends an address on another site home instead, however it is written', () => {
+    for (const url of [
+      'https://evil.example/phish',
+      '//evil.example/phish',
+      '/\\evil.example/phish',
+      '\\\\evil.example/phish',
+      'https://xenocats.example.evil.example/phish',
+      'https://xenocats.example@evil.example/phish',
+      'http://xenocats.example/dashboard',
+      'javascript:alert(1)',
+      // A tab, which a URL parser drops: `//` again.
+      '/\t/evil.example/phish',
+    ]) {
+      expect(to(url), url).toBe('https://xenocats.example');
+    }
+  });
+
+  it('never gives back a path a browser would read as a host', () => {
+    // On this site, but with leading slashes: one slash only.
+    expect(to('https://xenocats.example//evil.example/x')).toBe(
+      'https://xenocats.example/evil.example/x'
+    );
+    expect(to('https://xenocats.example/\\evil.example/x')).toBe(
+      'https://xenocats.example/evil.example/x'
+    );
+    // Dot segments that leave `//` behind once resolved.
+    expect(to('/..//evil.example/x')).toBe('https://xenocats.example/evil.example/x');
+  });
+});
+
 describe('session', () => {
   type SessionCallback = (params: {
     session: { user?: { id?: string; email?: string }; expires: string };
