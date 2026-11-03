@@ -311,3 +311,17 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification:** documentation only (no tests select); the skill's steps were run on this change and passed (prettier, lint 0 warnings, tsc, a selection of nothing); the harness listed the skill as soon as the file existed. Every command in it checked against `package.json` and `scripts/affected-tests.mjs` (the reviewer's).
 - **Reviewer:** Request Changes (one Medium: a repair would not recheck the earlier steps; four Low), all applied (D120); re-review approved with two Low, applied (D121).
 - **T20's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41574901154 (Nightrun at 88141ee).
+
+## T22 — Split the largest game modules (completed, in part: see D124, Q10)
+
+- Branch `2026-11-02-t22-split-arena`, base 723ffb5. Started 2026-11-03 04:59, completed 05:10.
+- **What the code does:**
+  - `app/ui/xenocats/arena.ts`: keeps `createArena`; its configuration moves to `arena-config.ts`, its types, constants and small helpers to `arena-model.ts`; it re-exports both. 3,999 → 3,108 lines.
+  - `app/ui/xenocats/arsenal.ts`: now its header and re-exports of `arsenal-weapons.ts` (the weapon table), `arsenal-rules.ts` (evolutions, fusions, passives, modifiers, stats, choices) and `arsenal-words.ts` (what a choice or a loadout says).
+  - `app/ui/xenocats/arena-view.tsx`: its constants and helpers outside the component move to `arena-view-parts.ts`, which it imports. 1,951 → 1,841 lines.
+  - Every line moved unchanged (the reviewer compared them); no import elsewhere changed.
+- **What it brings:** the arsenal's table, rules and words, and the arena's configuration and model, can each be read and changed in a file of its own; the inside of the simulation and of the drawing, which the task also named, is not split (D124), and is proposed as a supervised task (Q10).
+- Decisions: D122–D126.
+- **Verification** (on the final state): prettier, lint (0 errors, 0 warnings), tsc (with unused names checked too): clean; no test file changed; `npm test`: 56 files passed, 1 skipped; 1,153 passed, 52 skipped; build: exit 0; the selection (benchmark, leaderboard, phone, security headers, survival) under `next dev`: 54 passed, 2 skipped; the same specs but the benchmark under `next start`: 54 passed; the benchmark twice before and after (D126). (b)–(d) checked by command; (a) in part (D124).
+- **Reviewer:** approved, no defects; one Low on scope (the closures not split), which is D124 and Q10.
+- **T21's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41575403748 (Nightrun at 723ffb5).

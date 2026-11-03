@@ -39,3 +39,7 @@ npm copies the root package's `engines` into the lockfile's root entry; the run 
 ## Q9 — Everyone logs in again once when T16 deploys
 
 T16 signs out any session made before it (its token has no login time; D92), so on the deploy to production every signed-in user is sent to the login once. The alternative, a week's grace for those sessions, left a stolen pre-deploy cookie usable for up to 30 days and could outlive a sign-out (the reviewer's finding). Recommendation: accept the one re-login; deploy when it bothers fewest. Nothing to do otherwise.
+
+## Q10 — Proposed task: split `createArena` and the view's drawing (T22)
+
+T22 moved what stands outside the two closures; `createArena` is still about 3,000 lines (spawning, weapons, collision, the step) and `arena-view.tsx`'s `draw` about 470. Splitting them means turning the closure's shared state into an object the parts take: a rewrite. Recommendation: a supervised task, done one concern at a time (spawning first: `spawnCat`, `spawnEvents`, the arrivals), with the arena's tests and a seeded run's full state compared before and after each; the drawing only with someone to look at the canvas. Meanwhile: nothing.
