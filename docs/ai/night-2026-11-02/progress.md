@@ -220,3 +220,16 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **Verification** (full-suite point: `vitest.config.mts` changed): prettier, actionlint, lint (0 errors, 0 warnings), tsc: clean; `node scripts/unit-projects.mjs`: 54 files, each in one project; tried with a stray file (failed, then landed in `dashboard`); each project as CI runs it: 228 + 713 + 196 = 1,137 passed, as `npm test` before; `npm test`: 1,137 passed, 52 skipped; database project with `DATABASE_TESTS=1`: 52 passed, guard accepts it; build: exit 0; e2e under `next dev` and `next start`: 163 passed, 2 skipped each. (a)–(e) checked by command.
 - **Reviewer:** approved, no defects (D81).
 - **T13's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41547904895 (Nightrun at 9d249f2).
+
+## T15 — Cache the leaderboard (completed)
+
+- Branch `2026-11-02-t15-cache-leaderboard`, base 890d1e3. Started 2026-11-03 00:54, completed 01:05.
+- **What the code does:**
+  - `app/lib/data.ts`: `fetchLeaderboard` reads the board (each length's top ten) from Next's data cache (`unstable_cache`, tag `leaderboard`, keyed by the schema, at most 60 s old) and the signed-in viewer's own best from the database on every request; both from one ranking (`rankedBests`). The cached rows carry no user id; the viewer's row on the board is found by its place and run.
+  - `app/lib/actions.ts`: `recordSurvivalRun` updates the tag (`updateTag`) when a run is saved.
+  - Tests: `tests/unit/leaderboard-cache.test.ts` (new): the board read once across requests until the tag is updated, the viewer's row every time, the key, the tag and the limit; `actions.test.ts` checks the tag update; the `next/cache` mocks gained `unstable_cache` and `updateTag`.
+- **What it brings:** `/cats` no longer ranks every finished run for every visitor: the board is read from the database about once a minute, or at once after a save, and a visitor who is not signed in costs no board query at all; a player still sees their own new run on the board straight after saving it.
+- Decisions: D82–D87.
+- **Verification** (on the final state): prettier, lint (0 errors, 0 warnings), tsc: clean; selection: `vitest related` → 5 files, 73 passed, 52 skipped; database tests: 52 passed; build: exit 0; e2e: 14 specs under `next dev`, 129 passed, 2 skipped; and `leaderboard.spec.ts` under `next start` (where the data cache is the production one): 5 passed. (a)–(e) checked by command; the expiry timing (60 s, stale-while-revalidate) is Next's, checked by reading.
+- **Reviewer:** Request Changes, two Medium (no time limit; a key not tied to the schema), both fixed (D87); re-review: approved.
+- **T14's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41548860797 (Nightrun at 890d1e3).

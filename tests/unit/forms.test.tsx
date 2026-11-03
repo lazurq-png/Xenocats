@@ -15,7 +15,12 @@ const { sql, auth } = vi.hoisted(() => ({
 vi.mock('postgres', () => ({ default: () => sql }));
 vi.mock('@/auth', () => ({ auth, signIn: vi.fn() }));
 vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
+  // No data cache outside Next: the board is read from the database every time.
+  unstable_cache: (fn: unknown) => fn,
+}));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 
 const { default: InvoiceForm } = await import('@/app/ui/invoices/invoice-form');

@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import bcryptjs from 'bcryptjs';
 import type postgres from 'postgres';
@@ -17,6 +17,7 @@ import {
 } from '@/app/lib/login-limit';
 import { claimSignUp, clientAddress, clientKey, signUpLimit } from '@/app/lib/sign-up-limit';
 import { mostSentHome } from '@/app/ui/xenocats/arena';
+import { LEADERBOARD_TAG } from '@/app/lib/data';
 import { headers } from 'next/headers';
 import {
   ChangePasswordForm,
@@ -576,6 +577,9 @@ export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult
     console.error('Database Error:', error);
     return 'error';
   }
+  // The board is cached (fetchLeaderboard): this run may be on it now. updateTag, so
+  // the player who saved it reads it at once.
+  updateTag(LEADERBOARD_TAG);
   revalidatePath('/cats');
   return 'saved';
 }

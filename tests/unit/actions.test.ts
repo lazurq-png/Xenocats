@@ -4,17 +4,20 @@ import { mostSentHome } from '@/app/ui/xenocats/arena';
 
 // Nothing here reaches a database or a real session: `postgres`, `@/auth` and the
 // Next.js runtime helpers the actions call are all replaced with fakes.
-const { sql, locks, auth, signIn, signOut, revalidatePath, redirect } = vi.hoisted(() => ({
-  // A transaction (sql.begin) runs its statements on the same fake, except the lock
-  // on the account it takes first, which goes to `locks` (whose account, in order).
-  sql: Object.assign(vi.fn(), { begin: vi.fn() }),
-  locks: [] as unknown[],
-  auth: vi.fn(),
-  signIn: vi.fn(),
-  signOut: vi.fn(),
-  revalidatePath: vi.fn(),
-  redirect: vi.fn(),
-}));
+const { sql, locks, auth, signIn, signOut, revalidatePath, updateTag, redirect } = vi.hoisted(
+  () => ({
+    // A transaction (sql.begin) runs its statements on the same fake, except the lock
+    // on the account it takes first, which goes to `locks` (whose account, in order).
+    sql: Object.assign(vi.fn(), { begin: vi.fn() }),
+    locks: [] as unknown[],
+    auth: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+    revalidatePath: vi.fn(),
+    updateTag: vi.fn(),
+    redirect: vi.fn(),
+  })
+);
 
 vi.mock('postgres', () => ({ default: () => sql }));
 vi.mock('@/auth', () => ({ auth, signIn, signOut }));
@@ -24,7 +27,7 @@ vi.mock('next-auth', () => ({
     code = 'credentials';
   },
 }));
-vi.mock('next/cache', () => ({ revalidatePath }));
+vi.mock('next/cache', () => ({ revalidatePath, updateTag, unstable_cache: (fn: unknown) => fn }));
 vi.mock('next/navigation', () => ({ redirect }));
 vi.mock('next/headers', () => ({
   headers: async () => new Headers({ 'x-real-ip': '203.0.113.7' }),
@@ -727,6 +730,8 @@ describe('recordSurvivalRun', () => {
     expect(text).toContain('AND run_minutes = ?');
     expect(values.slice(0, 5)).toEqual(['Comet Tail', 312_000, 87, runId, 'u1']);
     expect(revalidatePath).toHaveBeenCalledWith('/cats');
+    // The cached board is read again: this run may be on it.
+    expect(updateTag).toHaveBeenCalledWith('leaderboard');
   });
 
   it('sends an endless run longer than any timed one on to the database to judge', async () => {

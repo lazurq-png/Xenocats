@@ -42,7 +42,12 @@ const url = databaseUrl('xenocats_vitest');
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock('@/auth', () => ({ auth, signIn: vi.fn() }));
 vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
+  // No data cache outside Next: the board is read from the database every time.
+  unstable_cache: (fn: unknown) => fn,
+}));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 // The sign-up limit keys addresses with the app's secret (sign-up-limit.ts).
 vi.stubEnv('AUTH_SECRET', 'a secret for the tests');
