@@ -751,3 +751,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the gap E30's test exposed is known to be harmless today, with the condition that would make it matter, so nobody needs to chase it, and someone adding such a route knows. Decisions: D194.
 - **Verification:** reading only (every route with a dynamic segment, and the invoice page's id check). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E38 (`c4c4ea0`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41657479553; E39 (`86eed62`) pending at this entry; its outcome goes in E41's entry.
+
+## E41 — started 16:03: how much of the step's gain reaches a crowded frame, measured (kind: speed)
+
+## E41 — how much of the step's gain reaches a crowded frame, measured (completed)
+
+- Branch `2026-11-02-e41-frame-record`, base `8d765e2`; started 16:03, completed 16:06.
+- **What the code does:** nothing changes in the code. `decisions.md` records the render benchmark before and after this run's speed changes (D195).
+- **What it brings:** what the player of a crowded run gets from the speed work: with 2,000 cats on a throttled browser, about 10–14% more frames (about 40 → 45 fps) and fewer slow ones. Decisions: D195.
+- **Verification:** the render benchmark, two interleaved pairs (3 passed each run; figures in D195); the app's files copied in for the old side and restored (`git diff -- app/` empty after). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E39 (`86eed62`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41658865207; E40 (`8d765e2`) pending at this entry; its outcome goes in E42's entry.
