@@ -361,3 +361,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - Decisions: D131–D132. Questions: Q11.
 - **Verification:** the profiles themselves (D131). The two throwaway servers ran under `timeout` on ports 3201 and 3202 and ended by themselves (checked: no `next` process on either left). No tests select a documentation change.
 - **E2's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41577753007 (Nightrun at 64e365d).
+
+## E4 — started 05:29: the type check refuses unused locals and imports (kind: security and quality)
+
+## E4 — the type check refuses unused locals and imports (completed)
+
+- Branch `2026-11-02-e4-no-unused-locals`, base b460ded. Started 2026-11-03 05:29, completed 05:34.
+- **What the code does:** `tsconfig.json`: `"noUnusedLocals": true`, so `tsc` (and `next build`) refuse an unused import, variable or function.
+- **What it brings:** a refactor that leaves an import behind, as T22's first attempt did unseen, now fails the type check in the gate and in CI instead of staying in the code.
+- Decisions: D133–D134.
+- **Verification** (full-suite point: `tsconfig.json` changed): lint 0 errors, 0 warnings; tsc clean, and a probe file with an unused import and variable refused (D133); `npm test`: 56 files passed, 1 skipped; 1,154 passed, 52 skipped; database tests: 52 passed; build: exit 0, `tsconfig.json` unchanged by it; e2e under `next dev` and `next start`: 165 passed, 2 skipped each.
+- **Reviewer:** approved, no findings (Next does not rewrite the option; `noUnusedParameters` would flag the actions' `prevState`, as D134 says).
+- **E3's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41578309130 (Nightrun at b460ded).
