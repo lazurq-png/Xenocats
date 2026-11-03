@@ -630,3 +630,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** Dependabot's weekly update of Playwright, which moves the lockfile but not CI's image, now fails a unit test on its own pull request, saying what to change, instead of leaving CI's browser jobs on a mismatched browser image. Decisions: D179.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0; the test 1 passed, and shown able to fail (D179); `node scripts/unit-projects.mjs`: 59 files, each in one project (dashboard 23). `test:affected --base Nightrun`: unit `vitest related tests/unit/ci-playwright-image.test.ts` → 1 passed (1); e2e 0 specs. Reviewer: none, a test-only change (D179).
 - **Previous items' CI:** E26 (`c89945b`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41645822623; E27 (`2eaa8e4`) pending at this entry; its outcome goes in E29's entry.
+
+## E29 — started 14:48: the gem scan passes over a gem too far on x alone (kind: speed)
+
+## E29 — the gem scan passes over a gem too far on x alone, measured (completed)
+
+- Branch `2026-11-02-e29-gem-scan`, base `cb1cc7c`; started 14:48, completed 14:49.
+- **What the code does:** nothing changes in the code: the change this item measured made the step slower and was not kept (D180).
+- **What it brings:** a current profile of a crowded step after E25, and a third dead end on `dropGem` recorded (an early rejection costs more than it skips), so the scan is left as it is. Decisions: D180.
+- **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, slower at every size (D180). `git diff cb1cc7c -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E27 (`2eaa8e4`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41646616015; E28 (`cb1cc7c`) pending at this entry; its outcome goes in E30's entry.
