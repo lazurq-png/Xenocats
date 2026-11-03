@@ -60,7 +60,26 @@ export function clientAddress(
       : trusted === 'x-forwarded-for'
         ? headers.get('x-forwarded-for')?.split(',').at(-1)
         : null;
-  return withoutPort(address?.trim() ?? '') || 'unknown';
+  const found = withoutPort(address?.trim() ?? '');
+  if (!found && trusted !== null) warnMissing(trusted);
+  return found || 'unknown';
+}
+
+let warnedMissing = false;
+/**
+ * A trusted header named, but a request without it: the proxy may not be setting it,
+ * and then every client shares one count, as with none named (the startup warning,
+ * proxyWarning, only sees that one is named). Said once a server instance, in production.
+ * It names the header only, never what a request held.
+ */
+function warnMissing(trusted: string, env: Record<string, string | undefined> = process.env) {
+  if (warnedMissing || env.NODE_ENV !== 'production') return;
+  warnedMissing = true;
+  console.warn(
+    `The trusted proxy header (${trusted}, from TRUSTED_PROXY_HEADER or VERCEL=1) was ` +
+      'missing or empty on a request: such clients share one sign-up limit and one ' +
+      'failed-login count. Is the proxy in front of the app setting it?'
+  );
 }
 
 /** An address as a proxy may write it, without its port or an IPv6 one's brackets. */

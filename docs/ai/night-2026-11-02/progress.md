@@ -801,3 +801,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the arrivals ruled out as a cost of the step's own body, by measurement. Decisions: D199.
 - **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, overlapping at every size (D199). `git diff 2b2b74f -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E43 (`37c6070`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41662543463; E44 (`2b2b74f`) pending at this entry; its outcome goes in E46's entry.
+
+## E46 — started 16:29: a warning when the trusted proxy header is named but missing (kind: security and quality)
+
+## E46 — a warning when the trusted proxy header is named but missing (completed)
+
+- Branch `2026-11-02-e46-missing-header`, base `fbfb0e0`; started 16:29, completed 16:36.
+- **What the code does:** `clientAddress` in `app/lib/sign-up-limit.ts` warns once a server instance, in production, when a trusted proxy header is named (`TRUSTED_PROXY_HEADER` or `VERCEL=1`) but a request comes without a usable address in it; the message names the header, never what the request held. What it returns is unchanged. `tests/unit/proxy-header-warning.test.ts` (new) checks when it speaks and when not.
+- **What it brings:** a proxy that does not set the header the app trusts (a misconfiguration that silently makes every client share one sign-up limit and one failed-login count) is now said in the server's log, where before only the case of no header named was. Decisions: D200–D201.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; the new test fails on the code before (D200). `test:affected --base Nightrun` printed `FULL` (`sign-up-limit.ts` reaches `auth.ts`), so the full suites ran: `npm test` 60 files passed, 1 skipped; 1169 passed, 52 skipped (E32: 1166; three more since: E42's and this item's two); database tests 52 passed (52); build 0; `test:e2e` 169 passed, 2 skipped; `E2E_SERVER=start` 169 passed, 2 skipped (as at E32; E42's test is a unit test). After the reviewer's findings: `npm test` 1170 passed, 52 skipped (D201). Reviewer: approved; its Low and two Nits acted on.
+- **Previous items' CI:** E44 (`2b2b74f`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41663466258; E45 (`fbfb0e0`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41664356570.
