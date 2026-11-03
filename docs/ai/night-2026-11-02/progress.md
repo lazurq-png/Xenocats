@@ -741,3 +741,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** the next speed task knows where `separate`'s time goes (cells too large for its reach) and that the gain there changes the game, so it is a plan's decision. Decisions: D193.
 - **Verification:** a throwaway counter over the crowd benchmark (removed); with the dropped change, E20's fingerprints unchanged and three interleaved timing pairs overlapping (D193). `git diff c4c4ea0 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E37 (`c527f59`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41656593664; E38 (`c4c4ea0`) pending at this entry; its outcome goes in E40's entry.
+
+## E40 — started 15:58: what a page past the proxy is served without (kind: security and quality)
+
+## E40 — what a page past the proxy is served without (completed)
+
+- Branch `2026-11-02-e40-png-csp-reading`, base `86eed62`; started 15:58, completed 15:58.
+- **What the code does:** nothing changes in the code. `decisions.md` records that the one rendered page a path past the proxy can reach (the invoice page, by an id ending in `.png`) is always its not-found page, which holds nothing to inject into, so its missing Content-Security-Policy guards nothing (D194).
+- **What it brings:** the gap E30's test exposed is known to be harmless today, with the condition that would make it matter, so nobody needs to chase it, and someone adding such a route knows. Decisions: D194.
+- **Verification:** reading only (every route with a dynamic segment, and the invoice page's id check). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E38 (`c4c4ea0`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41657479553; E39 (`86eed62`) pending at this entry; its outcome goes in E41's entry.
