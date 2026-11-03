@@ -63,3 +63,16 @@ E16 made the selector select nothing for `tests/bench/` and `vitest.bench.config
 ## Q14 — An email logs in only as it was stored, case and all (E34)
 
 `findUser` (`app/lib/credentials.ts`) looks an email up with `email = ${login}`, so a user who types `User@Example.com` for an account stored as `user@example.com` is told the credentials are invalid; a username is looked up case-insensitively. The lockout is not affected (D188). **Options:** (a) leave it (accounts made by sign-up have usernames; emails are the seeded and older accounts only); (b) look emails up by `lower(email) = lower(login)`, after checking no two stored emails differ only by case (on Neon too), with a unique index on `lower(email)` in a migration so none can; (c) lower-case emails when stored, a migration rewriting existing rows. **Recommendation:** (b), with the check first, as a planned task: it is an authentication change and a migration. Nothing was built.
+
+## Q15 — Proposed tasks for the next plan, in one list (E38)
+
+What this run found worth doing and did not build, each a plan's task, none needing a decision beyond putting it in a plan, most consequential first. (The decisions for a human are Q1–Q9, Q12 and Q14 above.)
+
+1. **Q14's email lookup** (an authentication change and a migration): a human picks the option first.
+2. **Q2: the database certificate in `scripts/db.mjs`**, as T1 did for the app.
+3. **Speed, structural** (D157, D180, D189): what is left of a crowded step is each cat's own movement and its neighbours (`separate`, the step's body, `sweepHome`); a gain now needs fewer cats searched or moved per step (a cheaper `separate` pass, a coarser grid for far cats), each checked with `tests/bench/arena-fingerprint.test.ts` (E20) to leave the game as it was, or meant to change it. First, Q11: a profile on a real weak machine, where the drawing may weigh more than the step.
+4. **Q10: split `createArena` and the view's drawing**, the part of T22 left.
+5. **Lint rules with violations to judge** (D172, D176): `no-shadow` (44), `no-implicit-coercion` (11), `no-console` outside `app/` (36); each a change of its own, rule and fixes together. Not `no-promise-executor-return` or `no-param-reassign`, whose cases are idiomatic (D176).
+6. **The run's skill and rules**: the suggested rule changes in the morning report (the run does not edit `.claude/`).
+
+Read this run and found sound, not to be read again without a reason (D148, D153, D163, D169, D172, D176, D184, D188, D190): the Server Actions (sessions, ownership, validation), the CSV export, passwords and their limits, logs, searches, sessions and their revocation, the CSP and headers, redirects, error pages, `localStorage`, the client address (after E32), page numbers, the workflows and Dependabot.

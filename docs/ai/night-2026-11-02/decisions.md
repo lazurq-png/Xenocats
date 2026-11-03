@@ -377,3 +377,7 @@ Numbered non-obvious choices, with their reasons.
 ## E37 — the nearest Keeper, when there is one, without measuring, measured (kind: speed)
 
 - **D191** The item: `nearestKeeper` runs for every cat (`walkCat`) and every gem (`gatherGems`) every step, about 3,500 calls, and in a solo game measured the one Keeper's distance and called `standing` each time, though with one Keeper it returns him whatever it finds (`best` starts as `keepers[0]`). Tried: return `keepers[0]` at once when there is only one, the same answer. E20's fingerprints unchanged. Measured, three interleaved pairs: 500 cats 0.357–0.361 → 0.357–0.361 ms (the same), 2,000 cats 0.722–0.728 → 0.706–0.716 (about 2%), 6,000 cats 1.742–1.767 → 1.719–1.750 (overlapping). By D145's rule, as E27: no gain shown at the large crowd, not kept; `arena.ts` put back to its base, byte for byte. Of the step's remaining work, a call per cat that does little is already cheap; what is left is each cat's own movement and its neighbours (D180).
+
+## E38 — one list of what this run leaves for the next plan (kind: security and quality)
+
+- **D192** The run's candidates were spread over forty D-entries and fourteen questions; Q15 lists the proposed tasks in one place, most consequential first, separate from the decisions for a human, with what was read and found sound so the next run's exploration starts past it. Documentation only.

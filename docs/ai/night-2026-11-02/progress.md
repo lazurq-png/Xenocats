@@ -721,3 +721,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** one more per-cat call ruled out by measurement. Decisions: D191.
 - **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, about 2% at 2,000 cats, overlapping at 6,000 (D191). `git diff e6bc313 -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
 - **Previous items' CI:** E35 (`7f46a77`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41654774657; E36 (`e6bc313`) pending at this entry; its outcome goes in E38's entry.
+
+## E38 — started 15:44: one list of what this run leaves for the next plan (kind: security and quality)
+
+## E38 — one list of what this run leaves for the next plan (completed)
+
+- Branch `2026-11-02-e38-next-plan`, base `c527f59`; started 15:44, completed 15:44.
+- **What the code does:** nothing changes in the code. `questions.md` gains Q15: the proposed tasks this run leaves, in one ordered list, and what it read and found sound.
+- **What it brings:** whoever writes the next plan has one list to choose from, instead of forty decisions to read. Decisions: D192; Q15.
+- **Verification:** reading only (each item's source named in Q15). Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous items' CI:** E36 (`e6bc313`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41655687657; E37 (`c527f59`) pending at this entry; its outcome goes in E39's entry.
