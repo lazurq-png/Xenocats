@@ -650,3 +650,13 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** a gap in either lock on the pages behind the login (a page left out of the proxy's reach, or a page that stops checking its user where the proxy does not) now fails a test in both CI browser jobs, where before only `/dashboard` itself was tested. Decisions: D181–D182.
 - **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `tsc` 0. Shown able to fail twice: the invoice page's own check removed (`look.png` answered 404), and `.png` taken out of the matcher's exclusions (`answered by the page`); both put back byte for byte. `test:affected --base Nightrun`: unit, no test file; e2e `smoke.spec.ts`; build 0; on the final state the spec under `next dev` 8 passed, under `E2E_SERVER=start` 8 passed. Reviewer: approved; three Low findings acted on (D182), the spec rerun on both servers after.
 - **Previous items' CI:** E28 (`cb1cc7c`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41647431543; E29 (`9ae43b5`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41648242954.
+
+## E31 — started 14:59: moveCat writes a cat's speed back only when it slowed it (kind: speed)
+
+## E31 — moveCat writes a cat's speed back only when it slowed it, measured (completed)
+
+- Branch `2026-11-02-e31-movecat-speed`, base `e353a4c`; started 14:59, completed 15:00.
+- **What the code does:** nothing changes in the code: the change this item measured gained nothing and was not kept (D183).
+- **What it brings:** one more candidate in `moveCat` ruled out by measurement. Decisions: D183.
+- **Verification:** with the change, E20's fingerprints unchanged; three interleaved timing pairs, overlapping at every size (D183). `git diff e353a4c -- app/` is empty. Only `docs/ai/` changes; `test:affected` selects nothing. Reviewer: none, no code changed.
+- **Previous item's CI:** E30 (`e353a4c`) pending at this entry; its outcome goes in E32's entry.
