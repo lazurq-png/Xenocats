@@ -526,3 +526,14 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - **What it brings:** whoever takes up the speed work next (Q11, D157) finds how to measure it where the other checks are listed, not only by reading the test folders. Decisions: D163.
 - **Verification:** both commands run as the README now writes them: the step benchmark 2 passed; the render benchmark 3 passed (48.1 s). `test:affected --base Nightrun` selects nothing (a Markdown file; prettier does not check Markdown). Reviewer: none, a one-line documentation change.
 - **Previous item's CI:** E17 (`7768d7f`) CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41613112778.
+
+## E19 — started 10:50: separate reads its cell without copying it (kind: speed)
+
+## E19 — separate reads its cell without copying it (completed)
+
+- Branch `2026-11-02-e19-separate-cell`, base `d503de9`; started 10:50, completed 10:55.
+- **What the code does:** `app/ui/xenocats/arena-grid.ts` gains `cellAt`, which gives a point's own cell as the grid holds it (read-only) instead of a copy; `separate` in `app/ui/xenocats/arena.ts`, which eases piled-up cats apart, reads its cat's cell and the big cats' cell that way, in the same order as before. `tests/unit/xenocats/arena.test.ts` checks `cellAt` against a query of radius 0.
+- **What it brings:** a crowded Survival step 5–9% faster again on top of E17 (2,000 cats about 0.85 → 0.80 ms, 6,000 about 2.17 → 1.98), with seeded runs unchanged. Decisions: D164–D166.
+- **Verification:** prettier 0; lint 0, 0 warnings (baseline 0); `next typegen` + `tsc` 0; seeded fingerprints old against new, three runs, identical; the step benchmark, three interleaved pairs (D165); the new test shown able to fail (a planted off-by-one cell). `test:affected --base Nightrun`: unit `vitest related` over the three files → 10 files, 601 passed, 52 skipped; the cats project 716 passed (716); build 0; e2e 5 specs (benchmark, leaderboard, phone, security-headers, survival) → 55 passed, 2 skipped. Reviewer: approved, no findings (D166).
+- **A correction to E18's entry:** it says E18 started at 10:49; its heading, written when it started, says 10:47, which is right.
+- **Previous item's CI:** E18 (`d503de9`) pending at this entry; its outcome goes in E20's entry.

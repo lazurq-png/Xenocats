@@ -519,6 +519,24 @@ describe('the spatial grid', () => {
     }
   });
 
+  it("reads a point's own cell as a query of radius 0 does, inside the window or not", () => {
+    const random = createRandom(17);
+    const grid = createArenaGrid(64);
+    grid.clear({ x: 0, y: 0, half: 800 });
+    const points = Array.from({ length: 800 }, () => ({
+      x: random.range(-1600, 1600),
+      y: random.range(-1600, 1600),
+    }));
+    points.forEach((p, i) => grid.insert(i, p.x, p.y));
+    const out: number[] = [];
+    for (let q = 0; q < 300; q++) {
+      const x = random.range(-2000, 2000);
+      const y = random.range(-2000, 2000);
+      expect([...grid.cellAt(x, y)]).toEqual(grid.query(x, y, 0, out));
+    }
+    expect(grid.cellAt(50_000, 50_000)).toEqual([]);
+  });
+
   it('finds the same far from where the run began, where cells far apart share a key', () => {
     // 32,768 cells of 64 px apart share a key: points on both sides of that, and in the
     // negative, after hours of walking one way.

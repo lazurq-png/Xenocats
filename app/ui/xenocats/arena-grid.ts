@@ -11,6 +11,9 @@ export type GridWindow = { x: number; y: number; half: number };
 /** The most cells a window's array may hold; a larger window is not kept in one. */
 const MOST_WINDOW_CELLS = 1 << 16;
 
+/** What `cellAt` gives for a cell nothing was put in. */
+const NO_IDS: readonly number[] = [];
+
 export function createArenaGrid(cellSize: number) {
   const cells = new Map<number, number[]>();
   /** The lists in use this step; emptied (not dropped) by `clear`. */
@@ -83,6 +86,14 @@ export function createArenaGrid(cellSize: number) {
       const list = listOf(Math.floor(x / cellSize), Math.floor(y / cellSize), true)!;
       if (list.length === 0) used.push(list);
       list.push(id);
+    },
+
+    /**
+     * The ids in the cell of (x, y), as `query` with a radius of 0 would give them,
+     * but the cell's own list, not a copy: read it before the next `clear` or `insert`.
+     */
+    cellAt(x: number, y: number): readonly number[] {
+      return listOf(Math.floor(x / cellSize), Math.floor(y / cellSize), false) ?? NO_IDS;
     },
 
     /**

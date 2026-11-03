@@ -131,6 +131,8 @@ export function createArena(options: {
   // late run is mostly Fat Cats; scanning them all for every search was most of a step.
   const bigGrid = createArenaGrid(config.cellSize * 2);
   const bigNear: number[] = [];
+  /** No cats: what `separate` reads of the big grid when there are no big cats. */
+  const NO_CATS: readonly number[] = [];
   let bigCount = 0;
   let bigReach = 0;
   const near: number[] = [];
@@ -1110,15 +1112,14 @@ export function createArena(options: {
       }
       // Only the cats in its own cell (and the big ones in theirs): enough to ease a pile
       // apart, at a quarter of the search.
-      grid.query(cat.x, cat.y, 0, near);
-      if (bigCount > 0) {
-        bigGrid.query(cat.x, cat.y, 0, bigNear);
-        for (const j of bigNear) near.push(j);
-      }
+      // Read in place, not copied: a crowded cell holds dozens, and a few pushes are enough.
+      const own = grid.cellAt(cat.x, cat.y);
+      const big = bigCount > 0 ? bigGrid.cellAt(cat.x, cat.y) : NO_CATS;
       let px = 0;
       let py = 0;
       let pressed = 0;
-      for (const j of near) {
+      for (let n = 0; n < own.length + big.length; n++) {
+        const j = n < own.length ? own[n] : big[n - own.length];
         if (j === i) continue;
         const other = cats[j];
         const dx = cat.x - other.x;
