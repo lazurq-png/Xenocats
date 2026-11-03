@@ -566,7 +566,11 @@ export function createArena(options: {
    * where he is, and none counts for nothing.
    */
   function bringBack(cat: ArenaCat, cam: { x: number; y: number }, far: number) {
-    if (Math.hypot(cat.x - cam.x, cat.y - cam.y) <= far + cat.radius) return;
+    // Squared on both sides: no square root, for a test made for every cat every step.
+    const dx = cat.x - cam.x;
+    const dy = cat.y - cam.y;
+    const limit = far + cat.radius;
+    if (dx * dx + dy * dy <= limit * limit) return;
     const sits = cat.variety !== null && VARIETIES[cat.variety].gait === 'sit';
     const at = sits ? onScreen(200) : offScreen(random.next() * 2 * Math.PI, cat.radius);
     cat.x = at.x;

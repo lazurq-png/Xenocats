@@ -222,3 +222,7 @@ Numbered non-obvious choices, with their reasons.
 ## E6 — `CLAUDE.md` §9's account of CI (kind: security and quality)
 
 - **D137** §9 said CI "has three jobs" and described the *checks* job as lint, type check and unit tests: true before T9, T12 and T14. It now names the concurrency rule, the formatting step, the unit tests by project, the database tests' guard, the pull-request-only *dependency-review* and *migrations* jobs, and the separate CodeQL workflow with why it skips `Nightrun` pushes (D51's proposal, done). Each claim was checked against `ci.yml` and `codeql.yml`. A factual paragraph of documentation, checked line by line against the files it describes: no reviewer (§2 step 3).
+
+## E7 — `bringBack` without a square root (kind: speed)
+
+- **D138** `bringBack`, run for every cat every step (D136, the reviewer's correction), compared `Math.hypot(dx, dy)` with `far + cat.radius`; both sides are non-negative, so comparing their squares gives the same answer, but for rounding at the exact boundary, without a square root at all. Measured, three interleaved pairs of the step benchmark: 500 cats 0.464–0.472 → 0.445–0.461 ms, 2,000 cats 1.000–1.007 → 0.942–0.970, 6,000 cats 2.481–2.525 → 2.314–2.384: 5–6% at the larger crowds. (The "before" runs here are slower than E5's "after" runs by a few percent: the machine's own drift between sessions; only interleaved pairs are compared.)

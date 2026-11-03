@@ -396,3 +396,15 @@ Append-only log of the night run of 2026-11-02; the morning report, once written
 - Decisions: D137.
 - **Verification:** documentation only: every claim checked against `.github/workflows/ci.yml` and `codeql.yml` (by `grep` of the jobs, steps and triggers it names). No tests select.
 - **E5's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41579397991 (Nightrun at 9fd5b2a).
+
+## E7 — started 09:23: bringBack without a square root (kind: speed)
+
+## E7 — bringBack without a square root (completed)
+
+- Branch `2026-11-02-e7-bringback-squared`, base 6b8fb47. Started 2026-11-03 09:23, completed 09:27.
+- **What the code does:** `app/ui/xenocats/arena.ts`: `bringBack` compares a cat's squared distance from the camera with the squared limit, instead of taking `Math.hypot`.
+- **What it brings:** a crowded simulation step is another 5–6% faster at 2,000 and 6,000 cats (D138); with E1 and E5, a crowded step tonight went from about 1.10 to about 0.95 ms at 2,000 cats on this machine.
+- Decisions: D138.
+- **Verification:** prettier, lint (0 errors, 0 warnings), tsc: clean; the step benchmark, three interleaved pairs (D138); the cats project: 714 passed; selection: `vitest related` → 599 passed, 52 skipped; build: exit 0; e2e: 5 specs, 54 passed, 2 skipped.
+- **Reviewer:** approved, nothing to fix (the limit is always well above zero, so the squared comparison is the same).
+- **E6's CI:** CI passed, https://github.com/lazurq-png/Xenocats/actions/runs/41602813593 (Nightrun at 6b8fb47).
