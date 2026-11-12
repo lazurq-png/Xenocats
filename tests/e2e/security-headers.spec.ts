@@ -191,7 +191,7 @@ test('scripts run by a nonce of their own, new on every request, on every script
     seen.add(nonce!);
     // Every <script> in the page, inline or not, carries this response's nonce.
     const html = await response.text();
-    const scripts = html.match(/<script\b[^>]*>/g) ?? [];
+    const scripts = html.match(/<script\b[^>]*>/gi) ?? [];
     expect(scripts.length, path).toBeGreaterThan(0);
     for (const tag of scripts) expect(tag, path).toContain(`nonce="${nonce}"`);
   }
