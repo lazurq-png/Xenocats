@@ -1,3 +1,15 @@
+---
+paths:
+  - "tests/**"
+  - "vitest.config.mts"
+  - "vitest.bench.config.mts"
+  - "playwright.config.ts"
+  - "scripts/affected-tests.mjs"
+  - "scripts/unit-projects.mjs"
+  - "scripts/ci-passed.mjs"
+  - ".github/workflows/**"
+---
+
 # Testing Rules
 
 Tests provide the feedback loop that allows coding agents to work autonomously. Open this when planning coverage or triaging test failures.
@@ -115,27 +127,33 @@ on the merge into `main`, which only deploys, nor on a pull request from `dev` i
 
 ### A new test file goes in a CI group
 
-CI runs nothing by folder. Each unit test file is named in one of the
-`Unit tests (...)` steps of `.github/workflows/ci.yml`, and each browser spec in
-one group of `GROUPS` in `playwright.config.ts`. A file in no group would never
-run in CI, so the *checks* job's step "Every test file is in a group" fails the
-run instead (`<file> is in no unit test group in ci.yml`). Locally nothing
-catches it: `npm test` runs every file whatever the groups say.
+CI runs nothing by folder alone. Each browser spec is named in one group of
+`GROUPS` in `playwright.config.ts`; the unit tests are Vitest projects in
+`vitest.config.mts`, which choose their files themselves:
 
-So the change that adds a test file, or renames or moves one, also names it in a
-group: a unit test in the `Unit tests (...)` step for its area and environment
-(a `// @vitest-environment jsdom` file in a jsdom group), by its path without
-`.test.ts`/`.test.tsx`; a spec in exactly one group of `GROUPS`, by its name
-without `.spec.ts`. A deleted test file comes out of its group too. Before
-reporting the change, check that every unit test file is in a group (this prints
-nothing when all are):
+| Project | Files |
+| ------- | ----- |
+| `dashboard` | `tests/unit/`, any folder but `xenocats/`, in Node |
+| `cats` | `tests/unit/xenocats/`, in Node |
+| `jsdom` | every file whose first lines say `// @vitest-environment jsdom`, wherever it is |
+| `database` | `tests/unit/data.test.ts` (opt-in, `DATABASE_TESTS=1`) |
+
+CI's *checks* job runs one step per project (`npx vitest run --project <name>`),
+and the database project in the *build* job. Its step "Every test file is in a
+group" fails the run for a unit test file in no project or in two
+(`node scripts/unit-projects.mjs`), and for a spec in no group of `GROUPS` or in
+two (`<file> is in 0 groups in playwright.config.ts (GROUPS), not 1`). Locally
+`npm test` runs every project at once.
+
+So a new unit test file needs no edit anywhere: where it is, and its environment
+line, put it in its project. A new spec, or a renamed or moved one, is named in
+exactly one group of `GROUPS`, by its name without `.spec.ts`; a deleted spec comes
+out of its group. A change to the projects themselves is checked before it is
+reported (this prints the count per project, or the files in none):
 
 ```bash
-for f in tests/unit/*.test.ts* tests/unit/xenocats/*.test.ts*; do grep -qE "(^|[[:space:]])${f%.test.ts*}([[:space:]]|$)" .github/workflows/ci.yml || echo "$f"; done
+node scripts/unit-projects.mjs
 ```
-
-A test in a new folder under `tests/unit/` also needs that folder added to the
-step's `for` loop in `ci.yml`, or the step never looks at it.
 
 ---
 

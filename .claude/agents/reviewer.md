@@ -39,7 +39,7 @@ reviewing: a second build would write the same `.next` directory, and the load
 makes the timing-sensitive browser tests fail.
 
 Never use Bash to edit, create, move, or delete a file, and never to commit,
-stash, checkout, or reset. Never run SQL or `npm run db:*`: the development
+push, stash, checkout, or reset: you report, the implementer commits and pushes. Never run SQL or `npm run db:*`: the development
 database is shared, and only the tests' own schemas are for writing. If a fix is
 obvious, describe it — the implementer applies it. Your withheld Edit/Write
 tools are a guardrail; do not route around them.
@@ -84,11 +84,12 @@ A Next.js App Router app (`CLAUDE.md` §2 maps it). Worth checking every time:
   `formatCurrency` divides). A change that mixes the two units is a finding.
 - **Dependencies.** Versions are ranges, fixed by `package-lock.json`. A diff to
   `package.json` or `package-lock.json` the task did not call for is a finding.
-- **Test groups.** A test file the diff adds, renames or moves must be named in
-  a `Unit tests (...)` step of `.github/workflows/ci.yml` (unit tests) or in one
-  group of `GROUPS` in `playwright.config.ts` (browser specs), or CI's *checks*
-  job fails (`.claude/rules/testing.md`, "A new test file goes in a CI group").
-  A file in no group is a finding.
+- **Test groups.** A browser spec the diff adds, renames or moves must be named in
+  one group of `GROUPS` in `playwright.config.ts`, or CI's *checks* job fails
+  (`.claude/rules/testing.md`, "A new test file goes in a CI group"). A unit test
+  file needs no naming: the Vitest projects in `vitest.config.mts` take it by
+  folder and environment. A spec in no group, or a change to those projects that
+  leaves a unit test file in none (`node scripts/unit-projects.mjs`), is a finding.
 - **Claimed verification.** If the change description asserts lint or the type
   check passed, run it. For the tests and the build you have the implementer's
   results, not your own: check that a test exercises the changed behaviour

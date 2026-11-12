@@ -1,3 +1,26 @@
+---
+paths:
+  - "auth.ts"
+  - "auth.config.ts"
+  - "proxy.ts"
+  - "instrumentation.ts"
+  - "next.config.ts"
+  - "app/lib/actions.ts"
+  - "app/lib/schemas.ts"
+  - "app/lib/csv.ts"
+  - "app/lib/session.ts"
+  - "app/lib/session-version.ts"
+  - "app/lib/credentials.ts"
+  - "app/lib/password-check.ts"
+  - "app/lib/login-limit.ts"
+  - "app/lib/sign-up-limit.ts"
+  - "app/lib/csp.ts"
+  - "app/lib/db-ssl.ts"
+  - "app/**/route.ts"
+  - ".env.example"
+  - ".github/**"
+---
+
 # Security Review
 
 Open this when changes touch security-sensitive behavior.

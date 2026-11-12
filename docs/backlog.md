@@ -10,63 +10,27 @@ Remove an entry when it is done or decided.
 
 ## Decisions for a human
 
-### "Pending" means two things
-
-The invoice list, its filter and the CSV split unpaid invoices into Pending (not
-yet due) and Overdue. The dashboard's Pending card and chart, and the customers
-table's Pending total, still add up every unpaid invoice, overdue included
-(`fetchCardData` and the monthly totals in `app/lib/data.ts`). On the seed data
-every unpaid invoice is overdue, so the list's Pending filter is empty while the
-dashboard shows a Pending total.
-
-- (a) Relabel those figures "Unpaid": the smallest change.
-- (b) Show Overdue separately there too, as the list does.
-
-### One time zone
-
-The app dates an invoice by the UTC day (`createInvoice`, the create form's
-default due date), while `CURRENT_DATE` (the overdue rule, "Due in N days") is
-the day in the database session's time zone, which nothing sets. On a server not
-on UTC they disagree for some hours a day: an invoice created then is "due in 29
-(or 31) days", and dates near midnight land on the other side of "overdue".
-
-- (a) Set `TimeZone: 'UTC'` on the app's `postgres` connections, so every
-  "today" is the same. It touches every date the app reads.
-- (b) Compute "today" in the app and pass it to the queries.
-
-Undecided (2026-10-08): fix it in the dashboard or in the database.
+None open.
 
 ## Proposed tasks
 
-### Drop `customers.image_url`
-
-Neon has migration 0012: its `schema_migrations` records it on 2026-10-23, the
-day pull request #31 brought the code that stops writing `image_url` to `main`
-(checked 2026-11-02).
-
-Nothing reads the column, and since migration 0012 nothing writes it: avatars are
-drawn from the name. 0012 only made it optional, because `main` (what production
-runs) still selected and inserted it then, and dropping it on a database `main`
-uses would have broken the customer and invoice pages there. `main` no longer
-names it; `Nightrun` (58af8cf, 2026-10-17), whose preview also uses Neon, still
-does. Once every deployment that shares a database runs code without `image_url`
-(production and previews on Neon), a migration
-`ALTER TABLE customers DROP COLUMN image_url` finishes it.
-
 ### Login lockout: what it does not cover
 
-`app/lib/login-limit.ts` locks an email after repeated failures. Not built:
+`app/lib/login-limit.ts` locks a login name after repeated failures, and (since
+the night run of 2026-11-02) a client address after 20 across all names, where a
+trusted proxy names the address; spent rows are pruned. Still not covered:
 
-- a limit per client address, so one source cannot try many emails;
-- pruning `login_failures` rows of emails that never log in (an attacker adds
-  one row per address they try).
-
-### CI's database tests can pass with every test skipped
-
-With the database tests opt-in, a CI step that lost `DATABASE_TESTS: '1'` (or
-its `POSTGRES_URL`) would report green with every test skipped. A one-line
-guard: fail the step if the Vitest summary shows nothing passed. Low urgency
-(set aside 2026-10-08).
+- **Many addresses against one name.** The per-name lock is what stops guessing,
+  so anyone with enough addresses can keep a known name locked. Options: a
+  growing delay instead of a hard lock, or a lock the account's owner can clear
+  (an emailed link: no email is sent today).
+- **One address against a few names.** Within its 20, one address can still lock
+  four names (5 each) every 15 minutes.
+- **No trusted proxy.** Off Vercel without `TRUSTED_PROXY_HEADER` the address
+  limit is off (a startup warning says so). Behind a proxy that writes the client's
+  port with its address (`203.0.113.7:51234`; Azure's Application Gateway does), the
+  address alone is counted (since the night run of 2026-11-02, E32), so the limit holds
+  there too.
 
 ### An index for the searches
 

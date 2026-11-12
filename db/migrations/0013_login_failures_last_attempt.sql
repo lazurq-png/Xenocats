@@ -1,0 +1,11 @@
+-- When each login_failures row last counted an attempt (app/lib/login-limit.ts).
+-- It lets a client address's count be forgotten after a quiet spell, and rows
+-- whose lock and count have both run out be pruned, so the table no longer keeps
+-- a row for every name or address ever mistyped. Existing rows count from the
+-- migration.
+--
+-- Order: apply this to a database BEFORE any deployment of the code that writes
+-- last_attempt reaches it. That code names the column in every login attempt,
+-- which a database without it refuses (every login fails). The code before it
+-- never names the column, so it keeps working on a database migrated meanwhile.
+ALTER TABLE login_failures ADD COLUMN last_attempt TIMESTAMPTZ NOT NULL DEFAULT now();

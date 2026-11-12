@@ -1,3 +1,22 @@
+---
+paths:
+  - "db/**"
+  - "scripts/db.mjs"
+  - "scripts/ci-database.mjs"
+  - "app/lib/db.ts"
+  - "app/lib/db-ssl.ts"
+  - "app/lib/data.ts"
+  - "app/lib/actions.ts"
+  - "app/lib/placeholder-data.ts"
+  - "app/lib/session-version.ts"
+  - "app/lib/login-limit.ts"
+  - "app/lib/sign-up-limit.ts"
+  - "app/lib/credentials.ts"
+  - "auth.ts"
+  - "tests/unit/data.test.ts"
+  - "tests/e2e/global-setup.ts"
+---
+
 # Database Engineering Rules
 
 Open this for schema, migration, and persistence work. Database changes are high-risk changes — treat existing data as valuable production state.

@@ -22,7 +22,7 @@ export default async function CardWrapper({ range }: { range: Range }) {
   return (
     <>
       <Card title="Collected" stat={collected} money range={range} type="collected" />
-      <Card title="Pending" stat={pending} money range={range} type="pending" />
+      <Card title="Unpaid" stat={pending} money range={range} type="pending" />
       <Card title="Total invoices" stat={invoices} range={range} type="invoices" />
       <Card title="Total customers" stat={customers} range={range} type="customers" />
     </>

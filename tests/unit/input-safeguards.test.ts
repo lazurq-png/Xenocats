@@ -12,6 +12,7 @@ import {
   clientAddress,
   clientKey,
   signUpLimit,
+  proxyWarning,
   trustedProxyHeader,
 } from '@/app/lib/sign-up-limit';
 
@@ -148,6 +149,17 @@ describe('the sign-up limit', () => {
     expect(signUpLimit({ SIGNUP_MAX_PER_DAY: 'lots' })).toBe(2);
   });
 
+  it('a production server with no trusted proxy header warns that the address limits fall back', () => {
+    const production = { NODE_ENV: 'production' };
+    expect(proxyWarning(production)).toMatch(/TRUSTED_PROXY_HEADER/);
+    expect(proxyWarning(production)).toMatch(/sign-up limit[^]*login name only/);
+    expect(proxyWarning({ ...production, VERCEL: '1' })).toBeNull();
+    expect(proxyWarning({ ...production, TRUSTED_PROXY_HEADER: 'x-forwarded-for' })).toBeNull();
+    // Not in development or the tests: there no proxy is the rule.
+    expect(proxyWarning({ NODE_ENV: 'development' })).toBeNull();
+    expect(proxyWarning({ NODE_ENV: 'test' })).toBeNull();
+  });
+
   it('believes a proxy header only where the deployment says a proxy sets it', () => {
     expect(trustedProxyHeader({})).toBeNull();
     expect(trustedProxyHeader({ VERCEL: '1' })).toBe('x-real-ip');
@@ -169,6 +181,34 @@ describe('the sign-up limit', () => {
     expect(clientAddress(headers, 'x-real-ip')).toBe('203.0.113.7');
     expect(clientAddress(headers, 'x-forwarded-for')).toBe('198.51.100.9');
     expect(clientAddress(new Headers(), 'x-real-ip')).toBe('unknown');
+  });
+
+  it("drops the port some proxies write: a client's new connection is not a new client", () => {
+    const seen = (value: string) =>
+      clientAddress(new Headers({ 'x-forwarded-for': `1.2.3.4, ${value}` }), 'x-forwarded-for');
+    expect(seen('198.51.100.9:51234')).toBe('198.51.100.9');
+    expect(seen('[2001:db8::1]:51234')).toBe('2001:db8::1');
+    expect(seen('[2001:db8::1]')).toBe('2001:db8::1');
+    // An IPv6 address written bare keeps all of itself: its colons are not a port,
+    // even a last group that looks like one.
+    expect(seen('2001:db8::1')).toBe('2001:db8::1');
+    expect(seen('2001:db8::8080')).toBe('2001:db8::8080');
+    expect(seen('[fe80::1%eth0]:443')).toBe('fe80::1%eth0');
+    expect(seen('[]')).toBe('unknown');
+    // IPv4-mapped, with its port: the IPv4 address it is, bracketed or not.
+    expect(addressBlock(seen('[::ffff:203.0.113.7]:80'))).toBe('203.0.113.7');
+    expect(seen('::ffff:203.0.113.7:51234')).toBe('203.0.113.7');
+    // The same from X-Real-IP, the other header a proxy may be trusted for.
+    expect(clientAddress(new Headers({ 'x-real-ip': '203.0.113.7:51234' }), 'x-real-ip')).toBe(
+      '203.0.113.7'
+    );
+    // Two connections from one client, by two ports, are one count.
+    expect(clientKey(seen('198.51.100.9:51234'), 's')).toBe(
+      clientKey(seen('198.51.100.9:61000'), 's')
+    );
+    expect(clientKey(seen('[2001:db8:1:2::a]:51234'), 's')).toBe(
+      clientKey(seen('[2001:db8:1:2::b]:61000'), 's')
+    );
   });
 
   it('counts an IPv6 address by its /64, and an IPv4 one by itself', () => {

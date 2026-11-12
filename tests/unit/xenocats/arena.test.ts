@@ -7,6 +7,7 @@ import {
   attackShapeOf,
   catsWanted,
   createArena,
+  mostSentHome,
   pickupFor,
   runLengthConfig,
 } from '@/app/ui/xenocats/arena';
@@ -473,6 +474,93 @@ describe('the spatial grid', () => {
     }
     grid.clear();
     expect(grid.query(0, 0, 2000, out)).toEqual([]);
+  });
+
+  it('answers the same, in the same order, with a window as without, inside it or not', () => {
+    // The arena gives the grid a window round the camera (its cells in an array) each
+    // step; the window moves, grows and shrinks (the zoom), most points lie in it and a
+    // few beyond. Last, windows the array does not keep (too many cells, not a number):
+    // the Map alone, which bounds the array's size and must answer the same too.
+    const random = createRandom(13);
+    const plain = createArenaGrid(64);
+    const windowed = createArenaGrid(64);
+    const a: number[] = [];
+    const b: number[] = [];
+    for (const [x, y, half] of [
+      [0, 0, 1300],
+      [900, -350, 1300],
+      [-2000, 4100, 2600],
+      [-2100, 4000, 300],
+      [130, 70, 1700],
+      [0, 0, 1e9],
+      [Number.NaN, 0, 1300],
+    ]) {
+      const centre = { x: Number.isNaN(x) ? 0 : x, y };
+      // Across the whole window, its edge cells included, and a tenth beyond it.
+      const reach = Number.isFinite(half) && half < 5000 ? half : 1300;
+      const points = Array.from({ length: 1500 }, (_, i) => ({
+        x: centre.x + random.range(-1, 1) * (i % 10 === 0 ? reach * 2 : reach),
+        y: centre.y + random.range(-1, 1) * (i % 10 === 0 ? reach * 2 : reach),
+      }));
+      plain.clear();
+      windowed.clear({ x, y, half });
+      points.forEach((p, i) => {
+        plain.insert(i, p.x, p.y);
+        windowed.insert(i, p.x, p.y);
+      });
+      for (let q = 0; q < 150; q++) {
+        const qx = centre.x + random.range(-2.5, 2.5) * reach;
+        const qy = centre.y + random.range(-2.5, 2.5) * reach;
+        const radius = random.range(0, 400);
+        expect(windowed.query(qx, qy, radius, b), `window ${x},${y} ±${half}`).toEqual(
+          plain.query(qx, qy, radius, a)
+        );
+      }
+    }
+  });
+
+  it("reads a point's own cell as a query of radius 0 does, inside the window or not", () => {
+    const random = createRandom(17);
+    const grid = createArenaGrid(64);
+    grid.clear({ x: 0, y: 0, half: 800 });
+    const points = Array.from({ length: 800 }, () => ({
+      x: random.range(-1600, 1600),
+      y: random.range(-1600, 1600),
+    }));
+    points.forEach((p, i) => grid.insert(i, p.x, p.y));
+    const out: number[] = [];
+    for (let q = 0; q < 300; q++) {
+      const x = random.range(-2000, 2000);
+      const y = random.range(-2000, 2000);
+      expect([...grid.cellAt(x, y)]).toEqual(grid.query(x, y, 0, out));
+    }
+    expect(grid.cellAt(50_000, 50_000)).toEqual([]);
+  });
+
+  it('finds the same far from where the run began, where cells far apart share a key', () => {
+    // 32,768 cells of 64 px apart share a key: points on both sides of that, and in the
+    // negative, after hours of walking one way.
+    const random = createRandom(11);
+    const far = 32_768 * 64;
+    const points = Array.from({ length: 400 }, (_, i) => ({
+      x: random.range(-500, 500) + (i % 2 === 0 ? far * 1.5 : -far * 2),
+      y: random.range(-500, 500) + (i % 3 === 0 ? far : 0),
+    }));
+    const grid = createArenaGrid(64);
+    points.forEach((p, i) => grid.insert(i, p.x, p.y));
+    const out: number[] = [];
+    for (const at of points.slice(0, 40)) {
+      const radius = random.range(10, 300);
+      const found = grid
+        .query(at.x, at.y, radius, out)
+        .filter((i) => Math.hypot(points[i].x - at.x, points[i].y - at.y) <= radius)
+        .sort((a, b) => a - b);
+      const brute = points
+        .map((p, i) => ({ p, i }))
+        .filter(({ p }) => Math.hypot(p.x - at.x, p.y - at.y) <= radius)
+        .map(({ i }) => i);
+      expect(found).toEqual(brute);
+    }
   });
 });
 
@@ -2374,4 +2462,74 @@ describe('what each weapon did', () => {
     a.choose(pick);
     expect(a.weaponReport().map((w) => w.id)).toContain(chosen.kind === 'weapon' && chosen.id);
   });
+});
+
+// The leaderboard refuses a run claiming more cats sent home than this
+// (recordSurvivalRun): it must hold for any run the game can play.
+describe('the most cats a run can send home', () => {
+  it('grows with the time, and an endless run keeps on growing', () => {
+    const at = (ms: number, minutes = 5) => mostSentHome(ms, minutes);
+    expect(at(0)).toBeGreaterThan(0);
+    for (const [a, b] of [
+      [10_000, 60_000],
+      [60_000, 150_000],
+      [150_000, 300_000],
+    ]) {
+      expect(at(a)).toBeLessThan(at(b));
+    }
+    // Nothing new comes into a timed run once its clock has stopped; an endless one
+    // goes on at the full horde's rate, with a Mega Cat every two minutes.
+    expect(mostSentHome(3_600_000, 0)).toBeGreaterThan(mostSentHome(600_000, 0) * 5);
+  });
+
+  it('a strong run, seeded, stays under it all the way to its time goal', () => {
+    // Both fusions at their highest level, a hero nothing wears down, and no level-up
+    // to stop for: as many cats sent home as this arena can manage.
+    const a = createArena({
+      random: createRandom(3),
+      types: CAT_TYPES,
+      viewport,
+      config: {
+        ...runLengthConfig(5),
+        ...unbreakable,
+        gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+        chestReach: -1,
+        startingWeapons: ['infinite-laser', 'monsoon'],
+        startingLevel: MAX_WEAPON_LEVEL,
+      },
+    });
+    for (const ms of [30_000, 60_000, 120_000, 180_000, 240_000, 299_000]) {
+      stepTo(a, ms);
+      const { time, sentHome } = a.state();
+      expect(sentHome).toBeLessThanOrEqual(mostSentHome(time, 5));
+    }
+    // It did send home a crowd: the bound is not met by sending home nobody.
+    expect(a.state().sentHome).toBeGreaterThan(10_000);
+
+    // Past the goal, cats go on going home until the Matriarch reaches him; here she
+    // never does (she stands where she came), so the full horde keeps coming and her
+    // kittens with it. The bound, at the arena's own clock, still holds.
+    const b = createArena({
+      random: createRandom(3),
+      types: CAT_TYPES,
+      viewport,
+      config: {
+        ...runLengthConfig(1),
+        ...unbreakable,
+        matriarch: { ...ARENA_CONFIG.matriarch, speed: 0 },
+        gems: { ...ARENA_CONFIG.gems, value: 0, eliteValue: 0 },
+        chestReach: -1,
+        startingWeapons: ['infinite-laser', 'monsoon'],
+        startingLevel: MAX_WEAPON_LEVEL,
+      },
+    });
+    for (const ms of [60_000, 90_000, 150_000]) {
+      stepTo(b, ms);
+      const { time, sentHome, status } = b.state();
+      expect(status).toBe('playing');
+      expect(sentHome).toBeLessThanOrEqual(mostSentHome(time, 1));
+    }
+    // More than a minute's run's own time could hold: what the reported time alone misses.
+    expect(b.state().sentHome).toBeGreaterThan(mostSentHome(60_000, 1));
+  }, 120_000);
 });

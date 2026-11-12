@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { sql } from './db';
 import {
   CardStat,
@@ -446,34 +447,80 @@ export async function fetchCustomersPages(owner: string, query: string) {
 /** How many runs each of the leaderboard's lengths shows. */
 export const LEADERBOARD_SIZE = 10;
 
+/** The cache tag of the leaderboard's board, which a run saved invalidates (recordSurvivalRun). */
+export const LEADERBOARD_TAG = 'leaderboard';
+
+/**
+ * Each player's best finished run of each length, ranked: longest first, then most
+ * cats sent home, then the earliest. Every leaderboard read starts from it.
+ */
+const rankedBests = () => sql`
+  WITH best AS (
+    SELECT DISTINCT ON (run_minutes, user_id)
+      run_minutes, user_id, name, time_ms, sent_home, finished_at
+    FROM survival_runs
+    WHERE finished_at IS NOT NULL
+    ORDER BY run_minutes, user_id, time_ms DESC, sent_home DESC, finished_at
+  )
+  SELECT best.*, row_number() OVER (
+    PARTITION BY run_minutes ORDER BY time_ms DESC, sent_home DESC, finished_at
+  )::int AS place
+  FROM best`;
+
+/** How long a cached board may stand, s, whatever else: a backstop (cachedBoard). */
+const BOARD_SECONDS = 60;
+
+/**
+ * The schema the app reads (POSTGRES_URL's search_path), for the board's cache key:
+ * the development server and the browser tests' share one cache on disk (.next), and
+ * each must keep its own board. Only the schema's name: never the URL, which holds
+ * the password.
+ */
+function schemaName() {
+  try {
+    return new URL(process.env.POSTGRES_URL ?? '').searchParams.get('search_path') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The top LEADERBOARD_SIZE of each length, the same for every viewer: so it is kept
+ * in Next's data cache under LEADERBOARD_TAG, and read from the database again once
+ * a run is saved (recordSurvivalRun updates the tag), not on every request. At most
+ * BOARD_SECONDS old besides: a read that began before a save and was stored after it,
+ * or a run changed in the database by hand, is put right within a minute.
+ */
+const cachedBoard = unstable_cache(
+  async () =>
+    sql<Omit<LeaderboardRow, 'mine'>[]>`
+      SELECT run_minutes, place, name, time_ms, sent_home
+      FROM (${rankedBests()}) AS placed
+      WHERE place <= ${LEADERBOARD_SIZE}
+      ORDER BY run_minutes, place`.then((rows) => rows.map((row) => ({ ...row }))),
+  ['leaderboard-board', schemaName()],
+  { tags: [LEADERBOARD_TAG], revalidate: BOARD_SECONDS }
+);
+
 /**
  * Survival's leaderboard, the one read that is nobody's own. For each length (5, 10
  * and 15 minutes, and 0 for endless): each player's best finished run, ranked longest first, then most
- * cats sent home, then the earliest; the top LEADERBOARD_SIZE (`board`), and the
- * `viewer`'s own best with its place (`mine`, null without one or without a
- * viewer). Each run under the name typed for it; nothing about an account is read.
+ * cats sent home, then the earliest; the top LEADERBOARD_SIZE (`board`, cached:
+ * cachedBoard), and the `viewer`'s own best with its place (`mine`, read on every
+ * request; null without one or without a viewer). Each run under the name typed for
+ * it; nothing about an account is read.
  */
 export async function fetchLeaderboard(viewer: string | null) {
   try {
-    const rows = await sql<LeaderboardRow[]>`
-      WITH best AS (
-        SELECT DISTINCT ON (run_minutes, user_id)
-          run_minutes, user_id, name, time_ms, sent_home, finished_at
-        FROM survival_runs
-        WHERE finished_at IS NOT NULL
-        ORDER BY run_minutes, user_id, time_ms DESC, sent_home DESC, finished_at
-      ), placed AS (
-        SELECT best.*, row_number() OVER (
-          PARTITION BY run_minutes ORDER BY time_ms DESC, sent_home DESC, finished_at
-        )::int AS place
-        FROM best
-      )
-      SELECT run_minutes, place, name, time_ms, sent_home,
-        COALESCE(user_id = ${viewer}::uuid, false) AS mine
-      FROM placed
-      WHERE place <= ${LEADERBOARD_SIZE} OR user_id = ${viewer}::uuid
-      ORDER BY run_minutes, place
-    `;
+    const [top, own] = await Promise.all([
+      cachedBoard(),
+      viewer === null
+        ? []
+        : sql<Omit<LeaderboardRow, 'mine'>[]>`
+            SELECT run_minutes, place, name, time_ms, sent_home
+            FROM (${rankedBests()}) AS placed
+            WHERE user_id = ${viewer}::uuid`,
+    ]);
     const board: Record<LeaderboardRow['run_minutes'], LeaderboardRow[]> = {
       5: [],
       10: [],
@@ -486,9 +533,17 @@ export async function fetchLeaderboard(viewer: string | null) {
       15: null,
       0: null,
     };
-    for (const row of rows) {
-      if (row.place <= LEADERBOARD_SIZE) board[row.run_minutes].push(row);
-      if (row.mine) mine[row.run_minutes] = row;
+    for (const row of own) mine[row.run_minutes] = { ...row, mine: true };
+    for (const row of top) {
+      // The viewer's own row on the board: the same place, and the same run.
+      const best = mine[row.run_minutes];
+      const isMine =
+        best !== null &&
+        best.place === row.place &&
+        best.time_ms === row.time_ms &&
+        best.sent_home === row.sent_home &&
+        best.name === row.name;
+      board[row.run_minutes].push({ ...row, mine: isMine });
     }
     return { board, mine };
   } catch (error) {

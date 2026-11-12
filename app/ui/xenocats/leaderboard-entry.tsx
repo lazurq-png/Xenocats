@@ -11,7 +11,7 @@ import { boardName, readLeaderboardName, writeLeaderboardName } from './arena-st
 const MESSAGES: Record<Exclude<SurvivalRunResult, 'saved'>, string> = {
   'signed-out': 'You are no longer logged in: log in to put your runs on the leaderboard.',
   invalid:
-    'This run cannot go on the leaderboard: it was saved already, or another run was started since.',
+    'This run cannot go on the leaderboard: it was saved already, another run was started since, or it could not be checked.',
   error: 'The run could not be saved. Try again.',
 };
 

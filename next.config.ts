@@ -1,30 +1,10 @@
 import type { NextConfig } from 'next';
 
-// Security headers on every response. The Content-Security-Policy is fixed here
-// rather than built per request, so it cannot carry a nonce: Next's own inline
-// scripts (the page's flight data) need 'unsafe-inline' for scripts, and the
-// cats' and charts' inline styles need it for styles. Everything else the app
-// loads is its own: fonts self-hosted by next/font, images from /public (and
-// data: URIs, e.g. the form plugin's SVG icons), sounds
-// synthesised with Web Audio (which CSP does not govern).
-// `next dev` also needs eval (React's dev tooling) and a WebSocket (hot reload).
-const isDev = process.env.NODE_ENV === 'development';
-
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  `connect-src 'self'${isDev ? ' ws: wss:' : ''}`,
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
-
+// Security headers on every response. The Content-Security-Policy is not here: it
+// carries a nonce of its own on every request, so proxy.ts builds it (app/lib/csp.ts),
+// and so a response the proxy's matcher skips has none: a static file, or the
+// not-found page for a missing one, which shows nothing a visitor wrote.
 const securityHeaders = [
-  { key: 'Content-Security-Policy', value: contentSecurityPolicy },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -34,9 +14,15 @@ const securityHeaders = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   },
+  // A page of another site that opens this one (a link with a target, a popup) gets
+  // no handle on its window, nor this one on its opener: nothing to steer or watch
+  // across them. The site opens no popups of its own, and signs in with no provider's.
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ];
 
 const nextConfig: NextConfig = {
+  // No X-Powered-By: Next.js: it tells nobody anything they need.
+  poweredByHeader: false,
   // The images in /public are already small WebPs, served as they are. Next's
   // optimizer (/_next/image, as of 16.3.6) hangs for good on an image whose first
   // request is aborted mid-encode — a navigation away at the wrong moment — and

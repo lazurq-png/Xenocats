@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { percentChange } from '@/app/lib/dashboard';
 import { customers, invoices, users } from '@/app/lib/placeholder-data';
 import { formatCurrency } from '@/app/lib/utils';
+import { mostSentHome } from '@/app/ui/xenocats/arena';
 
 // Every query in app/lib/data.ts (and the login lockout's statements) against a
 // real database: its own schema,
@@ -41,7 +42,12 @@ const url = databaseUrl('xenocats_vitest');
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock('@/auth', () => ({ auth, signIn: vi.fn() }));
 vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
+  // No data cache outside Next: the board is read from the database every time.
+  unstable_cache: (fn: unknown) => fn,
+}));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 // The sign-up limit keys addresses with the app's secret (sign-up-limit.ts).
 vi.stubEnv('AUTH_SECRET', 'a secret for the tests');
@@ -820,14 +826,58 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
       await actions.recordSurvivalRun({ runId: fresh, name: 'Fast', timeMs: 60_000, sentHome: 1 })
     ).toBe('invalid');
 
-    const runId = await started(player, 5);
+    // Six minutes ago: its bound (below) stays under the schema's 1,000,000 cats.
+    const runId = await started(player, 5, 6 * 60_000);
     // Longer than the run's length (the server's 5 minutes, whatever the game says).
     expect(
       await actions.recordSurvivalRun({ runId, name: 'Long', timeMs: 300_001, sentHome: 1 })
     ).toBe('invalid');
-    // However many cats it sent home: a strong run sends home thousands a second.
+    // More cats sent home than could have come in the time since it started (6
+    // minutes ago, `started`; mostSentHome, the game's own numbers, with the start's
+    // 2 s allowance and some seconds for this test): refused, and the run is still open.
+    const most = (ms: number) => mostSentHome(6 * 60_000 + 2000 + ms, 5);
     expect(
-      await actions.recordSurvivalRun({ runId, name: 'Short', timeMs: 60_000, sentHome: 100_000 })
+      await actions.recordSurvivalRun({
+        runId,
+        name: 'Many',
+        timeMs: 300_000,
+        sentHome: most(10_000) + 1,
+      })
+    ).toBe('invalid');
+    // A run that ended before its goal is held to the time it reports, however long
+    // ago it started.
+    expect(
+      await actions.recordSurvivalRun({
+        runId,
+        name: 'Early',
+        timeMs: 60_000,
+        sentHome: mostSentHome(60_000, 5) + 1,
+      })
+    ).toBe('invalid');
+    // At its goal, up to the limit: saved, though more than five minutes could hold
+    // (a timed run reports its time stopped at the goal; its cats go on). A player of
+    // its own, whose run comes off again: the board's test below counts the board.
+    const keeper = await addUser(`goal${stamp}`);
+    const atGoal = await started(keeper, 5, 6 * 60_000);
+    expect(mostSentHome(300_000, 5)).toBeLessThan(most(0));
+    expect(
+      await actions.recordSurvivalRun({
+        runId: atGoal,
+        name: 'Goal',
+        timeMs: 300_000,
+        sentHome: most(0),
+      })
+    ).toBe('saved');
+    await sql`DELETE FROM survival_runs WHERE user_id = ${keeper}`;
+    // Its own time's limit, before its goal: saved.
+    auth.mockResolvedValue({ user: { id: player } });
+    expect(
+      await actions.recordSurvivalRun({
+        runId,
+        name: 'Short',
+        timeMs: 60_000,
+        sentHome: mostSentHome(60_000, 5),
+      })
     ).toBe('saved');
     // Once.
     expect(
@@ -882,6 +932,20 @@ describe.skipIf(!url)('accounts and the leaderboard', () => {
   });
 
   it('an endless run (minutes 0) is held to the time since it started alone, on a board of its own', async () => {
+    // Its cats held to what an endless run could send home in the time it reports
+    // (it has no goal to stop at): one started three minutes ago, its bound under the
+    // schema's 1,000,000. First, since starting a run replaces the player's run in progress.
+    const recent = await started(player, 0, 3 * 60_000);
+    const most = mostSentHome(3 * 60_000 + 2000 + 10_000, 0);
+    expect(most).toBeLessThan(1_000_000);
+    expect(
+      await actions.recordSurvivalRun({
+        runId: recent,
+        name: 'Endless',
+        timeMs: 120_000,
+        sentHome: most + 1,
+      })
+    ).toBe('invalid');
     // Started two hours ago: an hour and a half is longer than any timed run, and allowed.
     const runId = await started(player, 0, 2 * 3_600_000);
     expect(
@@ -981,6 +1045,95 @@ describe.skipIf(!url)('sessions in the database', () => {
   });
 });
 
+// The app dates an invoice by the UTC day (createInvoice), and its connection
+// (app/lib/db.ts) runs on UTC, so CURRENT_DATE (the overdue rule, "due in N days")
+// is the same day. A session on another zone is the server not on UTC: one chosen
+// to be across midnight from UTC now, whatever the hour, so the test does not
+// depend on when it runs (UTC-12 before noon UTC is yesterday, UTC+14 after is tomorrow).
+describe.skipIf(!url)('one time zone', () => {
+  let sql: postgres.Sql;
+  let data: typeof import('@/app/lib/data');
+  const tag = `tz${Date.now().toString(36)}`;
+  let invoice: string;
+
+  beforeAll(async () => {
+    process.env.POSTGRES_URL = url!;
+    data = await import('@/app/lib/data');
+    sql = postgres(url!, { ssl: 'require', max: 1, onnotice: () => {} });
+    // Made as createInvoice makes one now: dated today (UTC), due in 30 days.
+    const [{ id }] = await sql`
+      INSERT INTO customers (name, email, owner_id)
+      VALUES (${tag}, ${`${tag}@example.com`}, ${owner}) RETURNING id`;
+    [{ id: invoice }] = await sql`
+      INSERT INTO invoices (customer_id, amount, status, date, due_date)
+      VALUES (${id}, 100, 'pending', ${today}, ${addDays(today, 30)}) RETURNING id`;
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM invoices WHERE customer_id IN (SELECT id FROM customers WHERE name = ${tag})`;
+    await sql`DELETE FROM customers WHERE name = ${tag}`;
+    await sql.end();
+  });
+
+  // What the change means for a user. Where the server's own zone is on UTC's day
+  // (CI's always is), the app's half passes without the change too; the next test
+  // is the one that fails without it, everywhere.
+  it("an invoice made today is due in 30 days, though the server's day is another", async () => {
+    // The server's day, on a session that sets no zone of its own: here, the other
+    // side of midnight, chosen just before the query.
+    const elsewhere = new Date().getUTCHours() < 12 ? 'Etc/GMT+12' : 'Etc/GMT-14';
+    const other = postgres(url!, {
+      ssl: 'require',
+      max: 1,
+      onnotice: () => {},
+      connection: { TimeZone: elsewhere },
+    });
+    try {
+      const [row] = await other`
+        SELECT CURRENT_DATE::text AS today, (due_date - CURRENT_DATE) AS days
+        FROM invoices WHERE id = ${invoice}`;
+      expect(row.today).not.toBe(today);
+      expect(row.days).not.toBe(30);
+    } finally {
+      await other.end();
+    }
+    // The app's own connection counts from the UTC day it dated the invoice by.
+    const detail = await data.fetchInvoiceDetail(owner, invoice);
+    expect(detail?.days_until_due).toBe(30);
+    expect(detail?.overdue).toBe(false);
+  });
+
+  it("the app's sessions run on UTC", async () => {
+    const { sql: app } = await import('@/app/lib/db');
+    const [row] =
+      await app`SELECT current_setting('TimeZone') AS zone, CURRENT_DATE::text AS today`;
+    expect(row).toEqual({ zone: 'UTC', today });
+  });
+});
+
+// The TLS modes of the app's connection (app/lib/db-ssl.ts) against a real server.
+// The development and CI servers sign their own certificates, so the mode the app
+// uses on Vercel must refuse them: that is what shows it checks the certificate.
+describe.skipIf(!url)('TLS to the database', () => {
+  it('connects without checking the certificate off Vercel, and refuses an unsigned one on it', async () => {
+    const { databaseSsl } = await import('@/app/lib/db-ssl');
+    const connect = async (ssl: ReturnType<typeof databaseSsl>) => {
+      const sql = postgres(url!, { ssl, max: 1, connect_timeout: 10, onnotice: () => {} });
+      try {
+        const [{ ssl: on }] = await sql`SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()`;
+        return on;
+      } finally {
+        await sql.end({ timeout: 1 });
+      }
+    };
+
+    expect(await connect(databaseSsl({}))).toBe(true);
+    await expect(connect(databaseSsl({ VERCEL: '1' }))).rejects.toMatchObject({
+      code: expect.stringMatching(/CERT|SIGNED|ALTNAME/),
+    });
+  });
+});
+
 // The login lockout's statements (app/lib/login-limit.ts) against the same schema,
 // which the file-level beforeAll rebuilds; each test on an email of its own.
 describe.skipIf(!url)('the login lockout in the database', () => {
@@ -1031,6 +1184,85 @@ describe.skipIf(!url)('the login lockout in the database', () => {
       expect(await lockout.claimAttempt(sql, key, limits)).toBe(true);
     }
     expect(await lockout.claimAttempt(sql, key, limits)).toBe(false);
+  });
+  // A client address's count (in front of the name's, app/lib/credentials.ts).
+  const perAddress = { ...limits, forgetAfterMinutes: limits.lockMinutes };
+  const quiet = (key: string, minutes: number) => sql`
+    UPDATE login_failures SET last_attempt = now() - make_interval(mins => ${minutes})
+    WHERE email = ${key}`;
+
+  it("an address's count is forgotten after a quiet spell; a login name's is not", async () => {
+    const address = `login-address:${email('quiet')}`;
+    const name = email('quiet-name');
+    for (let i = 0; i < limits.maxFailures - 1; i++) {
+      await lockout.claimAttempt(sql, address, perAddress);
+      await lockout.claimAttempt(sql, name, limits);
+    }
+    await quiet(address, limits.lockMinutes + 1);
+    await quiet(name, limits.lockMinutes + 1);
+    // The address starts again from 1: N more attempts, then refused.
+    for (let i = 0; i < limits.maxFailures; i++) {
+      expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(true);
+    }
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+    // The name, as before this change, still remembers: its Nth, then refused.
+    expect(await lockout.claimAttempt(sql, name, limits)).toBe(true);
+    expect(await lockout.claimAttempt(sql, name, limits)).toBe(false);
+  });
+
+  it('a quiet spell never ends a lock that is still running', async () => {
+    const address = `login-address:${email('quiet-lock')}`;
+    for (let i = 0; i < limits.maxFailures; i++)
+      await lockout.claimAttempt(sql, address, perAddress);
+    // Quiet for longer than the spell, but locked for longer still (a lock set
+    // under a larger LOGIN_LOCK_MINUTES).
+    await quiet(address, limits.lockMinutes + 1);
+    await sql`
+      UPDATE login_failures SET locked_until = now() + interval '1 hour' WHERE email = ${address}`;
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+  });
+
+  it("a quiet spell shorter than the address's is no reset", async () => {
+    const address = `login-address:${email('short')}`;
+    for (let i = 0; i < limits.maxFailures; i++)
+      await lockout.claimAttempt(sql, address, perAddress);
+    await quiet(address, limits.lockMinutes - 1);
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+  });
+
+  it("a success gives back its attempt, and the lock it set, but not the address's other failures", async () => {
+    const address = `login-address:${email('refund')}`;
+    for (let i = 0; i < limits.maxFailures; i++) {
+      expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(true);
+    }
+    // The Nth was a success: its own attempt and the lock it set are given back.
+    await lockout.refundAttempt(sql, address, perAddress.maxFailures);
+    const [row] =
+      await sql`SELECT failures, locked_until FROM login_failures WHERE email = ${address}`;
+    expect(row).toEqual({ failures: limits.maxFailures - 1, locked_until: null });
+    // The others still count: one more, and the address is locked.
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(true);
+    expect(await lockout.claimAttempt(sql, address, perAddress)).toBe(false);
+  });
+
+  it('pruning deletes the rows whose lock and count have run out, and keeps the rest', async () => {
+    const key = (name: string) => email(`prune-${name}`);
+    const rows = {
+      expired: key('expired'),
+      stale: key('stale'),
+      recent: key('recent'),
+      locked: key('locked'),
+    };
+    await sql`
+      INSERT INTO login_failures (email, failures, locked_until, last_attempt) VALUES
+        (${rows.expired}, 3, now() - interval '1 second', now() - interval '20 minutes'),
+        (${rows.stale}, 2, NULL, now() - interval '25 hours'),
+        (${rows.recent}, 2, NULL, now() - interval '23 hours'),
+        (${rows.locked}, 3, now() + interval '5 minutes', now() - interval '25 hours')`;
+    await lockout.pruneLoginFailures(sql);
+    const left = await sql`
+      SELECT email FROM login_failures WHERE email IN ${sql(Object.values(rows))}`;
+    expect(left.map((row) => row.email).sort()).toEqual([rows.locked, rows.recent].sort());
   });
 });
 
@@ -1292,6 +1524,26 @@ describe.skipIf(!url)('migrations on existing rows', () => {
     ]);
   });
 
+  it('0014 drops the image column and keeps every customer', async () => {
+    await migratedUpTo('0013_login_failures_last_attempt.sql');
+    const owner = await addUser('drop-image@example.com');
+    await sql`
+      INSERT INTO customers (name, email, image_url, owner_id) VALUES
+        ('With', 'w@example.com', '/x.png', ${owner}), ('Without', 'o@example.com', NULL, ${owner})`;
+    await sql.begin((tx) => tx.unsafe(migration('0014_drop_customer_image_url.sql')));
+    expect(await sql`SELECT name, email FROM customers ORDER BY name`).toEqual([
+      { name: 'With', email: 'w@example.com' },
+      { name: 'Without', email: 'o@example.com' },
+    ]);
+    const columns = await sql`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'xenocats_vitest_migrations' AND table_name = 'customers'
+        AND column_name = 'image_url'`;
+    expect(columns).toHaveLength(0);
+    // The app as it is makes customers without it.
+    await sql`INSERT INTO customers (name, email, owner_id) VALUES ('New', 'n@example.com', ${owner})`;
+  });
+
   it('0005 on an empty database (no customers) needs no user', async () => {
     await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
     await sql`CREATE SCHEMA xenocats_vitest_migrations`;
@@ -1309,5 +1561,24 @@ describe.skipIf(!url)('migrations on existing rows', () => {
       WHERE table_schema = 'xenocats_vitest_migrations' AND table_name = 'customers'
         AND column_name = 'owner_id'`;
     expect(column.is_nullable).toBe('NO');
+  });
+
+  it('0013 gives existing login failures a last attempt, and the app before it still counts', async () => {
+    await sql`DROP SCHEMA IF EXISTS xenocats_vitest_migrations CASCADE`;
+    await sql`CREATE SCHEMA xenocats_vitest_migrations`;
+    await sql.unsafe(migration('0004_login_failures.sql'));
+    await sql`INSERT INTO login_failures (email, failures) VALUES ('login:old', 2)`;
+    await sql.begin((tx) => tx.unsafe(migration('0013_login_failures_last_attempt.sql')));
+    const [old] = await sql`
+      SELECT failures, last_attempt > now() - interval '1 minute' AS recent
+      FROM login_failures WHERE email = 'login:old'`;
+    expect(old).toEqual({ failures: 2, recent: true });
+    // The app before this change names no last_attempt, and still can.
+    await sql`
+      INSERT INTO login_failures (email, failures) VALUES ('login:older-app', 1)
+      ON CONFLICT (email) DO UPDATE SET failures = login_failures.failures + 1`;
+    expect((await sql`SELECT 1 FROM login_failures WHERE email = 'login:older-app'`).length).toBe(
+      1
+    );
   });
 });

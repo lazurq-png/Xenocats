@@ -16,6 +16,14 @@ on:
 
 permissions:
   contents: read
+# Every checkout leaves no token behind in .git/config (persist-credentials: false):
+# no step pushes or fetches, and the steps after it run code from npm and the change.
+
+# A newer push to the same branch, or to the same pull request, cancels the run it
+# supersedes: only the newest commit's result is wanted.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # Says whether this run would repeat one that passed: a pull request from dev
@@ -54,6 +62,52 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # On a pull request into main (a deploy to production): the migrations it adds, in
+  # the job summary. No deploy migrates Neon; a human runs db:migrate against it, and
+  # must before this deploys, or the new code meets the old schema.
+  migrations:
+    name: New migrations
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: List the migrations this pull request adds
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          added=$(git diff --name-only --diff-filter=A "$BASE...$HEAD" -- db/migrations/)
+          {
+            echo "## New migrations"
+            if [ -n "$added" ]; then
+              echo "Apply them to Neon (npm run db:migrate) before this deploys:"
+              for file in $added; do echo "- $file"; done
+            else
+              echo "None."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          for file in $added; do
+            echo "::warning file=$file::$file is new: migrate Neon before this deploys"
+          done
+
+  # On a pull request: the dependencies it adds or changes, against the advisory
+  # database. It fails only on a vulnerability the pull request brings in, so one
+  # already on the base branch (today's zod advisory) does not turn every run red.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v4
+
   checks:
     name: Lint, type check, unit tests
     needs: tested
@@ -62,6 +116,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           # jsdom 30 requires ^22.22.2 || ^24.15.0 || >=26.
@@ -69,53 +125,33 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # Every file Prettier checks (.prettierignore leaves out Markdown and the rest).
+      - name: Formatting
+        if: ${{ !cancelled() }}
+        run: npx prettier --check .
       - name: Type check
+        if: ${{ !cancelled() }}
         run: npx next typegen && npx tsc --noEmit
-      # The unit tests run in named groups, each even if an earlier one failed,
-      # so a failure is identifiable from the job's step names alone.
+      # The unit tests run a Vitest project at a time (vitest.config.mts chooses each
+      # project's files by folder and environment, so a new file needs no edit here),
+      # each even if an earlier one failed: a failure is identifiable from the job's
+      # step names alone. The database project runs in the build job, with a database.
       - name: Unit tests (dashboard)
         if: ${{ !cancelled() }}
-        run: >-
-          npx vitest run tests/unit/actions tests/unit/schemas tests/unit/utils
-          tests/unit/auth-config tests/unit/dashboard tests/unit/proxy-matcher tests/unit/seed-data
-          tests/unit/csv tests/unit/export-route tests/unit/invoice-status
-          tests/unit/login-limit tests/unit/password-check tests/unit/credentials tests/unit/cat-error tests/unit/affected-tests
-          tests/unit/forms tests/unit/input-safeguards
+        run: npx vitest run --project dashboard
       - name: Unit tests (cats, Node)
         if: ${{ !cancelled() }}
-        run: >-
-          npx vitest run tests/unit/xenocats/random tests/unit/xenocats/effects
-          tests/unit/xenocats/cursor-controller tests/unit/xenocats/cat-engine tests/unit/xenocats/cat-engine-invariants
-          tests/unit/xenocats/cat-types tests/unit/xenocats/intensity
-      - name: Unit tests (cats, jsdom)
+        run: npx vitest run --project cats
+      - name: Unit tests (jsdom)
         if: ${{ !cancelled() }}
-        run: >-
-          npx vitest run tests/unit/xenocats/cursor-kind tests/unit/xenocats/fake-cursor
-          tests/unit/xenocats/cat-layer tests/unit/xenocats/cat-art tests/unit/xenocats/cat-sprite
-          tests/unit/xenocats/movement-pad-view tests/unit/xenocats/game-settings
-          tests/unit/xenocats/golden-reel
-      - name: Unit tests (cats, games, page, sound)
-        if: ${{ !cancelled() }}
-        run: >-
-          npx vitest run tests/unit/xenocats/arena tests/unit/xenocats/arsenal tests/unit/xenocats/kitchen-drawer tests/unit/xenocats/varieties tests/unit/xenocats/progression tests/unit/xenocats/coop tests/unit/xenocats/test-hooks
-          tests/unit/xenocats/walking tests/unit/xenocats/gamepad
-          tests/unit/xenocats/cat-attacks tests/unit/xenocats/space-backdrop
-          tests/unit/xenocats/page-hits tests/unit/xenocats/sounds
-          tests/unit/xenocats/field-guide tests/unit/xenocats/pet-cat tests/unit/xenocats/combos
-          tests/unit/xenocats/puppets tests/unit/xenocats/movement-pad
-      # A test file in no group would never run: each unit test must be named in a
-      # group above, each browser test in a group of playwright.config.ts (GROUPS).
+        run: npx vitest run --project jsdom
+      # A test file in no group would never run: each unit test must be in exactly one
+      # Vitest project, each browser test in one group of playwright.config.ts (GROUPS).
       - name: Every test file is in a group
         if: ${{ !cancelled() }}
         run: |
           missing=0
-          for file in tests/unit/*.test.ts* tests/unit/xenocats/*.test.ts*; do
-            name="${file%.test.ts*}"
-            if ! grep -qE "(^|[[:space:]])${name}([[:space:]]|$)" .github/workflows/ci.yml; then
-              echo "::error file=$file::$file is in no unit test group in ci.yml"
-              missing=1
-            fi
-          done
+          node scripts/unit-projects.mjs || missing=1
           groups="$(sed -n '/^const GROUPS/,/^};/p' playwright.config.ts)"
           for file in tests/e2e/*.spec.ts; do
             name="$(basename "$file" .spec.ts)"
@@ -156,6 +192,8 @@ jobs:
       # rebuild their xenocats_test schema from it.
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -186,9 +224,13 @@ jobs:
       # Only this job has a database for them (the checks job skips this file),
       # whether or not the build and browser tests passed. The tests rebuild
       # their own schema, xenocats_vitest, on this job's server.
+      # And they must have run: with DATABASE_TESTS or POSTGRES_URL lost, every test
+      # would skip and the step pass. Vitest's JSON report says how many passed.
       - name: Database tests
         if: ${{ !cancelled() && steps.database.outcome == 'success' }}
-        run: npx vitest run tests/unit/data
+        run: |
+          npx vitest run --project database --reporter=default --reporter=json --outputFile.json=vitest-data.json
+          node scripts/ci-passed.mjs vitest-data.json "database test"
         env:
           DATABASE_TESTS: '1'
       - uses: actions/upload-artifact@v4
@@ -227,6 +269,8 @@ jobs:
       AUTH_TRUST_HOST: 'true'
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 24

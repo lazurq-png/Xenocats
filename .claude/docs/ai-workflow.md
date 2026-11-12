@@ -315,7 +315,7 @@ Examples:
 
 ## Hooks and CI
 
-**Hooks: none.** There is no `.claude/settings.json` (only `settings.example.json`, which is inert). Nothing is enforced at commit time. An unattended run starts with permissions bypassed, where a `settings.json` `allow` list would have no effect but its `deny` rules would still block; with none, the run's guardrails are the instructions in `.claude/skills/night-run/SKILL.md`.
+**Settings and hooks.** `.claude/settings.json` denies, through the Bash tool, force-pushes and branch deletion, `npm install` (and `add`, `uninstall`, `update`) and `cat .env`, and through the file tools reading or editing `.env`; other routes to the same (the PowerShell tool, `head .env`) are held by instruction only. It also runs one PreToolUse hook (`.claude/hooks/guard-db.mjs`) that refuses `db:seed` and `db:reset` against a host outside the private network ranges. Both hold in every permission mode, a run started with permissions bypassed included. Nothing is enforced at commit time; the rest of an unattended run's guardrails are the instructions in `.claude/skills/night-run/SKILL.md`.
 
 **CI: yes.** `.github/workflows/ci.yml` runs on pushes to `Nightrun` and `dev` and on pull requests into `Nightrun`, `dev` or `main` (a merge into `main` runs none, since its pull request was tested and the merge only deploys; a pull request from `dev` into `main` skips the tests when that exact commit already passed on `dev`; other branches, a night run's task branches included, run none), in three jobs: lint + type check + unit tests; `npm run build` over the runner's own PostgreSQL, migrated and seeded in the job (prerendering `/dashboard` queries the database), followed by the Playwright browser tests against `next start` (`E2E_SERVER=start`); and the browser tests against a `next dev` server, which run even when the build cannot. Each job generates a throwaway `AUTH_SECRET`. CI runs on GitHub; a local agent must never report its result without having observed it (the night-run skill's read-only poll is the one sanctioned way).
 
@@ -637,45 +637,6 @@ Hook / CI check
 Do not keep expanding prompts to compensate for failures that can be mechanically prevented.
 
 ---
-
-# Operating Model
-
-The recommended loop is:
-
-```text
-                 ┌──────────────┐
-                 │     Task     │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │    Explore   │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │     Plan     │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │  Implement   │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────────────┐
-                 │    Verify    │
-                 └──────┬───────┘
-                        ↓
-                 ┌──────▼───────┐
-                 │   Passed?    │
-                 └───┬──────┬───┘
-                     │Yes   │No
-                     ↓      ↓
-                 ┌──────┐ ┌──────────────┐
-                 │Review│ │    Repair    │
-                 └──┬───┘ └──────┬───────┘
-                    │             │
-                    │             └──────→ Verify
-                    ↓
-                 Complete
-```
 
 ## Final Principle
 

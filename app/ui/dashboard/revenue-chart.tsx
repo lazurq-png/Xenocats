@@ -6,7 +6,11 @@ import { formatCurrency } from '@/app/lib/utils';
 
 const CHART_HEIGHT = 225;
 
-/** Collected (lime) under pending (violet) invoice totals per month, as in the mockup. */
+/**
+ * Collected (lime) under unpaid (violet) invoice totals per month, as in the mockup.
+ * Unpaid, not Pending: it counts every unpaid invoice, overdue included, where the
+ * invoice list keeps Pending for those not yet due.
+ */
 export default async function RevenueChart({ range }: { range: Range }) {
   const months = await fetchMonthlyTotals(await currentUserId(), range);
   const { top, ticks } = chartScale(Math.max(0, ...months.map((m) => m.paid + m.pending)));
@@ -34,7 +38,7 @@ export default async function RevenueChart({ range }: { range: Range }) {
             <span className="h-3.5 w-3.5 rounded-full bg-plasma" /> Collected
           </li>
           <li className="flex items-center gap-2">
-            <span className="h-3.5 w-3.5 rounded-full bg-aura" /> Pending
+            <span className="h-3.5 w-3.5 rounded-full bg-aura" /> Unpaid
           </li>
         </ul>
       </div>
@@ -69,7 +73,7 @@ export default async function RevenueChart({ range }: { range: Range }) {
                   <div
                     className="flex w-full max-w-[26px] flex-col justify-end"
                     style={{ height: CHART_HEIGHT }}
-                    title={`${monthLabel(m.month, true)}: ${formatCurrency(m.paid)} collected, ${formatCurrency(m.pending)} pending`}
+                    title={`${monthLabel(m.month, true)}: ${formatCurrency(m.paid)} collected, ${formatCurrency(m.pending)} unpaid`}
                   >
                     {total > 0 && (
                       <div
@@ -102,13 +106,13 @@ export default async function RevenueChart({ range }: { range: Range }) {
       <div className="sr-only">
         <table>
           <caption>
-            Collected and pending invoice totals per month, {periodLabel.toLowerCase()}
+            Collected and unpaid invoice totals per month, {periodLabel.toLowerCase()}
           </caption>
           <thead>
             <tr>
               <th scope="col">Month</th>
               <th scope="col">Collected</th>
-              <th scope="col">Pending</th>
+              <th scope="col">Unpaid</th>
             </tr>
           </thead>
           <tbody>

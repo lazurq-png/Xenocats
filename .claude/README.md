@@ -12,14 +12,19 @@ CLAUDE.md               Claude Code operating model — always loaded by the ext
 ├── README.md           this file
 ├── agents/             subagents dispatched by name (reviewer: independent review,
 │                        no Edit or Write tool)
-├── rules/              domain reference docs — loaded in every session (none has
-│                        `paths:` frontmatter); CLAUDE.md §2 maps tasks to them
+├── rules/              domain reference docs — architecture and debugging in every
+│                        session, the rest by their `paths:` globs; CLAUDE.md §2 maps
+│                        tasks to them
 ├── skills/              reusable procedures invoked as slash commands
-│                        (/code-review; /night-run, with its CI poll ci-poll.mjs)
+│                        (/verify; /code-review; /night-run, with its CI poll
+│                        ci-poll.mjs)
 ├── docs/                 supporting human-readable process docs — workflow narrative,
-│                          a task-request template, and ready-to-paste prompt patterns
-└── settings.example.json       copy to settings.json and adjust permissions/hooks
-                                 (not yet done here — settings.json does not exist)
+│                          a task-request template, ready-to-paste prompt patterns,
+│                          and working practices (CLAUDE.md's general sections)
+├── settings.json        deny rules (force-push, branch deletion, .env, npm install)
+│                        and a hook refusing db:seed/db:reset off the private network
+├── hooks/               the hooks settings.json runs (guard-db.mjs)
+└── settings.example.json       an inert template of allow rules, for another repo
 ```
 
 This repository has **no single validation entry point.** Verification is
@@ -53,13 +58,22 @@ runner's own PostgreSQL, so CI uses no outside database and no secret.
 
 Claude Code loads a rule file in `.claude/rules/` at launch, alongside
 `CLAUDE.md`, unless the file has `paths:` frontmatter (a list of globs); one
-with `paths:` loads only when Claude reads or edits a file that matches. None
-of these rules has `paths:`, so all of them are in context in every session,
-and `CLAUDE.md` §2 says which applies to which kind of task (frontend, backend,
-database, testing, debugging, architecture, security-review). Reviewing a diff
-is the `code-review` skill.
+with `paths:` loads only when Claude reads or edits a file that matches.
 
-To keep a rule out of sessions that never touch its area, give it `paths:`.
+| Rule | Loads |
+| ---- | ----- |
+| `architecture.md`, `debugging.md` | every session |
+| `frontend.md` | `app/**/*.tsx`, `app/ui/**`, `public/**`, `tests/e2e/**` |
+| `backend.md` | `app/lib/**`, route handlers, `auth*.ts`, `proxy.ts`, `instrumentation.ts`, `next.config.ts` |
+| `database.md` | `db/**`, the database scripts, the modules that run SQL, `tests/unit/data.test.ts`, the browser tests' setup |
+| `testing.md` | `tests/**`, the Vitest and Playwright configs, the test scripts, `.github/workflows/**` |
+| `security-review.md` | auth, the proxy, the Server Actions and their input schemas, the session, password and limit modules, the CSV export, the CSP and the security headers (`app/lib/csp.ts`, `next.config.ts`), the TLS choice, `instrumentation.ts`, route handlers, `.env.example`, `.github/**` |
+
+`CLAUDE.md` §2 says which applies to which kind of task; a task that falls under a
+scoped rule before it has read one of its files opens it. Reviewing a diff is the
+`code-review` skill. A rule's globs are in its own frontmatter: a new area of code
+is added there.
+
 A nested `CLAUDE.md` scopes guidance by location the same way: Claude Code
 loads one when it works with files in that directory.
 
@@ -74,9 +88,23 @@ is missing. It covers
 preflight, a branch per task merged onto a run branch and pushed as each one
 finishes, durable state under `docs/ai/night-<date>/`, forbidden operations, and
 stop conditions. It is invoked by the `/loop 20m` prompt in `docs/ai/README.md`
-rather than auto-loaded, so it costs nothing during ordinary supervised work. Unattended sessions run with permission prompts bypassed, and
-this repository has no `settings.json` deny rules or hooks, so its guardrails
-are honoured by instruction, not enforced by the harness.
+rather than auto-loaded, so it costs nothing during ordinary supervised work. Unattended sessions run with permission prompts bypassed. Most of its guardrails
+are honoured by instruction; `.claude/settings.json` enforces a few in every mode:
+its deny rules (through the Bash tool: no force-push or branch deletion, no
+`npm install`, `add`, `uninstall` or `update`, no `cat .env`; through the file
+tools: no reading or editing `.env`) and a PreToolUse hook
+(`.claude/hooks/guard-db.mjs`, for the Bash and PowerShell tools) that refuses
+`db:seed` and `db:reset` against a host outside the private ranges. The same
+operations by another route (the PowerShell tool, `head .env`) are held by
+instruction only.
+
+### Verify
+
+`.claude/skills/verify/SKILL.md` runs `CLAUDE.md` §9's checks on a change in
+the order that finds a problem soonest: Prettier on the changed files, lint, the
+type check, then `npm run test:affected`; it stops at the first failure and says
+what it does not cover (the build, `next start`, a look in a browser). Invoke it
+with `/verify`, or by asking Claude to verify the change.
 
 ### Code review
 
@@ -88,23 +116,27 @@ diff.
 ## Setting this up in a new repo
 
 1. Copy `AGENTS.md`, `CLAUDE.md`, and this `.claude/` folder into the repo root.
-2. Give the repo a real verification command and name it in `CLAUDE.md` §9 —
-   that table is what `AGENTS.md` §13 expects agents to run for "verification."
+2. Give the repo a real verification command and name it in the `README.md`
+   "Checks" table, which `CLAUDE.md` §9 points to — that table is what
+   `AGENTS.md` §13 expects agents to run for "verification."
    Whether it is one script or two commands matters less than that every stage
    runs a real check. A stage that echoes a heading and prints success without
    checking anything is worse than no stage at all: it manufactures the evidence
    those sections exist to require. (The project these files came from learned
    that the other way round too — a `validate` wrapper was removed and three
    documents went on citing it for weeks.)
-3. Copy `.claude/settings.example.json` to `.claude/settings.json` only if you
-   want to pre-approve specific commands/permissions; otherwise omit it and let
-   the extension prompt as usual. In a run started with permissions bypassed
-   its `allow` list has no effect, but its `deny` list still blocks: deny rules
-   hold in every permission mode. This repository has none, so `night-run`'s
-   forbidden operations are held by instruction alone.
+3. Adapt `.claude/settings.json`: its deny rules and its hook name this
+   repository's commands and database scripts. In a run started with permissions
+   bypassed an `allow` list has no effect, but `deny` rules and hooks still hold:
+   they are the guardrails that do not depend on instruction.
+   `settings.example.json` is an inert template of `allow` rules, should you want
+   to pre-approve commands.
 4. Trim `.claude/rules/*.md` and `.claude/docs/*.md` down to what the project
    actually needs — delete the domains that don't apply (e.g. `database.md` for
-   a repo with no persistence layer).
+   a repo with no persistence layer). Five rules carry `paths:` globs naming this
+   repository's files: rewrite each for the new project's, or remove `paths:` to
+   load it in every session. A rule whose globs match nothing never loads, and
+   nothing says so.
 5. Update the curated list in `CLAUDE.md`'s "Start With Repository Context"
    section if you remove or rename any rule file.
 6. Rewrite `.claude/skills/night-run/SKILL.md` for the new project: its
