@@ -11,6 +11,14 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # TypeScript 7 (the native port) ships no JavaScript compiler API, which
+      # scripts/affected-tests.mjs imports; move to it by hand once that is reworked.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Node's types follow the runtime, pinned to 24.x in package.json's engines.
+      - dependency-name: '@types/node'
+        versions: ['>=25']
   - package-ecosystem: github-actions
     directory: /
     schedule:
