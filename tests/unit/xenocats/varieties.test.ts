@@ -321,6 +321,28 @@ describe('the schedule', () => {
     );
   });
 
+  it("keeps on each cat its variety's gait and comfort ('walk' and none for a xenocat), every step", () => {
+    // The run below, in which every variety comes: what a cat keeps is its variety's,
+    // read once when it came (arena.ts), instead of looked up every step.
+    const a = arena({ stepMs: 50 }, 3);
+    const gaits = new Set<string>();
+    let soothing = 0;
+    stepTo(a, 260_000, () => {
+      a.step(still);
+      for (const cat of a.cats()) {
+        const want = cat.variety ? VARIETIES[cat.variety].gait : 'walk';
+        if (cat.gait !== want) expect(cat.gait, cat.variety ?? 'a xenocat').toBe(want);
+        const comfort = (cat.variety && VARIETIES[cat.variety].soothes) || null;
+        if (cat.soothes !== comfort) expect(cat.soothes, cat.variety ?? 'a xenocat').toBe(comfort);
+        if (cat.soothes) soothing++;
+        gaits.add(cat.gait);
+      }
+    });
+    expect([...gaits].sort()).toEqual(['charge', 'sit', 'snipe', 'walk', 'zoom']);
+    // Purring Cats came, so the comfort was checked on some.
+    expect(soothing).toBeGreaterThan(0);
+  }, 60_000);
+
   it('in a seeded run, each variety first appears in its window, and not before', () => {
     const a = arena({ stepMs: 50 }, 3);
     const first = new Map<string, number>();

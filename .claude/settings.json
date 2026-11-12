@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push * --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git push --delete*)",
+      "Bash(git push * --delete*)",
+      "Bash(git push * -d *)",
+      "Read(./.env)",
+      "Edit(./.env)",
+      "Write(./.env)",
+      "Read(./.env.local)",
+      "Edit(./.env.local)",
+      "Write(./.env.local)",
+      "Read(./.env.production)",
+      "Edit(./.env.production)",
+      "Write(./.env.production)",
+      "Bash(cat .env*)",
+      "Bash(npm install*)",
+      "Bash(npm i)",
+      "Bash(npm i *)",
+      "Bash(git push -d*)",
+      "Bash(git push -uf*)",
+      "Bash(git push * -uf*)",
+      "Bash(git push * :*)",
+      "Bash(git push * +*)",
+      "Bash(npm add*)",
+      "Bash(npm uninstall*)",
+      "Bash(npm update*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-db.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,13 @@
 import type { Sql } from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
-import { claimAttempt, clearFailures, loginKey, loginLimits } from '@/app/lib/login-limit';
+import {
+  addressKey,
+  addressLimits,
+  claimAttempt,
+  clearFailures,
+  loginKey,
+  loginLimits,
+} from '@/app/lib/login-limit';
 
 // The lockout's settings, its decisions and the statements it sends. The
 // statements themselves run against a real database in the browser test
@@ -25,6 +32,22 @@ describe('loginLimits', () => {
         lockMinutes: 15,
       });
     }
+  });
+});
+
+describe('addressLimits', () => {
+  it('defaults to 20 failures, locked and forgotten after the login lock minutes', () => {
+    expect(addressLimits({})).toEqual({ maxFailures: 20, lockMinutes: 15, forgetAfterMinutes: 15 });
+    expect(addressLimits({ LOGIN_ADDRESS_MAX_FAILURES: '50', LOGIN_LOCK_MINUTES: '30' })).toEqual({
+      maxFailures: 50,
+      lockMinutes: 30,
+      forgetAfterMinutes: 30,
+    });
+    expect(addressLimits({ LOGIN_ADDRESS_MAX_FAILURES: '0' }).maxFailures).toBe(20);
+  });
+
+  it('keys an address apart from every login name', () => {
+    expect(addressKey('abc')).toBe('login-address:abc');
   });
 });
 
@@ -53,9 +76,16 @@ describe('claimAttempt', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].text).toMatch(/^INSERT INTO login_failures .* ON CONFLICT \(email\) DO UPDATE/);
     expect(calls[0].text).toContain('RETURNING failures AS attempt');
-    // Parameters, never text: the email first, then only N and M.
+    // Parameters, never text: the email first, then only N, M and the quiet spell
+    // after which the count is forgotten (none for a login name: null).
     expect(calls[0].values[0]).toBe('a@b.c');
-    expect(new Set(calls[0].values.slice(1))).toEqual(new Set([3, 20]));
+    expect(new Set(calls[0].values.slice(1))).toEqual(new Set([3, 20, null]));
+  });
+
+  it("passes an address's quiet spell as a value too", async () => {
+    const { sql, calls } = fakeSql(() => [{ attempt: 1 }]);
+    await claimAttempt(sql, 'login-address:abc', { ...limits, forgetAfterMinutes: 45 });
+    expect(new Set(calls[0].values.slice(1))).toEqual(new Set([3, 20, 45]));
   });
 
   it('lets the first N attempts compare a password, and no more', async () => {

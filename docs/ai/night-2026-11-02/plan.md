@@ -2,7 +2,7 @@
 
 ## Goal
 
-Tuesday 08:00
+Tuesday 18:00
 
 ## Tasks
 

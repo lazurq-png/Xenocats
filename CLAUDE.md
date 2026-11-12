@@ -2,11 +2,14 @@
 
 # Claude Code Operating Instructions
 
-This file contains Claude Code-specific instructions.
+This file contains Claude Code-specific instructions. The repository-wide
+engineering contract is `AGENTS.md`, imported here so it is in every session:
 
-The repository-wide engineering contract is defined in `AGENTS.md`. Read and follow it first.
+@AGENTS.md
 
-This file defines how Claude should operate within that contract.
+This file defines how Claude should operate within that contract. The general
+engineering practice behind §§3, 5, 7, 10 and 12–14 is in
+`.claude/docs/working-practices.md`; what is specific to this repository stays here.
 
 ---
 
@@ -32,7 +35,7 @@ Match investigation depth to task risk.
 
 Before implementing a significant task:
 
-1. Read `AGENTS.md`.
+1. `AGENTS.md` (imported above).
 2. Inspect the relevant project structure.
 3. Locate the existing implementation.
 4. Locate related tests.
@@ -73,29 +76,13 @@ If the task touches a specific domain, follow the matching reference in `.claude
 * `.claude/rules/debugging.md` — evidence-driven failure diagnosis
 * `.claude/rules/security-review.md` — authn/authz, secrets, payments, external input
 
-Claude Code loads all of them at the start of every session (a rule file without `paths:` frontmatter loads at launch, and none of these has one), so they need no opening.
+`architecture.md` and `debugging.md` load at the start of every session (no `paths:` frontmatter). The other five carry `paths:` globs for the files they govern, and Claude Code loads one when it reads or edits a matching file: so a task in their area has them without opening them, and a session that never touches it does not carry them. A task that falls under one before it has read such a file (planning a schema change from the plan alone, say) opens it.
 
 ---
 
 ## 3. Exploration
 
-Exploration should answer the questions necessary to make a good implementation decision.
-
-Prioritize:
-
-* relevant symbols
-* callers
-* implementations
-* tests
-* configuration
-* data flow
-* API boundaries
-* error handling
-* neighboring patterns
-
-Avoid reading large numbers of unrelated files.
-
-Do not start editing simply because you have found one plausible implementation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §3.
 
 ---
 
@@ -141,22 +128,7 @@ The plan should be actionable rather than descriptive.
 
 ## 5. Implementation
 
-Implement the smallest sufficient change.
-
-Prefer existing:
-
-* utilities
-* components
-* services
-* repositories
-* validation
-* error handling
-* state-management patterns
-* API conventions
-
-Avoid introducing a new abstraction unless the existing architecture cannot reasonably support the requested behavior.
-
-Do not mix unrelated cleanup into feature work.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §5.
 
 ---
 
@@ -181,26 +153,7 @@ it in the conversation and writes no task-state files (§11).
 
 ## 7. Context Management
 
-Prefer targeted context over indiscriminate context.
-
-Search for the exact:
-
-* function
-* class
-* component
-* endpoint
-* error
-* schema
-* test
-* configuration value
-
-that matters.
-
-Read surrounding code only when needed to understand behavior.
-
-Before making a large edit, confirm that the relevant implementation and its callers are understood.
-
-Do not repeatedly rediscover information already established in the conversation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §7.
 
 ---
 
@@ -240,18 +193,8 @@ reasoning, and let it find the diff itself.
 
 Verification is mandatory for meaningful code changes.
 
-In this repository the checks that exist are:
-
-| Check      | Command                                          |
-| ---------- | ------------------------------------------------ |
-| Lint       | `npm run lint` (ESLint 9, `eslint-config-next` core-web-vitals) |
-| Type check | `npx next typegen && npx tsc --noEmit`           |
-| Unit tests | `npm test` (Vitest, `tests/unit/`)               |
-| Browser tests | `npm run test:e2e` (Playwright + Chromium, `tests/e2e/`) |
-| Affected tests | `npm run test:affected -- --base <ref> [--run]` (the unit and browser tests a change can reach) |
-| Build      | `npm run build`                                  |
-| Format     | `npx prettier --check <the files you changed>`   |
-| Browser    | `npm run dev`, then open `http://localhost:3000` |
+The checks that exist, and their commands, are the table in `README.md`
+("Checks"); what follows is how to run them here.
 
 Use **npm**: the lockfile is `package-lock.json`. Node 24 is installed
 system-wide and on `PATH`; no prefix is needed. Every check needs `node_modules`,
@@ -325,14 +268,22 @@ tests when `main` changes no file `dev` lacks (its own commits are only the
 merges of earlier releases) and CI already passed on that exact `dev` commit (the
 workflow's *tested* job); any other pull request into `main` runs them. A push of any other
 branch, a night run's task branches included, runs nothing; those are checked
-locally. It has three jobs: *checks* (lint, type check, unit tests); *build* — `npm run build`
-over a migrated and seeded `xenocats` schema, then every browser test against
-`next start` (`E2E_SERVER=start`), in one `playwright test`; and *e2e* — the
-specs for what differs under `next dev` (smoke, security headers, the dashboard
-login) against it. The browser specs' groups are projects in
-`playwright.config.ts` (`GROUPS`); a new spec goes in one, and a new unit test
-file in a `Unit tests (...)` step of `ci.yml`, which the *checks* job verifies
-(`.claude/rules/testing.md`, "A new test file goes in a CI group"). The *build* and *e2e* jobs run inside the Playwright image
+locally. A newer push to the same branch or pull request cancels the run it
+supersedes. Its jobs: *checks* (lint, formatting, type check, the unit tests a
+Vitest project at a time); *build* — `npm run build` over a migrated and seeded
+`xenocats` schema, then every browser test against `next start`
+(`E2E_SERVER=start`), in one `playwright test`, then the database tests, which
+fail if none passed (`scripts/ci-passed.mjs`); *e2e* — the specs for what differs
+under `next dev` (smoke, security headers, the dashboard login) against it; and on
+pull requests only, *dependency-review* (fails on a vulnerability the pull request
+adds) and, into `main`, *migrations* (lists the migrations it adds, to apply to
+Neon first). A second workflow, `codeql.yml`, scans the code on pull requests,
+pushes to `dev` and weekly, not on pushes to `Nightrun` (whose runs a night run's
+CI poll reads). The browser specs' groups are projects in
+`playwright.config.ts` (`GROUPS`); a new spec goes in one. A new unit test file
+needs nothing: the Vitest projects in `vitest.config.mts` take it by folder and
+environment, and the *checks* job runs them a project at a time and verifies every
+file is in exactly one (`.claude/rules/testing.md`, "A new test file goes in a CI group"). The *build* and *e2e* jobs run inside the Playwright image
 (`mcr.microsoft.com/playwright`, its tag the locked `@playwright/test` version),
 so Chromium is not installed on every run. Each starts a throwaway PostgreSQL
 service container, which `scripts/ci-database.mjs` switches TLS on for and
@@ -375,19 +326,7 @@ Never report a verification result that was not actually observed.
 
 ## 10. Debugging
 
-When a test, command, or runtime behavior fails:
-
-1. reproduce it
-2. inspect the exact failure
-3. identify the relevant execution path
-4. form a hypothesis
-5. gather evidence
-6. make the smallest fix
-7. rerun verification
-
-Avoid random trial-and-error edits.
-
-If the same strategy fails repeatedly, stop and reassess the hypothesis.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §10.
 
 ---
 
@@ -415,61 +354,19 @@ Supervised work neither adds to it nor needs to read the night-run skill.
 
 ## 12. Parallelization
 
-Parallelize independent work when it reduces total task time.
-
-Examples:
-
-* one agent maps architecture
-* one agent investigates tests
-* one agent performs security review
-* one agent evaluates an isolated subsystem
-
-Do not have multiple agents modify the same files unless the workflow explicitly supports conflict resolution.
-
-For parallel implementation, use isolated worktrees or equivalent isolation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §12.
 
 ---
 
 ## 13. Code Review
 
-Before declaring substantial work complete, review the resulting diff.
-
-Ask:
-
-* Does this actually solve the requested problem?
-* Did the implementation follow existing architecture?
-* Did it introduce unnecessary complexity?
-* Are edge cases covered?
-* Are contracts preserved?
-* Are errors handled correctly?
-* Are security boundaries intact?
-* Are tests meaningful?
-* Did unrelated files change?
-* Is there anything a skeptical reviewer would question?
-
-Review the final state, not merely the edits made during implementation.
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §13.
 
 ---
 
 ## 14. Minimality
 
-Minimality means avoiding unnecessary complexity, not avoiding necessary code.
-
-Prefer:
-
-* direct solutions
-* established project patterns
-* small interfaces
-* localized changes
-* explicit behavior
-
-Avoid:
-
-* speculative extensibility
-* premature abstractions
-* unnecessary wrappers
-* broad refactors
-* unrelated dependency changes
+General practice, not specific to this repository: `.claude/docs/working-practices.md` §14.
 
 ---
 
@@ -549,16 +446,20 @@ This repository's `.claude/` directory is structured as follows:
 .claude/
 ├── README.md   — how these files fit together, and how to copy them to a new repo
 ├── agents/     — specialized subagents dispatched by name (reviewer)
-├── rules/      — domain-specific reference docs (see §2), loaded every session
+├── rules/      — domain-specific reference docs (see §2): two loaded every session,
+│                 five when a file they govern is read (their paths: frontmatter)
 ├── skills/     — reusable procedural workflows, invoked as slash commands
-│                 (code-review; night-run, with its CI poll ci-poll.mjs)
-├── docs/       — supporting human-readable process docs (workflow, task
-│                 template, prompt patterns) — not auto-loaded
-└── settings.example.json — inert template; no settings.json is defined here
+│                 (verify; code-review; night-run, with its CI poll ci-poll.mjs)
+├── docs/       — supporting process docs (workflow, task template, prompt
+│                 patterns, and working practices: the general sections of
+│                 this file, §§3, 5, 7, 10, 12–14) — not auto-loaded
+├── settings.json — deny rules and a database hook, held in every mode (hooks/)
+└── settings.example.json — inert template of allow rules
 ```
 
-There is no single validation command. Verification is the commands in §9's
-table, run separately.
+There is no single validation command. Verification is the commands in the
+README's "Checks" table (§9), run separately. `.claude/skills/verify/` (`/verify`)
+runs the ones a change needs, cheapest first, stopping at the first failure.
 
 Use `.claude/skills/code-review/` for an adversarial review pass over a diff —
 see §13 for when to run it.

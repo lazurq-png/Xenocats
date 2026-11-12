@@ -62,6 +62,8 @@ const NO_TESTS = [
   /^\.prettierignore$/,
   /^\.env\.example$/,
   /^scripts\/art\//, // artwork tools, run by hand
+  /^tests\/bench\//, // the speed benchmarks, run by hand (vitest.bench.config.mts)
+  /^vitest\.bench\.config\.mts$/, // their config, which nothing else reads
   /^scripts\/ci-database\.mjs$/, // only CI's database container runs it
 ];
 

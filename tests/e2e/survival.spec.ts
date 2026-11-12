@@ -187,10 +187,52 @@ async function fakeGamepads(page: Page) {
 /** The standard layout's buttons. */
 const PAD = { a: 0, b: 1, x: 2, y: 3, start: 9, up: 12, down: 13 };
 
-async function openArena(page: Page, query = '?seed=7') {
+/** The pages whose clock openArena installed: a page has one clock. */
+const clocked = new WeakSet<Page>();
+
+/**
+ * Opens Survival. The page's timers, its animation frames among them, run on a clock
+ * the test can run on (runUntil): it keeps real time until then. Without `clock`,
+ * the page's own (a test that replaces requestAnimationFrame itself).
+ */
+async function openArena(page: Page, query = '?seed=7', { clock = true } = {}) {
+  if (clock && !clocked.has(page)) {
+    await page.clock.install();
+    clocked.add(page);
+  }
   await page.goto('/cats/survival' + query);
   await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
 }
+
+/** A step of page time runUntil runs the clock on by, at once, ms. */
+const STEP_MS = 250;
+
+/**
+ * Runs the page's clock on (openArena installed it), a step at a time, until `done`,
+ * and fails after `limitMs` of page time. Each step fires the game's frames 16 ms of
+ * page time apart, as a screen at 60 frames a second would: the run advances by the
+ * page time asked for, however busy the machine is, where a wait in real time got
+ * less of the run the busier the machine (and its frame guard held the cats back).
+ */
+async function runUntil(
+  page: Page,
+  done: () => Promise<boolean>,
+  limitMs: number,
+  what: string,
+  step = STEP_MS
+) {
+  for (let ran = 0; !(await done()); ran += step) {
+    if (ran >= limitMs) throw new Error(`${what}: not within ${limitMs} ms of page time`);
+    await page.clock.runFor(step);
+  }
+}
+
+/** A data- attribute of the play area, or null once it is gone (read without waiting). */
+const areaAttribute = (page: Page, name: string) =>
+  page.evaluate(
+    (n) => document.querySelector('[data-testid="survival-area"]')?.getAttribute(n) ?? null,
+    name
+  );
 
 /** Starts a run; a click before hydration is lost, so click until it starts. */
 /** Opens one of the start screen's windows (Select Character, Shop, Codex) and returns it. */
@@ -266,7 +308,12 @@ test.describe('on a computer', () => {
   }) => {
     await openArena(page, '?seed=7&crowd=300');
     await startRun(page);
-    await expect.poll(() => num(page, 'data-cats'), { timeout: 30_000 }).toBeGreaterThan(150);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-cats')) > 150,
+      30_000,
+      'data-cats above 150'
+    );
     await expect(area(page)).toHaveAttribute('data-weapons', /infinite-laser:8/);
     await expect(area(page)).toHaveAttribute('data-screen', 'playing');
   });
@@ -334,17 +381,14 @@ test.describe('on a computer', () => {
     test.setTimeout(90_000);
     await openArena(page, '?seed=7&speed=8&elite=1');
     await startRun(page);
-    // The run is over in under a minute: watch from inside the page, every frame,
-    // rather than poll from here.
-    await page.waitForFunction(
-      () =>
-        Number(
-          document
-            .querySelector('[data-testid="survival-area"]')
-            ?.getAttribute('data-windups-begun')
-        ) > 0,
-      undefined,
-      { timeout: 60_000 }
+    // The run is over in under a minute; the HUD data counts the wind-ups begun, so a
+    // look every 100 ms of page time cannot miss one.
+    await runUntil(
+      page,
+      async () => Number(await areaAttribute(page, 'data-windups-begun')) > 0,
+      60_000,
+      'an elite wind-up',
+      100
     );
   });
 
@@ -407,7 +451,7 @@ test.describe('on a computer', () => {
         }
         const key = walk[turn % 4];
         await page.keyboard.down(key);
-        await page.waitForTimeout(350);
+        await page.clock.runFor(350);
         await page.keyboard.up(key);
       }
     }
@@ -443,9 +487,12 @@ test.describe('on a computer', () => {
     await paused.getByTestId('survival-pause-aim-auto').check();
     await paused.getByRole('button', { name: 'Resume' }).click();
     await expect(area(page)).toHaveAttribute('data-aim', 'auto');
-    await expect
-      .poll(() => area(page).getAttribute('data-hero-facing'), { timeout: 30_000 })
-      .not.toBe('E');
+    await runUntil(
+      page,
+      async () => (await area(page).getAttribute('data-hero-facing')) !== 'E',
+      30_000,
+      'facing a cat'
+    );
   });
 
   test('Graphics: light is chosen in the pause menu, holds on resume and in the lobby, and draws at one pixel to a pixel', async ({
@@ -500,7 +547,7 @@ test.describe('on a computer', () => {
           setTimeout(() => callback(performance.now()), 50);
         }) as number;
     });
-    await openArena(page, '?seed=7');
+    await openArena(page, '?seed=7', { clock: false });
     await expect(area(page)).toHaveCount(0);
     await startRun(page);
     // Watched from inside the page, every frame: the notice lasts a few seconds, and a
@@ -534,15 +581,12 @@ test.describe('on a computer', () => {
     await startRun(page);
     // A count of boss wind-ups begun, not the wind-up itself: the HUD data is refreshed a few
     // times a second, and a wind-up lasts about a quarter of a second here.
-    await page.waitForFunction(
-      () =>
-        Number(
-          document
-            .querySelector('[data-testid="survival-area"]')
-            ?.getAttribute('data-boss-windups-begun')
-        ) > 0,
-      undefined,
-      { timeout: 60_000 }
+    await runUntil(
+      page,
+      async () => Number(await areaAttribute(page, 'data-boss-windups-begun')) > 0,
+      60_000,
+      'a boss wind-up',
+      100
     );
   });
 
@@ -554,9 +598,12 @@ test.describe('on a computer', () => {
     await startRun(page);
     // (num takes a level-up's first choice: one waiting would stop the run, and no pickup
     // would ever be taken.)
-    await expect
-      .poll(() => num(page, 'data-pickups-taken'), { timeout: 60_000 })
-      .toBeGreaterThan(0);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-pickups-taken')) > 0,
+      60_000,
+      'a pickup taken'
+    );
     await expect(area(page)).toHaveAttribute('data-last-pickup', /^(fish|magnet|bell)$/);
   });
 
@@ -567,7 +614,7 @@ test.describe('on a computer', () => {
     await openArena(page, '?seed=7&speed=6');
     await startRun(page);
     const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await runUntil(page, () => dialog.isVisible(), 40_000, 'a level-up');
     const choices = dialog.locator('button[data-choice]');
     const ids = async () =>
       choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
@@ -616,7 +663,7 @@ test.describe('on a computer', () => {
     // Walk until a level-up, and take a weapon if one is offered.
     await page.keyboard.down('d');
     const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await runUntil(page, () => dialog.isVisible(), 40_000, 'a level-up');
     await page.keyboard.up('d');
     const taken = await takeChoice(page, async (i) => page.keyboard.press(String(i + 1)));
     const paused = await pauseRun(page);
@@ -724,16 +771,31 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-time')).toContainText('/ 5:00');
 
     // Cats come, and the laser sends them home on its own.
-    await expect.poll(() => num(page, 'data-time'), { timeout: 10_000 }).toBeGreaterThan(2000);
-    await expect.poll(() => num(page, 'data-cats'), { timeout: 10_000 }).toBeGreaterThan(0);
-    await expect.poll(() => num(page, 'data-sent-home'), { timeout: 30_000 }).toBeGreaterThan(0);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-time')) > 2000,
+      10_000,
+      'data-time above 2000'
+    );
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-cats')) > 0,
+      10_000,
+      'data-cats above 0'
+    );
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-sent-home')) > 0,
+      30_000,
+      'data-sent-home above 0'
+    );
     await expect(page.getByTestId('survival-sent-home')).not.toHaveText('Cats sent home: 0');
 
     // Esc pauses: a dialog, focus on Resume, and time stands still.
     const paused = await pauseRun(page);
     await expect(paused.getByRole('button', { name: 'Resume' })).toBeFocused();
     const stopped = await num(page, 'data-time');
-    await page.waitForTimeout(600);
+    await page.clock.runFor(600);
     expect(await num(page, 'data-time')).toBe(stopped);
     await paused.getByRole('button', { name: 'Resume' }).click();
     await expect.poll(() => num(page, 'data-time')).toBeGreaterThan(stopped);
@@ -765,7 +827,12 @@ test.describe('on a computer', () => {
   }) => {
     await openArena(page, '?seed=7&speed=3');
     await startRun(page);
-    await expect.poll(() => num(page, 'data-sent-home'), { timeout: 30_000 }).toBeGreaterThan(0);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-sent-home')) > 0,
+      30_000,
+      'data-sent-home above 0'
+    );
     await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
     const list = page.getByRole('list', { name: 'What each weapon did' });
     await expect(list).toBeVisible();
@@ -793,7 +860,12 @@ test.describe('on a computer', () => {
       .locator('li[data-character="keeper"]');
     await expect(keeper).toHaveText('The Keeper: none yet');
     await startRun(page);
-    await expect.poll(() => num(page, 'data-time'), { timeout: 15_000 }).toBeGreaterThan(3000);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-time')) > 3000,
+      15_000,
+      'data-time above 3000'
+    );
     await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
     const time = await page.getByTestId('survival-result-time').textContent();
     expect(time).toMatch(/^\d:\d\d$/);
@@ -835,7 +907,7 @@ test.describe('on a computer', () => {
     // He walks about, gathering what the laser leaves.
     await page.keyboard.down('d');
     const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await runUntil(page, () => dialog.isVisible(), 40_000, 'a level-up');
     await page.keyboard.up('d');
     // (Level 2's, or a chest's he walked over first: a level-up at the level he is.)
     await expect(dialog.getByRole('heading', { name: /Level \d+\. Choose one\./ })).toBeVisible();
@@ -865,7 +937,7 @@ test.describe('on a computer', () => {
     await expect(buttons.nth(1)).toBeFocused();
     // The run waits.
     const waited = await area(page).getAttribute('data-time');
-    await page.waitForTimeout(500);
+    await page.clock.runFor(500);
     expect(await area(page).getAttribute('data-time')).toBe(waited);
     // A new weapon, by its number.
     const kinds = await buttons.evaluateAll((all) => all.map((b) => b.getAttribute('data-kind')));
@@ -905,15 +977,15 @@ test.describe('on a computer', () => {
     await startRun(page);
     await expect(area(page)).toHaveAttribute('data-boss', '');
     const bar = page.getByTestId('survival-boss');
-    await expect
-      .poll(
-        async () => {
-          await playOn(page);
-          return bar.count();
-        },
-        { timeout: 30_000 }
-      )
-      .toBe(1);
+    await runUntil(
+      page,
+      async () => {
+        await playOn(page);
+        return (await bar.count()) === 1;
+      },
+      30_000,
+      'the boss bar'
+    );
     await expect(bar).toContainText('Mega Cat');
     // It wears a xenocat's face, and says whose.
     await expect(page.getByTestId('survival-notice')).toHaveText(
@@ -970,7 +1042,7 @@ test.describe('on a computer', () => {
     // A level-up: player 1 chooses, then player 2, for the same level.
     const dialog = levelUp(page);
     await page.keyboard.down('s');
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await runUntil(page, () => dialog.isVisible(), 40_000, 'a level-up');
     await page.keyboard.up('s');
     await expect(
       dialog.getByRole('heading', { name: /Level \d+\. Player 1, choose one\./ })
@@ -1001,7 +1073,12 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-tufts')).toHaveAttribute('data-tufts', '0');
     await startRun(page);
     // Half a minute of the run: at least six tufts for the time alone.
-    await expect.poll(() => num(page, 'data-time'), { timeout: 20_000 }).toBeGreaterThan(30_000);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-time')) > 30_000,
+      20_000,
+      'data-time above 30_000'
+    );
     await (await pauseRun(page)).getByRole('button', { name: 'Give up' }).click();
     const earned = Number(await page.getByTestId('survival-result-tufts').textContent());
     expect(earned).toBeGreaterThanOrEqual(6);
@@ -1188,7 +1265,12 @@ test.describe('on a computer', () => {
     await expect(area(page)).toHaveAttribute('data-screen', 'playing');
     // The stick, pushed right: he walks right.
     await pad.set(0, [1, 0]);
-    await expect.poll(() => num(page, 'data-hero-x'), { timeout: 10_000 }).toBeGreaterThan(60);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-hero-x')) > 60,
+      10_000,
+      'data-hero-x above 60'
+    );
     await pad.set(0, [0, 0]);
     // Start pauses; B resumes.
     await playOn(page);
@@ -1229,7 +1311,7 @@ test.describe('on a computer', () => {
     await startRun(page);
     await pad.connect(0);
     const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await runUntil(page, () => dialog.isVisible(), 40_000, 'a level-up');
     const choices = dialog.locator('button[data-choice]');
     const ids = async () =>
       choices.evaluateAll((all) => all.map((b) => b.getAttribute('data-choice')));
@@ -1273,7 +1355,7 @@ test.describe('on a touch screen', () => {
       await openArena(page, '?seed=7&boss=0');
       await startRun(page, true);
       const boss = page.getByTestId('survival-boss');
-      await expect(boss).toBeVisible({ timeout: 15_000 });
+      await runUntil(page, () => boss.isVisible(), 15_000, 'the boss bar');
       const notice = page.getByTestId('survival-notice');
       await expect(notice).toContainText('has come for the Keeper');
       const hud = [
@@ -1313,7 +1395,7 @@ test.describe('on a touch screen', () => {
     await openArena(page, '?seed=7&speed=6');
     await startRun(page, true);
     const dialog = levelUp(page);
-    await expect(dialog).toBeVisible({ timeout: 40_000 });
+    await runUntil(page, () => dialog.isVisible(), 40_000, 'a level-up');
     const buttons = dialog.getByRole('button');
     const count = await buttons.count();
     expect(count).toBeGreaterThanOrEqual(4);
@@ -1385,7 +1467,7 @@ test.describe('on a touch screen', () => {
       type: 'touchStart',
       touchPoints: [{ x: box.x + box.width / 2 + 50, y: box.y + box.height / 2 }],
     });
-    await expect(levelUp(page)).toBeVisible({ timeout: 40_000 });
+    await runUntil(page, () => levelUp(page).isVisible(), 40_000, 'a level-up');
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     // A phone is asked to tap, and the choice is made with a tap.
     await expect(levelUp(page)).toContainText('Tap a choice.');
@@ -1462,7 +1544,12 @@ test.describe('on a touch screen', () => {
     });
     await expect.poll(() => num(page, 'data-hero-x')).toBeGreaterThan(x0 + 60);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await expect.poll(() => num(page, 'data-sent-home'), { timeout: 30_000 }).toBeGreaterThan(0);
+    await runUntil(
+      page,
+      async () => (await num(page, 'data-sent-home')) > 0,
+      30_000,
+      'data-sent-home above 0'
+    );
     await playOn(page, true);
     await area(page).getByRole('button', { name: 'Pause' }).tap();
     await page

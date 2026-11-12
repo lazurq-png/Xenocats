@@ -29,9 +29,26 @@ export function trustedProxyHeader(
 }
 
 /**
+ * What a production server says when it starts with no trusted proxy header
+ * (instrumentation.ts): every client then shares one sign-up count, and failed
+ * logins are counted per login name only (credentials.ts). Null where a proxy is
+ * named, or outside production.
+ */
+export function proxyWarning(env: Record<string, string | undefined> = process.env) {
+  if (env.NODE_ENV !== 'production' || trustedProxyHeader(env) !== null) return null;
+  return (
+    'No trusted proxy header (TRUSTED_PROXY_HEADER, or VERCEL=1): every client shares ' +
+    'one sign-up limit, and failed logins are limited per login name only, not per ' +
+    'client address. Set TRUSTED_PROXY_HEADER if a proxy in front of the app sets one.'
+  );
+}
+
+/**
  * The client's address, from the trusted proxy's header. With no trusted proxy (or
  * no address in its header), 'unknown': every such client shares one count, so the
- * limit holds for all of them together rather than not at all.
+ * limit holds for all of them together rather than not at all. Some proxies write the
+ * client's port too (`203.0.113.7:51234`, `[2001:db8::1]:51234`): the port is
+ * dropped, since it changes with every connection and would make each a new client.
  */
 export function clientAddress(
   headers: Headers,
@@ -43,7 +60,36 @@ export function clientAddress(
       : trusted === 'x-forwarded-for'
         ? headers.get('x-forwarded-for')?.split(',').at(-1)
         : null;
-  return address?.trim() || 'unknown';
+  const found = withoutPort(address?.trim() ?? '');
+  if (!found && trusted !== null) warnMissing(trusted);
+  return found || 'unknown';
+}
+
+let warnedMissing = false;
+/**
+ * A trusted header named, but a request without it: the proxy may not be setting it,
+ * and then every client shares one count, as with none named (the startup warning,
+ * proxyWarning, only sees that one is named). Said once a server instance, in production.
+ * It names the header only, never what a request held.
+ */
+function warnMissing(trusted: string, env: Record<string, string | undefined> = process.env) {
+  if (warnedMissing || env.NODE_ENV !== 'production') return;
+  warnedMissing = true;
+  console.warn(
+    `The trusted proxy header (${trusted}, from TRUSTED_PROXY_HEADER or VERCEL=1) was ` +
+      'missing or empty on a request: such clients share one sign-up limit and one ' +
+      'failed-login count. Is the proxy in front of the app setting it?'
+  );
+}
+
+/** An address as a proxy may write it, without its port or an IPv6 one's brackets. */
+function withoutPort(address: string): string {
+  const bracketed = /^\[([^\]]*)\](?::\d+)?$/.exec(address);
+  if (bracketed) return bracketed[1];
+  // An IPv4 address with its port, also as IPv4-mapped IPv6 written without brackets
+  // (`::ffff:1.2.3.4:51234`, as a dual-stack listener's address and port side by side).
+  const v4 = /^(?:::ffff:)?(\d+\.\d+\.\d+\.\d+):\d+$/i.exec(address);
+  return v4 ? v4[1] : address;
 }
 
 /**

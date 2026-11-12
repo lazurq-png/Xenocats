@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import bcryptjs from 'bcryptjs';
 import type postgres from 'postgres';
@@ -8,8 +8,16 @@ import { auth, signIn, signOut } from '@/auth';
 import { sql } from '@/app/lib/db';
 import { AuthError, type CredentialsSignin } from 'next-auth';
 import { BCRYPT_COST } from '@/app/lib/password-check';
-import { LOCKED, claimAttempt, clearFailures, loginLimits } from '@/app/lib/login-limit';
+import {
+  ADDRESS_LOCKED,
+  LOCKED,
+  claimAttempt,
+  clearFailures,
+  loginLimits,
+} from '@/app/lib/login-limit';
 import { claimSignUp, clientAddress, clientKey, signUpLimit } from '@/app/lib/sign-up-limit';
+import { mostSentHome } from '@/app/ui/xenocats/arena';
+import { LEADERBOARD_TAG } from '@/app/lib/data';
 import { headers } from 'next/headers';
 import {
   ChangePasswordForm,
@@ -410,6 +418,9 @@ export async function authenticate(prevState: string | undefined, formData: Form
             // Not how long: the time left differs from lock to lock.
             return 'Too many failed logins for this account. Try again later.';
           }
+          if ((error as CredentialsSignin).code === ADDRESS_LOCKED) {
+            return 'Too many failed logins from here. Try again later.';
+          }
           return 'Invalid credentials.';
         default:
           return 'Something went wrong.';
@@ -521,8 +532,9 @@ const MAX_RUNS_PER_HOUR = 60;
  * on the leaderboard from now on. Only the signed-in player's own run in progress,
  * once; never with a time longer than its length (an endless run, minutes 0, has
  * none), or than the time since it started (give or take the start's round trip);
- * and at most MAX_RUNS_PER_HOUR an hour. Anything else is 'invalid', and changes
- * nothing.
+ * never with more cats sent home than the game could send home in that time
+ * (mostSentHome, from the game's own numbers); and at most MAX_RUNS_PER_HOUR an
+ * hour. Anything else is 'invalid', and changes nothing.
  */
 export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult> {
   const owner = await signedInUser();
@@ -531,10 +543,29 @@ export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult
   if (!validated.success) return 'invalid';
   const { runId, name, timeMs, sentHome } = validated.data;
   try {
+    // The run's length, the server's, and how long ago it started: its cats are
+    // bounded by what could have come in its time. A timed run that reached its goal
+    // reports its time stopped there, while its cats go on going home until the
+    // Matriarch reaches him: that one by the time since it started, which the game's
+    // clock never runs ahead of.
+    const [started] = await sql<{ run_minutes: number; elapsed_ms: number }[]>`
+      SELECT run_minutes, EXTRACT(EPOCH FROM now() - started_at) * 1000 AS elapsed_ms
+      FROM survival_runs
+      WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL`;
+    if (!started) return 'invalid';
+    // Only a timed run at its goal reports less than its clock; any other reports
+    // its own time, after which no cat went home.
+    const atGoal = started.run_minutes !== 0 && timeMs >= started.run_minutes * 60_000;
+    const played = atGoal
+      ? Math.max(timeMs, Number(started.elapsed_ms) + START_ALLOWANCE_MS)
+      : timeMs;
+    if (sentHome > mostSentHome(played, started.run_minutes)) return 'invalid';
     const finished = await sql`
       UPDATE survival_runs SET
         name = ${name}, time_ms = ${timeMs}, sent_home = ${sentHome}, finished_at = now()
       WHERE id = ${runId} AND user_id = ${owner} AND finished_at IS NULL
+        -- The length the bound was worked out for, should the run restart meanwhile.
+        AND run_minutes = ${started.run_minutes}
         AND (run_minutes = 0 OR ${timeMs}::int <= run_minutes * 60000)
         AND ${timeMs}::int <= EXTRACT(EPOCH FROM now() - started_at) * 1000 + ${START_ALLOWANCE_MS}
         AND (
@@ -546,6 +577,9 @@ export async function recordSurvivalRun(run: unknown): Promise<SurvivalRunResult
     console.error('Database Error:', error);
     return 'error';
   }
+  // The board is cached (fetchLeaderboard): this run may be on it now. updateTag, so
+  // the player who saved it reads it at once.
+  updateTag(LEADERBOARD_TAG);
   revalidatePath('/cats');
   return 'saved';
 }

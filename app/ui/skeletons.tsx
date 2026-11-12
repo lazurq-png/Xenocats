@@ -215,7 +215,7 @@ export function InvoicesTableSkeleton() {
 export function CustomersTableSkeleton() {
   return (
     <TableSkeleton
-      columns={['Name', 'Email', 'Total Invoices', 'Total Pending', 'Total Paid']}
+      columns={['Name', 'Email', 'Total Invoices', 'Total Unpaid', 'Total Paid']}
       actions="Edit or delete"
     />
   );

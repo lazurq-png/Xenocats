@@ -20,10 +20,13 @@ stop.
   tasks, then exploration items of the kinds it names. Nothing here, in the
   repository, or in your own sense of what would improve the project adds to
   them.
-- **Permission prompts are bypassed or auto-approved.** A deny rule in
-  `.claude/settings.json` would still block (deny rules hold in every mode),
-  but this repository has none, and no hooks: every guardrail here holds only
-  because you hold it. Prefer the reversible action, commit early, and when a
+- **Permission prompts are bypassed or auto-approved.** `.claude/settings.json`
+  still blocks a few of §3's operations in every mode, by some routes only: through
+  the Bash tool, force-pushing or deleting a branch, `npm install` (`add`,
+  `uninstall`, `update`) and `cat .env`; through the file tools, reading or editing
+  `.env`; and a hook refuses `db:seed` and `db:reset` off the private network (Bash
+  and PowerShell). The same by any other route, and every other guardrail here,
+  holds only because you hold it. Prefer the reversible action, commit early, and when a
   step feels like it needs permission, log it rather than proceed. A tool call
   the harness **denies** (auto mode can) is a §3 boundary: record the command
   and the denial, do not retry it reworded, and abandon what needed it.

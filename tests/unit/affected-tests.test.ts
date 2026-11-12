@@ -90,6 +90,13 @@ describe('affected-tests', () => {
     expect(select([file]).e2e).toEqual({ specs: [] });
   });
 
+  it('runs nothing for the speed benchmarks or their config, which no suite runs', () => {
+    expect(select(['tests/bench/arena-step.test.ts', 'vitest.bench.config.mts'])).toMatchObject({
+      unit: { files: [] },
+      e2e: { specs: [] },
+    });
+  });
+
   it('runs a changed spec itself, and no browser test for a unit test or a document', () => {
     expect(select(['tests/e2e/survival.spec.ts']).e2e).toEqual({
       specs: ['tests/e2e/survival.spec.ts'],
