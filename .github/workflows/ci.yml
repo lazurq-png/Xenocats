@@ -174,7 +174,7 @@ jobs:
     # be the @playwright/test version in package-lock.json: the install step below
     # then finds the browser already there (if not, it downloads the right one).
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
       options: --ipc=host
     # A throwaway PostgreSQL next to the job, like the AUTH_SECRET: it lives as
     # long as the job. scripts/ci-database.mjs turns TLS on (the app requires it)
@@ -253,7 +253,7 @@ jobs:
     # be the @playwright/test version in package-lock.json: the install step below
     # then finds the browser already there (if not, it downloads the right one).
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
       options: --ipc=host
     # A throwaway PostgreSQL next to the job, like the AUTH_SECRET: it lives as
     # long as the job. scripts/ci-database.mjs turns TLS on (the app requires it)
