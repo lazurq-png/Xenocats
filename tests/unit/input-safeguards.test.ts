@@ -124,6 +124,7 @@ describe('an invoice amount', () => {
     expect(amount('0.004')).toEqual(['Please enter an amount of at least $0.01.']);
     expect(amount('1000000.01')).toEqual(['An amount can be at most $1,000,000.']);
     expect(amount('1e309')).toEqual(['An amount can be at most $1,000,000.']);
+    expect(amount('-1e309')).toEqual(['Please enter an amount greater than $0']);
   });
 });
 

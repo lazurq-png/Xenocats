@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -103,10 +103,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
 
   checks:
     name: Lint, type check, unit tests
@@ -115,10 +115,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           # jsdom 30 requires ^22.22.2 || ^24.15.0 || >=26.
           node-version: 24
@@ -174,7 +174,7 @@ jobs:
     # be the @playwright/test version in package-lock.json: the install step below
     # then finds the browser already there (if not, it downloads the right one).
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
       options: --ipc=host
     # A throwaway PostgreSQL next to the job, like the AUTH_SECRET: it lives as
     # long as the job. scripts/ci-database.mjs turns TLS on (the app requires it)
@@ -191,10 +191,10 @@ jobs:
       # POSTGRES_URL is set by the "PostgreSQL" step. The browser tests derive and
       # rebuild their xenocats_test schema from it.
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -233,7 +233,7 @@ jobs:
           node scripts/ci-passed.mjs vitest-data.json "database test"
         env:
           DATABASE_TESTS: '1'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-production
@@ -253,7 +253,7 @@ jobs:
     # be the @playwright/test version in package-lock.json: the install step below
     # then finds the browser already there (if not, it downloads the right one).
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
       options: --ipc=host
     # A throwaway PostgreSQL next to the job, like the AUTH_SECRET: it lives as
     # long as the job. scripts/ci-database.mjs turns TLS on (the app requires it)
@@ -268,10 +268,10 @@ jobs:
     env:
       AUTH_TRUST_HOST: 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -297,7 +297,7 @@ jobs:
           # Only these specs: not the cat-attacks group the others wait for.
           E2E_NO_CAT_DEPS: '1'
         run: npx playwright test tests/e2e/smoke.spec tests/e2e/security-headers.spec tests/e2e/dashboard.spec
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
