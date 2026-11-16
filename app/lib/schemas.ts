@@ -9,11 +9,20 @@ export const MAX_AMOUNT = 1_000_000;
 /** An invoice as the create and edit forms send it. */
 export const InvoiceFields = z.object({
   customerId: z.string({
-    invalid_type_error: 'Please select a customer.',
+    error: 'Please select a customer.',
   }),
   // Stored in whole cents (INT), so at least one cent once rounded, and bounded.
   amount: z.coerce
-    .number()
+    // A number too large to hold (1e309) is Infinity, which zod refuses as not a
+    // number before the checks below: give it, and -Infinity, their messages.
+    .number({
+      error: (issue) =>
+        issue.input === Infinity
+          ? 'An amount can be at most $1,000,000.'
+          : issue.input === -Infinity
+            ? 'Please enter an amount greater than $0'
+            : undefined,
+    })
     .gt(0, { message: 'Please enter an amount greater than $0' })
     // (Zero and below have the message above; this is for what rounds to nothing.)
     .refine((amount) => amount <= 0 || Math.round(amount * 100) >= 1, {
@@ -23,19 +32,17 @@ export const InvoiceFields = z.object({
       message: 'An amount can be at most $1,000,000.',
     }),
   status: z.enum(['pending', 'paid'], {
-    invalid_type_error: 'Please select an invoice status.',
+    error: 'Please select an invoice status.',
   }),
   /** When it is to be paid: a calendar date, YYYY-MM-DD (checked against its date by the action). */
-  dueDate: z
-    .string({ invalid_type_error: 'Please choose a due date.' })
-    .superRefine((value, context) => {
-      // One message: not a date at all, or a date that does not exist.
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        context.addIssue({ code: 'custom', message: 'Please choose a due date.' });
-      } else if (!isCalendarDate(value)) {
-        context.addIssue({ code: 'custom', message: 'Please choose a real date.' });
-      }
-    }),
+  dueDate: z.string({ error: 'Please choose a due date.' }).superRefine((value, context) => {
+    // One message: not a date at all, or a date that does not exist.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      context.addIssue({ code: 'custom', message: 'Please choose a due date.' });
+    } else if (!isCalendarDate(value)) {
+      context.addIssue({ code: 'custom', message: 'Please choose a real date.' });
+    }
+  }),
 });
 
 /** The payment term an invoice is given unless another due date is chosen, days. */
@@ -72,7 +79,7 @@ export function dueDateProblem(dueDate: string, invoiceDate: string): string | n
 /** A customer as the create and edit forms send it. */
 export const CustomerForm = z.object({
   name: z
-    .string({ invalid_type_error: 'Please enter a name.' })
+    .string({ error: 'Please enter a name.' })
     .trim()
     .min(1, { message: 'Please enter a name.' })
     .max(255, { message: 'A name can be at most 255 characters.' })
@@ -80,17 +87,17 @@ export const CustomerForm = z.object({
       message: 'A name cannot contain invisible or control characters.',
     }),
   email: z
-    .string({ invalid_type_error: 'Please enter an email address.' })
+    .string({ error: 'Please enter an email address.' })
     .trim()
     .max(255, { message: 'An email address can be at most 255 characters.' })
     .email({ message: 'Please enter a valid email address.' }),
 });
 
 /** A customer id from a URL or a form: anything but a UUID names no customer. */
-export const CustomerId = z.string().uuid();
+export const CustomerId = z.uuid();
 
 /** An invoice id from a URL or an action's argument, likewise. */
-export const InvoiceId = z.string().uuid();
+export const InvoiceId = z.uuid();
 
 /**
  * The invoice list's status filter, from the URL: anything unknown shows every
@@ -125,15 +132,15 @@ const BCRYPT_MAX_BYTES = 72;
 export const ChangePasswordForm = z
   .object({
     currentPassword: z
-      .string({ invalid_type_error: 'Please enter your current password.' })
+      .string({ error: 'Please enter your current password.' })
       .min(1, { message: 'Please enter your current password.' }),
     newPassword: z
-      .string({ invalid_type_error: 'Please choose a new password.' })
+      .string({ error: 'Please choose a new password.' })
       .min(8, { message: 'A new password needs at least 8 characters.' })
       .refine((password) => new TextEncoder().encode(password).length <= BCRYPT_MAX_BYTES, {
         message: 'A new password can be at most 72 bytes long.',
       }),
-    confirmPassword: z.string({ invalid_type_error: 'Please type the new password again.' }),
+    confirmPassword: z.string({ error: 'Please type the new password again.' }),
   })
   .refine((form) => form.newPassword === form.confirmPassword, {
     path: ['confirmPassword'],
@@ -153,19 +160,16 @@ export const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,20}$/;
  */
 export const SignUpForm = z
   .object({
-    username: z
-      .string({ invalid_type_error: 'Please choose a username.' })
-      .trim()
-      .regex(USERNAME_PATTERN, {
-        message: 'A username is 3 to 20 letters, digits, "_" or "-".',
-      }),
+    username: z.string({ error: 'Please choose a username.' }).trim().regex(USERNAME_PATTERN, {
+      message: 'A username is 3 to 20 letters, digits, "_" or "-".',
+    }),
     password: z
-      .string({ invalid_type_error: 'Please choose a password.' })
+      .string({ error: 'Please choose a password.' })
       .min(8, { message: 'A password needs at least 8 characters.' })
       .refine((password) => new TextEncoder().encode(password).length <= BCRYPT_MAX_BYTES, {
         message: 'A password can be at most 72 bytes long.',
       }),
-    confirmPassword: z.string({ invalid_type_error: 'Please type the password again.' }),
+    confirmPassword: z.string({ error: 'Please type the password again.' }),
   })
   .refine((form) => form.password === form.confirmPassword, {
     path: ['confirmPassword'],
@@ -196,7 +200,7 @@ export const MAX_RUN_MS = 24 * 3_600_000;
  * the text's direction.
  */
 export const LeaderboardName = z
-  .string({ invalid_type_error: 'Please enter a name.' })
+  .string({ error: 'Please enter a name.' })
   .transform((name) => name.normalize('NFC').trim().replace(/\s+/g, ' '))
   .pipe(
     z
@@ -225,7 +229,7 @@ export const LeaderboardName = z
  * say; the database refuses a time longer than the run has really lasted.
  */
 export const SurvivalRun = z.object({
-  runId: z.string().uuid(),
+  runId: z.uuid(),
   name: LeaderboardName,
   timeMs: z.number().int().min(0).max(MAX_RUN_MS),
   sentHome: z.number().int().min(0).max(1_000_000),
