@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+// Before any schema is made: zod 4 tries `new Function` when the first object schema is
+// created (to compile a faster parser), and the browser reports the try as a breach of
+// the Content-Security-Policy, which refuses eval, even though zod catches it. This
+// module reaches the browser (search.tsx, leaderboard-entry.tsx), so it is switched off.
+z.config({ jitless: true });
+
 // Kept out of actions.ts: a 'use server' module may only export async functions,
 // and importing it opens a database connection. Tests import these directly.
 
