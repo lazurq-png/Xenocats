@@ -21,6 +21,15 @@ function mockPointer(fine: boolean) {
   }) as unknown as typeof window.matchMedia;
 }
 
+/**
+ * Where an element has been moved to, px, whichever form the DOM writes `translate`
+ * in (jsdom 31 writes `0px 0px` as `0px`, as browsers do).
+ */
+function moved(el: HTMLElement) {
+  const [x = 0, y = 0] = el.style.translate.split(' ').map((v) => parseFloat(v) || 0);
+  return { x, y };
+}
+
 let clock = 0;
 let cursor: XenocatCursor;
 
@@ -217,7 +226,8 @@ describe('XenocatCursorProvider', () => {
       });
       // Vanish hides the button where it stands.
       await waitFor(() => expect(save.style.opacity).toBe('0'));
-      expect(save.style.translate).toBe('0px 0px');
+      expect(save.style.translate).not.toBe('');
+      expect(moved(save)).toEqual({ x: 0, y: 0 });
       clock = vanish.durationMs;
       await waitFor(() => expect(save.outerHTML).toBe(before));
     } finally {
@@ -277,7 +287,7 @@ describe('on a touch screen', () => {
     });
     // Jitter shakes the button: it is moved, a little.
     expect(save.style.translate).not.toBe('');
-    expect(save.style.translate).not.toBe('0px 0px');
+    expect(moved(save)).not.toEqual({ x: 0, y: 0 });
     expect(cursor.isBusy()).toBe(true);
     // One at a time.
     expect(cursor.attack(quickJitter, { x: 300, y: 300 })).toBe(false);

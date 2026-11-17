@@ -59,6 +59,16 @@ const moved = (el: HTMLElement) => {
   return { x, y: y ?? 0 };
 };
 
+/**
+ * A filter as the DOM writes it back (jsdom 31 turns `#7dd3fc` into `rgb(…)` and
+ * puts the colour first), so a check on it holds whichever form the DOM uses.
+ */
+const asFilter = (value: string) => {
+  const probe = document.createElement('div');
+  probe.style.filter = value;
+  return probe.style.filter;
+};
+
 type Frame = {
   at: number;
   d: { x: number; y: number };
@@ -267,9 +277,12 @@ function expectLook(looks: Look, frames: Frame[]) {
     case 'hidden':
       for (const f of frames) expect(f.opacity).toBe('0');
       break;
-    case 'frost':
-      for (const f of frames) expect(f.filter).toContain(`drop-shadow(0 0 4px ${ICE})`);
+    case 'frost': {
+      const frost = asFilter(`drop-shadow(0 0 4px ${ICE})`);
+      expect(frost).not.toBe('');
+      for (const f of frames) expect(f.filter).toContain(frost);
       break;
+    }
     case 'smoke':
       for (const f of frames) {
         expect(f.filter).toMatch(/blur\(\d+(\.\d+)?px\) grayscale\(1\)/);

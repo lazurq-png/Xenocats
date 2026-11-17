@@ -290,8 +290,10 @@ service container, which `scripts/ci-database.mjs` switches TLS on for and
 points `POSTGRES_URL` at. So CI needs no repository secret and no outside
 database, and runs the database tests too. Each job that starts Next
 makes its own throwaway `AUTH_SECRET`. It runs on GitHub, not on your machine: never
-report a CI result you have not observed. Do not check CI from a supervised
-session; the night-run skill's read-only poll is the one exception.
+report a CI result you have not observed. Reading CI is how to observe one, and a
+good check on your own work: a session may read runs, check results and job logs,
+read-only, through GitHub's API (a night run polls with its skill's `ci-poll.mjs`).
+It never re-runs, cancels or otherwise changes CI without asking.
 
 A clean type check and build prove the code compiles, not that a page works.
 For UI changes run the app and look (`.claude/rules/frontend.md`). A Playwright
