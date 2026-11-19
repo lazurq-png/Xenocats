@@ -32,6 +32,7 @@ import {
   evolutionFor,
   fusionFor,
   modifiers,
+  LEVEL_RESOLVE_CAP,
   offerChoices,
   upgradesLeft,
   PASSIVES,
@@ -325,7 +326,22 @@ export function createArena(options: {
   const projectiles: Projectile[] = [];
   const spareProjectiles: Projectile[] = [];
   // A beam fired from a Keeper (`follows`) moves with him while it shows.
-  const beams: { from: Vec; to: Vec; until: number; follows?: Vec }[] = [];
+  // A beam a Keeper fired (`live`) hurts a cat that moves into it while it shows,
+  // once each, as it would a cat that stood there when it was fired.
+  const beams: {
+    from: Vec;
+    to: Vec;
+    until: number;
+    follows?: Vec;
+    live?: {
+      owner: Keeper;
+      weapon: WeaponId | null;
+      width: number;
+      damage: number;
+      kind: WeaponKind;
+      hit: Set<number>;
+    };
+  }[] = [];
   const patches: Patch[] = [];
   // This step's toys among the patches, gathered before the cats walk (lureOf): every
   // cat looks at these, not at every puddle and box (night run 2026-10-17, E12).
@@ -347,7 +363,10 @@ export function createArena(options: {
   /** Whose turn it is to choose (co-op: player 1, then player 2, each level). */
   let chooser = 0;
 
-  const maxResolveOf = (k: Keeper) => k.baseResolve + k.mods.maxResolve;
+  // A Hot Water Bottle adds Resolve for every level the run has reached (taken at
+  // level 15, all 15 count), up to LEVEL_RESOLVE_CAP.
+  const maxResolveOf = (k: Keeper) =>
+    k.baseResolve + k.mods.maxResolve + Math.min(LEVEL_RESOLVE_CAP, k.mods.levelResolve * level);
   const maxResolve = () => maxResolveOf(hero);
   const standing = (k: Keeper) => k.downedAt === null;
 
@@ -1267,7 +1286,12 @@ export function createArena(options: {
     return found.slice(0, count).map((f) => f.i);
   }
 
-  /** A beam from `from` along (ux, uy): every cat in front, near its line, grows homesick. */
+  /**
+   * A beam from `from` along (ux, uy): every cat in front, near its line, grows
+   * homesick, and (`lingers`) every cat that comes onto it while it shows. A weapon
+   * that fires again before its beams fade (the web, every 150 ms against 180) passes
+   * false: its next beams find those cats, and lingering would count them twice.
+   */
   function beam(
     from: Vec,
     ux: number,
@@ -1275,19 +1299,43 @@ export function createArena(options: {
     length: number,
     width: number,
     damage: number,
-    kind: WeaponKind = 'beam'
+    kind: WeaponKind = 'beam',
+    lingers = true
   ) {
     const to = { x: from.x + ux * length, y: from.y + uy * length };
-    beams.push({ from: { ...from }, to, until: time + 180, follows: from });
+    const hit = new Set<number>();
+    beams.push({
+      from: { ...from },
+      to,
+      until: time + 180,
+      follows: from,
+      ...(lingers ? { live: { owner: hero, weapon: dealtBy, width, damage, kind, hit } } : {}),
+    });
     events.push({ kind: 'laser', from: { ...from }, to: { ...to } });
+    hitBeam(from, ux, uy, length, width, damage, kind, hit);
+  }
+
+  /** Hurts, once each (`hit` remembers them), the cats on a beam's line that it has not yet hurt. */
+  function hitBeam(
+    from: Vec,
+    ux: number,
+    uy: number,
+    length: number,
+    width: number,
+    damage: number,
+    kind: WeaponKind,
+    hit: Set<number>
+  ) {
     gather(from.x + (ux * length) / 2, from.y + (uy * length) / 2, length / 2 + width);
     for (const i of near) {
       const cat = cats[i];
+      if (hit.has(cat.id)) continue;
       const along = (cat.x - from.x) * ux + (cat.y - from.y) * uy;
       // (A cat right on him counts as in front: up to the same half pixel.)
       if (along < -0.5 || along > length) continue;
       const across = Math.abs((cat.x - from.x) * uy - (cat.y - from.y) * ux);
       if (across > width + cat.radius) continue;
+      hit.add(cat.id);
       hurt(cat, damage, kind);
     }
   }
@@ -1387,7 +1435,7 @@ export function createArena(options: {
         const cat = cats[i];
         const way = aim(cat);
         // Still a laser: whatever refuses lasers refuses this.
-        beam(hero, way.x, way.y, s.area, 16, s.damage);
+        beam(hero, way.x, way.y, s.area, 16, s.damage, 'beam', false);
         const to = { x: cat.x, y: cat.y };
         if (from) beams.push({ from, to, until: time + s.durationMs });
         from = to;
@@ -2404,14 +2452,14 @@ export function createArena(options: {
     }
     while (xp >= xpToNext(level)) {
       xp -= xpToNext(level);
+      const before = keepers.map(maxResolveOf);
       level++;
       pending++;
-      // A Hot Water Bottle gives some Resolve back at each level.
-      for (const k of keepers) {
-        if (standing(k) && k.mods.levelHeal > 0) {
-          k.resolve = Math.min(k.resolve + k.mods.levelHeal, maxResolveOf(k));
-        }
-      }
+      // A Hot Water Bottle's Resolve grows with the level: what is added to his most
+      // is added to his Resolve now, too.
+      keepers.forEach((k, n) => {
+        if (standing(k)) k.resolve += maxResolveOf(k) - before[n];
+      });
       events.push({ kind: 'level-up', level });
     }
     for (let i = chests.length - 1; i >= 0; i--) {
@@ -2711,6 +2759,28 @@ export function createArena(options: {
       moveProjectiles(dt);
       deal(null);
       updateSocks();
+      deal(null);
+      // A cat that walks into a beam still showing is hit by it (once). Before the
+      // cats sent home are swept out, while the grid still matches the cats.
+      for (const b of beams) {
+        const live = b.live;
+        if (!live || b.until <= time) continue;
+        const length = Math.hypot(b.to.x - b.from.x, b.to.y - b.from.y);
+        if (length === 0) continue;
+        hero = live.owner;
+        deal(live.weapon);
+        hitBeam(
+          b.from,
+          (b.to.x - b.from.x) / length,
+          (b.to.y - b.from.y) / length,
+          length,
+          live.width,
+          live.damage,
+          live.kind,
+          live.hit
+        );
+      }
+      hero = keepers[0];
       deal(null);
       spreadRings();
       sweepHome();

@@ -209,7 +209,8 @@ export const PASSIVES: Readonly<Record<PassiveId, PassiveInfo>> = {
   },
   'hot-water-bottle': {
     name: 'Hot Water Bottle',
-    description: 'Tucked under the coat. Each level he reaches, some Resolve returns.',
+    description:
+      'Tucked under the coat. Every level he has reached makes his Resolve a little greater.',
     maxLevel: MAX_PASSIVE_LEVEL,
   },
   'loaded-dice': {
@@ -218,6 +219,9 @@ export const PASSIVES: Readonly<Record<PassiveId, PassiveInfo>> = {
     maxLevel: 3,
   },
 };
+
+/** The most Resolve the Hot Water Bottle can add, however high the level. */
+export const LEVEL_RESOLVE_CAP = 100;
 
 /** What the passives held add up to. */
 export type Modifiers = {
@@ -250,8 +254,11 @@ export type Modifiers = {
   elite: number;
   /** Multiplies how often a cat sent home leaves a pickup. */
   luck: number;
-  /** Resolve he regains at each level reached. */
-  levelHeal: number;
+  /**
+   * Max Resolve added for every level the run has reached (counting those before he
+   * took it), up to LEVEL_RESOLVE_CAP in all.
+   */
+  levelResolve: number;
   /** Rerolls added to what he has left. */
   rerolls: number;
 };
@@ -277,7 +284,7 @@ export function modifiers(passives: ReadonlyMap<PassiveId, number>): Modifiers {
     drain: 1 - 0.08 * level('oven-mitts'),
     elite: 1 + 0.15 * level('reading-glasses'),
     luck: 1 + 0.3 * level('cookie-jar'),
-    levelHeal: 4 * level('hot-water-bottle'),
+    levelResolve: 0.5 * level('hot-water-bottle'),
     rerolls: level('loaded-dice'),
   };
 }

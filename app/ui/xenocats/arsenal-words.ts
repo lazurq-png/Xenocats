@@ -20,6 +20,7 @@ import {
   evolutionFor,
   PASSIVES,
   type Modifiers,
+  LEVEL_RESOLVE_CAP,
   modifiers,
   type Choice,
 } from './arsenal-rules';
@@ -136,7 +137,8 @@ const MODIFIER_WORDS: { [K in keyof Modifiers]: (step: number) => string } = {
   drain: (step) => `cats drain ${Math.round(-step * 100)}% less Resolve`,
   elite: (step) => `+${Math.round(step * 100)}% homesickness to elites and Mega Cats`,
   luck: (step) => `cats leave pickups ${Math.round(step * 100)}% more often`,
-  levelHeal: (step) => `+${tenth(step)} Resolve at every level`,
+  levelResolve: (step) =>
+    `+${tenth(step)} Resolve for every level reached so far and to come, up to +${LEVEL_RESOLVE_CAP}`,
   rerolls: (step) => `+${step} reroll${step === 1 ? '' : 's'}`,
 };
 

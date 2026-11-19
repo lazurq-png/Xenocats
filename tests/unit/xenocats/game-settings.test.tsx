@@ -4,19 +4,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SURVIVAL_AIM_KEY,
   SURVIVAL_BEST_KEY,
+  SURVIVAL_MUSIC_KEY,
   bestKey,
   characterBestKey,
   dayOf,
   dayText,
   parseAim,
   parseCharacterBest,
+  parseMusic,
   readAim,
   readBest,
   readCharacterBest,
+  readMusic,
   recordCharacterRun,
   writeAim,
   writeBest,
+  writeMusic,
 } from '@/app/ui/xenocats/arena-storage';
+import { TRACK_IDS } from '@/app/ui/xenocats/music';
 import { GameSettings } from '@/app/ui/xenocats/game-settings';
 import { type Hud, HudBar, createHudStore, hudData } from '@/app/ui/xenocats/survival-hud';
 import { act } from 'react';
@@ -47,7 +52,43 @@ describe('the aim setting, stored', () => {
   });
 });
 
+describe('the music setting, stored', () => {
+  it('is shuffle unless off or a tune was chosen; anything unreadable is shuffle', () => {
+    expect(parseMusic(null)).toBe('shuffle');
+    expect(parseMusic('off')).toBe('off');
+    for (const id of TRACK_IDS) expect(parseMusic(id)).toBe(id);
+    expect(parseMusic('OFF')).toBe('shuffle');
+    expect(parseMusic('a-tune-since-removed')).toBe('shuffle');
+  });
+
+  it('is kept in the browser, under its own key', () => {
+    expect(readMusic()).toBe('shuffle');
+    writeMusic('catacombs');
+    expect(localStorage.getItem(SURVIVAL_MUSIC_KEY)).toBe('catacombs');
+    expect(readMusic()).toBe('catacombs');
+  });
+});
+
 describe('Survival’s settings', () => {
+  it('Music offers shuffle, each of the five tunes and off, and stores the choice', () => {
+    render(
+      <>
+        <GameSettings where="lobby" touch={false} />
+        <GameSettings where="pause" touch={false} />
+      </>
+    );
+    const music = screen.getByTestId('survival-lobby-music') as HTMLSelectElement;
+    expect(screen.getAllByRole('combobox', { name: /Music/ })).toHaveLength(2);
+    expect([...music.options].map((o) => o.value)).toEqual(['shuffle', ...TRACK_IDS, 'off']);
+    expect(music.value).toBe('shuffle');
+    fireEvent.change(music, { target: { value: 'showdown' } });
+    expect(localStorage.getItem(SURVIVAL_MUSIC_KEY)).toBe('showdown');
+    // The pause menu shows the same choice.
+    expect((screen.getByTestId('survival-pause-music') as HTMLSelectElement).value).toBe(
+      'showdown'
+    );
+  });
+
   it('a computer gets Sound and Aim; switching them stores the site’s and the game’s settings', () => {
     render(<GameSettings where="lobby" touch={false} />);
     const sound = screen.getByRole('checkbox', { name: 'Sound' });

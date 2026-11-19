@@ -524,6 +524,18 @@ export function createSoundPlayer(
 
     isUnlocked: () => unlocked,
 
+    /**
+     * The player's AudioContext, for Survival's music (music.ts) to play on, so the
+     * page keeps one: null before the first gesture, with sound off, or without Web
+     * Audio. A suspended one is asked to run.
+     */
+    context(): AudioContextLike | null {
+      if (!unlocked || !enabled()) return null;
+      const ctx = ensureContext();
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      return ctx;
+    },
+
     /** Plays `sound` now, if sound is on, unlocked and available. Never throws. */
     play(sound: Sound): boolean {
       if (!unlocked || !enabled()) return false;

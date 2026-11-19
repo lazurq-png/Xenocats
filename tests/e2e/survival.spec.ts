@@ -753,6 +753,48 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-lobby-sound')).toBeChecked();
   });
 
+  test('music: the tune chosen in the lobby plays in the run; changed, Off or with sound off, it follows', async ({
+    page,
+  }) => {
+    await openArena(page);
+    const lobby = page.getByTestId('survival-lobby-music');
+    await expect(lobby).toHaveValue('shuffle');
+    // A choice before hydration is lost: choose until it is stored.
+    await expect
+      .poll(async () => {
+        await lobby.selectOption('catacombs');
+        return page.evaluate(() => localStorage.getItem('xenocats:survival:v1:music'));
+      })
+      .toBe('catacombs');
+    await startRun(page);
+    await expect(area(page)).toHaveAttribute('data-music', 'catacombs');
+    // Changed in the pause menu: the new tune once the run goes on.
+    let paused = await pauseRun(page);
+    const music = paused.getByRole('combobox', { name: /Music/ });
+    await expect(music).toHaveValue('catacombs');
+    await music.selectOption('showdown');
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-music', 'showdown');
+    // Off: none.
+    paused = await pauseRun(page);
+    await paused.getByRole('combobox', { name: /Music/ }).selectOption('off');
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-music', 'off');
+    // A tune, but sound off: none; sound back on, the tune.
+    paused = await pauseRun(page);
+    await paused.getByRole('combobox', { name: /Music/ }).selectOption('lounge');
+    await paused.getByRole('checkbox', { name: 'Sound' }).uncheck();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-music', 'off');
+    paused = await pauseRun(page);
+    await paused.getByRole('checkbox', { name: 'Sound' }).check();
+    await paused.getByRole('button', { name: 'Resume' }).click();
+    await expect(area(page)).toHaveAttribute('data-music', 'lounge');
+    // Remembered for the next visit.
+    await page.reload();
+    await expect(page.getByTestId('survival-lobby-music')).toHaveValue('lounge');
+  });
+
   test('a run: time passes, the Laser Pointer sends cats home, Esc pauses, giving up shows the results and keeps the best time', async ({
     page,
   }) => {
@@ -1284,10 +1326,12 @@ test.describe('on a computer', () => {
     const paused = page.getByRole('dialog', { name: 'Paused' });
     await expect(paused).toBeVisible();
     const giveUp = paused.getByRole('button', { name: 'Give up' });
+    // Down from Resume (where the menu puts the focus) is the shortest way, however
+    // many settings come before it.
     await expect
       .poll(async () => {
         if (await giveUp.evaluate((b) => b === document.activeElement)) return true;
-        await pad.press(0, PAD.up);
+        await pad.press(0, PAD.down);
         return false;
       })
       .toBe(true);
