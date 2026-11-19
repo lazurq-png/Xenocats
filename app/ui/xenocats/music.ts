@@ -20,6 +20,8 @@
 // The player schedules a little ahead on the audio clock (a timer wakes it every
 // 25 ms), so the tempo holds whatever the frame rate.
 
+import { sharedSoundPlayer } from './sounds';
+
 // ------------------------------------------------------------------ the notation
 
 const NOTE_NAMES: Readonly<Record<string, number>> = {
@@ -479,6 +481,228 @@ const COMBAT: readonly Written[] = [
     bass: { pattern: 'r:2 f:2 r:2 f:2 r:2 f:2 r:2 f:2', octave: 2 },
     drums: 'k . h . s . h . k . h . s . s s',
   },
+  {
+    // A sprint on four paws, in E major: arpeggios that leap an octave, a bright fill.
+    id: 'whisker-sprint',
+    name: 'Whisker Sprint',
+    scene: 'combat',
+    bpm: 156,
+    leadDuty: 0.25,
+    harmonyDuty: 0.125,
+    chords: ['E', 'B', 'C#m', 'A', 'E', 'B', 'A B', 'E'],
+    lead: `
+      E5:2 G#5:2 B5:4 G#5:2 B5:2 E6:4 |
+      D#6:2 B5:2 F#5:4 B5:2 D#6:2 F#6:4 |
+      E6:2 C#6:2 G#5:2 C#6:2 E6:4 D#6:2 C#6:2 |
+      C#6:4 A5:2 E5:2 A5:4 .:4 |
+      G#5:2 A5:2 B5:2 E6:2 G#6:4 F#6:2 E6:2 |
+      F#6:2 D#6:2 B5:2 F#5:2 B5:4 D#6:4 |
+      C#6:2 E6:2 A5:4 D#6:2 F#6:2 B5:4 |
+      E6:8 B5:4 E5:4`,
+    harmony: { pattern: '0 . 2 . 1 . 2 . 0 . 2 . 1 . 2 .', octave: 4 },
+    bass: { pattern: 'r:2 o:2 f:2 o:2 r:2 o:2 f:2 o:2', octave: 2 },
+    drums: 'k . h . s . h . k . h k s . h .',
+    fill: 'k . s . k . s s k s s s s s s s',
+  },
+  {
+    // Saucers everywhere, in B-flat major: a skipping bass, a hat on every off-beat.
+    id: 'saucer-scramble',
+    name: 'Saucer Scramble',
+    scene: 'combat',
+    bpm: 148,
+    leadDuty: 0.5,
+    harmonyDuty: 0.25,
+    chords: ['Bb', 'F', 'Gm', 'Eb', 'Bb', 'F', 'Eb F', 'Bb'],
+    lead: `
+      F5:2 Bb5:2 D6:2 F6:4 D6:2 Bb5:4 |
+      A5:2 C6:2 F6:4 C6:2 A5:2 F5:4 |
+      G5:2 Bb5:2 D6:2 G6:4 F6:2 D6:4 |
+      Eb6:4 G5:2 Bb5:2 Eb6:4 .:4 |
+      D6:2 C6:2 Bb5:2 F5:2 Bb5:2 D6:2 F6:4 |
+      F6:2 Eb6:2 C6:2 A5:2 F5:4 A5:4 |
+      G5:2 Bb5:2 Eb6:4 F5:2 A5:2 C6:4 |
+      Bb5:8 F5:4 Bb4:4`,
+    harmony: { pattern: '0:2 1:2 2:2 1:2 0:2 1:2 2:2 1:2', octave: 4 },
+    bass: { pattern: 'r:2 . r f:2 . f r:2 . r o:2 f:2', octave: 2 },
+    drums: 'k . h . s . h h k . h . s . h .',
+  },
+  {
+    // A hairball, coughed up with style, in A major: funky stabs, a syncopated bass.
+    id: 'hairball-hustle',
+    name: 'Hairball Hustle',
+    scene: 'combat',
+    bpm: 140,
+    leadDuty: 0.125,
+    harmonyDuty: 0.5,
+    chords: ['A', 'D', 'E', 'A', 'F#m', 'D', 'E', 'E'],
+    lead: `
+      E6:1 .:1 E6:2 C#6:2 A5:2 E5:2 A5:2 C#6:4 |
+      F#6:1 .:1 F#6:2 D6:2 A5:2 F#5:2 A5:2 D6:4 |
+      G#6:1 .:1 G#6:2 E6:2 B5:2 G#5:2 B5:2 E6:4 |
+      A6:4 E6:2 C#6:2 A5:8 |
+      C#6:2 F#6:2 E6:2 C#6:2 A5:2 C#6:2 F#5:4 |
+      D6:2 F#6:2 A6:4 F#6:2 D6:2 A5:4 |
+      B5:2 E6:2 G#6:2 B6:2 G#6:2 E6:2 B5:4 |
+      D6:4 B5:4 G#5:4 E5:4`,
+    harmony: { pattern: '0 . . 2 . . 1 . 0 . . 2 . 1 . .', octave: 4 },
+    bass: { pattern: 'r:2 . o r:2 f . r:2 . o t:2 f:2', octave: 2 },
+    drums: 'k . h k s . h . k . h . s . h k',
+  },
+  {
+    // A polka for the red dot, in C major: oom-pah, the snare on every off-beat.
+    id: 'laser-pointer-polka',
+    name: 'Laser Pointer Polka',
+    scene: 'combat',
+    bpm: 172,
+    leadDuty: 0.25,
+    harmonyDuty: 0.125,
+    chords: ['C', 'G', 'G', 'C', 'C', 'F', 'G', 'C'],
+    lead: `
+      E5:1 F5:1 G5:2 E5:2 C5:2 G5:2 C6:2 G5:2 E5:2 |
+      D5:1 E5:1 F5:2 D5:2 B4:2 G5:2 B5:2 G5:2 D5:2 |
+      B5:2 A5:2 G5:2 F5:2 D5:2 F5:2 G5:4 |
+      E5:2 G5:2 C6:4 .:2 C6:2 C6:4 |
+      G5:2 C6:2 E6:2 C6:2 G5:2 E5:2 G5:4 |
+      A5:2 C6:2 F6:2 C6:2 A5:2 F5:2 A5:4 |
+      B5:2 D6:2 G6:4 F6:2 D6:2 B5:4 |
+      C6:4 G5:2 E5:2 C5:4 .:4`,
+    harmony: { pattern: '. 0 . 1 . 2 . 1 . 0 . 1 . 2 . 1', octave: 4 },
+    bass: { pattern: 'r:2 . . f:2 . . r:2 . . f:2 . .', octave: 2 },
+    drums: 'k . s . k . s . k . s . k . s s',
+  },
+  {
+    // In orbit and speeding up, in F-sharp minor: a rolling bass, a leading tone at the end.
+    id: 'orbit-overdrive',
+    name: 'Orbit Overdrive',
+    scene: 'combat',
+    bpm: 170,
+    leadDuty: 0.25,
+    harmonyDuty: 0.5,
+    chords: ['F#m', 'D', 'A', 'E', 'F#m', 'D', 'E', 'C#'],
+    lead: `
+      F#5:2 A5:2 C#6:2 F#6:4 E6:2 C#6:4 |
+      D6:2 F#6:2 A6:4 F#6:2 D6:2 A5:4 |
+      C#6:2 E6:2 A6:4 G#6:2 E6:2 C#6:4 |
+      B5:2 E6:2 G#6:4 E6:2 B5:2 G#5:4 |
+      A6:2 G#6:2 F#6:2 E6:2 C#6:2 E6:2 F#6:4 |
+      F#6:2 E6:2 D6:2 A5:2 F#5:4 A5:4 |
+      G#5:2 B5:2 E6:2 G#6:2 B6:2 G#6:2 E6:4 |
+      F6:8 C#6:4 G#5:4`,
+    harmony: { pattern: '0 1 2 1 0 1 2 1 0 1 2 1 0 1 2 1', octave: 3 },
+    bass: { pattern: 'r r o r r r o r r r o r r r o r', octave: 2 },
+    drums: 'k . h . s . h k k . h . s . h .',
+    fill: 'k . k . s s k . k s k s s s s s',
+  },
+  {
+    // A whole bag of treats, in D major: sunny, leaping, the bass bouncing fifths.
+    id: 'treat-bag-bonanza',
+    name: 'Treat Bag Bonanza',
+    scene: 'combat',
+    bpm: 150,
+    leadDuty: 0.5,
+    harmonyDuty: 0.125,
+    chords: ['D', 'A', 'Bm', 'G', 'D', 'A', 'G A', 'D'],
+    lead: `
+      A5:2 D6:2 F#6:2 D6:2 A5:2 F#5:2 A5:4 |
+      C#6:2 E6:2 A6:2 E6:2 C#6:2 A5:2 E5:4 |
+      D6:2 F#6:2 B6:4 A6:2 F#6:2 D6:4 |
+      B5:4 D6:2 G6:2 F#6:2 E6:2 D6:4 |
+      F#6:2 E6:2 D6:2 A5:2 B5:2 C#6:2 D6:4 |
+      E6:2 C#6:2 A5:2 E5:2 A5:2 C#6:2 E6:4 |
+      D6:2 B5:2 G5:4 E6:2 C#6:2 A5:4 |
+      D6:8 A5:4 D5:4`,
+    harmony: { pattern: '0 2 1 2 0 2 1 2 0 2 1 2 0 2 1 2', octave: 4 },
+    bass: { pattern: 'r:2 f:2 o:2 f:2 r:2 f:2 o:2 f:2', octave: 2 },
+    drums: 'k . h . s . h . k k h . s . h h',
+  },
+  {
+    // Holding the cardboard fort, in G minor: the falling Andalusian chords, heroic.
+    id: 'cardboard-fortress',
+    name: 'Cardboard Fortress',
+    scene: 'combat',
+    bpm: 158,
+    leadDuty: 0.25,
+    harmonyDuty: 0.5,
+    chords: ['Gm', 'F', 'Eb', 'D', 'Gm', 'F', 'Eb D', 'Gm'],
+    lead: `
+      D6:2 Bb5:2 G5:2 Bb5:2 D6:2 G6:4 D6:2 |
+      C6:2 A5:2 F5:2 A5:2 C6:2 F6:4 C6:2 |
+      Bb5:2 G5:2 Eb5:2 G5:2 Bb5:2 Eb6:4 Bb5:2 |
+      A5:4 F#5:4 D5:4 F#5:4 |
+      G6:4 F6:2 D6:2 Bb5:4 G5:4 |
+      F6:4 Eb6:2 C6:2 A5:4 F5:4 |
+      Eb6:2 G6:2 Bb5:4 D6:2 F#6:2 A5:4 |
+      G5:8 D6:4 G6:4`,
+    harmony: { pattern: '0 . 1 2 0 . 1 2 0 . 1 2 0 . 1 2', octave: 4 },
+    bass: { pattern: 'r:2 r:2 o:2 r:2 f:2 r:2 o:2 r:2', octave: 2 },
+    drums: 'k . h . s . h k k . h . s h s .',
+  },
+  {
+    // A cat with nine lives and neon fur, in E-flat major: synth-pop, octaves off the beat.
+    id: 'neon-nine-lives',
+    name: 'Neon Nine Lives',
+    scene: 'combat',
+    bpm: 146,
+    leadDuty: 0.125,
+    harmonyDuty: 0.25,
+    chords: ['Eb', 'Bb', 'Cm', 'Ab', 'Eb', 'Bb', 'Ab Bb', 'Eb'],
+    lead: `
+      G5:2 Bb5:2 Eb6:4 D6:2 Bb5:2 G5:4 |
+      F5:2 Bb5:2 D6:4 C6:2 Bb5:2 F5:4 |
+      Eb6:2 G6:2 C6:4 D6:2 Eb6:2 G5:4 |
+      Ab5:4 C6:4 Eb6:4 .:4 |
+      Bb5:2 Eb6:2 G6:4 F6:2 Eb6:2 Bb5:4 |
+      D6:2 F6:2 Bb6:4 Ab6:2 F6:2 D6:4 |
+      C6:2 Eb6:2 Ab6:4 Bb5:2 D6:2 F6:4 |
+      Eb6:12 .:4`,
+    harmony: { pattern: '0:2 2:2 3:2 2:2 1:2 2:2 3:2 2:2', octave: 4 },
+    bass: { pattern: 'r . o . r . o . r . o . r . o .', octave: 2 },
+    drums: 'k . h . s . h . k . h . s . h .',
+  },
+  {
+    // A caravan of kittens on the move, in E minor: a galloping bass, folk-tune turns.
+    id: 'kitten-caravan',
+    name: 'Kitten Caravan',
+    scene: 'combat',
+    bpm: 164,
+    leadDuty: 0.25,
+    harmonyDuty: 0.125,
+    chords: ['Em', 'D', 'C', 'B', 'Em', 'D', 'C B', 'Em'],
+    lead: `
+      E5:2 G5:2 B5:2 E6:2 D6:2 B5:2 G5:2 B5:2 |
+      D5:2 F#5:2 A5:2 D6:2 C6:2 A5:2 F#5:2 A5:2 |
+      C5:2 E5:2 G5:2 C6:2 B5:2 G5:2 E5:2 G5:2 |
+      B4:2 D#5:2 F#5:2 B5:2 A5:2 F#5:2 D#5:4 |
+      E6:4 D6:2 B5:2 G5:4 B5:4 |
+      D6:4 C6:2 A5:2 F#5:4 A5:4 |
+      C6:2 E6:2 G6:4 B5:2 D#6:2 F#6:4 |
+      E6:8 B5:4 E5:4`,
+    harmony: { pattern: '0 1 2 1 0 1 2 1 0 1 2 1 0 1 2 1', octave: 4 },
+    bass: { pattern: 'r:2 r r r:2 r r f:2 f f r:2 r r', octave: 2 },
+    drums: 'k . h k s . h k k . h k s . h k',
+  },
+  {
+    // The zoomies, in C major: the fastest of a run's, sixteenth-note runs up and down.
+    id: 'zoomies',
+    name: 'Zoomies',
+    scene: 'combat',
+    bpm: 176,
+    leadDuty: 0.125,
+    harmonyDuty: 0.25,
+    chords: ['C', 'Am', 'F', 'G', 'C', 'Am', 'F G', 'C'],
+    lead: `
+      C6 D6 E6 G6 E6 D6 C6 G5 C6:2 E6:2 G6:4 |
+      A5 B5 C6 E6 C6 B5 A5 E5 A5:2 C6:2 E6:4 |
+      F5 G5 A5 C6 A5 G5 F5 C5 F5:2 A5:2 C6:4 |
+      G5 A5 B5 D6 B5 A5 G5 D5 G5:2 B5:2 D6:4 |
+      E6:2 G6:2 C6:2 E6:2 G6:4 E6:4 |
+      E6:2 C6:2 A5:2 C6:2 E6:4 A6:4 |
+      F6 E6 D6 C6 A5:2 C6:2 G6 F6 E6 D6 B5:2 D6:2 |
+      C6:8 G5:4 C5:4`,
+    harmony: { pattern: '0:2 1:2 2:2 3:2 0:2 1:2 2:2 3:2', octave: 4 },
+    bass: { pattern: 'r o r o r o r o r o r o r o r o', octave: 2 },
+    drums: 'k h s h k h s h k h s h k h s s',
+  },
 ];
 
 // ---- A boss: minor keys, fast, chromatic, each loop ending on the chord that
@@ -599,7 +823,7 @@ const BOSS: readonly Written[] = [
   },
 ];
 
-/** Every tune: five for each scene. */
+/** Every tune: five for the menus, fifteen for a run, five for a boss. */
 export const TRACKS: readonly Track[] = [...MENU, ...COMBAT, ...BOSS].map(compile);
 
 /** A scene's tunes. */
@@ -628,10 +852,17 @@ export type MusicContext = Pick<
   | 'createPeriodicWave'
 >;
 
-/** The music's loudness against the cats' sounds (whose loudest peak is about 0.25). */
-export const VOLUME = 0.11;
-/** Paused: this share of the loudness, this share of the tempo, muffled above this, Hz. */
-export const PAUSED = { volume: 0.35, tempo: 0.7, muffle: 900 } as const;
+/**
+ * The music's loudness against the cats' sounds (whose loudest peak is about 0.25):
+ * 0.11 at first, then 15% lower, as it stood out too much.
+ */
+export const VOLUME = 0.0935;
+/**
+ * Paused: this share of the loudness, this share of the tempo, muffled above this, Hz.
+ * The share was 0.35; raised a tenth (0.385) when VOLUME was lowered, so a pause
+ * loses less than the rest (0.036, against 0.0385 before).
+ */
+export const PAUSED = { volume: 0.385, tempo: 0.7, muffle: 900 } as const;
 /** Each voice's share of it. */
 const LEVELS = { lead: 0.55, harmony: 0.3, bass: 0.75, drums: 0.6 } as const;
 /** Times round a tune before the scene's next. */
@@ -685,6 +916,7 @@ export function createMusicPlayer(
   /** A boss's beam-up is playing: the scene asked for meanwhile, to play after it. */
   let beaming = false;
   let after: Scene | null = null;
+  const listeners = new Set<() => void>();
   // Made once per context, when first needed.
   let made: MusicContext | null = null;
   let noise: AudioBuffer | null = null;
@@ -910,6 +1142,7 @@ export function createMusicPlayer(
           if (--loopsLeft <= 0) {
             track = pickTrack(scene, random, track.id);
             loopsLeft = LOOPS;
+            notify();
           }
         }
       }
@@ -919,10 +1152,17 @@ export function createMusicPlayer(
     }
   }
 
+  /** Tells whoever follows the tune playing (the settings' "Now playing") it changed. */
+  function notify() {
+    for (const listener of listeners) listener();
+  }
+
   /** Fades the chain out and lets it go; the timer stops. */
   function halt() {
+    const was = timer !== null;
     if (timer !== null) timers.clearInterval(timer);
     timer = null;
+    if (was) notify();
     const old = master;
     const oldMuffle = muffle;
     master = null;
@@ -978,6 +1218,7 @@ export function createMusicPlayer(
       nextAt = c.currentTime + 0.05;
       timer = timers.setInterval(wake, WAKE_MS);
       wake();
+      notify();
       return true;
     } catch {
       halt();
@@ -1049,9 +1290,26 @@ export function createMusicPlayer(
       return true;
     },
 
+    /**
+     * Skips to another tune of the scene playing (never the same one), from its
+     * start; false if nothing is playing (or a beam-up is).
+     */
+    next(): boolean {
+      if (beaming || timer === null || !scene) return false;
+      return begin(scene);
+    },
+
     /** The scene and tune playing, or null. */
     playing: (): { scene: Scene; track: string } | null =>
       timer !== null && scene && track ? { scene, track: track.id } : null,
+
+    /** For useSyncExternalStore: told whenever the tune playing changes (or stops). */
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
 
     /** Whether a beam-up is playing. */
     beaming: () => beaming,
@@ -1060,8 +1318,11 @@ export function createMusicPlayer(
 
 let shared: MusicPlayer | null = null;
 
-/** The page's one music player, on the sound player's context (sounds.ts). */
-export function sharedMusicPlayer(context: () => MusicContext | null): MusicPlayer {
-  shared ??= createMusicPlayer(context);
+/** The page's one music player, on the sound player's AudioContext (sounds.ts). */
+export function sharedMusic(): MusicPlayer {
+  shared ??= createMusicPlayer(() => sharedSoundPlayer().context());
   return shared;
 }
+
+/** A tune's name, by its id (the settings' "Now playing"). */
+export const trackName = (id: string) => TRACKS.find((t) => t.id === id)?.name ?? id;

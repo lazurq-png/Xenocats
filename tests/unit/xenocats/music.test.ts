@@ -11,6 +11,7 @@ import {
   noteToMidi,
   parseChord,
   pickTrack,
+  trackName,
   tracksFor,
 } from '@/app/ui/xenocats/music';
 
@@ -35,12 +36,24 @@ describe('the notation', () => {
 });
 
 describe('the tunes', () => {
-  it('five for each scene, every one its own', () => {
-    for (const scene of SCENES) expect(tracksFor(scene), scene).toHaveLength(5);
-    expect(new Set(TRACKS.map((t) => t.id)).size).toBe(15);
-    expect(new Set(TRACKS.map((t) => t.name)).size).toBe(15);
+  it('five for the menus, fifteen for a run, five for a boss, every one its own', () => {
+    expect(tracksFor('menu')).toHaveLength(5);
+    expect(tracksFor('combat')).toHaveLength(15);
+    expect(tracksFor('boss')).toHaveLength(5);
+    expect(new Set(TRACKS.map((t) => t.id)).size).toBe(25);
+    expect(new Set(TRACKS.map((t) => t.name)).size).toBe(25);
     // Not one tune twice under two names.
-    expect(new Set(TRACKS.map((t) => JSON.stringify(t.lead))).size).toBe(15);
+    expect(new Set(TRACKS.map((t) => JSON.stringify(t.lead))).size).toBe(25);
+    for (const t of TRACKS) expect(trackName(t.id)).toBe(t.name);
+  });
+
+  it('15% quieter than at first; paused, a tenth more of that, so a pause loses less', () => {
+    expect(VOLUME).toBeCloseTo(0.11 * 0.85, 6);
+    expect(PAUSED.volume).toBeCloseTo(0.35 * 1.1, 6);
+    // Quieter paused than before, but by less than the 15% the rest lost.
+    const before = 0.11 * 0.35;
+    expect(VOLUME * PAUSED.volume).toBeLessThan(before);
+    expect(VOLUME * PAUSED.volume).toBeGreaterThan(before * 0.85);
   });
 
   it('the menus’ are slow, a run’s upbeat, a boss’s the fastest of all', () => {
@@ -87,7 +100,7 @@ describe('the tunes', () => {
         const drawn = new Set<string>();
         for (let k = 0; k < 40; k++) drawn.add(pickTrack(scene, () => k / 40, last.id).id);
         expect(drawn.has(last.id)).toBe(false);
-        expect(drawn.size).toBe(4);
+        expect(drawn.size).toBe(tracksFor(scene).length - 1);
         for (const id of drawn) expect(tracksFor(scene).some((t) => t.id === id)).toBe(true);
       }
     }
@@ -181,6 +194,55 @@ function play(ctx: ReturnType<typeof fakeContext>, tick: () => void, seconds: nu
 }
 
 describe('the music player', () => {
+  it('Next song: another tune of the scene playing, never the same; nothing when none plays', () => {
+    const ctx = fakeContext();
+    const { timers, runLater } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    expect(player.next()).toBe(false);
+    for (const scene of SCENES) {
+      player.setScene(scene);
+      for (let k = 0; k < 10; k++) {
+        const before = player.playing()!.track;
+        expect(player.next()).toBe(true);
+        const after = player.playing()!;
+        expect(after.scene).toBe(scene);
+        expect(after.track).not.toBe(before);
+      }
+    }
+    // Not over a beam-up.
+    player.setScene('boss');
+    player.beamUp();
+    expect(player.next()).toBe(false);
+    runLater();
+    player.setScene(null);
+    expect(player.next()).toBe(false);
+  });
+
+  it('tells its listeners when the tune changes: a scene, Next song, the next tune in turn, a stop', () => {
+    const ctx = fakeContext();
+    const { timers, tick } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    const heard = vi.fn();
+    const stop = player.subscribe(heard);
+    player.setScene('combat');
+    expect(heard).toHaveBeenCalled();
+    heard.mockClear();
+    player.next();
+    expect(heard).toHaveBeenCalled();
+    heard.mockClear();
+    // Round the tune enough times: the next one comes, and they hear.
+    const track = TRACKS.find((t) => t.id === player.playing()!.track)!;
+    play(ctx, tick, ((track.steps * 60) / track.bpm / 4) * LOOPS + 0.5);
+    expect(heard).toHaveBeenCalled();
+    heard.mockClear();
+    player.setScene(null);
+    expect(heard).toHaveBeenCalled();
+    stop();
+    heard.mockClear();
+    player.setScene('menu');
+    expect(heard).not.toHaveBeenCalled();
+  });
+
   it('plays nothing, and says so, without a context to play on', () => {
     const { timers, running } = handTimers();
     const player = createMusicPlayer(() => null, timers);
