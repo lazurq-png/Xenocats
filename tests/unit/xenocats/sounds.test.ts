@@ -37,8 +37,19 @@ describe('every cat type has its sounds', () => {
       valid(sounds.wake);
       valid(sounds.arrive);
       valid(sounds.purr);
+      valid(sounds.beamUp);
       expect(ATTACK_SOUNDS[type.effect.id], type.id).toBe(sounds.attack);
     }
+  });
+
+  it('beamed up, every cat calls rising, at its own pitch', () => {
+    const starts = CAT_TYPES.map((type) => {
+      const voice = soundsFor(type).beamUp.find((t) => t.wave !== 'noise')!;
+      // Up and up: its pitch path ends far above where it began.
+      expect(voice.contour!.at(-1)! / voice.contour![0], type.id).toBeGreaterThan(3);
+      return voice.freq;
+    });
+    expect(new Set(starts).size).toBe(CAT_TYPES.length);
   });
 
   it('every attack sounds different', () => {

@@ -753,46 +753,66 @@ test.describe('on a computer', () => {
     await expect(page.getByTestId('survival-lobby-sound')).toBeChecked();
   });
 
-  test('music: the tune chosen in the lobby plays in the run; changed, Off or with sound off, it follows', async ({
+  test('music: none before a first click, the menu’s after it, the run’s in a run, quieter while paused, none when off, the menu’s again after', async ({
     page,
   }) => {
     await openArena(page);
-    const lobby = page.getByTestId('survival-lobby-music');
-    await expect(lobby).toHaveValue('shuffle');
-    // A choice before hydration is lost: choose until it is stored.
+    const survival = page.getByTestId('survival');
+    // No audio before a gesture: no music.
+    await expect(survival).toHaveAttribute('data-music', 'off');
+    // A click before hydration is lost: click until the menu's music comes.
     await expect
       .poll(async () => {
-        await lobby.selectOption('catacombs');
-        return page.evaluate(() => localStorage.getItem('xenocats:survival:v1:music'));
+        await page.getByRole('heading', { level: 1, name: 'Survival' }).click();
+        return survival.getAttribute('data-music');
       })
-      .toBe('catacombs');
+      .toBe('menu');
     await startRun(page);
-    await expect(area(page)).toHaveAttribute('data-music', 'catacombs');
-    // Changed in the pause menu: the new tune once the run goes on.
+    await expect(survival).toHaveAttribute('data-music', 'combat');
+    await expect(survival).toHaveAttribute('data-music-paused', 'false');
+    // Paused: the same music, quieter.
     let paused = await pauseRun(page);
-    const music = paused.getByRole('combobox', { name: /Music/ });
-    await expect(music).toHaveValue('catacombs');
-    await music.selectOption('showdown');
-    await paused.getByRole('button', { name: 'Resume' }).click();
-    await expect(area(page)).toHaveAttribute('data-music', 'showdown');
-    // Off: none.
-    paused = await pauseRun(page);
-    await paused.getByRole('combobox', { name: /Music/ }).selectOption('off');
-    await paused.getByRole('button', { name: 'Resume' }).click();
-    await expect(area(page)).toHaveAttribute('data-music', 'off');
-    // A tune, but sound off: none; sound back on, the tune.
-    paused = await pauseRun(page);
-    await paused.getByRole('combobox', { name: /Music/ }).selectOption('lounge');
+    await expect(survival).toHaveAttribute('data-music', 'combat');
+    await expect(survival).toHaveAttribute('data-music-paused', 'true');
+    // Music off, then on; Sound off silences it too.
+    const music = paused.getByRole('checkbox', { name: 'Music' });
+    await expect(music).toBeChecked();
+    await music.uncheck();
+    await expect(survival).toHaveAttribute('data-music', 'off');
+    await music.check();
+    await expect(survival).toHaveAttribute('data-music', 'combat');
     await paused.getByRole('checkbox', { name: 'Sound' }).uncheck();
-    await paused.getByRole('button', { name: 'Resume' }).click();
-    await expect(area(page)).toHaveAttribute('data-music', 'off');
-    paused = await pauseRun(page);
+    await expect(survival).toHaveAttribute('data-music', 'off');
     await paused.getByRole('checkbox', { name: 'Sound' }).check();
     await paused.getByRole('button', { name: 'Resume' }).click();
-    await expect(area(page)).toHaveAttribute('data-music', 'lounge');
-    // Remembered for the next visit.
+    await expect(survival).toHaveAttribute('data-music', 'combat');
+    await expect(survival).toHaveAttribute('data-music-paused', 'false');
+    // Over: the menu's music again, behind the results.
+    paused = await pauseRun(page);
+    await paused.getByRole('button', { name: 'Give up' }).click();
+    await expect(page.getByTestId('survival-results')).toBeVisible();
+    await expect(survival).toHaveAttribute('data-music', 'menu');
+    // Switched off, it stays off on the next visit.
+    await page.getByTestId('survival-results').getByRole('button', { name: 'Close' }).click();
+    await page.getByTestId('survival-lobby-music').uncheck();
     await page.reload();
-    await expect(page.getByTestId('survival-lobby-music')).toHaveValue('lounge');
+    await expect(page.getByTestId('survival-lobby-music')).not.toBeChecked();
+  });
+
+  test('music: a boss on the field brings its music', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openArena(page, '?seed=7&boss=0');
+    await startRun(page);
+    await runUntil(
+      page,
+      async () => (await page.getByTestId('survival').getAttribute('data-music')) === 'boss',
+      20_000,
+      'the boss’s music'
+    );
+    // Paused, still the boss's.
+    await pauseRun(page);
+    await expect(page.getByTestId('survival')).toHaveAttribute('data-music', 'boss');
+    await expect(page.getByTestId('survival')).toHaveAttribute('data-music-paused', 'true');
   });
 
   test('a run: time passes, the Laser Pointer sends cats home, Esc pauses, giving up shows the results and keeps the best time', async ({
