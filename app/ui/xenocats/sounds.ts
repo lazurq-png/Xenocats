@@ -276,6 +276,9 @@ const BALANCE: Readonly<Record<string, number>> = {
   wake: 0.168,
   arrive: 0.3,
   purr: 0.371,
+  // Not measured like the rest: set by its likeness to `drift` and `fall` (a long
+  // call through the open vowels), between them.
+  'beam-up': 0.12,
 };
 
 // ------------------------------------------------------------- the cats' sounds
@@ -385,7 +388,26 @@ const transpose = (sound: Sound, factor: number): Sound =>
       : {}),
   }));
 
-export type CatSounds = { attack: Sound; wake: Sound; arrive: Sound; purr: Sound };
+export type CatSounds = {
+  attack: Sound;
+  wake: Sound;
+  arrive: Sound;
+  purr: Sound;
+  /** Lifted into the mothership: a meow that rises, and rises, wavering. */
+  beamUp: Sound;
+};
+
+/**
+ * Beamed up: a long meow carried up two octaves, the mouth opening to an "ee" at
+ * the top, wavering fast, as a cat lifted off its feet would sound.
+ */
+const beamedUp = (f0: number) =>
+  call(f0, 0.1, 1.6, 0.5, {
+    shape: [0.9, 1.0, 1.2, 1.5, 1.9, 2.4, 3.0],
+    vowels: 'meaaoi',
+    vibrato: { rate: 9, depth: 50 },
+    breath: 0.15,
+  });
 
 /** A cat type's sounds. */
 export function soundsFor(type: CatType): CatSounds {
@@ -397,6 +419,7 @@ export function soundsFor(type: CatType): CatSounds {
     // "Brrp?": a chirrup of greeting.
     arrive: transpose(loud(trill(VOICE, 0, 0.28, 0.45), BALANCE.arrive), pitch),
     purr: transpose(loud(purr(VOICE * pitch), BALANCE.purr), pitch),
+    beamUp: transpose(loud(beamedUp(VOICE * 0.8), BALANCE['beam-up']), pitch),
   };
 }
 

@@ -21,7 +21,6 @@ import {
   writeBest,
   writeMusic,
 } from '@/app/ui/xenocats/arena-storage';
-import { TRACK_IDS } from '@/app/ui/xenocats/music';
 import { GameSettings } from '@/app/ui/xenocats/game-settings';
 import { type Hud, HudBar, createHudStore, hudData } from '@/app/ui/xenocats/survival-hud';
 import { act } from 'react';
@@ -53,39 +52,46 @@ describe('the aim setting, stored', () => {
 });
 
 describe('the music setting, stored', () => {
-  it('is shuffle unless off or a tune was chosen; anything unreadable is shuffle', () => {
-    expect(parseMusic(null)).toBe('shuffle');
+  it('is on unless switched off; anything else, a tune once chosen too, is on', () => {
+    expect(parseMusic(null)).toBe('on');
     expect(parseMusic('off')).toBe('off');
-    for (const id of TRACK_IDS) expect(parseMusic(id)).toBe(id);
-    expect(parseMusic('OFF')).toBe('shuffle');
-    expect(parseMusic('a-tune-since-removed')).toBe('shuffle');
+    expect(parseMusic('on')).toBe('on');
+    expect(parseMusic('catacombs')).toBe('on');
+    expect(parseMusic('shuffle')).toBe('on');
+    expect(parseMusic('OFF')).toBe('on');
   });
 
   it('is kept in the browser, under its own key', () => {
-    expect(readMusic()).toBe('shuffle');
-    writeMusic('catacombs');
-    expect(localStorage.getItem(SURVIVAL_MUSIC_KEY)).toBe('catacombs');
-    expect(readMusic()).toBe('catacombs');
+    expect(readMusic()).toBe('on');
+    writeMusic('off');
+    expect(localStorage.getItem(SURVIVAL_MUSIC_KEY)).toBe('off');
+    expect(readMusic()).toBe('off');
   });
 });
 
 describe('Survival’s settings', () => {
-  it('Music offers shuffle, each of the five tunes and off, and stores the choice', () => {
+  it('Music is switched on and off, the same in the lobby and the pause menu', () => {
     render(
       <>
         <GameSettings where="lobby" touch={false} />
         <GameSettings where="pause" touch={false} />
       </>
     );
-    const music = screen.getByTestId('survival-lobby-music') as HTMLSelectElement;
-    expect(screen.getAllByRole('combobox', { name: /Music/ })).toHaveLength(2);
-    expect([...music.options].map((o) => o.value)).toEqual(['shuffle', ...TRACK_IDS, 'off']);
-    expect(music.value).toBe('shuffle');
-    fireEvent.change(music, { target: { value: 'showdown' } });
-    expect(localStorage.getItem(SURVIVAL_MUSIC_KEY)).toBe('showdown');
-    // The pause menu shows the same choice.
-    expect((screen.getByTestId('survival-pause-music') as HTMLSelectElement).value).toBe(
-      'showdown'
+    const boxes = screen.getAllByRole('checkbox', { name: 'Music' }) as HTMLInputElement[];
+    expect(boxes).toHaveLength(2);
+    expect(boxes.every((box) => box.checked)).toBe(true);
+    fireEvent.click(screen.getByTestId('survival-lobby-music'));
+    expect(localStorage.getItem(SURVIVAL_MUSIC_KEY)).toBe('off');
+    expect((screen.getByTestId('survival-pause-music') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('with Sound off, Music says it is heard only with Sound on', () => {
+    render(<GameSettings where="lobby" touch={false} />);
+    expect(screen.queryByText('(heard when Sound is on)')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sound' }));
+    const note = screen.getByText('(heard when Sound is on)');
+    expect(screen.getByRole('checkbox', { name: 'Music' }).getAttribute('aria-describedby')).toBe(
+      note.id
     );
   });
 

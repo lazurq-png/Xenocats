@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BEAM_UP,
+  LOOPS,
+  PAUSED,
+  SCENES,
   TRACKS,
-  TRACK_IDS,
+  VOLUME,
   createMusicPlayer,
   midiToHz,
   noteToMidi,
   parseChord,
   pickTrack,
+  tracksFor,
 } from '@/app/ui/xenocats/music';
 
 describe('the notation', () => {
@@ -29,13 +34,25 @@ describe('the notation', () => {
   });
 });
 
-describe('the five tunes', () => {
-  it('are five different kinds, each with its own name', () => {
-    expect(TRACKS).toHaveLength(5);
-    expect(new Set(TRACK_IDS).size).toBe(5);
-    expect(new Set(TRACKS.map((t) => t.name)).size).toBe(5);
-    expect(new Set(TRACKS.map((t) => t.kind)).size).toBe(5);
-    expect(new Set(TRACKS.map((t) => t.bpm)).size).toBe(5);
+describe('the tunes', () => {
+  it('five for each scene, every one its own', () => {
+    for (const scene of SCENES) expect(tracksFor(scene), scene).toHaveLength(5);
+    expect(new Set(TRACKS.map((t) => t.id)).size).toBe(15);
+    expect(new Set(TRACKS.map((t) => t.name)).size).toBe(15);
+    // Not one tune twice under two names.
+    expect(new Set(TRACKS.map((t) => JSON.stringify(t.lead))).size).toBe(15);
+  });
+
+  it('the menus’ are slow, a run’s upbeat, a boss’s the fastest of all', () => {
+    const tempos = (scene: (typeof SCENES)[number]) => tracksFor(scene).map((t) => t.bpm);
+    expect(Math.max(...tempos('menu'))).toBeLessThanOrEqual(100);
+    expect(Math.min(...tempos('combat'))).toBeGreaterThanOrEqual(140);
+    expect(Math.min(...tempos('boss'))).toBeGreaterThanOrEqual(160);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    expect(mean(tempos('boss'))).toBeGreaterThan(mean(tempos('combat')));
+    // Lounge music is swung, mostly; a fight is straight.
+    expect(tracksFor('menu').filter((t) => t.swing > 0).length).toBeGreaterThanOrEqual(3);
+    for (const t of [...tracksFor('combat'), ...tracksFor('boss')]) expect(t.swing, t.id).toBe(0);
   });
 
   it('every voice plays, within the loop, in a range a speaker carries', () => {
@@ -64,14 +81,16 @@ describe('the five tunes', () => {
     }
   });
 
-  it('shuffle never draws the last run’s tune again, and can draw every other', () => {
-    for (const last of TRACK_IDS) {
-      const drawn = new Set<string>();
-      for (let k = 0; k < 40; k++) drawn.add(pickTrack(() => k / 40, last));
-      expect(drawn.has(last)).toBe(false);
-      expect(drawn.size).toBe(4);
+  it('a scene’s next tune is never the one just played, and can be any other', () => {
+    for (const scene of SCENES) {
+      for (const last of tracksFor(scene)) {
+        const drawn = new Set<string>();
+        for (let k = 0; k < 40; k++) drawn.add(pickTrack(scene, () => k / 40, last.id).id);
+        expect(drawn.has(last.id)).toBe(false);
+        expect(drawn.size).toBe(4);
+        for (const id of drawn) expect(tracksFor(scene).some((t) => t.id === id)).toBe(true);
+      }
     }
-    expect(pickTrack(() => 0.999999, null)).toBe(TRACK_IDS[4]);
   });
 });
 
@@ -82,6 +101,7 @@ function fakeContext() {
     setValueAtTime: vi.fn(),
     linearRampToValueAtTime: vi.fn(),
     exponentialRampToValueAtTime: vi.fn(),
+    cancelScheduledValues: vi.fn(),
   });
   const node = () => ({ connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() });
   const ctx = {
@@ -90,7 +110,8 @@ function fakeContext() {
     destination: {},
     oscillators: 0,
     sources: 0,
-    gains: [] as { disconnect: ReturnType<typeof vi.fn> }[],
+    gains: [] as { gain: ReturnType<typeof param>; disconnect: ReturnType<typeof vi.fn> }[],
+    filters: [] as { type: string; frequency: ReturnType<typeof param> }[],
     createGain: () => {
       const gain = { ...node(), gain: param() };
       ctx.gains.push(gain);
@@ -106,7 +127,11 @@ function fakeContext() {
         setPeriodicWave: vi.fn(),
       };
     },
-    createBiquadFilter: () => ({ ...node(), type: 'lowpass', frequency: param(), Q: param() }),
+    createBiquadFilter: () => {
+      const filter = { ...node(), type: 'lowpass', frequency: param(), Q: param() };
+      ctx.filters.push(filter);
+      return filter;
+    },
     createBuffer: (_channels: number, length: number) => ({
       getChannelData: () => new Float32Array(length),
     }),
@@ -122,7 +147,7 @@ function fakeContext() {
 /** Timers the test runs by hand. */
 function handTimers() {
   let wake: (() => void) | null = null;
-  const later: (() => void)[] = [];
+  let later: { fn: () => void; ms: number }[] = [];
   return {
     timers: {
       setInterval: (fn: () => void) => {
@@ -132,50 +157,185 @@ function handTimers() {
       clearInterval: () => {
         wake = null;
       },
-      setTimeout: (fn: () => void) => later.push(fn),
+      setTimeout: (fn: () => void, ms: number) => later.push({ fn, ms }),
     },
     tick: () => wake?.(),
     running: () => wake !== null,
-    flushLater: () => later.splice(0).forEach((fn) => fn()),
+    /** Runs the timeouts set so far that are due within `ms`. */
+    runLater: (ms = Infinity) => {
+      const due = later.filter((t) => t.ms <= ms);
+      later = later.filter((t) => t.ms > ms);
+      for (const t of due) t.fn();
+    },
   };
+}
+
+/** Moves the clock on `seconds` in 25 ms wakes, counting the oscillators made. */
+function play(ctx: ReturnType<typeof fakeContext>, tick: () => void, seconds: number) {
+  const before = ctx.oscillators;
+  for (let k = 0; k < seconds * 40; k++) {
+    ctx.currentTime += 0.025;
+    tick();
+  }
+  return ctx.oscillators - before;
 }
 
 describe('the music player', () => {
   it('plays nothing, and says so, without a context to play on', () => {
     const { timers, running } = handTimers();
     const player = createMusicPlayer(() => null, timers);
-    expect(player.play('overworld')).toBe(false);
+    expect(player.setScene('menu')).toBe(false);
     expect(player.playing()).toBeNull();
     expect(running()).toBe(false);
   });
 
-  it('schedules a little ahead as the clock moves, and stops when stopped', () => {
-    const ctx = fakeContext();
-    const { timers, tick, running, flushLater } = handTimers();
-    const player = createMusicPlayer(() => ctx as never, timers);
-    expect(player.play('showdown')).toBe(true);
-    expect(player.playing()).toBe('showdown');
-    const first = ctx.oscillators;
-    expect(first).toBeGreaterThan(0);
-    // The clock stands still (a suspended context): waking schedules nothing more.
-    for (let k = 0; k < 50; k++) tick();
-    expect(ctx.oscillators).toBe(first);
-    // It moves: more is scheduled, about as much as the time that passed holds.
-    for (let k = 0; k < 40; k++) {
-      ctx.currentTime += 0.025;
-      tick();
+  it('a scene plays one of its own tunes, a little ahead as the clock moves', () => {
+    for (const scene of SCENES) {
+      const ctx = fakeContext();
+      const { timers, tick } = handTimers();
+      const player = createMusicPlayer(
+        () => ctx as never,
+        timers,
+        () => 0.5
+      );
+      expect(player.setScene(scene)).toBe(true);
+      const now = player.playing();
+      expect(now?.scene).toBe(scene);
+      expect(tracksFor(scene).some((t) => t.id === now?.track)).toBe(true);
+      const first = ctx.oscillators;
+      expect(first).toBeGreaterThan(0);
+      // The clock stands still (a suspended context): waking schedules nothing more.
+      for (let k = 0; k < 50; k++) tick();
+      expect(ctx.oscillators).toBe(first);
+      expect(play(ctx, tick, 1)).toBeGreaterThan(0);
+      expect(ctx.sources).toBeGreaterThan(0);
     }
-    expect(ctx.oscillators).toBeGreaterThan(first);
-    expect(ctx.sources).toBeGreaterThan(0);
-    player.stop();
-    expect(player.playing()).toBeNull();
+  });
+
+  it('asked for the scene playing, it goes on; another scene changes the tune', () => {
+    const ctx = fakeContext();
+    const { timers } = handTimers();
+    const make = vi.fn(() => ctx as never);
+    const player = createMusicPlayer(make, timers);
+    player.setScene('combat');
+    const tune = player.playing()?.track;
+    player.setScene('combat');
+    expect(make).toHaveBeenCalledTimes(1);
+    expect(player.playing()?.track).toBe(tune);
+    player.setScene('boss');
+    expect(player.playing()?.scene).toBe('boss');
+  });
+
+  it(`after ${LOOPS} times round a tune, the scene's next one plays`, () => {
+    const ctx = fakeContext();
+    const { timers, tick } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    player.setScene('combat');
+    const first = player.playing()!.track;
+    const track = TRACKS.find((t) => t.id === first)!;
+    const loop = (track.steps * 60) / track.bpm / 4;
+    play(ctx, tick, loop * (LOOPS - 0.5));
+    expect(player.playing()!.track).toBe(first);
+    play(ctx, tick, loop);
+    const next = player.playing()!;
+    expect(next.scene).toBe('combat');
+    expect(next.track).not.toBe(first);
+  });
+
+  it('paused, it goes on quieter, slower and muffled; unpaused, as it was', () => {
+    const ctx = fakeContext();
+    const { timers, tick } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    player.setScene('combat');
+    const master = ctx.gains[0];
+    const muffle = ctx.filters.find((f) => f.type === 'lowpass')!;
+    const playing = play(ctx, tick, 2);
+    player.setPaused(true);
+    expect(player.playing()?.scene).toBe('combat');
+    expect(master.gain.linearRampToValueAtTime).toHaveBeenLastCalledWith(
+      VOLUME * PAUSED.volume,
+      expect.any(Number)
+    );
+    expect(muffle.frequency.exponentialRampToValueAtTime).toHaveBeenLastCalledWith(
+      PAUSED.muffle,
+      expect.any(Number)
+    );
+    // Slower: fewer notes in the same time.
+    const paused = play(ctx, tick, 2);
+    expect(paused).toBeLessThan(playing * 0.85);
+    player.setPaused(false);
+    expect(master.gain.linearRampToValueAtTime).toHaveBeenLastCalledWith(
+      VOLUME,
+      expect.any(Number)
+    );
+  });
+
+  it('a scene started while paused starts quiet', () => {
+    const ctx = fakeContext();
+    const { timers } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    player.setPaused(true);
+    player.setScene('menu');
+    expect(ctx.gains[0].gain.linearRampToValueAtTime).toHaveBeenCalledWith(
+      VOLUME * PAUSED.volume,
+      expect.any(Number)
+    );
+  });
+
+  it('a boss sent home: its music stops for the beam-up, and the scene asked for meanwhile plays after', () => {
+    const ctx = fakeContext();
+    const { timers, tick, running, runLater } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    player.setScene('boss');
+    const before = ctx.oscillators;
+    expect(player.beamUp()).toBe(true);
+    // The beam itself: a sweep, its wobble, sparkles and a chime.
+    expect(ctx.oscillators - before).toBeGreaterThanOrEqual(10);
+    expect(player.beaming()).toBe(true);
     expect(running()).toBe(false);
-    const stopped = ctx.oscillators;
-    ctx.currentTime += 1;
-    tick();
-    expect(ctx.oscillators).toBe(stopped);
-    // Its volume fades, then lets go.
-    flushLater();
+    expect(player.playing()).toBeNull();
+    // The boss is gone: the run's music is asked for, and waits for the beam-up.
+    expect(player.setScene('combat')).toBe(true);
+    expect(player.playing()).toBeNull();
+    expect(play(ctx, tick, 1)).toBe(0);
+    // Not a second beam-up over the first.
+    expect(player.beamUp()).toBe(false);
+    runLater(BEAM_UP * 1000);
+    expect(player.beaming()).toBe(false);
+    expect(player.playing()?.scene).toBe('combat');
+  });
+
+  it('with no other scene asked for, a beam-up gives way to a new tune of the same scene', () => {
+    const ctx = fakeContext();
+    const { timers, runLater } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    player.setScene('boss');
+    const tune = player.playing()!.track;
+    player.beamUp();
+    runLater();
+    expect(player.playing()?.scene).toBe('boss');
+    expect(player.playing()?.track).not.toBe(tune);
+  });
+
+  it('no beam-up without music playing', () => {
+    const ctx = fakeContext();
+    const { timers } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    expect(player.beamUp()).toBe(false);
+    player.setScene('boss');
+    player.setScene(null);
+    expect(player.beamUp()).toBe(false);
+  });
+
+  it('stopped, it goes quiet, then lets go', () => {
+    const ctx = fakeContext();
+    const { timers, tick, running, runLater } = handTimers();
+    const player = createMusicPlayer(() => ctx as never, timers);
+    player.setScene('menu');
+    player.setScene(null);
+    expect(running()).toBe(false);
+    expect(play(ctx, tick, 1)).toBe(0);
+    runLater();
     expect(ctx.gains[0].disconnect).toHaveBeenCalled();
   });
 
@@ -183,36 +343,12 @@ describe('the music player', () => {
     const ctx = fakeContext();
     const { timers, tick } = handTimers();
     const player = createMusicPlayer(() => ctx as never, timers);
-    player.play('hyperspace');
+    player.setScene('boss');
     const before = ctx.oscillators;
     ctx.currentTime += 30;
     tick();
-    // 30 seconds at 176 bpm is 352 sixteenths: far fewer notes than that come.
+    // 30 seconds of a boss's tune is hundreds of sixteenths: far fewer notes come.
     expect(ctx.oscillators - before).toBeLessThan(20);
-  });
-
-  it('asked for the tune it is playing, it goes on; another tune starts afresh', () => {
-    const ctx = fakeContext();
-    const { timers } = handTimers();
-    const make = vi.fn(() => ctx as never);
-    const player = createMusicPlayer(make, timers);
-    player.play('lounge');
-    player.play('lounge');
-    expect(make).toHaveBeenCalledTimes(1);
-    player.play('catacombs');
-    expect(player.playing()).toBe('catacombs');
-  });
-
-  it('paused, it goes quiet; played again, the same tune goes on', () => {
-    const ctx = fakeContext();
-    const { timers, running } = handTimers();
-    const player = createMusicPlayer(() => ctx as never, timers);
-    player.play('overworld');
-    player.pause();
-    expect(running()).toBe(false);
-    expect(player.playing()).toBeNull();
-    expect(player.play('overworld')).toBe(true);
-    expect(player.playing()).toBe('overworld');
   });
 
   it('a context that throws leaves it quiet, never thrown', () => {
@@ -222,7 +358,7 @@ describe('the music player', () => {
     };
     const { timers, running } = handTimers();
     const player = createMusicPlayer(() => ctx as never, timers);
-    expect(() => player.play('overworld')).not.toThrow();
+    expect(() => player.setScene('combat')).not.toThrow();
     expect(running()).toBe(false);
   });
 });

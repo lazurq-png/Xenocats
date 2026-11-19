@@ -107,7 +107,7 @@ import {
   shouldGoLight,
 } from './graphics';
 import { tierStyle } from './item-tier';
-import { pickTrack, sharedMusicPlayer, type TrackId } from './music';
+import { type Scene, sharedMusicPlayer } from './music';
 import {
   getSoundEnabled,
   type SoundPlayer,
@@ -162,6 +162,9 @@ import {
 // random source, `?speed=` (up to 50) makes time pass that much faster, `?boss=`
 // (seconds) brings a Mega Cat that early, besides the schedule's. `?fps=1` shows the
 // frame time and cat count; `?crowd=N` starts a crowded, late-game run (test-hooks.ts).
+
+/** The page's music player (music.ts), on the sound player's AudioContext. */
+const sharedMusic = () => sharedMusicPlayer(() => sharedSoundPlayer().context());
 
 export default function ArenaGame({
   touch = false,
@@ -240,11 +243,14 @@ export default function ArenaGame({
   // in the pause menu takes hold at once.
   const graphics = useSyncExternalStore(subscribeGraphics, readGraphics, (): Graphics => 'full');
   const graphicsRef = useRef<Graphics>(graphics);
-  // The music (music.ts): the stored choice, the site's sound switch, and on shuffle
-  // the tune this run drew (a new one each run).
-  const musicChoice = useSyncExternalStore(subscribeMusic, readMusic, (): MusicChoice => 'shuffle');
+  // The music (music.ts): the stored choice, the site's sound switch, whether a boss
+  // is on the field (the loop says, when it changes), and whether the page has had
+  // the gesture audio needs (none plays before one).
+  const musicChoice = useSyncExternalStore(subscribeMusic, readMusic, (): MusicChoice => 'on');
   const soundOn = useSyncExternalStore(subscribeSound, getSoundEnabled, () => true);
-  const [shuffled, setShuffled] = useState<TrackId | null>(null);
+  const [bossAlive, setBossAlive] = useState(false);
+  const bossRef = useRef(false);
+  const [gestured, setGestured] = useState(false);
   const aimRef = useRef<AimMode>(aimMode);
   // Where the mouse is on the screen, while a run lasts (null until it moves).
   const pointerRef = useRef<Vec | null>(null);
@@ -348,8 +354,9 @@ export default function ArenaGame({
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
     playerRef.current.unlock();
-    // On shuffle, a tune for this run: not the last run's.
-    setShuffled((last) => pickTrack(Math.random, last));
+    setGestured(true);
+    bossRef.current = false;
+    setBossAlive(false);
     const stored = readProgress();
     characterRef.current = stored.character;
     // Co-op is keyboard only: on a touch screen, one Keeper.
@@ -491,17 +498,42 @@ export default function ArenaGame({
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
 
-  // The music: the run's tune while it is played (and while a level-up's choice
-  // waits), faded out while paused, stopped when the run is over or the page left.
-  const track: TrackId | null =
-    !soundOn || musicChoice === 'off' ? null : musicChoice === 'shuffle' ? shuffled : musicChoice;
+  // The music's scene: the menus' lounge music before a run and after it, the run's
+  // own while it lasts (a level-up's choice too), a boss's while one is on the field;
+  // paused, the same, quieter and slower. None with sound or music off, nor before
+  // the first gesture.
+  const scene: Scene | null =
+    !soundOn || musicChoice === 'off'
+      ? null
+      : running
+        ? bossAlive
+          ? 'boss'
+          : 'combat'
+        : gestured
+          ? 'menu'
+          : null;
+  const musicPaused = screen === 'paused';
   useEffect(() => {
-    const music = sharedMusicPlayer(() => sharedSoundPlayer().context());
-    if (!track || !running) music.stop();
-    else if (screen === 'paused') music.pause();
-    else music.play(track);
-  }, [track, running, screen]);
-  useEffect(() => () => sharedMusicPlayer(() => sharedSoundPlayer().context()).stop(), []);
+    const music = sharedMusic();
+    music.setPaused(musicPaused);
+    music.setScene(scene);
+  }, [scene, musicPaused, gestured]);
+  useEffect(() => () => void sharedMusic().setScene(null), []);
+  // The first click or key on the page is the gesture audio needs: the menu's music
+  // can start. (A controller's Start begins a run, which unlocks it too.)
+  useEffect(() => {
+    if (gestured) return;
+    const unlock = () => {
+      (playerRef.current ??= sharedSoundPlayer()).unlock();
+      setGestured(true);
+    };
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [gestured]);
 
   // The play area's data- attributes (what the browser tests read): now, and at each
   // HUD update.
@@ -1277,7 +1309,9 @@ export default function ArenaGame({
           slowUntil = now + BOSS_SLOW_MS;
           shakeUntil = now + BOSS_SHAKE_MS;
           important(`The mothership has come for the giant ${CAT_TYPES[event.type].name}.`);
-          if (player) player.play(soundsFor(CAT_TYPES[event.type]).wake);
+          // Its music ends with the mothership beaming it up, the cat calling as it rises.
+          sharedMusic().beamUp();
+          if (player) player.play(soundsFor(CAT_TYPES[event.type]).beamUp);
         } else if (event.kind === 'chest' && event.golden) {
           reelUntil = now + REEL_SPIN_MS + REEL_HOLD_MS;
           setReel({ rewards: event.rewards, picks: event.picks, key: now });
@@ -1329,6 +1363,12 @@ export default function ArenaGame({
       dirty = false;
 
       const state = arena.state();
+      // A boss on the field (a Mega Cat, or the Matriarch come at the end): its music.
+      const boss = state.boss !== null || arena.matriarch() !== null;
+      if (boss !== bossRef.current) {
+        bossRef.current = boss;
+        setBossAlive(boss);
+      }
       if (over || now - lastHud > HUD_EVERY_MS) {
         lastHud = now;
         hudStore.set({
@@ -1467,7 +1507,11 @@ export default function ArenaGame({
   }, [running, finish, pause, show, choose, reroll, skip, hudStore, pads]);
 
   return (
-    <div>
+    <div
+      data-testid="survival"
+      data-music={scene ?? 'off'}
+      data-music-paused={scene && musicPaused ? 'true' : 'false'}
+    >
       <h1 className="font-display text-4xl font-semibold text-cream md:text-[52px]">Survival</h1>
       <p className="mt-4 max-w-2xl text-sm text-aura">
         The cats come from every side, and they do not stop coming. The Keeper does not hate them;
@@ -1711,7 +1755,6 @@ export default function ArenaGame({
           data-testid="survival-area"
           data-xenocat-ignore
           data-screen={screen}
-          data-music={running && track ? track : 'off'}
           data-players={runPlayers}
           data-chooser={chooser}
           data-aim={aimMode}

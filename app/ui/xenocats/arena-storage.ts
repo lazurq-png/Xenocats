@@ -2,7 +2,6 @@
 // unreadable or corrupt reads as a fresh start; nothing here ever throws.
 
 import { type Graphics, parseGraphics } from './graphics';
-import { TRACK_IDS, type TrackId } from './music';
 
 /**
  * The run lengths on offer, in minutes (the first is the game's own). 0 is an endless
@@ -238,16 +237,16 @@ export function subscribeAim(onChange: () => void) {
   };
 }
 
-/** Survival's music: none, a different tune each run, or one tune always. */
-export type MusicChoice = 'off' | 'shuffle' | TrackId;
+/** Survival's music (music.ts), on or off: the game chooses the tunes. */
+export type MusicChoice = 'on' | 'off';
 
 export const SURVIVAL_MUSIC_KEY = 'xenocats:survival:v1:music';
 
-/** A stored music choice; anything else (missing, corrupt, a tune since removed) is shuffle. */
-export const parseMusic = (raw: string | null): MusicChoice =>
-  raw === 'off' || (TRACK_IDS as readonly string[]).includes(raw ?? '')
-    ? (raw as MusicChoice)
-    : 'shuffle';
+/**
+ * A stored music choice: off only if switched off. Anything else (missing, corrupt,
+ * or a tune chosen when tunes could be) is on.
+ */
+export const parseMusic = (raw: string | null): MusicChoice => (raw === 'off' ? 'off' : 'on');
 
 const musicListeners = new Set<() => void>();
 /** The choice, when storage is blocked: it lasts until the page is left. */
@@ -258,7 +257,7 @@ export function readMusic(): MusicChoice {
   try {
     return parseMusic(window.localStorage.getItem(SURVIVAL_MUSIC_KEY));
   } catch {
-    return 'shuffle';
+    return 'on';
   }
 }
 
