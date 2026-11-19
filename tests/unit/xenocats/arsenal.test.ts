@@ -2178,3 +2178,33 @@ describe('the full arsenal', () => {
     expect(FUSIONS).toHaveLength(BASE_WEAPONS.length / 2);
   });
 });
+
+describe('a beam that is still showing', () => {
+  it('hurts a cat that moves into it after it was fired', () => {
+    const a = arena({
+      ...steady,
+      startingWeapons: ['laser-pointer'],
+      startingLevel: 1,
+      escalation: [[0, 5]],
+      cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
+    });
+    const { x, y } = a.state().hero;
+    a.aimAt({ x: x + 300, y });
+    // Run until a beam has just been fired and cats exist.
+    let fresh = false;
+    for (let n = 0; n < 2000 && !fresh; n++) {
+      const before = a.beams().length;
+      a.step(still);
+      fresh = a.cats().length > 0 && a.beams().length > before;
+    }
+    expect(fresh).toBe(true);
+    const beam = a.beams()[a.beams().length - 1];
+    const cat = a.cats()[0];
+    // It steps onto the beam's line, a cat that was not there when it was fired.
+    cat.x = (beam.from.x + beam.to.x) / 2;
+    cat.y = (beam.from.y + beam.to.y) / 2;
+    cat.homesickness = 0;
+    a.step(still, false);
+    expect(cat.homesickness).toBeGreaterThan(0);
+  });
+});

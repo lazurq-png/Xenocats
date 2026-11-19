@@ -56,9 +56,12 @@ import {
   readGraphics,
   readGraphicsAuto,
   readLength,
+  readMusic,
+  type MusicChoice,
   subscribeAim,
   subscribeGraphics,
   subscribeLength,
+  subscribeMusic,
   writeBest,
   writeGraphics,
   writeGraphicsAuto,
@@ -104,7 +107,14 @@ import {
   shouldGoLight,
 } from './graphics';
 import { tierStyle } from './item-tier';
-import { type SoundPlayer, sharedSoundPlayer, soundsFor } from './sounds';
+import { pickTrack, sharedMusicPlayer, type TrackId } from './music';
+import {
+  getSoundEnabled,
+  type SoundPlayer,
+  sharedSoundPlayer,
+  soundsFor,
+  subscribeSound,
+} from './sounds';
 import { SCHEDULE, VARIETIES, type VarietyId } from './varieties';
 import { PLAYER_KEYS, isWalkKey, walkDirection } from './walking';
 import type { Vec } from './effects';
@@ -230,6 +240,11 @@ export default function ArenaGame({
   // in the pause menu takes hold at once.
   const graphics = useSyncExternalStore(subscribeGraphics, readGraphics, (): Graphics => 'full');
   const graphicsRef = useRef<Graphics>(graphics);
+  // The music (music.ts): the stored choice, the site's sound switch, and on shuffle
+  // the tune this run drew (a new one each run).
+  const musicChoice = useSyncExternalStore(subscribeMusic, readMusic, (): MusicChoice => 'shuffle');
+  const soundOn = useSyncExternalStore(subscribeSound, getSoundEnabled, () => true);
+  const [shuffled, setShuffled] = useState<TrackId | null>(null);
   const aimRef = useRef<AimMode>(aimMode);
   // Where the mouse is on the screen, while a run lasts (null until it moves).
   const pointerRef = useRef<Vec | null>(null);
@@ -333,6 +348,8 @@ export default function ArenaGame({
     playerRef.current ??= sharedSoundPlayer();
     // The click that started the run is the gesture sound needs.
     playerRef.current.unlock();
+    // On shuffle, a tune for this run: not the last run's.
+    setShuffled((last) => pickTrack(Math.random, last));
     const stored = readProgress();
     characterRef.current = stored.character;
     // Co-op is keyboard only: on a touch screen, one Keeper.
@@ -473,6 +490,18 @@ export default function ArenaGame({
   });
 
   const running = screen === 'playing' || screen === 'choosing' || screen === 'paused';
+
+  // The music: the run's tune while it is played (and while a level-up's choice
+  // waits), faded out while paused, stopped when the run is over or the page left.
+  const track: TrackId | null =
+    !soundOn || musicChoice === 'off' ? null : musicChoice === 'shuffle' ? shuffled : musicChoice;
+  useEffect(() => {
+    const music = sharedMusicPlayer(() => sharedSoundPlayer().context());
+    if (!track || !running) music.stop();
+    else if (screen === 'paused') music.pause();
+    else music.play(track);
+  }, [track, running, screen]);
+  useEffect(() => () => sharedMusicPlayer(() => sharedSoundPlayer().context()).stop(), []);
 
   // The play area's data- attributes (what the browser tests read): now, and at each
   // HUD update.
@@ -1682,6 +1711,7 @@ export default function ArenaGame({
           data-testid="survival-area"
           data-xenocat-ignore
           data-screen={screen}
+          data-music={running && track ? track : 'off'}
           data-players={runPlayers}
           data-chooser={chooser}
           data-aim={aimMode}

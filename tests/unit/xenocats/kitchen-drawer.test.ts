@@ -13,6 +13,7 @@ import {
   BASE_WEAPONS,
   EVOLUTIONS,
   FUSIONS,
+  LEVEL_RESOLVE_CAP,
   MAX_WEAPON_LEVEL,
   PASSIVES,
   PASSIVE_SLOTS,
@@ -185,31 +186,108 @@ describe('the kitchen drawer: six weapons and six passives more', () => {
     expect(left(['cookie-jar'])).toBeGreaterThan(left([]));
   });
 
-  it('Hot Water Bottle: some Resolve returns at each level', () => {
-    const atFirstLevel = (passives: PassiveId[]) => {
+  describe('Hot Water Bottle: Resolve for every level reached', () => {
+    const BASE = 1e12;
+    type A = ReturnType<typeof arena>;
+    /** The bottle's level a Keeper holds (0: none). */
+    const bottle = (a: A, i: number) =>
+      a.state().heroes[i].passives.find((p) => p.id === 'hot-water-bottle')?.level ?? 0;
+    /** What the bottle adds to a Keeper's most Resolve at the run's level now. */
+    const added = (a: A, i: number) => a.state().heroes[i].maxResolve - BASE;
+
+    /**
+     * Two Keepers (`holding`: each with a bottle from the start), stepped until
+     * `until`; a level-up takes a weapon, or (`take`, from level 3) a bottle offered.
+     * `onTake` sees each bottle taken, before and after.
+     */
+    function run(
+      gem: number,
+      until: (a: A) => boolean,
+      holding: boolean,
+      take = false,
+      onTake?: (a: A, i: number, before: { max: number; resolve: number }) => void
+    ) {
       const a = arena({
         ...steady,
         startingWeapons: ['alarm-clock'],
-        startingPassives: passives,
+        startingPassives: holding ? ['hot-water-bottle'] : [],
+        secondPlayer: {
+          startingWeapons: ['spray-bottle'],
+          speed: 210,
+          resolve: BASE,
+          startingPassives: holding ? ['hot-water-bottle'] : [],
+        },
         escalation: [[0, 30]],
         cats: { ...ARENA_CONFIG.cats, eliteShare: 0 },
-        gems: { ...ARENA_CONFIG.gems, value: 1, eliteValue: 6 },
+        gems: { ...ARENA_CONFIG.gems, value: gem, eliteValue: gem },
+        stepMs: 50,
       });
-      let up = false;
       stepWhile(
         a,
-        () => !up && a.state().time < 60_000,
+        () => !until(a) && a.state().time < 300_000,
         () => {
-          a.step(still);
-          up = a.drainEvents().some((e) => e.kind === 'level-up');
+          const offer = a.choices();
+          if (!offer) return a.step(still);
+          const i = a.chooser();
+          const bottleAt = offer.findIndex((c) => c.id === 'hot-water-bottle');
+          if (take && bottleAt >= 0 && bottle(a, i) === 0 && a.choiceLevel() >= 3) {
+            const h = a.state().heroes[i];
+            const before = { max: h.maxResolve, resolve: h.resolve };
+            a.choose(bottleAt);
+            onTake?.(a, i, before);
+            return;
+          }
+          const weapon = offer.findIndex((c) => c.kind === 'weapon');
+          a.choose(weapon >= 0 ? weapon : offer.findIndex((c) => c.id !== 'hot-water-bottle'));
         }
       );
-      return a.state().hero;
-    };
-    const without = atFirstLevel([]);
-    // He was reached before he levelled: there is Resolve to give back.
-    expect(without.resolve).toBeLessThan(without.maxResolve - 4);
-    expect(atFirstLevel(['hot-water-bottle']).resolve).toBeCloseTo(without.resolve + 4, 4);
+      return a;
+    }
+
+    it('counts every level so far, for both Keepers, and grows with each new one', () => {
+      const a = run(40, (r) => r.state().level >= 5, true);
+      const { level } = a.state();
+      expect(level).toBeGreaterThanOrEqual(5);
+      for (const i of [0, 1]) {
+        expect(bottle(a, i)).toBeGreaterThan(0);
+        expect(added(a, i)).toBeCloseTo(0.5 * bottle(a, i) * level, 3);
+      }
+    });
+
+    it('taken later, every level already reached counts at once, for player 2 as for player 1', () => {
+      const taken: { i: number; level: number; max: number; resolve: number }[] = [];
+      const a = run(
+        2000,
+        (r) => bottle(r, 0) > 0 && bottle(r, 1) > 0,
+        false,
+        true,
+        (r, i, before) => {
+          const h = r.state().heroes[i];
+          taken.push({
+            i,
+            level: r.state().level,
+            max: h.maxResolve - before.max,
+            resolve: h.resolve - before.resolve,
+          });
+        }
+      );
+      expect(taken.map((t) => t.i).sort()).toEqual([0, 1]);
+      for (const t of taken) {
+        // All the levels so far, at once: both the most Resolve and the Resolve itself.
+        expect(t.level).toBeGreaterThanOrEqual(3);
+        expect(t.max).toBeCloseTo(0.5 * t.level, 3);
+        expect(t.resolve).toBeCloseTo(0.5 * t.level, 3);
+      }
+      for (const i of [0, 1]) {
+        expect(added(a, i)).toBeCloseTo(0.5 * bottle(a, i) * a.state().level, 3);
+      }
+    });
+
+    it(`never adds more than ${LEVEL_RESOLVE_CAP}`, () => {
+      const a = run(1e9, (r) => r.state().level > 300, true);
+      expect(a.state().level).toBeGreaterThan(300);
+      for (const i of [0, 1]) expect(added(a, i)).toBeCloseTo(LEVEL_RESOLVE_CAP, 3);
+    });
   });
 
   it('Loaded Dice: each level taken is another reroll', () => {

@@ -2,6 +2,7 @@
 // unreadable or corrupt reads as a fresh start; nothing here ever throws.
 
 import { type Graphics, parseGraphics } from './graphics';
+import { TRACK_IDS, type TrackId } from './music';
 
 /**
  * The run lengths on offer, in minutes (the first is the game's own). 0 is an endless
@@ -233,6 +234,50 @@ export function subscribeAim(onChange: () => void) {
   window.addEventListener('storage', onChange);
   return () => {
     aimListeners.delete(onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+
+/** Survival's music: none, a different tune each run, or one tune always. */
+export type MusicChoice = 'off' | 'shuffle' | TrackId;
+
+export const SURVIVAL_MUSIC_KEY = 'xenocats:survival:v1:music';
+
+/** A stored music choice; anything else (missing, corrupt, a tune since removed) is shuffle. */
+export const parseMusic = (raw: string | null): MusicChoice =>
+  raw === 'off' || (TRACK_IDS as readonly string[]).includes(raw ?? '')
+    ? (raw as MusicChoice)
+    : 'shuffle';
+
+const musicListeners = new Set<() => void>();
+/** The choice, when storage is blocked: it lasts until the page is left. */
+let musicInMemory: MusicChoice | null = null;
+
+export function readMusic(): MusicChoice {
+  if (musicInMemory) return musicInMemory;
+  try {
+    return parseMusic(window.localStorage.getItem(SURVIVAL_MUSIC_KEY));
+  } catch {
+    return 'shuffle';
+  }
+}
+
+export function writeMusic(choice: MusicChoice) {
+  try {
+    window.localStorage.setItem(SURVIVAL_MUSIC_KEY, choice);
+  } catch {
+    // Storage blocked: the choice lasts until the page is left.
+    musicInMemory = choice;
+  }
+  for (const listener of musicListeners) listener();
+}
+
+/** For useSyncExternalStore: the stored music choice, and changes to it (here or in another tab). */
+export function subscribeMusic(onChange: () => void) {
+  musicListeners.add(onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    musicListeners.delete(onChange);
     window.removeEventListener('storage', onChange);
   };
 }
