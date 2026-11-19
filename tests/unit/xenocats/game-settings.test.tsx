@@ -85,6 +85,19 @@ describe('Survival’s settings', () => {
     expect((screen.getByTestId('survival-pause-music') as HTMLInputElement).checked).toBe(false);
   });
 
+  it('Next song is there while music is heard, and not with Music or Sound off', () => {
+    render(<GameSettings where="lobby" touch={false} />);
+    const next = () => screen.getByRole('button', { name: 'Next song' }) as HTMLButtonElement;
+    expect(next().disabled).toBe(false);
+    // Nothing plays here (no audio in this test): nothing is said to.
+    expect(screen.getByTestId('survival-lobby-now-playing').textContent).toBe('');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Music' }));
+    expect(next().disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Music' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sound' }));
+    expect(next().disabled).toBe(true);
+  });
+
   it('with Sound off, Music says it is heard only with Sound on', () => {
     render(<GameSettings where="lobby" touch={false} />);
     expect(screen.queryByText('(heard when Sound is on)')).toBeNull();

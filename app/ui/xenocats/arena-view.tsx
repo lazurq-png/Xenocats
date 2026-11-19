@@ -107,7 +107,7 @@ import {
   shouldGoLight,
 } from './graphics';
 import { tierStyle } from './item-tier';
-import { type Scene, sharedMusicPlayer } from './music';
+import { type Scene, sharedMusic } from './music';
 import {
   getSoundEnabled,
   type SoundPlayer,
@@ -162,9 +162,6 @@ import {
 // random source, `?speed=` (up to 50) makes time pass that much faster, `?boss=`
 // (seconds) brings a Mega Cat that early, besides the schedule's. `?fps=1` shows the
 // frame time and cat count; `?crowd=N` starts a crowded, late-game run (test-hooks.ts).
-
-/** The page's music player (music.ts), on the sound player's AudioContext. */
-const sharedMusic = () => sharedMusicPlayer(() => sharedSoundPlayer().context());
 
 export default function ArenaGame({
   touch = false,
@@ -520,13 +517,21 @@ export default function ArenaGame({
   }, [scene, musicPaused, gestured]);
   useEffect(() => () => void sharedMusic().setScene(null), []);
   // The first click or key on the page is the gesture audio needs: the menu's music
-  // can start. (A controller's Start begins a run, which unlocks it too.)
+  // can start. (A controller's Start begins a run, which unlocks it too.) One made
+  // before this page showed counts: the Play link on /cats changes page without
+  // loading a new one, so the browser remembers its click (userActivation), and the
+  // cats there may already have unlocked the player.
   useEffect(() => {
     if (gestured) return;
     const unlock = () => {
       (playerRef.current ??= sharedSoundPlayer()).unlock();
       setGestured(true);
     };
+    if (sharedSoundPlayer().isUnlocked() || navigator.userActivation?.hasBeenActive) {
+      // Not in this effect's own pass: React would render twice for nothing.
+      const now = setTimeout(unlock, 0);
+      return () => clearTimeout(now);
+    }
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
     return () => {
@@ -556,7 +561,8 @@ export default function ArenaGame({
   useEffect(() => {
     if (screen === 'playing') areaRef.current?.focus();
     if (screen === 'choosing') choiceRef.current?.querySelector('button')?.focus();
-    if (screen === 'paused') pauseRef.current?.querySelector('button')?.focus();
+    // Resume by name, not the first button: the settings above it have one (Next song).
+    if (screen === 'paused') pauseRef.current?.querySelector<HTMLElement>('[data-resume]')?.focus();
     if (screen === 'results') {
       // The name for the leaderboard, when the run can go on it; otherwise Play again.
       const results = resultsRef.current;
@@ -1898,7 +1904,9 @@ export default function ArenaGame({
                 {pausedState && <PauseSummary state={pausedState} />}
                 <GameSettings where="pause" touch={touch} />
                 <div className="mt-4 flex justify-center gap-3">
-                  <Button onClick={resume}>Resume</Button>
+                  <Button onClick={resume} data-resume>
+                    Resume
+                  </Button>
                   <Button onClick={giveUp}>Give up</Button>
                 </div>
               </div>

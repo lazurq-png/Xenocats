@@ -1,6 +1,7 @@
 import { type Locator, type Page, devices, expect, test } from './fixtures';
 import { ARENA_CONFIG } from '@/app/ui/xenocats/arena';
 import { SURVIVAL_BEST_KEY } from '@/app/ui/xenocats/arena-storage';
+import { tracksFor } from '@/app/ui/xenocats/music';
 import { SOUND_KEY } from '@/app/ui/xenocats/sounds';
 
 // Survival, the arena, on /cats/survival (no login, no database). The canvas cannot
@@ -278,6 +279,8 @@ test('/cats has one Play link, and it opens Survival', async ({ page }) => {
   await expect(page).toHaveURL(/\/cats\/survival$/, { timeout: 15_000 });
   await expect(page.getByRole('heading', { level: 1, name: 'Survival' })).toBeVisible();
   await expect(page.getByTestId('survival-start')).toBeVisible();
+  // The click on Play was the gesture audio needs: the menu's music, with no other.
+  await expect(page.getByTestId('survival')).toHaveAttribute('data-music', 'menu');
 });
 
 test('the retired Taming game is gone: /cats/taming is not found', async ({ page }) => {
@@ -767,6 +770,16 @@ test.describe('on a computer', () => {
         return survival.getAttribute('data-music');
       })
       .toBe('menu');
+    // A menu tune plays, and is named; Next song plays another menu tune.
+    const menuTunes = tracksFor('menu').map((t) => t.name);
+    const nowPlaying = page.getByTestId('survival-lobby-now-playing');
+    const tune = async () => (await nowPlaying.textContent())?.replace('Now playing: ', '') ?? '';
+    await expect.poll(tune).not.toBe('');
+    const first = await tune();
+    expect(menuTunes).toContain(first);
+    await page.getByTestId('survival-lobby-next-song').click();
+    await expect.poll(tune).not.toBe(first);
+    expect(menuTunes).toContain(await tune());
     await startRun(page);
     await expect(survival).toHaveAttribute('data-music', 'combat');
     await expect(survival).toHaveAttribute('data-music-paused', 'false');
